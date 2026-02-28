@@ -9,7 +9,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **PR comments** - Create, view, and reply to review comments on specific lines
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
 - **Virtual text** - Comment indicators on lines with existing comments
-- **Comment navigation** - Jump between comments with `]r` / `[r`
+- **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - View PR title, description, labels, and issue-level comments
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
@@ -59,8 +59,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
       function() require("reviewit.comments").reply_to_comment() end,
       desc = "Review: Reply",
     },
-    { "]r", function() require("reviewit.comments").next_comment() end, desc = "Review: Next comment" },
-    { "[r", function() require("reviewit.comments").prev_comment() end, desc = "Review: Prev comment" },
+    { "]c", function() require("reviewit.comments").next_comment() end, desc = "Review: Next comment" },
+    { "[c", function() require("reviewit.comments").prev_comment() end, desc = "Review: Prev comment" },
   },
 }
 ```

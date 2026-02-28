@@ -27,8 +27,8 @@ M.defaults = {
 		create_comment = "<leader>Rc",
 		view_comments = "<leader>Rv",
 		reply_comment = "<leader>Rr",
-		next_comment = "]r",
-		prev_comment = "[r",
+		next_comment = "]c",
+		prev_comment = "[c",
 	},
 }
 

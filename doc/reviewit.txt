@@ -135,8 +135,8 @@ spec or manually. Suggested mappings:
   `<leader>ea`  Approve PR
   `<leader>eb`  Open PR in browser
   `<leader>el`  List all review comments
-  `]r`          Next comment
-  `[r`          Previous comment
+  `]c`          Next comment
+  `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
 
 ==============================================================================
