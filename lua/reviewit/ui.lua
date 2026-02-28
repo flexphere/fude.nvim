@@ -225,10 +225,27 @@ function M.refresh_extmarks()
 	end
 
 	-- Draft indicators
+	local comments_parse = comments_mod.parse_draft_key
+	local comments_find = comments_mod.find_comment_by_id
 	for key, _ in pairs(state.drafts) do
-		local path, sl = key:match("^(.+):(%d+):%d+$")
-		if path == rel_path then
-			local draft_line = tonumber(sl)
+		local parsed = comments_parse(key)
+		if not parsed then
+			goto draft_continue
+		end
+
+		local draft_path, draft_line
+		if parsed.type == "comment" then
+			draft_path = parsed.path
+			draft_line = parsed.start_line
+		elseif parsed.type == "reply" then
+			local found = comments_find(parsed.comment_id, state.comment_map or {})
+			if found then
+				draft_path = found.path
+				draft_line = found.line
+			end
+		end
+
+		if draft_path == rel_path and draft_line then
 			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, draft_line - 1, 0, {
 				virt_text = {
 					{ " " .. config.opts.signs.draft, config.opts.signs.draft_hl },
@@ -237,6 +254,8 @@ function M.refresh_extmarks()
 				priority = 40,
 			})
 		end
+
+		::draft_continue::
 	end
 end
 
