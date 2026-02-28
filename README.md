@@ -4,7 +4,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 
 ## Features
 
-- **Base branch preview** - Side-by-side diff view showing the base branch version
+- **Base branch preview** - Toggle side-by-side diff view showing the base branch version
 - **Follow code jumps** - Preview updates when navigating to other files via LSP
 - **PR comments** - Create, view, and reply to review comments on specific lines
 - **Virtual text** - Comment indicators on lines with existing comments
@@ -34,7 +34,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   "flexphere/reviewit.nvim",
   opts = {},
   cmd = {
-    "ReviewStart", "ReviewStop", "ReviewToggle",
+    "ReviewStart", "ReviewStop", "ReviewToggle", "ReviewDiff",
     "ReviewComment", "ReviewViewComment",
     "ReviewFiles", "ReviewOverview", "ReviewApprove", "ReviewBrowse",
   },
@@ -48,6 +48,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>ef", "<cmd>ReviewFiles<cr>", desc = "Review: Changed files" },
     { "<leader>eo", "<cmd>ReviewOverview<cr>", desc = "Review: PR Overview" },
     { "<leader>ea", "<cmd>ReviewApprove<cr>", desc = "Review: Approve PR" },
+    { "<leader>ed", "<cmd>ReviewDiff<cr>", desc = "Review: Toggle diff" },
     { "<leader>eb", "<cmd>ReviewBrowse<cr>", desc = "Review: Open in browser" },
     {
       "<leader>er",
@@ -63,9 +64,9 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 ## Usage
 
 1. Checkout a PR branch: `gh pr checkout <number>`
-2. Start review mode: `:ReviewStart`
-3. Open files changed in the PR - a side pane shows the base branch version with diff highlighting
-4. Navigate code normally - the preview follows your movements
+2. Start review mode: `:ReviewStart` (detects PR, fetches comments, sets up extmarks)
+3. Optionally open diff preview: `:ReviewDiff` (toggle side-by-side diff view)
+4. Navigate code normally - the preview follows your movements when open
 5. Comment on lines with `:ReviewComment`
 6. View existing comments with `:ReviewViewComment`
 7. Browse changed files with `:ReviewFiles`
@@ -76,9 +77,10 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 
 | Command | Description |
 |---------|-------------|
-| `:ReviewStart` | Start review mode |
-| `:ReviewStop` | Stop review mode |
-| `:ReviewToggle` | Toggle review mode |
+| `:ReviewStart` | Start review session (PR detection, comments, extmarks) |
+| `:ReviewStop` | Stop review session |
+| `:ReviewToggle` | Toggle review session |
+| `:ReviewDiff` | Toggle diff preview window |
 | `:ReviewComment` | Comment on current line/selection |
 | `:ReviewViewComment` | View comments on current line |
 | `:ReviewFiles` | List PR changed files (Telescope/quickfix) |

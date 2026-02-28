@@ -75,12 +75,38 @@ function M.open_preview(source_win)
 		vim.wo[source_win].fillchars = "diff:" .. config.opts.diff_filler_char
 	end
 
+	-- Create preview-specific autocmds
+	local preview_augroup = vim.api.nvim_create_augroup("ReviewitPreview", { clear = true })
+
+	vim.api.nvim_create_autocmd("BufEnter", {
+		group = preview_augroup,
+		callback = function()
+			vim.schedule(function()
+				M.on_buf_enter()
+			end)
+		end,
+		desc = "reviewit.nvim: Update diff preview",
+	})
+
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = preview_augroup,
+		callback = function(args)
+			local closed_win = tonumber(args.match)
+			if closed_win == state.source_win then
+				M.close_preview()
+			end
+		end,
+		desc = "reviewit.nvim: Clean up preview on source close",
+	})
+
 	opening = false
 end
 
 --- Close the preview window and clean up diff mode.
 function M.close_preview()
 	local state = config.state
+
+	pcall(vim.api.nvim_del_augroup_by_name, "ReviewitPreview")
 
 	-- diffoff! resets diff mode for all windows in the current tab
 	vim.cmd("diffoff!")

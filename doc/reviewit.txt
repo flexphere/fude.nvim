@@ -56,16 +56,22 @@ Using lazy.nvim: >lua
 4. COMMANDS                                              *reviewit-commands*
 
 :ReviewStart                                                  *:ReviewStart*
-    Start review mode for the current branch's PR. Detects the PR
-    automatically using `gh pr view`. Opens a diff preview pane and
-    switches gitsigns base to the PR base branch.
+    Start review session for the current branch's PR. Detects the PR
+    automatically using `gh pr view`, fetches comments, sets up
+    extmarks, and switches gitsigns base to the PR base branch.
+    Does not open the diff preview (use |:ReviewDiff| for that).
 
 :ReviewStop                                                    *:ReviewStop*
     Stop review mode and clean up all preview windows, extmarks,
     autocommands, and restore original settings.
 
 :ReviewToggle                                                *:ReviewToggle*
-    Toggle review mode on or off.
+    Toggle review session on or off.
+
+:ReviewDiff                                                    *:ReviewDiff*
+    Toggle the diff preview window. Opens a side-by-side diff view
+    showing the base branch version of the current file, or closes
+    it if already open. Requires an active review session.
 
 :ReviewComment                                              *:ReviewComment*
     Create a review comment on the current line (normal mode) or
@@ -84,12 +90,12 @@ Using lazy.nvim: >lua
 :ReviewOverview                                            *:ReviewOverview*
     Show PR overview in a centered floating window. Displays title,
     state, author, labels, description, and issue-level comments.
-    Works without starting review mode.
+    Requires an active review session.
     Press `c` to write a new comment, `R` to refresh, `q` to close.
 
 :ReviewBrowse                                                *:ReviewBrowse*
-    Open the current branch's PR in the browser. Uses the cached PR URL
-    when review mode is active, otherwise falls back to `gh pr view --web`.
+    Open the PR in the browser using the cached PR URL.
+    Requires an active review session.
 
 :ReviewApprove                                              *:ReviewApprove*
     Approve the current branch's PR. Opens a floating window for an
@@ -110,6 +116,7 @@ spec or manually. Suggested mappings:
   `<leader>er`  Reply to comment on current line
   `<leader>ef`  List changed files
   `<leader>eo`  PR overview
+  `<leader>ed`  Toggle diff preview
   `<leader>ea`  Approve PR
   `<leader>eb`  Open PR in browser
   `]r`          Next comment

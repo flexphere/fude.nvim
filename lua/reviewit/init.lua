@@ -73,33 +73,32 @@ function M.start()
 
 		require("reviewit.comments").fetch_comments()
 
-		local preview = require("reviewit.preview")
 		state.augroup = vim.api.nvim_create_augroup("Reviewit", { clear = true })
 
 		vim.api.nvim_create_autocmd("BufEnter", {
 			group = state.augroup,
 			callback = function()
 				vim.schedule(function()
-					preview.on_buf_enter()
 					require("reviewit.ui").refresh_extmarks()
 				end)
 			end,
-			desc = "reviewit.nvim: Update preview and extmarks",
+			desc = "reviewit.nvim: Update extmarks",
 		})
-
-		vim.api.nvim_create_autocmd("WinClosed", {
-			group = state.augroup,
-			callback = function(args)
-				local closed_win = tonumber(args.match)
-				if closed_win == state.source_win then
-					preview.close_preview()
-				end
-			end,
-			desc = "reviewit.nvim: Clean up preview on source close",
-		})
-
-		preview.open_preview(vim.api.nvim_get_current_win())
 	end)
+end
+
+--- Toggle diff preview window.
+function M.toggle_diff()
+	if not config.state.active then
+		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	local preview = require("reviewit.preview")
+	if config.state.preview_win and vim.api.nvim_win_is_valid(config.state.preview_win) then
+		preview.close_preview()
+	else
+		preview.open_preview(vim.api.nvim_get_current_win())
+	end
 end
 
 --- Stop review mode and clean up.

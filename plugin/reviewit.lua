@@ -44,15 +44,15 @@ vim.api.nvim_create_user_command("ReviewApprove", function()
 	end)
 end, { desc = "Approve PR" })
 
+vim.api.nvim_create_user_command("ReviewDiff", function()
+	require("reviewit").toggle_diff()
+end, { desc = "Toggle diff preview" })
+
 vim.api.nvim_create_user_command("ReviewBrowse", function()
 	local state = require("reviewit.config").state
-	if state.active and state.pr_url then
-		vim.ui.open(state.pr_url)
-	else
-		require("reviewit.gh").run({ "pr", "view", "--web" }, function(err)
-			if err then
-				vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
-			end
-		end)
+	if not state.active or not state.pr_url then
+		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		return
 	end
+	vim.ui.open(state.pr_url)
 end, { desc = "Open PR in browser" })

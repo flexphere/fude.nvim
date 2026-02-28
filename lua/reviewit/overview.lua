@@ -1,8 +1,14 @@
 local M = {}
 local config = require("reviewit.config")
 
---- Show PR overview. Works with or without active review mode.
+--- Show PR overview. Requires active review session.
 function M.show()
+	local state = config.state
+	if not state.active then
+		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
 	local gh = require("reviewit.gh")
 	local ui = require("reviewit.ui")
 
