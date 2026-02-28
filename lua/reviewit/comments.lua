@@ -4,6 +4,91 @@ local gh = require("reviewit.gh")
 local diff = require("reviewit.diff")
 local ui = require("reviewit.ui")
 
+--- Build a nested lookup map from a flat array of comments.
+--- @param comments table[] flat array of comment objects
+--- @return table<string, table<number, table[]>> map[path][line] = {comments}
+function M.build_comment_map(comments)
+	local map = {}
+	for _, c in ipairs(comments) do
+		local path = c.path
+		local line = c.line or c.original_line
+		if path and line then
+			if not map[path] then
+				map[path] = {}
+			end
+			if not map[path][line] then
+				map[path][line] = {}
+			end
+			table.insert(map[path][line], c)
+		end
+	end
+	return map
+end
+
+--- Find the next comment line after current_line, with wrap-around.
+--- @param current_line number
+--- @param sorted_lines number[]
+--- @return number|nil
+function M.find_next_comment_line(current_line, sorted_lines)
+	if #sorted_lines == 0 then
+		return nil
+	end
+	for _, line in ipairs(sorted_lines) do
+		if line > current_line then
+			return line
+		end
+	end
+	return sorted_lines[1]
+end
+
+--- Find the previous comment line before current_line, with wrap-around.
+--- @param current_line number
+--- @param sorted_lines number[]
+--- @return number|nil
+function M.find_prev_comment_line(current_line, sorted_lines)
+	if #sorted_lines == 0 then
+		return nil
+	end
+	for i = #sorted_lines, 1, -1 do
+		if sorted_lines[i] < current_line then
+			return sorted_lines[i]
+		end
+	end
+	return sorted_lines[#sorted_lines]
+end
+
+--- Find a comment by its ID in the comment map.
+--- @param comment_id number
+--- @param comment_map table<string, table<number, table[]>>
+--- @return table|nil { path: string, line: number, comment: table }
+function M.find_comment_by_id(comment_id, comment_map)
+	for path, file_lines in pairs(comment_map) do
+		for line, cmts in pairs(file_lines) do
+			for _, c in ipairs(cmts) do
+				if c.id == comment_id then
+					return { path = path, line = tonumber(line), comment = c }
+				end
+			end
+		end
+	end
+	return nil
+end
+
+--- Parse a draft key string into its components.
+--- @param key string "path:start:end" or "reply:comment_id"
+--- @return table|nil parsed key components
+function M.parse_draft_key(key)
+	local reply_id = key:match("^reply:(%d+)$")
+	if reply_id then
+		return { type = "reply", comment_id = tonumber(reply_id) }
+	end
+	local path, sl, el = key:match("^(.+):(%d+):(%d+)$")
+	if path then
+		return { type = "comment", path = path, start_line = tonumber(sl), end_line = tonumber(el) }
+	end
+	return nil
+end
+
 --- Fetch all PR review comments and build the lookup map.
 function M.fetch_comments()
 	local state = config.state
@@ -18,21 +103,7 @@ function M.fetch_comments()
 		end
 
 		state.comments = comments or {}
-		state.comment_map = {}
-
-		for _, comment in ipairs(state.comments) do
-			local path = comment.path
-			local line = comment.line or comment.original_line
-			if path and line then
-				if not state.comment_map[path] then
-					state.comment_map[path] = {}
-				end
-				if not state.comment_map[path][line] then
-					state.comment_map[path][line] = {}
-				end
-				table.insert(state.comment_map[path][line], comment)
-			end
-		end
+		state.comment_map = M.build_comment_map(state.comments)
 
 		ui.refresh_extmarks()
 		vim.notify(string.format("reviewit.nvim: Loaded %d comments", #state.comments), vim.log.levels.INFO)
@@ -225,16 +296,9 @@ function M.next_comment()
 
 	local current_line = vim.fn.line(".")
 	local comment_lines = M.get_comment_lines(rel_path)
-
-	for _, line in ipairs(comment_lines) do
-		if line > current_line then
-			vim.api.nvim_win_set_cursor(0, { line, 0 })
-			return
-		end
-	end
-
-	if #comment_lines > 0 then
-		vim.api.nvim_win_set_cursor(0, { comment_lines[1], 0 })
+	local target = M.find_next_comment_line(current_line, comment_lines)
+	if target then
+		vim.api.nvim_win_set_cursor(0, { target, 0 })
 	end
 end
 
@@ -451,16 +515,9 @@ function M.prev_comment()
 
 	local current_line = vim.fn.line(".")
 	local comment_lines = M.get_comment_lines(rel_path)
-
-	for i = #comment_lines, 1, -1 do
-		if comment_lines[i] < current_line then
-			vim.api.nvim_win_set_cursor(0, { comment_lines[i], 0 })
-			return
-		end
-	end
-
-	if #comment_lines > 0 then
-		vim.api.nvim_win_set_cursor(0, { comment_lines[#comment_lines], 0 })
+	local target = M.find_prev_comment_line(current_line, comment_lines)
+	if target then
+		vim.api.nvim_win_set_cursor(0, { target, 0 })
 	end
 end
 
@@ -495,71 +552,50 @@ function M.list_drafts()
 	end
 
 	local entries = {}
-	for key, lines in pairs(state.drafts) do
-		local path, sl, el = key:match("^(.+):(%d+):(%d+)$")
-		if path then
-			local start_line = tonumber(sl)
-			local end_line = tonumber(el)
-			local body_preview = table.concat(lines, " "):gsub("%s+", " ")
-			if #body_preview > 60 then
-				body_preview = body_preview:sub(1, 57) .. "..."
-			end
-			local range_str = start_line == end_line and tostring(start_line) or string.format("%d-%d", start_line, end_line)
-			local detail = string.format("%s:%s  %s", path, range_str, body_preview)
+	for key, draft_lines in pairs(state.drafts) do
+		local parsed = M.parse_draft_key(key)
+		if not parsed then
+			goto continue
+		end
+
+		local body_preview = table.concat(draft_lines, " "):gsub("%s+", " ")
+		if #body_preview > 60 then
+			body_preview = body_preview:sub(1, 57) .. "..."
+		end
+
+		if parsed.type == "comment" then
+			local range_str = parsed.start_line == parsed.end_line and tostring(parsed.start_line)
+				or string.format("%d-%d", parsed.start_line, parsed.end_line)
+			local detail = string.format("%s:%s  %s", parsed.path, range_str, body_preview)
 			table.insert(entries, {
 				value = detail,
-				ordinal = string.format("%s:%d %s", path, start_line, table.concat(lines, " ")),
-				filename = repo_root .. "/" .. path,
-				lnum = start_line,
+				ordinal = string.format("%s:%d %s", parsed.path, parsed.start_line, table.concat(draft_lines, " ")),
+				filename = repo_root .. "/" .. parsed.path,
+				lnum = parsed.start_line,
 				detail = detail,
 				draft_key = key,
-				draft_lines = lines,
+				draft_lines = draft_lines,
 				display = detail,
 			})
-		else
-			-- reply draft: look up file/line from comment_map
-			local cid = key:match("^reply:(.+)$")
-			if cid then
-				local cid_num = tonumber(cid)
-				local reply_path, reply_line
-				if cid_num and state.comment_map then
-					for cpath, clines in pairs(state.comment_map) do
-						for line_key, clist in pairs(clines) do
-							for _, c in ipairs(clist) do
-								if c.id == cid_num then
-									reply_path = cpath
-									reply_line = tonumber(line_key)
-									break
-								end
-							end
-							if reply_path then
-								break
-							end
-						end
-						if reply_path then
-							break
-						end
-					end
-				end
-
-				local body_preview = table.concat(lines, " "):gsub("%s+", " ")
-				if #body_preview > 60 then
-					body_preview = body_preview:sub(1, 57) .. "..."
-				end
-				local loc = reply_path and string.format("%s:%d", reply_path, reply_line or 1) or "reply:" .. cid
-				local detail = string.format("%s  (reply)  %s", loc, body_preview)
-				table.insert(entries, {
-					value = detail,
-					ordinal = string.format("%s %s", loc, table.concat(lines, " ")),
-					filename = reply_path and (repo_root .. "/" .. reply_path) or nil,
-					lnum = reply_line,
-					detail = detail,
-					draft_key = key,
-					draft_lines = lines,
-					display = detail,
-				})
-			end
+		elseif parsed.type == "reply" then
+			local found = M.find_comment_by_id(parsed.comment_id, state.comment_map or {})
+			local reply_path = found and found.path
+			local reply_line = found and found.line
+			local loc = reply_path and string.format("%s:%d", reply_path, reply_line or 1) or "reply:" .. parsed.comment_id
+			local detail = string.format("%s  (reply)  %s", loc, body_preview)
+			table.insert(entries, {
+				value = detail,
+				ordinal = string.format("%s %s", loc, table.concat(draft_lines, " ")),
+				filename = reply_path and (repo_root .. "/" .. reply_path) or nil,
+				lnum = reply_line,
+				detail = detail,
+				draft_key = key,
+				draft_lines = draft_lines,
+				display = detail,
+			})
 		end
+
+		::continue::
 	end
 
 	table.sort(entries, function(a, b)

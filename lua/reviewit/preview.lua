@@ -119,29 +119,47 @@ function M.close_preview()
 	state.preview_buf = nil
 end
 
+--- Determine whether the preview should be opened for the given context.
+--- @param active boolean whether review mode is active
+--- @param is_opening boolean whether a preview is currently being opened
+--- @param win number current window handle
+--- @param preview_win number|nil handle of the existing preview window
+--- @param buftype string buffer type of the current buffer
+--- @param filepath string file path of the current buffer
+--- @return boolean
+function M.should_open_preview(active, is_opening, win, preview_win, buftype, filepath)
+	if not active or is_opening then
+		return false
+	end
+	if win == preview_win then
+		return false
+	end
+	if buftype ~= "" then
+		return false
+	end
+	if filepath == "" then
+		return false
+	end
+	return true
+end
+
 --- BufEnter handler: update the preview for the newly entered buffer.
 function M.on_buf_enter()
 	local state = config.state
-	if not state.active or opening then
-		return
-	end
-
 	local win = vim.api.nvim_get_current_win()
-	if win == state.preview_win then
-		return
-	end
-
 	local buf = vim.api.nvim_get_current_buf()
-	if vim.bo[buf].buftype ~= "" then
-		return
+	if
+		M.should_open_preview(
+			state.active,
+			opening,
+			win,
+			state.preview_win,
+			vim.bo[buf].buftype,
+			vim.api.nvim_buf_get_name(buf)
+		)
+	then
+		M.open_preview(win)
 	end
-
-	local filepath = vim.api.nvim_buf_get_name(buf)
-	if filepath == "" then
-		return
-	end
-
-	M.open_preview(win)
 end
 
 return M

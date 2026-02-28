@@ -2,13 +2,34 @@ local M = {}
 local config = require("reviewit.config")
 local diff = require("reviewit.diff")
 
-local status_icons = {
+M.status_icons = {
 	added = "+",
 	modified = "~",
 	removed = "-",
 	renamed = "R",
 	copied = "C",
 }
+
+--- Build normalized file entries from changed files list.
+--- @param changed_files table[] list of { path, status, additions, deletions, patch }
+--- @param repo_root string repository root directory
+--- @param icons table status-to-icon map
+--- @return table[] entries
+function M.build_file_entries(changed_files, repo_root, icons)
+	local entries = {}
+	for _, file in ipairs(changed_files) do
+		table.insert(entries, {
+			path = file.path,
+			filename = repo_root .. "/" .. file.path,
+			patch = file.patch or "",
+			status_icon = icons[file.status] or "?",
+			status_hl = file.status == "added" and "DiffAdd" or file.status == "removed" and "DiffDelete" or "DiffChange",
+			additions = file.additions or 0,
+			deletions = file.deletions or 0,
+		})
+	end
+	return entries
+end
 
 --- Show changed files list using the configured mode.
 function M.show()
@@ -71,19 +92,13 @@ function M.show_telescope()
 		})
 	end
 
+	local raw_entries = M.build_file_entries(state.changed_files, repo_root, M.status_icons)
 	local entries = {}
-	for _, file in ipairs(state.changed_files) do
-		table.insert(entries, {
-			value = file.path,
-			ordinal = file.path,
-			filename = repo_root .. "/" .. file.path,
-			patch = file.patch or "",
-			status_icon = status_icons[file.status] or "?",
-			status_hl = file.status == "added" and "DiffAdd" or file.status == "removed" and "DiffDelete" or "DiffChange",
-			additions = file.additions or 0,
-			deletions = file.deletions or 0,
-			display = make_display,
-		})
+	for _, entry in ipairs(raw_entries) do
+		entry.value = entry.path
+		entry.ordinal = entry.path
+		entry.display = make_display
+		table.insert(entries, entry)
 	end
 
 	pickers
@@ -130,13 +145,13 @@ function M.show_quickfix()
 		return
 	end
 
+	local raw_entries = M.build_file_entries(state.changed_files, repo_root, M.status_icons)
 	local items = {}
-	for _, file in ipairs(state.changed_files) do
-		local icon = status_icons[file.status] or "?"
+	for _, entry in ipairs(raw_entries) do
 		table.insert(items, {
-			filename = repo_root .. "/" .. file.path,
+			filename = entry.filename,
 			lnum = 1,
-			text = string.format("[%s] +%d -%d  %s", icon, file.additions or 0, file.deletions or 0, file.path),
+			text = string.format("[%s] +%d -%d  %s", entry.status_icon, entry.additions, entry.deletions, entry.path),
 		})
 	end
 

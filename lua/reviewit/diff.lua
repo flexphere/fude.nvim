@@ -10,6 +10,17 @@ function M.get_repo_root()
 	return nil
 end
 
+--- Strip a root prefix from a normalized absolute path.
+--- @param filepath string absolute file path (already normalized)
+--- @param root string repository root directory (no trailing slash)
+--- @return string|nil relative path, or nil if filepath is not under root
+function M.make_relative(filepath, root)
+	if filepath:sub(1, #root) == root then
+		return filepath:sub(#root + 2)
+	end
+	return nil
+end
+
 --- Convert an absolute file path to a repo-relative path.
 --- @param filepath string absolute file path
 --- @return string|nil relative path
@@ -19,10 +30,7 @@ function M.to_repo_relative(filepath)
 		return nil
 	end
 	filepath = vim.fn.fnamemodify(filepath, ":p")
-	if filepath:sub(1, #root) == root then
-		return filepath:sub(#root + 2)
-	end
-	return nil
+	return M.make_relative(filepath, root)
 end
 
 --- Get file content from a specific git ref.

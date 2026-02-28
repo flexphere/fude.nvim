@@ -40,6 +40,7 @@ All plugin code lives under `lua/reviewit/`. The plugin entry point is `plugin/r
 - **State management**: All mutable state lives in `config.state`. Modules read/write this shared table directly.
 - **Namespace**: A single Neovim namespace `"reviewit"` (created in `config.setup()`) is used for all extmarks across the plugin.
 - **Window management**: Preview uses `noautocmd` commands to avoid triggering the plugin's own `BufEnter` handler during window operations.
+- **Pure function extraction**: Each module exports testable pure functions separately from side-effect code. Naming convention: `build_*`, `find_*`, `parse_*`, `format_*`, `should_*`, `make_*`, `calculate_*`. These functions take all inputs as parameters and return data without reading `config.state` or calling vim API.
 
 ## Quality Rules (MUST follow)
 

@@ -69,6 +69,128 @@ local function setup_github_refs(buf, repo_url)
 	end, { buffer = buf, desc = "Open GitHub reference" })
 end
 
+--- Calculate centered float window dimensions from percentage-based sizes.
+--- @param columns number screen width
+--- @param screen_lines number screen height
+--- @param pct_w number width percentage (0-100)
+--- @param pct_h number height percentage (0-100)
+--- @return table { width: number, height: number, row: number, col: number }
+function M.calculate_float_dimensions(columns, screen_lines, pct_w, pct_h)
+	local width = math.floor(columns * pct_w / 100)
+	local height = math.floor(screen_lines * pct_h / 100)
+	local row = math.floor((screen_lines - height) / 2)
+	local col = math.floor((columns - width) / 2)
+	return { width = width, height = height, row = row, col = col }
+end
+
+--- Format comment objects into display lines and highlight ranges.
+--- @param comments table[] list of comment objects
+--- @param format_date_fn fun(s: string): string
+--- @return table { lines: string[], hl_ranges: table[] }
+function M.format_comments_for_display(comments, format_date_fn)
+	local lines = {}
+	local hl_ranges = {}
+	for i, comment in ipairs(comments) do
+		local author = comment.user and comment.user.login or "unknown"
+		local created = format_date_fn(comment.created_at)
+		local header = string.format("@%s  %s", author, created)
+		table.insert(lines, header)
+		table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
+		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+			table.insert(lines, body_line)
+		end
+		if i < #comments then
+			table.insert(lines, "")
+			table.insert(lines, string.rep("-", 40))
+			table.insert(lines, "")
+		end
+	end
+	return { lines = lines, hl_ranges = hl_ranges }
+end
+
+--- Build display lines for PR overview window.
+--- @param pr_info table PR data from gh pr view
+--- @param issue_comments table[] issue-level comments
+--- @param format_date_fn fun(s: string): string
+--- @return table { lines: string[], hl_ranges: table[] }
+function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
+	local lines = {}
+	local hl_ranges = {}
+
+	-- PR header
+	local title = string.format("PR #%d: %s", pr_info.number or 0, pr_info.title or "")
+	table.insert(lines, title)
+	table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
+
+	local author = pr_info.author and pr_info.author.login or "unknown"
+	table.insert(lines, string.format("State: %s    Author: @%s", pr_info.state or "UNKNOWN", author))
+
+	local labels = {}
+	if pr_info.labels then
+		for _, label in ipairs(pr_info.labels) do
+			table.insert(labels, label.name or label)
+		end
+	end
+	if #labels > 0 then
+		table.insert(lines, "Labels: " .. table.concat(labels, ", "))
+	end
+
+	table.insert(lines, string.format("Base: %s <- %s", pr_info.baseRefName or "", pr_info.headRefName or ""))
+	table.insert(lines, pr_info.url or "")
+
+	-- Description
+	table.insert(lines, "")
+	table.insert(lines, string.rep("-", 50))
+	local desc_header_line = #lines
+	table.insert(lines, "DESCRIPTION")
+	table.insert(hl_ranges, { line = desc_header_line, hl = "Title" })
+	table.insert(lines, string.rep("-", 50))
+
+	local body = pr_info.body or ""
+	if body == "" then
+		table.insert(lines, "(no description)")
+	else
+		for _, body_line in ipairs(vim.split(body, "\n")) do
+			table.insert(lines, body_line)
+		end
+	end
+
+	-- Comments
+	table.insert(lines, "")
+	table.insert(lines, string.rep("-", 50))
+	local comments_header_line = #lines
+	table.insert(lines, string.format("COMMENTS (%d)", #issue_comments))
+	table.insert(hl_ranges, { line = comments_header_line, hl = "Title" })
+	table.insert(lines, string.rep("-", 50))
+
+	if #issue_comments == 0 then
+		table.insert(lines, "(no comments)")
+	else
+		for i, comment in ipairs(issue_comments) do
+			local comment_author = comment.user and comment.user.login or "unknown"
+			local created = format_date_fn(comment.created_at)
+			table.insert(lines, "")
+			local header = string.format("@%s  %s", comment_author, created)
+			table.insert(lines, header)
+			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
+			for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+				table.insert(lines, body_line)
+			end
+			if i < #issue_comments then
+				table.insert(lines, "")
+				table.insert(lines, string.rep("-", 30))
+			end
+		end
+	end
+
+	-- Footer
+	table.insert(lines, "")
+	table.insert(lines, " c: new comment  R: refresh  q: close")
+	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
+
+	return { lines = lines, hl_ranges = hl_ranges }
+end
+
 --- Refresh extmarks (virtual text) for the current buffer.
 function M.refresh_extmarks()
 	local state = config.state
@@ -158,19 +280,19 @@ function M.open_comment_input(callback, opts)
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, initial_lines)
 
-	local pct_w = config.opts.float.width or 50
-	local pct_h = config.opts.float.height or 50
-	local width = math.floor(vim.o.columns * pct_w / 100)
-	local height = math.floor(vim.o.lines * pct_h / 100)
-	local row = math.floor((vim.o.lines - height) / 2)
-	local col = math.floor((vim.o.columns - width) / 2)
+	local dim = M.calculate_float_dimensions(
+		vim.o.columns,
+		vim.o.lines,
+		config.opts.float.width or 50,
+		config.opts.float.height or 50
+	)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
-		row = row,
-		col = col,
-		width = width,
-		height = height,
+		row = dim.row,
+		col = dim.col,
+		width = dim.width,
+		height = dim.height,
 		style = "minimal",
 		border = config.opts.float.border,
 		title = title,
@@ -208,100 +330,31 @@ function M.open_comment_input(callback, opts)
 	end, { buffer = buf, desc = "Cancel review comment" })
 end
 
---- Open a floating window to compose an approve comment.
---- @param callback fun(body: string|nil) called with comment body (may be nil for no comment)
-function M.open_approve_input(callback)
-	local buf = vim.api.nvim_create_buf(false, true)
-
-	vim.bo[buf].buftype = "nofile"
-	vim.bo[buf].bufhidden = "wipe"
-	vim.bo[buf].filetype = "markdown"
-	vim.b[buf].reviewit_comment = true
-
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
-
-	local pct_w = config.opts.float.width or 50
-	local pct_h = config.opts.float.height or 50
-	local width = math.floor(vim.o.columns * pct_w / 100)
-	local height = math.floor(vim.o.lines * pct_h / 100)
-	local row = math.floor((vim.o.lines - height) / 2)
-	local col = math.floor((vim.o.columns - width) / 2)
-
-	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "editor",
-		row = row,
-		col = col,
-		width = width,
-		height = height,
-		style = "minimal",
-		border = config.opts.float.border,
-		title = " Approve PR ",
-		title_pos = "center",
-		footer = " <CR> approve | q cancel ",
-		footer_pos = "center",
-	})
-
-	vim.cmd("startinsert")
-
-	vim.keymap.set("n", "<CR>", function()
-		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-		local body = vim.trim(table.concat(lines, "\n"))
-		vim.api.nvim_win_close(win, true)
-		if callback then
-			callback(body ~= "" and body or nil)
-		end
-	end, { buffer = buf, desc = "Approve PR" })
-
-	vim.keymap.set("n", "q", function()
-		vim.api.nvim_win_close(win, true)
-	end, { buffer = buf, desc = "Cancel approve" })
-end
-
 --- Show comments in a floating window.
 --- @param comments table[] list of comment objects from GitHub API
 function M.show_comments_float(comments)
-	local lines = {}
-	local hl_ranges = {}
-
-	for i, comment in ipairs(comments) do
-		local author = comment.user and comment.user.login or "unknown"
-		local created = config.format_date(comment.created_at)
-
-		local header = string.format("@%s  %s", author, created)
-		table.insert(lines, header)
-		table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
-
-		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
-			table.insert(lines, body_line)
-		end
-
-		if i < #comments then
-			table.insert(lines, "")
-			table.insert(lines, string.rep("-", 40))
-			table.insert(lines, "")
-		end
-	end
+	local result = M.format_comments_for_display(comments, config.format_date)
 
 	local buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, result.lines)
 	vim.bo[buf].modifiable = false
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
 
-	local pct_w = config.opts.float.width or 50
-	local pct_h = config.opts.float.height or 50
-	local width = math.floor(vim.o.columns * pct_w / 100)
-	local height = math.floor(vim.o.lines * pct_h / 100)
-	local row = math.floor((vim.o.lines - height) / 2)
-	local col = math.floor((vim.o.columns - width) / 2)
+	local dim = M.calculate_float_dimensions(
+		vim.o.columns,
+		vim.o.lines,
+		config.opts.float.width or 50,
+		config.opts.float.height or 50
+	)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
-		row = row,
-		col = col,
-		width = width,
-		height = height,
+		row = dim.row,
+		col = dim.col,
+		width = dim.width,
+		height = dim.height,
 		style = "minimal",
 		border = config.opts.float.border,
 		title = string.format(" Comments (%d) ", #comments),
@@ -311,7 +364,7 @@ function M.show_comments_float(comments)
 	})
 
 	local ns = config.state.ns_id
-	for _, hl in ipairs(hl_ranges) do
+	for _, hl in ipairs(result.hl_ranges) do
 		pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl.hl, hl.line, 0, -1)
 	end
 
@@ -335,104 +388,26 @@ end
 --- @param issue_comments table[] issue-level comments
 --- @param opts table { on_new_comment: fun(), on_refresh: fun() }
 function M.show_overview_float(pr_info, issue_comments, opts)
-	local lines = {}
-	local hl_ranges = {}
-
-	-- PR header
-	local title = string.format("PR #%d: %s", pr_info.number or 0, pr_info.title or "")
-	table.insert(lines, title)
-	table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
-
-	local author = pr_info.author and pr_info.author.login or "unknown"
-	table.insert(lines, string.format("State: %s    Author: @%s", pr_info.state or "UNKNOWN", author))
-
-	local labels = {}
-	if pr_info.labels then
-		for _, label in ipairs(pr_info.labels) do
-			table.insert(labels, label.name or label)
-		end
-	end
-	if #labels > 0 then
-		table.insert(lines, "Labels: " .. table.concat(labels, ", "))
-	end
-
-	table.insert(lines, string.format("Base: %s <- %s", pr_info.baseRefName or "", pr_info.headRefName or ""))
-	table.insert(lines, pr_info.url or "")
-
-	-- Description
-	table.insert(lines, "")
-	table.insert(lines, string.rep("-", 50))
-	local desc_header_line = #lines
-	table.insert(lines, "DESCRIPTION")
-	table.insert(hl_ranges, { line = desc_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 50))
-
-	local body = pr_info.body or ""
-	if body == "" then
-		table.insert(lines, "(no description)")
-	else
-		for _, body_line in ipairs(vim.split(body, "\n")) do
-			table.insert(lines, body_line)
-		end
-	end
-
-	-- Comments
-	table.insert(lines, "")
-	table.insert(lines, string.rep("-", 50))
-	local comments_header_line = #lines
-	table.insert(lines, string.format("COMMENTS (%d)", #issue_comments))
-	table.insert(hl_ranges, { line = comments_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 50))
-
-	if #issue_comments == 0 then
-		table.insert(lines, "(no comments)")
-	else
-		for i, comment in ipairs(issue_comments) do
-			local comment_author = comment.user and comment.user.login or "unknown"
-			local created = config.format_date(comment.created_at)
-
-			table.insert(lines, "")
-			local header = string.format("@%s  %s", comment_author, created)
-			table.insert(lines, header)
-			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
-
-			for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
-				table.insert(lines, body_line)
-			end
-
-			if i < #issue_comments then
-				table.insert(lines, "")
-				table.insert(lines, string.rep("-", 30))
-			end
-		end
-	end
-
-	-- Footer
-	table.insert(lines, "")
-	table.insert(lines, " c: new comment  R: refresh  q: close")
-	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
+	local result = M.build_overview_lines(pr_info, issue_comments, config.format_date)
 
 	local buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, result.lines)
 	vim.bo[buf].modifiable = false
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
 
 	local ov = config.opts.overview or {}
-	local pct_w = ov.width or 80
-	local pct_h = ov.height or 80
-	local width = math.floor(vim.o.columns * pct_w / 100)
-	local height = math.min(#lines + 2, math.floor(vim.o.lines * pct_h / 100))
-	local row = math.floor((vim.o.lines - height) / 2)
-	local col = math.floor((vim.o.columns - width) / 2)
+	local dim = M.calculate_float_dimensions(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
+	dim.height = math.min(#result.lines + 2, dim.height)
+	dim.row = math.floor((vim.o.lines - dim.height) / 2)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
-		row = row,
-		col = col,
-		width = width,
-		height = height,
+		row = dim.row,
+		col = dim.col,
+		width = dim.width,
+		height = dim.height,
 		style = "minimal",
 		border = config.opts.float.border,
 		title = " PR Overview ",
@@ -442,7 +417,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.wo[win].wrap = true
 
 	local ns = config.state.ns_id or vim.api.nvim_create_namespace("reviewit")
-	for _, hl in ipairs(hl_ranges) do
+	for _, hl in ipairs(result.hl_ranges) do
 		pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl.hl, hl.line, 0, -1)
 	end
 

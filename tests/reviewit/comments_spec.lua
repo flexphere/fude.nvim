@@ -47,3 +47,160 @@ describe("comments data access", function()
 		end)
 	end)
 end)
+
+describe("build_comment_map", function()
+	it("builds map from flat comments array", function()
+		local input = {
+			{ path = "a.lua", line = 10, body = "first" },
+			{ path = "a.lua", line = 10, body = "second" },
+			{ path = "b.lua", line = 5, body = "other" },
+		}
+		local map = comments.build_comment_map(input)
+		assert.are.equal(2, #map["a.lua"][10])
+		assert.are.equal("first", map["a.lua"][10][1].body)
+		assert.are.equal(1, #map["b.lua"][5])
+	end)
+
+	it("uses original_line as fallback", function()
+		local input = {
+			{ path = "a.lua", original_line = 7, body = "fallback" },
+		}
+		local map = comments.build_comment_map(input)
+		assert.are.equal(1, #map["a.lua"][7])
+	end)
+
+	it("skips comments with nil path", function()
+		local input = {
+			{ path = nil, line = 10, body = "no path" },
+		}
+		local map = comments.build_comment_map(input)
+		assert.are.same({}, map)
+	end)
+
+	it("skips comments with nil line and nil original_line", function()
+		local input = {
+			{ path = "a.lua", line = nil, original_line = nil, body = "no line" },
+		}
+		local map = comments.build_comment_map(input)
+		assert.are.same({}, map)
+	end)
+
+	it("returns empty table for empty input", function()
+		local map = comments.build_comment_map({})
+		assert.are.same({}, map)
+	end)
+end)
+
+describe("find_next_comment_line", function()
+	it("returns next line after current", function()
+		assert.are.equal(20, comments.find_next_comment_line(10, { 5, 10, 20, 30 }))
+	end)
+
+	it("wraps around to first line", function()
+		assert.are.equal(5, comments.find_next_comment_line(30, { 5, 10, 20, 30 }))
+	end)
+
+	it("returns nil for empty list", function()
+		assert.is_nil(comments.find_next_comment_line(10, {}))
+	end)
+
+	it("wraps around with single element", function()
+		assert.are.equal(15, comments.find_next_comment_line(15, { 15 }))
+	end)
+
+	it("returns first line greater than current", function()
+		assert.are.equal(10, comments.find_next_comment_line(1, { 10, 20, 30 }))
+	end)
+end)
+
+describe("find_prev_comment_line", function()
+	it("returns previous line before current", function()
+		assert.are.equal(10, comments.find_prev_comment_line(20, { 5, 10, 20, 30 }))
+	end)
+
+	it("wraps around to last line", function()
+		assert.are.equal(30, comments.find_prev_comment_line(5, { 5, 10, 20, 30 }))
+	end)
+
+	it("returns nil for empty list", function()
+		assert.is_nil(comments.find_prev_comment_line(10, {}))
+	end)
+
+	it("wraps around with single element", function()
+		assert.are.equal(15, comments.find_prev_comment_line(15, { 15 }))
+	end)
+
+	it("returns last line less than current", function()
+		assert.are.equal(20, comments.find_prev_comment_line(30, { 10, 20, 30 }))
+	end)
+end)
+
+describe("find_comment_by_id", function()
+	it("finds comment by id", function()
+		local map = {
+			["a.lua"] = {
+				[10] = { { id = 1, body = "hello" } },
+				[20] = { { id = 2, body = "world" }, { id = 3, body = "!" } },
+			},
+		}
+		local result = comments.find_comment_by_id(3, map)
+		assert.is_not_nil(result)
+		assert.are.equal("a.lua", result.path)
+		assert.are.equal(20, result.line)
+		assert.are.equal("!", result.comment.body)
+	end)
+
+	it("returns nil for non-existent id", function()
+		local map = {
+			["a.lua"] = { [10] = { { id = 1, body = "hello" } } },
+		}
+		assert.is_nil(comments.find_comment_by_id(999, map))
+	end)
+
+	it("returns nil for empty map", function()
+		assert.is_nil(comments.find_comment_by_id(1, {}))
+	end)
+end)
+
+describe("parse_draft_key", function()
+	it("parses comment draft key", function()
+		local result = comments.parse_draft_key("lua/foo.lua:10:20")
+		assert.are.same({
+			type = "comment",
+			path = "lua/foo.lua",
+			start_line = 10,
+			end_line = 20,
+		}, result)
+	end)
+
+	it("parses single-line comment key", function()
+		local result = comments.parse_draft_key("lua/bar.lua:5:5")
+		assert.are.equal("comment", result.type)
+		assert.are.equal(5, result.start_line)
+		assert.are.equal(5, result.end_line)
+	end)
+
+	it("parses reply draft key", function()
+		local result = comments.parse_draft_key("reply:123")
+		assert.are.same({
+			type = "reply",
+			comment_id = 123,
+		}, result)
+	end)
+
+	it("returns nil for invalid key", function()
+		assert.is_nil(comments.parse_draft_key("invalid"))
+	end)
+
+	it("returns nil for empty string", function()
+		assert.is_nil(comments.parse_draft_key(""))
+	end)
+
+	it("handles path with colons", function()
+		local result = comments.parse_draft_key("a:b/c.lua:1:5")
+		assert.are.equal("comment", result.type)
+		assert.are.equal("a:b/c.lua", result.path)
+		assert.are.equal(1, result.start_line)
+		assert.are.equal(5, result.end_line)
+	end)
+end)
