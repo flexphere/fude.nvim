@@ -124,6 +124,8 @@ require("reviewit").setup({
     width = 80,
     height = 80,
   },
+  -- Auto-open comment viewer when navigating to a comment line (]c/[c/ReviewListComments)
+  auto_view_comment = true,
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
 })

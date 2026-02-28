@@ -23,6 +23,10 @@ describe("config", function()
 			assert.are.equal("telescope", config.opts.file_list_mode)
 		end)
 
+		it("defaults auto_view_comment to true", function()
+			assert.is_true(config.opts.auto_view_comment)
+		end)
+
 		it("deep merges nested tables", function()
 			config.setup({ signs = { comment = "!" } })
 			assert.are.equal("!", config.opts.signs.comment)

@@ -212,6 +212,10 @@ Options:
 
 `overview.height`   Overview window height as % of screen (default: 80).
 
+`auto_view_comment` When true, automatically opens the comment viewer
+                  float after navigating to a comment line via ]c, [c,
+                  or ReviewListComments (default: true).
+
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system
                   timezone before formatting.
