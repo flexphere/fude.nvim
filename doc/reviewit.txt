@@ -93,6 +93,12 @@ Using lazy.nvim: >lua
     Requires an active review session.
     Press `c` to write a new comment, `R` to refresh, `q` to close.
 
+:ReviewListComments                                    *:ReviewListComments*
+    List all PR review comments in a Telescope picker. Shows each
+    comment location with author and body preview. Select an entry
+    to jump to the file and line. Preview pane shows the full comment
+    thread formatted as markdown. Requires an active review session.
+
 :ReviewBrowse                                                *:ReviewBrowse*
     Open the PR in the browser using the cached PR URL.
     Requires an active review session.
@@ -119,6 +125,7 @@ spec or manually. Suggested mappings:
   `<leader>ed`  Toggle diff preview
   `<leader>ea`  Approve PR
   `<leader>eb`  Open PR in browser
+  `<leader>el`  List all review comments
   `]r`          Next comment
   `[r`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)

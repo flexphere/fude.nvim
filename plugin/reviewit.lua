@@ -44,6 +44,10 @@ vim.api.nvim_create_user_command("ReviewApprove", function()
 	end)
 end, { desc = "Approve PR" })
 
+vim.api.nvim_create_user_command("ReviewListComments", function()
+	require("reviewit.comments").list_comments()
+end, { desc = "List PR review comments" })
+
 vim.api.nvim_create_user_command("ReviewDiff", function()
 	require("reviewit").toggle_diff()
 end, { desc = "Toggle diff preview" })

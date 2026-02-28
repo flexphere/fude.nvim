@@ -35,7 +35,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   opts = {},
   cmd = {
     "ReviewStart", "ReviewStop", "ReviewToggle", "ReviewDiff",
-    "ReviewComment", "ReviewViewComment",
+    "ReviewComment", "ReviewViewComment", "ReviewListComments",
     "ReviewFiles", "ReviewOverview", "ReviewApprove", "ReviewBrowse",
   },
   keys = {
@@ -50,6 +50,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>ea", "<cmd>ReviewApprove<cr>", desc = "Review: Approve PR" },
     { "<leader>ed", "<cmd>ReviewDiff<cr>", desc = "Review: Toggle diff" },
     { "<leader>eb", "<cmd>ReviewBrowse<cr>", desc = "Review: Open in browser" },
+    { "<leader>el", "<cmd>ReviewListComments<cr>", desc = "Review: List comments" },
     {
       "<leader>er",
       function() require("reviewit.comments").reply_to_comment() end,
@@ -86,6 +87,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:ReviewFiles` | List PR changed files (Telescope/quickfix) |
 | `:ReviewOverview` | Show PR overview and issue-level comments |
 | `:ReviewApprove` | Approve PR with optional comment |
+| `:ReviewListComments` | List all PR review comments (Telescope) |
 | `:ReviewBrowse` | Open PR in browser |
 
 ## Configuration
