@@ -156,8 +156,9 @@ Default configuration: >lua
     },
     float = {
       border = "single",
-      max_width = 80,
-      max_height = 20,
+      -- Width/height as percentage of screen (1-100)
+      width = 50,
+      height = 50,
     },
     overview = {
       -- Width/height as percentage of screen (1-100)
@@ -186,9 +187,9 @@ Options:
 
 `float.border`      Border style for floating windows.
 
-`float.max_width`   Maximum width for comment floating windows.
+`float.width`       Floating window width as % of screen (default: 50).
 
-`float.max_height`  Maximum height for comment floating windows.
+`float.height`      Floating window height as % of screen (default: 50).
 
 `overview.width`    Overview window width as % of screen (default: 80).
 

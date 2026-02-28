@@ -143,13 +143,17 @@ function M.open_comment_input(callback, opts)
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, initial_lines)
 
-	local width = math.min(config.opts.float.max_width, math.floor(vim.o.columns * 0.6))
-	local height = math.min(config.opts.float.max_height, math.floor(vim.o.lines * 0.3))
+	local pct_w = config.opts.float.width or 50
+	local pct_h = config.opts.float.height or 50
+	local width = math.floor(vim.o.columns * pct_w / 100)
+	local height = math.floor(vim.o.lines * pct_h / 100)
+	local row = math.floor((vim.o.lines - height) / 2)
+	local col = math.floor((vim.o.columns - width) / 2)
 
 	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "cursor",
-		row = 1,
-		col = 0,
+		relative = "editor",
+		row = row,
+		col = col,
 		width = width,
 		height = height,
 		style = "minimal",
@@ -196,13 +200,17 @@ function M.open_approve_input(callback)
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
 
-	local width = math.min(config.opts.float.max_width, math.floor(vim.o.columns * 0.6))
-	local height = math.min(config.opts.float.max_height, math.floor(vim.o.lines * 0.3))
+	local pct_w = config.opts.float.width or 50
+	local pct_h = config.opts.float.height or 50
+	local width = math.floor(vim.o.columns * pct_w / 100)
+	local height = math.floor(vim.o.lines * pct_h / 100)
+	local row = math.floor((vim.o.lines - height) / 2)
+	local col = math.floor((vim.o.columns - width) / 2)
 
 	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "cursor",
-		row = 1,
-		col = 0,
+		relative = "editor",
+		row = row,
+		col = col,
 		width = width,
 		height = height,
 		style = "minimal",
@@ -254,10 +262,6 @@ function M.show_comments_float(comments)
 		end
 	end
 
-	table.insert(lines, "")
-	table.insert(lines, " r: reply  q: close")
-	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
-
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	vim.bo[buf].modifiable = false
@@ -265,19 +269,25 @@ function M.show_comments_float(comments)
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
 
-	local width = math.min(config.opts.float.max_width, math.floor(vim.o.columns * 0.7))
-	local height = math.min(#lines + 2, config.opts.float.max_height)
+	local pct_w = config.opts.float.width or 50
+	local pct_h = config.opts.float.height or 50
+	local width = math.floor(vim.o.columns * pct_w / 100)
+	local height = math.floor(vim.o.lines * pct_h / 100)
+	local row = math.floor((vim.o.lines - height) / 2)
+	local col = math.floor((vim.o.columns - width) / 2)
 
 	local win = vim.api.nvim_open_win(buf, true, {
-		relative = "cursor",
-		row = 1,
-		col = 0,
+		relative = "editor",
+		row = row,
+		col = col,
 		width = width,
 		height = height,
 		style = "minimal",
 		border = config.opts.float.border,
 		title = string.format(" Comments (%d) ", #comments),
 		title_pos = "center",
+		footer = " r reply | q close ",
+		footer_pos = "center",
 	})
 
 	local ns = config.state.ns_id

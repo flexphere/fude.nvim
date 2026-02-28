@@ -110,8 +110,9 @@ require("reviewit").setup({
   },
   float = {
     border = "single",
-    max_width = 80,
-    max_height = 20,
+    -- Width/height as percentage of screen (1-100)
+    width = 50,
+    height = 50,
   },
   overview = {
     -- Width/height as percentage of screen (1-100)
