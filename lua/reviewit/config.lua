@@ -10,6 +10,8 @@ M.defaults = {
 	signs = {
 		comment = "#",
 		comment_hl = "DiagnosticInfo",
+		draft = "✎ draft comment",
+		draft_hl = "DiagnosticWarn",
 	},
 	float = {
 		border = "single",
@@ -42,6 +44,7 @@ M.state = {
 	changed_files = {},
 	comments = {},
 	comment_map = {},
+	drafts = {},
 	preview_win = nil,
 	preview_buf = nil,
 	source_win = nil,
@@ -68,6 +71,7 @@ function M.reset_state()
 		changed_files = {},
 		comments = {},
 		comment_map = {},
+		drafts = {},
 		preview_win = nil,
 		preview_buf = nil,
 		source_win = nil,

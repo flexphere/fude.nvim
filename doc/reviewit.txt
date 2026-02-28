@@ -107,6 +107,12 @@ Using lazy.nvim: >lua
     to jump to the file and line. Preview pane shows the full comment
     thread formatted as markdown. Requires an active review session.
 
+:ReviewListDrafts                                        *:ReviewListDrafts*
+    List all draft comments in a Telescope picker. Shows each
+    draft location with a body preview. Select an entry to jump
+    to the file and line. Preview pane shows the full draft content.
+    Press `d` to delete a draft. Requires an active review session.
+
 :ReviewBrowse                                                *:ReviewBrowse*
     Open the PR in the browser using the cached PR URL.
     Requires an active review session.
@@ -135,6 +141,7 @@ spec or manually. Suggested mappings:
   `<leader>ea`  Approve PR
   `<leader>eb`  Open PR in browser
   `<leader>el`  List all review comments
+  `<leader>ep`  List all drafts
   `]c`          Next comment
   `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
@@ -153,6 +160,8 @@ Default configuration: >lua
     signs = {
       comment = "#",
       comment_hl = "DiagnosticInfo",
+      draft = "✎ draft comment",
+      draft_hl = "DiagnosticWarn",
     },
     float = {
       border = "single",
@@ -184,6 +193,12 @@ Options:
 `signs.comment`     Character shown in virtual text for comment indicators.
 
 `signs.comment_hl`  Highlight group for comment indicators.
+
+`signs.draft`       Text shown in virtual text for draft indicators
+                  (default: "✎ draft comment").
+
+`signs.draft_hl`    Highlight group for draft indicators
+                  (default: "DiagnosticWarn").
 
 `float.border`      Border style for floating windows.
 

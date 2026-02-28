@@ -96,10 +96,15 @@ function M.create_comment(is_visual)
 		end_line = start_line
 	end
 
+	local draft_key = rel_path .. ":" .. start_line .. ":" .. end_line
+	local draft = state.drafts[draft_key]
+
 	ui.open_comment_input(function(body)
 		if not body then
 			return
 		end
+
+		state.drafts[draft_key] = nil
 
 		local sha, sha_err = gh.get_head_sha()
 		if not sha then
@@ -121,7 +126,14 @@ function M.create_comment(is_visual)
 		else
 			gh.create_comment_range(state.pr_number, sha, rel_path, start_line, end_line, body, on_complete)
 		end
-	end)
+	end, {
+		initial_lines = draft or nil,
+		on_cancel = function(lines)
+			state.drafts[draft_key] = lines
+			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			ui.refresh_extmarks()
+		end,
+	})
 end
 
 --- View comments on the current line.
@@ -173,10 +185,15 @@ function M.reply_to_comment(comment_id)
 		comment_id = comments[#comments].id
 	end
 
+	local draft_key = "reply:" .. comment_id
+	local draft = state.drafts[draft_key]
+
 	ui.open_comment_input(function(body)
 		if not body then
 			return
 		end
+
+		state.drafts[draft_key] = nil
 
 		gh.reply_to_comment(state.pr_number, comment_id, body, function(err, _)
 			if err then
@@ -186,7 +203,13 @@ function M.reply_to_comment(comment_id)
 			vim.notify("reviewit.nvim: Reply posted", vim.log.levels.INFO)
 			M.fetch_comments()
 		end)
-	end)
+	end, {
+		initial_lines = draft or nil,
+		on_cancel = function(lines)
+			state.drafts[draft_key] = lines
+			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+		end,
+	})
 end
 
 --- Navigate to the next comment in the current file.
@@ -368,6 +391,9 @@ function M.suggest_change(is_visual)
 		end_line = start_line
 	end
 
+	local draft_key = rel_path .. ":" .. start_line .. ":" .. end_line
+	local draft = state.drafts[draft_key]
+
 	local source_lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
 	local initial_lines = { "```suggestion" }
 	vim.list_extend(initial_lines, source_lines)
@@ -377,6 +403,8 @@ function M.suggest_change(is_visual)
 		if not body then
 			return
 		end
+
+		state.drafts[draft_key] = nil
 
 		local sha, sha_err = gh.get_head_sha()
 		if not sha then
@@ -399,9 +427,14 @@ function M.suggest_change(is_visual)
 			gh.create_comment_range(state.pr_number, sha, rel_path, start_line, end_line, body, on_complete)
 		end
 	end, {
-		initial_lines = initial_lines,
+		initial_lines = draft or initial_lines,
 		title = " Suggest Change ",
-		cursor_pos = { 2, 0 },
+		cursor_pos = draft and nil or { 2, 0 },
+		on_cancel = function(lines)
+			state.drafts[draft_key] = lines
+			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			ui.refresh_extmarks()
+		end,
 	})
 end
 
@@ -432,6 +465,151 @@ function M.prev_comment()
 	if #comment_lines > 0 then
 		vim.api.nvim_win_set_cursor(0, { comment_lines[#comment_lines], 0 })
 	end
+end
+
+--- List all draft comments in a Telescope picker.
+function M.list_drafts()
+	local state = config.state
+	if not state.active then
+		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
+	if not state.drafts or vim.tbl_isempty(state.drafts) then
+		vim.notify("reviewit.nvim: No drafts", vim.log.levels.INFO)
+		return
+	end
+
+	local has_telescope, pickers = pcall(require, "telescope.pickers")
+	if not has_telescope then
+		vim.notify("reviewit.nvim: telescope.nvim required for draft list", vim.log.levels.WARN)
+		return
+	end
+
+	local finders = require("telescope.finders")
+	local conf = require("telescope.config").values
+	local actions = require("telescope.actions")
+	local action_state = require("telescope.actions.state")
+	local previewers = require("telescope.previewers")
+
+	local repo_root = diff.get_repo_root()
+	if not repo_root then
+		return
+	end
+
+	local entries = {}
+	for key, lines in pairs(state.drafts) do
+		local path, sl, el = key:match("^(.+):(%d+):(%d+)$")
+		if path then
+			local start_line = tonumber(sl)
+			local end_line = tonumber(el)
+			local body_preview = table.concat(lines, " "):gsub("%s+", " ")
+			if #body_preview > 60 then
+				body_preview = body_preview:sub(1, 57) .. "..."
+			end
+			local range_str = start_line == end_line and tostring(start_line)
+				or string.format("%d-%d", start_line, end_line)
+			local detail = string.format("%s:%s  %s", path, range_str, body_preview)
+			table.insert(entries, {
+				value = detail,
+				ordinal = string.format("%s:%d %s", path, start_line, table.concat(lines, " ")),
+				filename = repo_root .. "/" .. path,
+				lnum = start_line,
+				detail = detail,
+				draft_key = key,
+				draft_lines = lines,
+				display = detail,
+			})
+		else
+			-- reply draft: look up file/line from comment_map
+			local cid = key:match("^reply:(.+)$")
+			if cid then
+				local cid_num = tonumber(cid)
+				local reply_path, reply_line
+				if cid_num and state.comment_map then
+					for cpath, clines in pairs(state.comment_map) do
+						for line_key, clist in pairs(clines) do
+							for _, c in ipairs(clist) do
+								if c.id == cid_num then
+									reply_path = cpath
+									reply_line = tonumber(line_key)
+									break
+								end
+							end
+							if reply_path then
+								break
+							end
+						end
+						if reply_path then
+							break
+						end
+					end
+				end
+
+				local body_preview = table.concat(lines, " "):gsub("%s+", " ")
+				if #body_preview > 60 then
+					body_preview = body_preview:sub(1, 57) .. "..."
+				end
+				local loc = reply_path and string.format("%s:%d", reply_path, reply_line or 1) or "reply:" .. cid
+				local detail = string.format("%s  (reply)  %s", loc, body_preview)
+				table.insert(entries, {
+					value = detail,
+					ordinal = string.format("%s %s", loc, table.concat(lines, " ")),
+					filename = reply_path and (repo_root .. "/" .. reply_path) or nil,
+					lnum = reply_line,
+					detail = detail,
+					draft_key = key,
+					draft_lines = lines,
+					display = detail,
+				})
+			end
+		end
+	end
+
+	table.sort(entries, function(a, b)
+		return a.value < b.value
+	end)
+
+	pickers
+		.new({}, {
+			prompt_title = "Draft Comments",
+			finder = finders.new_table({
+				results = entries,
+				entry_maker = function(entry)
+					return entry
+				end,
+			}),
+			sorter = conf.generic_sorter({}),
+			previewer = previewers.new_buffer_previewer({
+				title = "Draft Content",
+				define_preview = function(self, entry)
+					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, entry.draft_lines)
+					vim.bo[self.state.bufnr].filetype = "markdown"
+				end,
+			}),
+			attach_mappings = function(prompt_bufnr, map)
+				actions.select_default:replace(function()
+					actions.close(prompt_bufnr)
+					local selection = action_state.get_selected_entry()
+					if selection and selection.filename then
+						vim.cmd("edit " .. vim.fn.fnameescape(selection.filename))
+						local lnum = math.max(1, selection.lnum or 1)
+						pcall(vim.api.nvim_win_set_cursor, 0, { lnum, 0 })
+					end
+				end)
+				map("n", "d", function()
+					local selection = action_state.get_selected_entry()
+					if selection then
+						state.drafts[selection.draft_key] = nil
+						vim.notify("reviewit.nvim: Draft deleted", vim.log.levels.INFO)
+						actions.close(prompt_bufnr)
+						ui.refresh_extmarks()
+					end
+				end)
+				return true
+			end,
+		})
+		:find()
 end
 
 return M

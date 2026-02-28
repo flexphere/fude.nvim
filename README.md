@@ -8,7 +8,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Follow code jumps** - Preview updates when navigating to other files via LSP
 - **PR comments** - Create, view, and reply to review comments on specific lines
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
-- **Virtual text** - Comment indicators on lines with existing comments
+- **Virtual text** - Comment and draft indicators on lines with existing comments/drafts
+- **Draft comments** - Cancelled comments are saved as drafts and restored when reopened
 - **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - View PR title, description, labels, and issue-level comments
@@ -92,6 +93,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:ReviewOverview` | Show PR overview and issue-level comments |
 | `:ReviewApprove` | Approve PR with optional comment |
 | `:ReviewListComments` | List all PR review comments (Telescope) |
+| `:ReviewListDrafts` | List all draft comments (Telescope) |
 | `:ReviewBrowse` | Open PR in browser |
 
 ## Configuration
@@ -107,6 +109,8 @@ require("reviewit").setup({
   signs = {
     comment = "#",
     comment_hl = "DiagnosticInfo",
+    draft = "✎ draft comment",
+    draft_hl = "DiagnosticWarn",
   },
   float = {
     border = "single",

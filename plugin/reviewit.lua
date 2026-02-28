@@ -56,6 +56,10 @@ vim.api.nvim_create_user_command("ReviewSuggest", function(opts)
 	require("reviewit.comments").suggest_change(opts.range > 0)
 end, { desc = "Suggest change on current line/selection", range = true })
 
+vim.api.nvim_create_user_command("ReviewListDrafts", function()
+	require("reviewit.comments").list_drafts()
+end, { desc = "List draft comments" })
+
 vim.api.nvim_create_user_command("ReviewBrowse", function()
 	local state = require("reviewit.config").state
 	if not state.active or not state.pr_url then

@@ -101,6 +101,21 @@ function M.refresh_extmarks()
 			priority = 50,
 		})
 	end
+
+	-- Draft indicators
+	for key, _ in pairs(state.drafts) do
+		local path, sl = key:match("^(.+):(%d+):%d+$")
+		if path == rel_path then
+			local draft_line = tonumber(sl)
+			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, draft_line - 1, 0, {
+				virt_text = {
+					{ " " .. config.opts.signs.draft, config.opts.signs.draft_hl },
+				},
+				virt_text_pos = "eol",
+				priority = 40,
+			})
+		end
+	end
 end
 
 --- Clear all extmarks for a specific buffer.
@@ -132,7 +147,7 @@ function M.open_comment_input(callback, opts)
 	opts = opts or {}
 	local initial_lines = opts.initial_lines or { "" }
 	local title = opts.title or " Review Comment "
-	local footer = opts.footer or " <CR> submit | q cancel "
+	local footer = opts.footer or " <CR> submit | q save draft "
 
 	local buf = vim.api.nvim_create_buf(false, true)
 
@@ -181,7 +196,12 @@ function M.open_comment_input(callback, opts)
 	end, { buffer = buf, desc = "Submit review comment" })
 
 	vim.keymap.set("n", "q", function()
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		local body = vim.trim(table.concat(lines, "\n"))
 		vim.api.nvim_win_close(win, true)
+		if opts.on_cancel and body ~= "" then
+			opts.on_cancel(lines)
+		end
 		if callback then
 			callback(nil)
 		end
