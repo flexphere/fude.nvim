@@ -78,6 +78,9 @@ end
 --- @param key string "path:start:end" or "reply:comment_id"
 --- @return table|nil parsed key components
 function M.parse_draft_key(key)
+	if key == "issue_comment" then
+		return { type = "issue_comment" }
+	end
 	local reply_id = key:match("^reply:(%d+)$")
 	if reply_id then
 		return { type = "reply", comment_id = tonumber(reply_id) }
@@ -96,6 +99,9 @@ end
 --- @param sha string HEAD commit SHA
 --- @return table { type: "comment"|"comment_range"|"reply", args: table }
 function M.build_submit_request(parsed, body, pr_number, sha)
+	if parsed.type == "issue_comment" then
+		return { type = "issue_comment", args = { pr_number, body } }
+	end
 	if parsed.type == "reply" then
 		return { type = "reply", args = { pr_number, parsed.comment_id, body } }
 	end
@@ -143,7 +149,9 @@ function M.submit_drafts(draft_entries, callback)
 		local req = M.build_submit_request(entry.parsed, body, state.pr_number, sha)
 
 		local api_fn
-		if req.type == "reply" then
+		if req.type == "issue_comment" then
+			api_fn = gh.create_issue_comment
+		elseif req.type == "reply" then
 			api_fn = gh.reply_to_comment
 		elseif req.type == "comment_range" then
 			api_fn = gh.create_comment_range
@@ -675,6 +683,18 @@ function M.list_drafts()
 				ordinal = string.format("%s %s", loc, table.concat(draft_lines, " ")),
 				filename = reply_path and (repo_root .. "/" .. reply_path) or nil,
 				lnum = reply_line,
+				detail = detail,
+				draft_key = key,
+				draft_lines = draft_lines,
+				display = detail,
+			})
+		elseif parsed.type == "issue_comment" then
+			local detail = string.format("PR comment  %s", body_preview)
+			table.insert(entries, {
+				value = detail,
+				ordinal = "PR comment " .. table.concat(draft_lines, " "),
+				filename = nil,
+				lnum = nil,
 				detail = detail,
 				draft_key = key,
 				draft_lines = draft_lines,

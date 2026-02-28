@@ -40,11 +40,17 @@ end
 function M.create_comment(pr_number)
 	local ui = require("reviewit.ui")
 	local gh = require("reviewit.gh")
+	local state = config.state
+
+	local draft_key = "issue_comment"
+	local draft = state.drafts[draft_key]
 
 	ui.open_comment_input(function(body)
 		if not body then
 			return
 		end
+
+		state.drafts[draft_key] = nil
 
 		gh.create_issue_comment(pr_number, body, function(err, _)
 			if err then
@@ -54,7 +60,13 @@ function M.create_comment(pr_number)
 			vim.notify("reviewit.nvim: Comment posted", vim.log.levels.INFO)
 			M.show()
 		end)
-	end)
+	end, {
+		initial_lines = draft or nil,
+		on_cancel = function(lines)
+			state.drafts[draft_key] = lines
+			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+		end,
+	})
 end
 
 return M

@@ -188,6 +188,11 @@ describe("parse_draft_key", function()
 		}, result)
 	end)
 
+	it("parses issue_comment key", function()
+		local result = comments.parse_draft_key("issue_comment")
+		assert.are.same({ type = "issue_comment" }, result)
+	end)
+
 	it("returns nil for invalid key", function()
 		assert.is_nil(comments.parse_draft_key("invalid"))
 	end)
@@ -225,6 +230,13 @@ describe("build_submit_request", function()
 		local req = comments.build_submit_request(parsed, "reply body", 42, "abc123")
 		assert.are.equal("reply", req.type)
 		assert.are.same({ 42, 99, "reply body" }, req.args)
+	end)
+
+	it("builds issue_comment request", function()
+		local parsed = { type = "issue_comment" }
+		local req = comments.build_submit_request(parsed, "pr body", 42, "abc123")
+		assert.are.equal("issue_comment", req.type)
+		assert.are.same({ 42, "pr body" }, req.args)
 	end)
 
 	it("treats equal start and end line as single-line", function()

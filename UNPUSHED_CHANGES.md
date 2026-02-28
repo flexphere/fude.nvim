@@ -15,6 +15,7 @@
 - `auto_view_comment`オプション — `]c`/`[c`やReviewListCommentsでコメント行に移動した際にコメントモーダルを自動表示（デフォルト有効）
 - `]c`/`[c`をReviewStart中のみバッファローカルで設定し、ReviewStopで解除（Vim組み込みdiffナビと競合しない）
 - コメントモーダル内でも`]c`/`[c`で次/前のコメントへ連続ナビゲーション可能
+- PRレベルコメント（ReviewOverview内`c`キー）でもドラフト保存・復元・一括submitに対応
 
 ## UI改善
 
@@ -30,4 +31,4 @@
 
 - luacheck/stylua/plenary.bustedによるlint・フォーマット・テスト基盤を構築（`make all`で一括実行）
 - pre-commitフックとGitHub Actions CI（Neovim v0.10.4+stable）を設定
-- 副作用コードから純粋関数を抽出するリファクタリングにより100テストを整備
+- 副作用コードから純粋関数を抽出するリファクタリングにより102テストを整備
