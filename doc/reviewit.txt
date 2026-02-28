@@ -135,8 +135,8 @@ Suggested mappings:
   `<leader>et`  Toggle review mode
   `<leader>es`  Start review mode
   `<leader>eq`  Stop review mode
-  `<leader>ec`  Create comment (normal/visual)
-  `<leader>eS`  Suggest change (normal/visual)
+  `<leader>ec`  Create comment (normal/visual)  *
+  `<leader>eS`  Suggest change (normal/visual) *
   `<leader>ev`  View comments on current line
   `<leader>er`  Reply to comment on current line
   `<leader>ef`  List changed files
@@ -149,6 +149,10 @@ Suggested mappings:
   `]c`          Next comment
   `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
+
+  * Visual mode mappings must use `:ReviewComment<CR>` (not `<cmd>`)
+    to preserve the range. Using `<C-u>` will clear the range and
+    result in single-line comments.
 
 ==============================================================================
 6. CONFIGURATION                                    *reviewit-configuration*
