@@ -164,6 +164,8 @@ Default configuration: >lua
       width = 80,
       height = 80,
     },
+    -- strftime format for timestamps (system timezone)
+    date_format = "%Y/%m/%d %H:%M",
   })
 <
 
@@ -191,6 +193,10 @@ Options:
 `overview.width`    Overview window width as % of screen (default: 80).
 
 `overview.height`   Overview window height as % of screen (default: 80).
+
+`date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
+                  Timestamps from GitHub (UTC) are converted to the system
+                  timezone before formatting.
 
 ==============================================================================
 7. COMPLETION                                          *reviewit-completion*

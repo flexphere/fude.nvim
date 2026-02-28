@@ -21,6 +21,8 @@ M.defaults = {
 		width = 80,
 		height = 80,
 	},
+	-- strftime format for timestamps (applied in system timezone)
+	date_format = "%Y/%m/%d %H:%M",
 	keymaps = {
 		create_comment = "<leader>Rc",
 		view_comments = "<leader>Rv",
@@ -72,6 +74,33 @@ function M.reset_state()
 		ns_id = ns,
 		original_diffopt = nil,
 	}
+end
+
+--- Format a UTC ISO 8601 timestamp to local timezone using date_format.
+--- @param iso_str string|nil e.g. "2026-02-28T23:01:00Z"
+--- @return string formatted date string
+function M.format_date(iso_str)
+	if not iso_str then
+		return ""
+	end
+	local y, mo, d, h, mi, s = iso_str:match("(%d+)-(%d+)-(%d+)T(%d+):(%d+):(%d+)")
+	if not y then
+		return iso_str
+	end
+	local t = os.time({
+		year = tonumber(y),
+		month = tonumber(mo),
+		day = tonumber(d),
+		hour = tonumber(h),
+		min = tonumber(mi),
+		sec = tonumber(s),
+		isdst = false,
+	})
+	local d1 = os.date("*t", t)
+	local d2 = os.date("!*t", t)
+	d1.isdst = false
+	local offset = os.difftime(os.time(d1), os.time(d2))
+	return os.date(M.opts.date_format, t + offset)
 end
 
 return M

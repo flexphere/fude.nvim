@@ -118,6 +118,8 @@ require("reviewit").setup({
     width = 80,
     height = 80,
   },
+  -- strftime format for timestamps (system timezone)
+  date_format = "%Y/%m/%d %H:%M",
 })
 ```
 

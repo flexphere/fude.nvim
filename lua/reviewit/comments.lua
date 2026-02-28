@@ -249,10 +249,12 @@ function M.list_comments()
 		return
 	end
 
+	local date_col_width = #config.format_date("2000-01-01T00:00:00Z")
+
 	local displayer = entry_display.create({
 		separator = " ",
 		items = {
-			{ width = 16 },
+			{ width = date_col_width },
 			{ remaining = true },
 		},
 	})
@@ -272,14 +274,7 @@ function M.list_comments()
 			local last = comments[#comments]
 			local author = first.user and first.user.login or "unknown"
 			local last_ts = last.created_at or ""
-			-- "2025-02-28T23:01:00Z" -> "2025/02/28 23:01"
-			local last_date
-			local y, md, hm = last_ts:match("^(%d%d%d%d)%-(%d%d%-%d%d)T(%d%d:%d%d)")
-			if y then
-				last_date = y .. "/" .. md:gsub("%-", "/") .. " " .. hm
-			else
-				last_date = last_ts:sub(1, 10)
-			end
+			local last_date = config.format_date(last_ts)
 			local body_preview = (first.body or ""):gsub("\r?\n", " ")
 			if #body_preview > 60 then
 				body_preview = body_preview:sub(1, 57) .. "..."
@@ -318,11 +313,9 @@ function M.list_comments()
 				define_preview = function(self, entry)
 					local preview_lines = {}
 					for _, comment in ipairs(entry.comments) do
-						local c_author = comment.user and comment.user.login or "unknown"
-						local ts = comment.created_at or ""
-						local c_y, c_md, c_hm = ts:match("^(%d%d%d%d)%-(%d%d%-%d%d)T(%d%d:%d%d)")
-						local date = c_y and (c_y .. "/" .. c_md:gsub("%-", "/") .. " " .. c_hm) or ts:sub(1, 10)
-						table.insert(preview_lines, string.format("── @%s (%s) ──", c_author, date))
+						local author = comment.user and comment.user.login or "unknown"
+						local date = config.format_date(comment.created_at)
+						table.insert(preview_lines, string.format("── @%s (%s) ──", author, date))
 						table.insert(preview_lines, "")
 						for _, body_line in ipairs(vim.split(comment.body or "", "\n", { trimempty = false })) do
 							table.insert(preview_lines, body_line)

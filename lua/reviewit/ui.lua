@@ -237,7 +237,7 @@ function M.show_comments_float(comments)
 
 	for i, comment in ipairs(comments) do
 		local author = comment.user and comment.user.login or "unknown"
-		local created = (comment.created_at or ""):gsub("T", " "):gsub("Z", "")
+		local created = config.format_date(comment.created_at)
 
 		local header = string.format("@%s  %s", author, created)
 		table.insert(lines, header)
@@ -359,7 +359,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	else
 		for i, comment in ipairs(issue_comments) do
 			local comment_author = comment.user and comment.user.login or "unknown"
-			local created = (comment.created_at or ""):gsub("T", " "):gsub("Z", "")
+			local created = config.format_date(comment.created_at)
 
 			table.insert(lines, "")
 			local header = string.format("@%s  %s", comment_author, created)

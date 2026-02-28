@@ -44,10 +44,6 @@ vim.api.nvim_create_user_command("ReviewApprove", function()
 	end)
 end, { desc = "Approve PR" })
 
-vim.api.nvim_create_user_command("ReviewSuggest", function(opts)
-	require("reviewit.comments").suggest_change(opts.range > 0)
-end, { desc = "Suggest change on current line/selection", range = true })
-
 vim.api.nvim_create_user_command("ReviewListComments", function()
 	require("reviewit.comments").list_comments()
 end, { desc = "List PR review comments" })
@@ -55,6 +51,10 @@ end, { desc = "List PR review comments" })
 vim.api.nvim_create_user_command("ReviewDiff", function()
 	require("reviewit").toggle_diff()
 end, { desc = "Toggle diff preview" })
+
+vim.api.nvim_create_user_command("ReviewSuggest", function(opts)
+	require("reviewit.comments").suggest_change(opts.range > 0)
+end, { desc = "Suggest change on current line/selection", range = true })
 
 vim.api.nvim_create_user_command("ReviewBrowse", function()
 	local state = require("reviewit.config").state
