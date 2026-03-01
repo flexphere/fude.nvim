@@ -16,7 +16,6 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **PR overview** - View PR title, description, labels, and issue-level comments
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user` and `#issue` completion in comment windows (blink.cmp / nvim-cmp)
-- **Approve PR** - Approve the PR with an optional comment
 - **Open in browser** - Open the PR in your browser
 - **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
 
@@ -39,7 +38,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   cmd = {
     "ReviewStart", "ReviewStop", "ReviewToggle", "ReviewDiff",
     "ReviewComment", "ReviewSuggest", "ReviewViewComment", "ReviewListComments",
-    "ReviewFiles", "ReviewOverview", "ReviewApprove", "ReviewSubmit", "ReviewBrowse",
+    "ReviewFiles", "ReviewOverview", "ReviewSubmit", "ReviewBrowse",
   },
   keys = {
     { "<leader>et", "<cmd>ReviewToggle<cr>", desc = "Review: Toggle" },
@@ -52,7 +51,6 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>ev", "<cmd>ReviewViewComment<cr>", desc = "Review: View comments" },
     { "<leader>ef", "<cmd>ReviewFiles<cr>", desc = "Review: Changed files" },
     { "<leader>eo", "<cmd>ReviewOverview<cr>", desc = "Review: PR Overview" },
-    { "<leader>ea", "<cmd>ReviewApprove<cr>", desc = "Review: Approve PR" },
     { "<leader>ed", "<cmd>ReviewDiff<cr>", desc = "Review: Toggle diff" },
     { "<leader>eb", "<cmd>ReviewBrowse<cr>", desc = "Review: Open in browser" },
     { "<leader>el", "<cmd>ReviewListComments<cr>", desc = "Review: List comments" },
@@ -92,7 +90,6 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:ReviewViewComment` | View comments on current line |
 | `:ReviewFiles` | List PR changed files (Telescope/quickfix) |
 | `:ReviewOverview` | Show PR overview and issue-level comments |
-| `:ReviewApprove` | Approve PR with optional comment |
 | `:ReviewListComments` | List all PR review comments (Telescope) |
 | `:ReviewListDrafts` | List all local draft comments (Telescope) |
 | `:ReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |

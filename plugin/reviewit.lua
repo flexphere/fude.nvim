@@ -31,23 +31,6 @@ vim.api.nvim_create_user_command("ReviewOverview", function()
 	require("reviewit.overview").show()
 end, { desc = "Show PR overview" })
 
-vim.api.nvim_create_user_command("ReviewApprove", function()
-	local ui = require("reviewit.ui")
-	ui.open_comment_input(function(body)
-		require("reviewit.gh").approve_pr(body, function(err)
-			if err then
-				vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
-			else
-				vim.notify("reviewit.nvim: PR approved", vim.log.levels.INFO)
-			end
-		end)
-	end, {
-		title = " Approve PR ",
-		footer = " <CR> approve | q cancel ",
-		submit_on_enter = true,
-	})
-end, { desc = "Approve PR" })
-
 vim.api.nvim_create_user_command("ReviewListComments", function()
 	require("reviewit.comments").list_comments()
 end, { desc = "List PR review comments" })

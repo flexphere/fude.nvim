@@ -2,7 +2,6 @@
 
 ## 機能追加
 
-- `:ReviewApprove` — フローティングウィンドウからオプションコメント付きでPRを承認
 - `:ReviewBrowse` — PRをデフォルトブラウザで開く
 - `:ReviewListComments` — Telescope pickerで全PRレビューコメントを一覧表示
 - `:ReviewSuggest` — 現在行/選択範囲からGitHub suggestionブロックを生成して投稿

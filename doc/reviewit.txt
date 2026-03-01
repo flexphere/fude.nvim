@@ -123,11 +123,6 @@ Using lazy.nvim: >lua
     Open the PR in the browser using the cached PR URL.
     Requires an active review session.
 
-:ReviewApprove                                              *:ReviewApprove*
-    Approve the current branch's PR. Opens a floating window for an
-    optional comment. Press `<CR>` to approve (with or without a
-    comment), `q` to cancel.
-
 :ReviewSubmit                                              *:ReviewSubmit*
     Submit all pending comments as a single GitHub review. This allows
     you to batch comments together instead of posting them individually.
@@ -161,7 +156,6 @@ Suggested mappings:
   `<leader>ef`  List changed files
   `<leader>eo`  PR overview
   `<leader>ed`  Toggle diff preview
-  `<leader>ea`  Approve PR
   `<leader>eb`  Open PR in browser
   `<leader>el`  List all review comments
   `<leader>ep`  List all drafts
@@ -257,7 +251,7 @@ Options:
 ==============================================================================
 7. COMPLETION                                          *reviewit-completion*
 
-Comment input windows (`ReviewComment`, `ReviewSuggest`, `ReviewApprove`) support GitHub
+Comment input windows (`ReviewComment`, `ReviewSuggest`) support GitHub
 completion for `@user` mentions and `#issue/PR` references.
 
 blink.cmp: >lua
