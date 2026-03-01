@@ -204,6 +204,73 @@ describe("get_reply_target_id", function()
 	end)
 end)
 
+describe("get_comment_thread", function()
+	it("returns single comment when no replies", function()
+		local all = {
+			{ id = 1, body = "hello", created_at = "2024-01-01" },
+			{ id = 2, body = "other", created_at = "2024-01-02" },
+		}
+		local thread = comments.get_comment_thread(1, all)
+		assert.are.equal(1, #thread)
+		assert.are.equal(1, thread[1].id)
+	end)
+
+	it("returns thread with replies sorted by time", function()
+		local all = {
+			{ id = 1, body = "root", created_at = "2024-01-01" },
+			{ id = 2, body = "reply1", created_at = "2024-01-03", in_reply_to_id = 1 },
+			{ id = 3, body = "reply2", created_at = "2024-01-02", in_reply_to_id = 1 },
+		}
+		local thread = comments.get_comment_thread(1, all)
+		assert.are.equal(3, #thread)
+		assert.are.equal(1, thread[1].id)
+		assert.are.equal(3, thread[2].id) -- earlier reply
+		assert.are.equal(2, thread[3].id) -- later reply
+	end)
+
+	it("finds thread when given reply id", function()
+		local all = {
+			{ id = 1, body = "root", created_at = "2024-01-01" },
+			{ id = 2, body = "reply", created_at = "2024-01-02", in_reply_to_id = 1 },
+		}
+		local thread = comments.get_comment_thread(2, all)
+		assert.are.equal(2, #thread)
+		assert.are.equal(1, thread[1].id)
+		assert.are.equal(2, thread[2].id)
+	end)
+
+	it("handles nested replies", function()
+		local all = {
+			{ id = 1, body = "root", created_at = "2024-01-01" },
+			{ id = 2, body = "reply1", created_at = "2024-01-02", in_reply_to_id = 1 },
+			{ id = 3, body = "nested", created_at = "2024-01-03", in_reply_to_id = 2 },
+		}
+		local thread = comments.get_comment_thread(3, all)
+		assert.are.equal(3, #thread)
+	end)
+
+	it("returns empty for non-existent id", function()
+		local all = {
+			{ id = 1, body = "hello", created_at = "2024-01-01" },
+		}
+		local thread = comments.get_comment_thread(999, all)
+		assert.are.same({}, thread)
+	end)
+
+	it("excludes comments from different threads", function()
+		local all = {
+			{ id = 1, body = "thread1", created_at = "2024-01-01" },
+			{ id = 2, body = "reply1", created_at = "2024-01-02", in_reply_to_id = 1 },
+			{ id = 10, body = "thread2", created_at = "2024-01-01" },
+			{ id = 11, body = "reply2", created_at = "2024-01-02", in_reply_to_id = 10 },
+		}
+		local thread = comments.get_comment_thread(1, all)
+		assert.are.equal(2, #thread)
+		assert.are.equal(1, thread[1].id)
+		assert.are.equal(2, thread[2].id)
+	end)
+end)
+
 describe("parse_draft_key", function()
 	it("parses comment draft key", function()
 		local result = comments.parse_draft_key("lua/foo.lua:10:20")

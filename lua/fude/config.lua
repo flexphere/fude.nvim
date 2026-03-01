@@ -70,6 +70,7 @@ M.state = {
 	original_head_sha = nil, -- HEAD SHA before scope checkout (for restoring)
 	original_head_ref = nil, -- Branch name before scope checkout (nil if detached)
 	reviewed_commits = {}, -- { [sha] = true } locally tracked reviewed commits
+	reply_window = nil,
 }
 
 M.opts = {}
@@ -108,6 +109,7 @@ function M.reset_state()
 		original_head_sha = nil,
 		original_head_ref = nil,
 		reviewed_commits = {},
+		reply_window = nil,
 	}
 end
 

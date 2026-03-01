@@ -345,6 +345,85 @@ function M.calculate_overview_layout(columns, screen_lines, pct_w, pct_h, right_
 	}
 end
 
+--- Calculate upper window height for reply view.
+--- @param line_count number total lines of formatted comments
+--- @param min_height number minimum height
+--- @param max_height number maximum height
+--- @return number height
+function M.calculate_comments_height(line_count, min_height, max_height)
+	return math.max(min_height, math.min(line_count, max_height))
+end
+
+--- Calculate dimensions for reply window (upper + lower).
+--- @param screen_cols number screen width
+--- @param screen_lines number screen height
+--- @param comment_line_count number total lines of formatted comments
+--- @param opts table|nil options
+---   { min_upper_height?: number, max_upper_pct?: number, lower_height?: number,
+---     max_width?: number, width_pct?: number }
+--- @return table { width: number, upper_height: number, lower_height: number, row: number, col: number }
+function M.calculate_reply_window_dimensions(screen_cols, screen_lines, comment_line_count, opts)
+	opts = opts or {}
+	local width_pct = opts.width_pct or 0.6
+	local max_width = opts.max_width or 80
+	local min_upper = opts.min_upper_height or 3
+	local max_upper_pct = opts.max_upper_pct or 0.5
+	local lower_height = opts.lower_height or 5
+
+	local width = math.min(math.floor(screen_cols * width_pct), max_width)
+	local max_upper = math.floor(screen_lines * max_upper_pct)
+	local upper_height = M.calculate_comments_height(comment_line_count, min_upper, max_upper)
+
+	local total_height = upper_height + lower_height
+	local row = math.floor((screen_lines - total_height) / 2)
+	local col = math.floor((screen_cols - width) / 2)
+
+	return {
+		width = width,
+		upper_height = upper_height,
+		lower_height = lower_height,
+		row = row,
+		col = col,
+	}
+end
+
+--- Format comments for reply window display with detailed highlight ranges.
+--- @param comments table[] list of comment objects
+--- @param format_date_fn fun(s: string): string
+--- @return table { lines: string[], hl_ranges: table[] }
+function M.format_reply_comments_for_display(comments, format_date_fn)
+	local lines = {}
+	local hl_ranges = {}
+	for i, comment in ipairs(comments) do
+		local author = comment.user and comment.user.login or "unknown"
+		local created = format_date_fn(comment.created_at)
+		local header = string.format("@%s (%s):", author, created)
+		local header_line_idx = #lines
+		table.insert(lines, header)
+		-- Author highlight: from 0 to end of @username
+		local author_end = #author + 1 -- "@" + username
+		table.insert(hl_ranges, { line = header_line_idx, col_start = 0, col_end = author_end, hl = "ReviewCommentAuthor" })
+		-- Timestamp highlight: inside parentheses
+		local ts_start = author_end + 2 -- " ("
+		local ts_end = ts_start + #created
+		table.insert(
+			hl_ranges,
+			{ line = header_line_idx, col_start = ts_start, col_end = ts_end, hl = "ReviewCommentTimestamp" }
+		)
+
+		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+			table.insert(lines, body_line)
+		end
+
+		if i < #comments then
+			table.insert(lines, "")
+			table.insert(lines, string.rep("-", 40))
+			table.insert(lines, "")
+		end
+	end
+	return { lines = lines, hl_ranges = hl_ranges }
+end
+
 --- Build display lines for the left pane of PR overview (header, description, comments).
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
@@ -676,12 +755,8 @@ function M.open_comment_input(callback, opts)
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, initial_lines)
 
-	local dim = M.calculate_float_dimensions(
-		vim.o.columns,
-		vim.o.lines,
-		config.opts.float.width or 50,
-		config.opts.float.height or 50
-	)
+	local ov = config.opts.overview or {}
+	local dim = M.calculate_float_dimensions(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -690,7 +765,7 @@ function M.open_comment_input(callback, opts)
 		width = dim.width,
 		height = dim.height,
 		style = "minimal",
-		border = config.opts.float.border,
+		border = ov.border or config.opts.float.border,
 		title = title,
 		title_pos = "center",
 		footer = footer,
@@ -748,12 +823,8 @@ function M.show_comments_float(comments)
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
 
-	local dim = M.calculate_float_dimensions(
-		vim.o.columns,
-		vim.o.lines,
-		config.opts.float.width or 50,
-		config.opts.float.height or 50
-	)
+	local ov = config.opts.overview or {}
+	local dim = M.calculate_float_dimensions(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -762,7 +833,7 @@ function M.show_comments_float(comments)
 		width = dim.width,
 		height = dim.height,
 		style = "minimal",
-		border = config.opts.float.border,
+		border = ov.border or config.opts.float.border,
 		title = string.format(" Comments (%d) ", #comments),
 		title_pos = "center",
 		footer = " r reply | q close ",
@@ -1000,6 +1071,218 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	-- GitHub refs for both panes
 	setup_github_refs(left_buf, get_repo_base_url(pr_info.url))
 	setup_github_refs(right_buf, get_repo_base_url(pr_info.url), right_result.check_urls)
+end
+
+--- Setup highlight groups for reply window.
+function M.setup_reply_highlights()
+	vim.api.nvim_set_hl(0, "ReviewCommentAuthor", { link = "Title", default = true })
+	vim.api.nvim_set_hl(0, "ReviewCommentTimestamp", { link = "Comment", default = true })
+	vim.api.nvim_set_hl(0, "ReviewCommentBody", { link = "Normal", default = true })
+	vim.api.nvim_set_hl(0, "ReviewReplyBorder", { link = "FloatBorder", default = true })
+end
+
+--- Close reply window and cleanup.
+--- @param state_reply table reply_window state table
+local function close_reply_window(state_reply)
+	if state_reply.closing then
+		return
+	end
+	state_reply.closing = true
+
+	if state_reply.upper_win and vim.api.nvim_win_is_valid(state_reply.upper_win) then
+		pcall(vim.api.nvim_win_close, state_reply.upper_win, true)
+	end
+	if state_reply.lower_win and vim.api.nvim_win_is_valid(state_reply.lower_win) then
+		pcall(vim.api.nvim_win_close, state_reply.lower_win, true)
+	end
+
+	state_reply.upper_win = nil
+	state_reply.upper_buf = nil
+	state_reply.lower_win = nil
+	state_reply.lower_buf = nil
+	state_reply.closing = false
+end
+
+--- Open a two-pane reply window (existing comments above, input below).
+--- @param comments table[] list of comment objects
+--- @param opts table { on_submit: fun(body: string), filetype?: string,
+---   width?: number, on_cancel?: fun(lines: string[]) }
+function M.open_reply_window(comments, opts)
+	opts = opts or {}
+	local state = config.state
+
+	-- Close if already open
+	if state.reply_window and state.reply_window.upper_win then
+		close_reply_window(state.reply_window)
+	end
+
+	M.setup_reply_highlights()
+
+	-- Format comments
+	local result = M.format_reply_comments_for_display(comments, config.format_date)
+
+	-- Calculate dimensions (same as overview window)
+	local ov = config.opts.overview or {}
+	local dim = M.calculate_float_dimensions(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
+
+	-- Split height: lower is fixed 12 lines, upper gets the rest
+	local lower_height = 12
+	local upper_height = math.max(3, dim.height - lower_height)
+
+	-- Create upper buffer (readonly comments)
+	local upper_buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(upper_buf, 0, -1, false, result.lines)
+	vim.bo[upper_buf].modifiable = false
+	vim.bo[upper_buf].buftype = "nofile"
+	vim.bo[upper_buf].bufhidden = "wipe"
+	vim.bo[upper_buf].filetype = opts.filetype or "markdown"
+
+	-- Create lower buffer (editable input)
+	local lower_buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
+	vim.bo[lower_buf].buftype = "nofile"
+	vim.bo[lower_buf].bufhidden = "wipe"
+	vim.bo[lower_buf].filetype = opts.filetype or "markdown"
+	vim.b[lower_buf].fude_comment = true
+
+	-- Border definitions: upper has no bottom, lower connects
+	local upper_border = { "╭", "─", "╮", "│", "", "", "", "│" }
+	local lower_border = { "├", "─", "┤", "│", "╯", "─", "╰", "│" }
+
+	-- Open upper window
+	local upper_win = vim.api.nvim_open_win(upper_buf, false, {
+		relative = "editor",
+		row = dim.row,
+		col = dim.col,
+		width = dim.width,
+		height = upper_height,
+		style = "minimal",
+		border = upper_border,
+		title = " Thread ",
+		title_pos = "center",
+	})
+	vim.wo[upper_win].wrap = true
+	vim.wo[upper_win].cursorline = false
+
+	-- Open lower window
+	local lower_win = vim.api.nvim_open_win(lower_buf, true, {
+		relative = "editor",
+		row = dim.row + upper_height,
+		col = dim.col,
+		width = dim.width,
+		height = lower_height,
+		style = "minimal",
+		border = lower_border,
+		title = " Reply ",
+		title_pos = "center",
+		footer = " <CR> submit | q save draft | <Tab> switch | <C-u/d> scroll ",
+		footer_pos = "center",
+	})
+
+	-- Save state
+	state.reply_window = {
+		upper_win = upper_win,
+		upper_buf = upper_buf,
+		lower_win = lower_win,
+		lower_buf = lower_buf,
+		closing = false,
+	}
+
+	-- Apply highlights
+	local ns = state.ns_id or vim.api.nvim_create_namespace("fude")
+	for _, hl in ipairs(result.hl_ranges) do
+		if hl.col_start and hl.col_end then
+			pcall(vim.api.nvim_buf_add_highlight, upper_buf, ns, hl.hl, hl.line, hl.col_start, hl.col_end)
+		else
+			pcall(vim.api.nvim_buf_add_highlight, upper_buf, ns, hl.hl, hl.line, 0, -1)
+		end
+	end
+
+	setup_github_refs(upper_buf, get_repo_base_url())
+
+	-- Helper to close both windows
+	local function close_all()
+		close_reply_window(state.reply_window)
+	end
+
+	-- Submit handler
+	local function submit()
+		local lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)
+		local body = vim.trim(table.concat(lines, "\n"))
+		close_all()
+		if body ~= "" and opts.on_submit then
+			opts.on_submit(body)
+		end
+	end
+
+	-- Cancel handler
+	local function cancel()
+		local lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)
+		local body = vim.trim(table.concat(lines, "\n"))
+		close_all()
+		if opts.on_cancel and body ~= "" then
+			opts.on_cancel(lines)
+		end
+	end
+
+	-- Helper to scroll upper window from lower
+	local function scroll_upper(keys)
+		local termcodes = vim.api.nvim_replace_termcodes(keys, true, false, true)
+		return function()
+			if vim.api.nvim_win_is_valid(upper_win) then
+				vim.api.nvim_win_call(upper_win, function()
+					vim.cmd("normal! " .. termcodes)
+				end)
+			end
+		end
+	end
+
+	-- Lower window keymaps
+	vim.keymap.set("n", "<CR>", submit, { buffer = lower_buf, desc = "Submit reply" })
+	vim.keymap.set("n", "q", cancel, { buffer = lower_buf, desc = "Save draft" })
+	vim.keymap.set("n", "<Esc>", cancel, { buffer = lower_buf, desc = "Save draft" })
+	vim.keymap.set("n", "<Tab>", function()
+		if vim.api.nvim_win_is_valid(upper_win) then
+			vim.api.nvim_set_current_win(upper_win)
+		end
+	end, { buffer = lower_buf, desc = "Go to comments" })
+	vim.keymap.set(
+		{ "n", "i" },
+		"<C-u>",
+		scroll_upper("<C-u>"),
+		{ buffer = lower_buf, nowait = true, desc = "Scroll thread up" }
+	)
+	vim.keymap.set(
+		{ "n", "i" },
+		"<C-d>",
+		scroll_upper("<C-d>"),
+		{ buffer = lower_buf, nowait = true, desc = "Scroll thread down" }
+	)
+
+	-- Upper window keymaps
+	vim.keymap.set("n", "q", cancel, { buffer = upper_buf, desc = "Save draft" })
+	vim.keymap.set("n", "<Esc>", cancel, { buffer = upper_buf, desc = "Save draft" })
+	vim.keymap.set("n", "<Tab>", function()
+		if vim.api.nvim_win_is_valid(lower_win) then
+			vim.api.nvim_set_current_win(lower_win)
+		end
+	end, { buffer = upper_buf, desc = "Go to input" })
+
+	-- Autocmd: close both when one closes
+	local augroup = vim.api.nvim_create_augroup("fude_reply_window", { clear = true })
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = augroup,
+		pattern = tostring(upper_win) .. "," .. tostring(lower_win),
+		callback = function()
+			vim.schedule(function()
+				close_all()
+				pcall(vim.api.nvim_del_augroup_by_id, augroup)
+			end)
+		end,
+	})
+
+	-- Start in insert mode
+	vim.cmd("startinsert")
 end
 
 return M

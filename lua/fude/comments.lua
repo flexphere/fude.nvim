@@ -81,6 +81,51 @@ function M.find_comment_by_id(comment_id, comment_map)
 	return nil
 end
 
+--- Get all comments in a thread given any comment in the thread.
+--- @param comment_id number
+--- @param all_comments table[] flat array of all comments
+--- @return table[] thread comments sorted by created_at
+function M.get_comment_thread(comment_id, all_comments)
+	-- Build lookup by id
+	local by_id = {}
+	for _, c in ipairs(all_comments) do
+		by_id[c.id] = c
+	end
+
+	-- Find root by following in_reply_to_id chain
+	local current = by_id[comment_id]
+	if not current then
+		return {}
+	end
+
+	while current.in_reply_to_id and by_id[current.in_reply_to_id] do
+		current = by_id[current.in_reply_to_id]
+	end
+	local root_id = current.id
+
+	-- Collect all comments in thread (root + replies)
+	local thread = { current }
+	for _, c in ipairs(all_comments) do
+		if c.id ~= root_id then
+			-- Check if this comment's chain leads to root
+			local node = c
+			while node.in_reply_to_id and by_id[node.in_reply_to_id] do
+				node = by_id[node.in_reply_to_id]
+			end
+			if node.id == root_id then
+				table.insert(thread, c)
+			end
+		end
+	end
+
+	-- Sort by created_at
+	table.sort(thread, function(a, b)
+		return (a.created_at or "") < (b.created_at or "")
+	end)
+
+	return thread
+end
+
 --- Parse a draft key string into its components.
 --- @param key string "path:start:end" or "reply:comment_id"
 --- @return table|nil parsed key components
@@ -636,39 +681,40 @@ function M.reply_to_comment(comment_id)
 			return
 		end
 		local line = vim.fn.line(".")
-		local comments = M.get_comments_at(rel_path, line)
-		if #comments == 0 then
+		local line_comments = M.get_comments_at(rel_path, line)
+		if #line_comments == 0 then
 			vim.notify("fude.nvim: No comments on this line to reply to", vim.log.levels.INFO)
 			return
 		end
-		comment_id = comments[#comments].id
+		comment_id = line_comments[#line_comments].id
+	end
+
+	-- Get the full thread for this comment
+	local thread = M.get_comment_thread(comment_id, state.comments or {})
+	if #thread == 0 then
+		vim.notify("fude.nvim: Comment not found", vim.log.levels.WARN)
+		return
 	end
 
 	-- GitHub API doesn't allow replying to replies, find top-level comment
 	local reply_target_id = M.get_reply_target_id(comment_id, state.comment_map or {})
 
 	local draft_key = "reply:" .. reply_target_id
-	local draft = state.drafts[draft_key]
 
-	ui.open_comment_input(function(body)
-		if not body then
-			return
-		end
+	ui.open_reply_window(thread, {
+		on_submit = function(body)
+			state.drafts[draft_key] = nil
 
-		state.drafts[draft_key] = nil
-
-		gh.reply_to_comment(state.pr_number, reply_target_id, body, function(err, _)
-			if err then
-				vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
-				return
-			end
-			vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
-			M.fetch_comments()
-		end)
-	end, {
-		initial_lines = draft or nil,
-		submit_on_enter = true,
-		on_save = function(lines)
+			gh.reply_to_comment(state.pr_number, reply_target_id, body, function(err, _)
+				if err then
+					vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
+					return
+				end
+				vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
+				M.fetch_comments()
+			end)
+		end,
+		on_cancel = function(lines)
 			state.drafts[draft_key] = lines
 			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
 			ui.refresh_extmarks()
