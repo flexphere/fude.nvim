@@ -123,6 +123,89 @@ function M.format_submit_result(succeeded, failed, total)
 	return string.format("Submitted %d/%d drafts (%d failed)", succeeded, total, failed), vim.log.levels.WARN
 end
 
+--- Build review comments array from drafts.
+--- Only "comment" type drafts can be included in a review.
+--- Replies and issue_comments are excluded.
+--- @param drafts table<string, string[]> draft_key -> lines
+--- @return table { comments: table[], excluded: table<string, string> }
+function M.build_review_comments(drafts)
+	local comments = {}
+	local excluded = {}
+
+	for key, lines in pairs(drafts) do
+		local parsed = M.parse_draft_key(key)
+		if not parsed then
+			excluded[key] = "invalid_key"
+		elseif parsed.type == "reply" then
+			excluded[key] = "reply"
+		elseif parsed.type == "issue_comment" then
+			excluded[key] = "issue_comment"
+		elseif parsed.type == "comment" then
+			local body = table.concat(lines, "\n")
+			local comment = {
+				path = parsed.path,
+				body = body,
+				line = parsed.end_line,
+				side = "RIGHT",
+			}
+			if parsed.start_line ~= parsed.end_line then
+				comment.start_line = parsed.start_line
+				comment.start_side = "RIGHT"
+			end
+			table.insert(comments, comment)
+		end
+	end
+
+	return { comments = comments, excluded = excluded }
+end
+
+--- Submit drafts as a single review.
+--- Only "comment" type drafts are included. Replies and issue_comments are excluded.
+--- @param event string "COMMENT", "APPROVE", or "REQUEST_CHANGES"
+--- @param body string|nil review body (optional)
+--- @param callback fun(err: string|nil, excluded_count: number)
+function M.submit_as_review(event, body, callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active", 0)
+		return
+	end
+
+	local sha, sha_err = gh.get_head_sha()
+	if not sha then
+		callback(sha_err or "Failed to get HEAD SHA", 0)
+		return
+	end
+
+	local result = M.build_review_comments(state.drafts)
+	local excluded_count = vim.tbl_count(result.excluded)
+
+	if #result.comments == 0 and (not body or body == "") then
+		callback("No comments to submit", excluded_count)
+		return
+	end
+
+	gh.create_review(state.pr_number, sha, body, event, result.comments, function(err, _)
+		if err then
+			callback(err, excluded_count)
+			return
+		end
+
+		-- Clear submitted drafts (only "comment" type)
+		for key, _ in pairs(state.drafts) do
+			local parsed = M.parse_draft_key(key)
+			if parsed and parsed.type == "comment" then
+				state.drafts[key] = nil
+			end
+		end
+
+		ui.refresh_extmarks()
+		M.fetch_comments()
+
+		callback(nil, excluded_count)
+	end)
+end
+
 --- Submit multiple draft comments sequentially.
 --- @param draft_entries table[] { draft_key, draft_lines, parsed }
 --- @param callback fun(succeeded: number, failed: number)
@@ -254,35 +337,16 @@ function M.create_comment(is_visual)
 	local draft = state.drafts[draft_key]
 
 	ui.open_comment_input(function(body)
-		if not body then
-			return
+		if body then
+			-- <CR> pressed: save as draft (not posting to API)
+			state.drafts[draft_key] = vim.split(body, "\n")
+			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			ui.refresh_extmarks()
 		end
-
-		state.drafts[draft_key] = nil
-
-		local sha, sha_err = gh.get_head_sha()
-		if not sha then
-			vim.notify("reviewit.nvim: " .. (sha_err or "Unknown error"), vim.log.levels.ERROR)
-			return
-		end
-
-		local on_complete = function(post_err, _)
-			if post_err then
-				vim.notify("reviewit.nvim: Failed to post comment: " .. post_err, vim.log.levels.ERROR)
-				return
-			end
-			vim.notify("reviewit.nvim: Comment posted", vim.log.levels.INFO)
-			M.fetch_comments()
-		end
-
-		if start_line == end_line then
-			gh.create_comment(state.pr_number, sha, rel_path, end_line, body, on_complete)
-		else
-			gh.create_comment_range(state.pr_number, sha, rel_path, start_line, end_line, body, on_complete)
-		end
+		-- nil: q pressed, cancel without saving
 	end, {
 		initial_lines = draft or nil,
-		on_cancel = function(lines)
+		on_save = function(lines)
 			state.drafts[draft_key] = lines
 			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
 			ui.refresh_extmarks()
@@ -359,9 +423,11 @@ function M.reply_to_comment(comment_id)
 		end)
 	end, {
 		initial_lines = draft or nil,
-		on_cancel = function(lines)
+		submit_on_enter = true,
+		on_save = function(lines)
 			state.drafts[draft_key] = lines
 			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			ui.refresh_extmarks()
 		end,
 	})
 end
@@ -553,37 +619,18 @@ function M.suggest_change(is_visual)
 	table.insert(initial_lines, "```")
 
 	ui.open_comment_input(function(body)
-		if not body then
-			return
+		if body then
+			-- <CR> pressed: save as draft (not posting to API)
+			state.drafts[draft_key] = vim.split(body, "\n")
+			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			ui.refresh_extmarks()
 		end
-
-		state.drafts[draft_key] = nil
-
-		local sha, sha_err = gh.get_head_sha()
-		if not sha then
-			vim.notify("reviewit.nvim: " .. (sha_err or "Unknown error"), vim.log.levels.ERROR)
-			return
-		end
-
-		local on_complete = function(post_err, _)
-			if post_err then
-				vim.notify("reviewit.nvim: Failed to post suggestion: " .. post_err, vim.log.levels.ERROR)
-				return
-			end
-			vim.notify("reviewit.nvim: Suggestion posted", vim.log.levels.INFO)
-			M.fetch_comments()
-		end
-
-		if start_line == end_line then
-			gh.create_comment(state.pr_number, sha, rel_path, end_line, body, on_complete)
-		else
-			gh.create_comment_range(state.pr_number, sha, rel_path, start_line, end_line, body, on_complete)
-		end
+		-- nil: q pressed, cancel without saving
 	end, {
 		initial_lines = draft or initial_lines,
 		title = " Suggest Change ",
 		cursor_pos = draft and nil or { 2, 0 },
-		on_cancel = function(lines)
+		on_save = function(lines)
 			state.drafts[draft_key] = lines
 			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
 			ui.refresh_extmarks()
@@ -776,6 +823,33 @@ function M.list_drafts()
 							ui.refresh_extmarks()
 							M.fetch_comments()
 						end)
+					end)
+				end)
+				map({ "n", "i" }, "<C-r>", function()
+					actions.close(prompt_bufnr)
+					-- Submit drafts as a review
+					ui.select_review_event(function(event)
+						if not event then
+							return
+						end
+						ui.open_comment_input(function(body)
+							M.submit_as_review(event, body, function(err, excluded_count)
+								if err then
+									vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+									return
+								end
+								local msg = "Review submitted"
+								if excluded_count > 0 then
+									msg = msg
+										.. string.format(" (%d drafts excluded: replies/PR comments)", excluded_count)
+								end
+								vim.notify("reviewit.nvim: " .. msg, vim.log.levels.INFO)
+							end)
+						end, {
+							title = " Review Body (optional) ",
+							footer = " <CR> submit | q skip body ",
+							submit_on_enter = true,
+						})
 					end)
 				end)
 				return true
