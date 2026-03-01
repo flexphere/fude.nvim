@@ -182,6 +182,7 @@ describe("deduplicate_checks", function()
 		}
 		local result = ui.deduplicate_checks(checks)
 		assert.are.equal(2, #result)
+		-- lint should be the latest (SUCCESS), test stays
 		local lint_found = false
 		for _, check in ipairs(result) do
 			if check.name == "lint" then
@@ -495,6 +496,7 @@ describe("build_overview_lines", function()
 			},
 		}
 		local result = ui.build_overview_lines(pr, {}, identity)
+		-- Should show 2/2 passed (deduplicated lint is SUCCESS)
 		local found_header = false
 		for _, line in ipairs(result.lines) do
 			if line:find("CI STATUS") and line:find("2/2 passed") then
@@ -502,5 +504,28 @@ describe("build_overview_lines", function()
 			end
 		end
 		assert.is_true(found_header)
+	end)
+
+	it("returns check_urls mapping for detailsUrl", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			statusCheckRollup = {
+				{ name = "lint", status = "COMPLETED", conclusion = "SUCCESS", detailsUrl = "https://example.com/lint" },
+				{ name = "test", status = "COMPLETED", conclusion = "FAILURE" },
+			},
+		}
+		local result = ui.build_overview_lines(pr, {}, identity)
+		assert.is_table(result.check_urls)
+		-- Should have at least one URL mapped
+		local has_url = false
+		for _, url in pairs(result.check_urls) do
+			if url == "https://example.com/lint" then
+				has_url = true
+			end
+		end
+		assert.is_true(has_url)
 	end)
 end)

@@ -94,6 +94,7 @@ Using lazy.nvim: >lua
     issue-level comments. The CI status section shows each check run
     with pass/fail indicators and a summary count. Duplicate checks
     (re-runs) are deduplicated, showing only the latest result.
+    Press `gx` on a check line to open the workflow URL.
     Requires an active review session.
     Press `c` to write a new comment, `R` to refresh, `q` to close.
 

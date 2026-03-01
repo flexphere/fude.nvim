@@ -17,7 +17,8 @@ end
 --- Highlight GitHub references (#123) and URLs in a buffer, and set up gx keymap.
 --- @param buf number buffer handle
 --- @param repo_url string|nil repository base URL
-local function setup_github_refs(buf, repo_url)
+--- @param line_urls table|nil optional mapping of 0-indexed line number to URL
+local function setup_github_refs(buf, repo_url, line_urls)
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 
 	for i, line in ipairs(lines) do
@@ -47,6 +48,12 @@ local function setup_github_refs(buf, repo_url)
 		local cursor = vim.api.nvim_win_get_cursor(0)
 		local row, col = cursor[1], cursor[2]
 		local current_line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1] or ""
+
+		-- Check line-level URL mapping (e.g. CI check detailsUrl)
+		if line_urls and line_urls[row - 1] then
+			vim.ui.open(line_urls[row - 1])
+			return
+		end
 
 		-- Check #\d+ reference under cursor
 		if repo_url then
@@ -175,7 +182,7 @@ end
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
 --- @param format_date_fn fun(s: string): string
---- @return table { lines: string[], hl_ranges: table[] }
+--- @return table { lines: string[], hl_ranges: table[], check_urls: table }
 function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 	local lines = {}
 	local hl_ranges = {}
@@ -221,6 +228,7 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 	-- CI Status
 	local raw_checks = pr_info.statusCheckRollup or {}
 	local checks = M.deduplicate_checks(raw_checks)
+	local check_urls = {}
 	table.insert(lines, "")
 	table.insert(lines, string.rep("-", 50))
 	local ci_header_line = #lines
@@ -242,6 +250,10 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 			local conclusion = check.conclusion or check.status or ""
 			table.insert(lines, string.format("%s %s  %s", symbol, name, conclusion:lower()))
 			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
+			local url = check.detailsUrl or check.targetUrl
+			if url then
+				check_urls[#lines - 1] = url
+			end
 		end
 	end
 
@@ -278,7 +290,7 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(lines, " c: new comment  R: refresh  q: close")
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
-	return { lines = lines, hl_ranges = hl_ranges }
+	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls }
 end
 
 --- Refresh extmarks (virtual text) for the current buffer.
@@ -562,7 +574,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		end
 	end, { buffer = buf, desc = "Refresh PR overview" })
 
-	setup_github_refs(buf, get_repo_base_url(pr_info.url))
+	setup_github_refs(buf, get_repo_base_url(pr_info.url), result.check_urls)
 end
 
 return M
