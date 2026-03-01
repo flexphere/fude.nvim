@@ -281,14 +281,38 @@ function M.clear_all_extmarks()
 	end
 end
 
+--- Select review event type using vim.ui.select.
+--- @param callback fun(event: string|nil) called with "COMMENT", "APPROVE", "REQUEST_CHANGES", or nil if cancelled
+function M.select_review_event(callback)
+	local items = {
+		{ label = "Comment", value = "COMMENT" },
+		{ label = "Approve", value = "APPROVE" },
+		{ label = "Request Changes", value = "REQUEST_CHANGES" },
+	}
+	vim.ui.select(items, {
+		prompt = "Review type:",
+		format_item = function(item)
+			return item.label
+		end,
+	}, function(item)
+		if item then
+			callback(item.value)
+		else
+			callback(nil)
+		end
+	end)
+end
+
 --- Open a floating window to compose a comment.
 --- @param callback fun(body: string|nil) called with comment body or nil if cancelled
---- @param opts table|nil optional settings: initial_lines, title, footer, cursor_pos
+--- @param opts table|nil optional settings: initial_lines, title, footer, cursor_pos, submit_on_enter, on_save
 function M.open_comment_input(callback, opts)
 	opts = opts or {}
+	local submit_on_enter = opts.submit_on_enter or false
 	local initial_lines = opts.initial_lines or { "" }
 	local title = opts.title or " Review Comment "
-	local footer = opts.footer or " <CR> submit | q save draft "
+	local default_footer = submit_on_enter and " <CR> submit | q save draft " or " <CR> save draft | q cancel "
+	local footer = opts.footer or default_footer
 
 	local buf = vim.api.nvim_create_buf(false, true)
 
@@ -331,22 +355,32 @@ function M.open_comment_input(callback, opts)
 		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 		local body = vim.trim(table.concat(lines, "\n"))
 		vim.api.nvim_win_close(win, true)
+		if not submit_on_enter then
+			-- Draft mode: save draft via on_save callback
+			if opts.on_save and body ~= "" then
+				opts.on_save(lines)
+			end
+		end
 		if callback then
 			callback(body ~= "" and body or nil)
 		end
-	end, { buffer = buf, desc = "Submit review comment" })
+	end, { buffer = buf, desc = submit_on_enter and "Submit" or "Save draft" })
 
 	vim.keymap.set("n", "q", function()
 		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 		local body = vim.trim(table.concat(lines, "\n"))
 		vim.api.nvim_win_close(win, true)
-		if opts.on_cancel and body ~= "" then
-			opts.on_cancel(lines)
+		if submit_on_enter then
+			-- Submit mode: save draft on cancel
+			if opts.on_save and body ~= "" then
+				opts.on_save(lines)
+			end
 		end
+		-- In draft mode (default), q cancels without saving
 		if callback then
 			callback(nil)
 		end
-	end, { buffer = buf, desc = "Cancel review comment" })
+	end, { buffer = buf, desc = submit_on_enter and "Save draft" or "Cancel" })
 end
 
 --- Show comments in a floating window.

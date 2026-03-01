@@ -266,3 +266,79 @@ describe("format_submit_result", function()
 		assert.are.equal(vim.log.levels.WARN, level)
 	end)
 end)
+
+describe("build_review_comments", function()
+	it("builds single-line comment", function()
+		local drafts = {
+			["src/foo.lua:10:10"] = { "fix this bug" },
+		}
+		local result = comments.build_review_comments(drafts)
+		assert.are.equal(1, #result.comments)
+		assert.are.equal("src/foo.lua", result.comments[1].path)
+		assert.are.equal(10, result.comments[1].line)
+		assert.are.equal("fix this bug", result.comments[1].body)
+		assert.are.equal("RIGHT", result.comments[1].side)
+		assert.is_nil(result.comments[1].start_line)
+		assert.are.same({}, result.excluded)
+	end)
+
+	it("builds multi-line comment with start_line", function()
+		local drafts = {
+			["src/bar.lua:5:15"] = { "refactor this", "block" },
+		}
+		local result = comments.build_review_comments(drafts)
+		assert.are.equal(1, #result.comments)
+		assert.are.equal("src/bar.lua", result.comments[1].path)
+		assert.are.equal(15, result.comments[1].line)
+		assert.are.equal(5, result.comments[1].start_line)
+		assert.are.equal("RIGHT", result.comments[1].side)
+		assert.are.equal("RIGHT", result.comments[1].start_side)
+		assert.are.equal("refactor this\nblock", result.comments[1].body)
+	end)
+
+	it("excludes reply drafts", function()
+		local drafts = {
+			["reply:123"] = { "thanks!" },
+		}
+		local result = comments.build_review_comments(drafts)
+		assert.are.equal(0, #result.comments)
+		assert.are.equal("reply", result.excluded["reply:123"])
+	end)
+
+	it("excludes issue_comment drafts", function()
+		local drafts = {
+			["issue_comment"] = { "pr comment" },
+		}
+		local result = comments.build_review_comments(drafts)
+		assert.are.equal(0, #result.comments)
+		assert.are.equal("issue_comment", result.excluded["issue_comment"])
+	end)
+
+	it("excludes invalid keys", function()
+		local drafts = {
+			["invalid"] = { "body" },
+		}
+		local result = comments.build_review_comments(drafts)
+		assert.are.equal(0, #result.comments)
+		assert.are.equal("invalid_key", result.excluded["invalid"])
+	end)
+
+	it("handles mixed drafts", function()
+		local drafts = {
+			["src/a.lua:1:1"] = { "comment 1" },
+			["src/b.lua:10:20"] = { "comment 2" },
+			["reply:456"] = { "reply text" },
+			["issue_comment"] = { "pr text" },
+		}
+		local result = comments.build_review_comments(drafts)
+		assert.are.equal(2, #result.comments)
+		assert.are.equal("reply", result.excluded["reply:456"])
+		assert.are.equal("issue_comment", result.excluded["issue_comment"])
+	end)
+
+	it("returns empty result for empty drafts", function()
+		local result = comments.build_review_comments({})
+		assert.are.equal(0, #result.comments)
+		assert.are.same({}, result.excluded)
+	end)
+end)
