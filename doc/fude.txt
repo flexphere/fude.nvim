@@ -272,6 +272,11 @@ Default configuration: >lua
       -- Section marks (jump with 'd, 'c in left pane)
       marks = { description = "d", comments = "c" },
     },
+    -- Flash highlight when navigating to a comment line (]c/[c)
+    flash = {
+      duration = 200, -- ms
+      hl_group = "Visual",
+    },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
   })
@@ -332,6 +337,11 @@ Options:
                   Use `'d`, `'c` to jump to each section.
                   (default: { description = "d",
                   comments = "c" }).
+
+`flash.duration`    Duration in milliseconds for the flash highlight
+                  when navigating to a comment line (default: 200).
+
+`flash.hl_group`    Highlight group for the flash effect (default: "Visual").
 
 `auto_view_comment` When true, automatically opens the comment viewer
                   float after navigating to a comment line via ]c, [c,

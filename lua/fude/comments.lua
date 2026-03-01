@@ -750,6 +750,7 @@ function M.next_comment()
 	local target = M.find_next_comment_line(current_line, comment_lines)
 	if target then
 		vim.api.nvim_win_set_cursor(0, { target, 0 })
+		ui.flash_line(target)
 		if config.opts.auto_view_comment then
 			M.view_comments()
 		end
@@ -872,6 +873,7 @@ function M.list_comments()
 						vim.cmd("edit " .. vim.fn.fnameescape(selection.filename))
 						local lnum = math.max(1, selection.lnum)
 						pcall(vim.api.nvim_win_set_cursor, 0, { lnum, 0 })
+						ui.flash_line(lnum)
 						if config.opts.auto_view_comment then
 							M.view_comments()
 						end
@@ -979,6 +981,7 @@ function M.prev_comment()
 	local target = M.find_prev_comment_line(current_line, comment_lines)
 	if target then
 		vim.api.nvim_win_set_cursor(0, { target, 0 })
+		ui.flash_line(target)
 		if config.opts.auto_view_comment then
 			M.view_comments()
 		end
