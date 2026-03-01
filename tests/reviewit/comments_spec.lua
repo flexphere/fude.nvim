@@ -342,3 +342,92 @@ describe("build_review_comments", function()
 		assert.are.same({}, result.excluded)
 	end)
 end)
+
+describe("build_review_comment_object", function()
+	it("builds single-line comment object", function()
+		local result = comments.build_review_comment_object("src/foo.lua", 10, 10, "fix this")
+		assert.are.equal("src/foo.lua", result.path)
+		assert.are.equal(10, result.line)
+		assert.are.equal("fix this", result.body)
+		assert.are.equal("RIGHT", result.side)
+		assert.is_nil(result.start_line)
+		assert.is_nil(result.start_side)
+	end)
+
+	it("builds multi-line comment object", function()
+		local result = comments.build_review_comment_object("src/bar.lua", 5, 15, "refactor")
+		assert.are.equal("src/bar.lua", result.path)
+		assert.are.equal(15, result.line)
+		assert.are.equal("refactor", result.body)
+		assert.are.equal("RIGHT", result.side)
+		assert.are.equal(5, result.start_line)
+		assert.are.equal("RIGHT", result.start_side)
+	end)
+end)
+
+describe("pending_comments_to_array", function()
+	it("converts map to array", function()
+		local pending = {
+			["a.lua:1:1"] = { path = "a.lua", line = 1, body = "comment 1" },
+			["b.lua:10:20"] = { path = "b.lua", line = 20, start_line = 10, body = "comment 2" },
+		}
+		local result = comments.pending_comments_to_array(pending)
+		assert.are.equal(2, #result)
+	end)
+
+	it("returns empty array for empty map", function()
+		local result = comments.pending_comments_to_array({})
+		assert.are.same({}, result)
+	end)
+end)
+
+describe("build_pending_comments_from_review", function()
+	it("builds map from single-line comments", function()
+		local review_comments = {
+			{ path = "a.lua", line = 10, body = "fix this", side = "RIGHT" },
+		}
+		local result = comments.build_pending_comments_from_review(review_comments)
+		local key = "a.lua:10:10"
+		assert.is_not_nil(result[key])
+		assert.are.equal("a.lua", result[key].path)
+		assert.are.equal(10, result[key].line)
+		assert.are.equal("fix this", result[key].body)
+		assert.is_nil(result[key].start_line)
+	end)
+
+	it("builds map from multi-line comments", function()
+		local review_comments = {
+			{ path = "b.lua", line = 20, start_line = 10, body = "range comment", side = "RIGHT", start_side = "RIGHT" },
+		}
+		local result = comments.build_pending_comments_from_review(review_comments)
+		local key = "b.lua:10:20"
+		assert.is_not_nil(result[key])
+		assert.are.equal("b.lua", result[key].path)
+		assert.are.equal(20, result[key].line)
+		assert.are.equal(10, result[key].start_line)
+	end)
+
+	it("uses original_line as fallback", function()
+		local review_comments = {
+			{ path = "c.lua", original_line = 5, body = "old line" },
+		}
+		local result = comments.build_pending_comments_from_review(review_comments)
+		local key = "c.lua:5:5"
+		assert.is_not_nil(result[key])
+		assert.are.equal(5, result[key].line)
+	end)
+
+	it("skips comments without path or line", function()
+		local review_comments = {
+			{ path = nil, line = 10, body = "no path" },
+			{ path = "a.lua", line = nil, original_line = nil, body = "no line" },
+		}
+		local result = comments.build_pending_comments_from_review(review_comments)
+		assert.are.same({}, result)
+	end)
+
+	it("returns empty map for empty input", function()
+		local result = comments.build_pending_comments_from_review({})
+		assert.are.same({}, result)
+	end)
+end)

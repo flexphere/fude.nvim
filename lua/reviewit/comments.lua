@@ -160,7 +160,8 @@ function M.build_review_comments(drafts)
 end
 
 --- Submit drafts as a single review.
---- Only "comment" type drafts are included. Replies and issue_comments are excluded.
+--- If pending_comments exist (already on GitHub), submits the existing pending review.
+--- Otherwise, creates a new review with local drafts.
 --- @param event string "COMMENT", "APPROVE", or "REQUEST_CHANGES"
 --- @param body string|nil review body (optional)
 --- @param callback fun(err: string|nil, excluded_count: number)
@@ -171,14 +172,44 @@ function M.submit_as_review(event, body, callback)
 		return
 	end
 
+	-- Count excluded drafts (replies and issue_comments cannot be submitted as review)
+	local result = M.build_review_comments(state.drafts)
+	local excluded_count = vim.tbl_count(result.excluded)
+
+	-- If we have a pending review on GitHub, submit it
+	if state.pending_review_id and vim.tbl_count(state.pending_comments) > 0 then
+		gh.submit_review(state.pr_number, state.pending_review_id, event, body, function(err, _)
+			if err then
+				callback(err, excluded_count)
+				return
+			end
+
+			-- Clear pending state
+			state.pending_review_id = nil
+			state.pending_comments = {}
+
+			-- Also clear local drafts that were comment type
+			for key, _ in pairs(state.drafts) do
+				local parsed = M.parse_draft_key(key)
+				if parsed and parsed.type == "comment" then
+					state.drafts[key] = nil
+				end
+			end
+
+			ui.refresh_extmarks()
+			M.fetch_comments()
+
+			callback(nil, excluded_count)
+		end)
+		return
+	end
+
+	-- No pending review on GitHub, check local drafts
 	local sha, sha_err = gh.get_head_sha()
 	if not sha then
 		callback(sha_err or "Failed to get HEAD SHA", 0)
 		return
 	end
-
-	local result = M.build_review_comments(state.drafts)
-	local excluded_count = vim.tbl_count(result.excluded)
 
 	if #result.comments == 0 and (not body or body == "") then
 		callback("No comments to submit", excluded_count)
@@ -279,6 +310,78 @@ function M.fetch_comments()
 	end)
 end
 
+--- Build pending_comments from review comments array.
+--- @param comments table[] array of review comment objects from GitHub
+--- @return table<string, table> map of key -> comment data
+function M.build_pending_comments_from_review(comments)
+	local result = {}
+	for _, c in ipairs(comments) do
+		local path = c.path
+		local line = c.line or c.original_line
+		local start_line = c.start_line or line
+		if path and line then
+			local key = path .. ":" .. start_line .. ":" .. line
+			result[key] = {
+				path = path,
+				body = c.body,
+				line = line,
+				side = c.side or "RIGHT",
+			}
+			if start_line ~= line then
+				result[key].start_line = start_line
+				result[key].start_side = c.start_side or "RIGHT"
+			end
+		end
+	end
+	return result
+end
+
+--- Fetch existing pending review from GitHub and load into state.
+function M.fetch_pending_review()
+	local state = config.state
+	if not state.pr_number then
+		return
+	end
+
+	gh.get_reviews(state.pr_number, function(err, reviews)
+		if err then
+			vim.notify("reviewit.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
+			return
+		end
+
+		-- Find pending review for current user
+		local pending_review = nil
+		for _, review in ipairs(reviews or {}) do
+			if review.state == "PENDING" then
+				pending_review = review
+				break
+			end
+		end
+
+		if not pending_review then
+			return
+		end
+
+		state.pending_review_id = pending_review.id
+
+		-- Fetch comments for this pending review
+		gh.get_review_comments(state.pr_number, pending_review.id, function(comments_err, comments)
+			if comments_err then
+				vim.notify("reviewit.nvim: Failed to fetch pending comments: " .. comments_err, vim.log.levels.DEBUG)
+				return
+			end
+
+			state.pending_comments = M.build_pending_comments_from_review(comments or {})
+			ui.refresh_extmarks()
+
+			local count = vim.tbl_count(state.pending_comments)
+			if count > 0 then
+				vim.notify(string.format("reviewit.nvim: Loaded %d pending comments", count), vim.log.levels.INFO)
+			end
+		end)
+	end)
+end
+
 --- Get comments at a specific file and line.
 --- @param rel_path string repo-relative file path
 --- @param line number line number
@@ -307,6 +410,96 @@ function M.get_comment_lines(rel_path)
 	return lines
 end
 
+--- Build a review comment object from parsed draft key components.
+--- @param path string repo-relative file path
+--- @param start_line number start line number
+--- @param end_line number end line number
+--- @param body string comment body
+--- @return table review comment object for GitHub API
+function M.build_review_comment_object(path, start_line, end_line, body)
+	local comment = {
+		path = path,
+		body = body,
+		line = end_line,
+		side = "RIGHT",
+	}
+	if start_line ~= end_line then
+		comment.start_line = start_line
+		comment.start_side = "RIGHT"
+	end
+	return comment
+end
+
+--- Convert pending_comments table to array of review comment objects.
+--- @param pending_comments table<string, table> map of key -> comment data
+--- @return table[] array of review comment objects
+function M.pending_comments_to_array(pending_comments)
+	local result = {}
+	for _, comment_data in pairs(pending_comments) do
+		table.insert(result, comment_data)
+	end
+	return result
+end
+
+--- Sync pending comments to GitHub as a pending review.
+--- This will delete any existing pending review and create a new one with all comments.
+--- @param callback fun(err: string|nil)
+function M.sync_pending_review(callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active")
+		return
+	end
+
+	local sha, sha_err = gh.get_head_sha()
+	if not sha then
+		callback(sha_err or "Failed to get HEAD SHA")
+		return
+	end
+
+	local comments_array = M.pending_comments_to_array(state.pending_comments)
+
+	-- If no pending comments, just delete any existing pending review
+	if #comments_array == 0 then
+		if state.pending_review_id then
+			gh.delete_review(state.pr_number, state.pending_review_id, function(err)
+				if not err then
+					state.pending_review_id = nil
+				end
+				callback(err)
+			end)
+		else
+			callback(nil)
+		end
+		return
+	end
+
+	local function create_new_review()
+		gh.create_pending_review(state.pr_number, sha, comments_array, function(err, data)
+			if err then
+				callback(err)
+				return
+			end
+			state.pending_review_id = data and data.id
+			callback(nil)
+		end)
+	end
+
+	-- If there's an existing pending review, delete it first
+	if state.pending_review_id then
+		gh.delete_review(state.pr_number, state.pending_review_id, function(err)
+			if err then
+				-- Ignore delete error (review might already be gone)
+				vim.notify("reviewit.nvim: Note: " .. err, vim.log.levels.DEBUG)
+			end
+			state.pending_review_id = nil
+			create_new_review()
+		end)
+	else
+		create_new_review()
+	end
+end
+
 --- Create a new comment on the current line or visual selection.
 --- @param is_visual boolean whether the comment is for a visual selection
 function M.create_comment(is_visual)
@@ -333,22 +526,36 @@ function M.create_comment(is_visual)
 		end_line = start_line
 	end
 
-	local draft_key = rel_path .. ":" .. start_line .. ":" .. end_line
-	local draft = state.drafts[draft_key]
+	local pending_key = rel_path .. ":" .. start_line .. ":" .. end_line
+	local existing = state.pending_comments[pending_key]
+	local initial_lines = existing and vim.split(existing.body, "\n") or nil
 
 	ui.open_comment_input(function(body)
 		if body then
-			-- <CR> pressed: save as draft (not posting to API)
-			state.drafts[draft_key] = vim.split(body, "\n")
-			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
-			ui.refresh_extmarks()
+			-- <CR> pressed: save as pending review on GitHub
+			local comment_obj = M.build_review_comment_object(rel_path, start_line, end_line, body)
+			state.pending_comments[pending_key] = comment_obj
+
+			M.sync_pending_review(function(err)
+				vim.schedule(function()
+					if err then
+						vim.notify("reviewit.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
+						-- Remove from pending_comments on failure
+						state.pending_comments[pending_key] = nil
+					else
+						vim.notify("reviewit.nvim: Pending comment saved", vim.log.levels.INFO)
+					end
+					ui.refresh_extmarks()
+				end)
+			end)
 		end
 		-- nil: q pressed, cancel without saving
 	end, {
-		initial_lines = draft or nil,
+		initial_lines = initial_lines,
 		on_save = function(lines)
-			state.drafts[draft_key] = lines
-			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			-- Save as local draft (fallback for q key in submit_on_enter mode)
+			state.drafts[pending_key] = lines
+			vim.notify("reviewit.nvim: Draft saved locally", vim.log.levels.INFO)
 			ui.refresh_extmarks()
 		end,
 	})
@@ -610,29 +817,43 @@ function M.suggest_change(is_visual)
 		end_line = start_line
 	end
 
-	local draft_key = rel_path .. ":" .. start_line .. ":" .. end_line
-	local draft = state.drafts[draft_key]
+	local pending_key = rel_path .. ":" .. start_line .. ":" .. end_line
+	local existing = state.pending_comments[pending_key]
 
 	local source_lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
-	local initial_lines = { "```suggestion" }
-	vim.list_extend(initial_lines, source_lines)
-	table.insert(initial_lines, "```")
+	local suggestion_lines = { "```suggestion" }
+	vim.list_extend(suggestion_lines, source_lines)
+	table.insert(suggestion_lines, "```")
+
+	local initial_lines = existing and vim.split(existing.body, "\n") or suggestion_lines
+	local cursor_pos = existing and nil or { 2, 0 }
 
 	ui.open_comment_input(function(body)
 		if body then
-			-- <CR> pressed: save as draft (not posting to API)
-			state.drafts[draft_key] = vim.split(body, "\n")
-			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
-			ui.refresh_extmarks()
+			-- <CR> pressed: save as pending review on GitHub
+			local comment_obj = M.build_review_comment_object(rel_path, start_line, end_line, body)
+			state.pending_comments[pending_key] = comment_obj
+
+			M.sync_pending_review(function(err)
+				vim.schedule(function()
+					if err then
+						vim.notify("reviewit.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
+						state.pending_comments[pending_key] = nil
+					else
+						vim.notify("reviewit.nvim: Pending suggestion saved", vim.log.levels.INFO)
+					end
+					ui.refresh_extmarks()
+				end)
+			end)
 		end
 		-- nil: q pressed, cancel without saving
 	end, {
-		initial_lines = draft or initial_lines,
+		initial_lines = initial_lines,
 		title = " Suggest Change ",
-		cursor_pos = draft and nil or { 2, 0 },
+		cursor_pos = cursor_pos,
 		on_save = function(lines)
-			state.drafts[draft_key] = lines
-			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			state.drafts[pending_key] = lines
+			vim.notify("reviewit.nvim: Draft saved locally", vim.log.levels.INFO)
 			ui.refresh_extmarks()
 		end,
 	})
@@ -840,8 +1061,7 @@ function M.list_drafts()
 								end
 								local msg = "Review submitted"
 								if excluded_count > 0 then
-									msg = msg
-										.. string.format(" (%d drafts excluded: replies/PR comments)", excluded_count)
+									msg = msg .. string.format(" (%d drafts excluded: replies/PR comments)", excluded_count)
 								end
 								vim.notify("reviewit.nvim: " .. msg, vim.log.levels.INFO)
 							end)

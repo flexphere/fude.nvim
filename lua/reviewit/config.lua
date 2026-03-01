@@ -12,6 +12,8 @@ M.defaults = {
 		comment_hl = "DiagnosticInfo",
 		draft = "✎ draft comment",
 		draft_hl = "DiagnosticWarn",
+		pending = "⏳ pending",
+		pending_hl = "DiagnosticHint",
 	},
 	float = {
 		border = "single",
@@ -47,6 +49,8 @@ M.state = {
 	comments = {},
 	comment_map = {},
 	drafts = {},
+	pending_comments = {}, -- Comments in GitHub pending review: { [path:start:end] = { path, line, start_line?, body } }
+	pending_review_id = nil, -- Current pending review ID on GitHub
 	preview_win = nil,
 	preview_buf = nil,
 	source_win = nil,
@@ -74,6 +78,8 @@ function M.reset_state()
 		comments = {},
 		comment_map = {},
 		drafts = {},
+		pending_comments = {},
+		pending_review_id = nil,
 		preview_win = nil,
 		preview_buf = nil,
 		source_win = nil,

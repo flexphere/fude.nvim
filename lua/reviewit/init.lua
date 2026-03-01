@@ -71,7 +71,9 @@ function M.start()
 			gitsigns.change_base(state.base_ref, true)
 		end
 
-		require("reviewit.comments").fetch_comments()
+		local comments_mod = require("reviewit.comments")
+		comments_mod.fetch_comments()
+		comments_mod.fetch_pending_review()
 
 		state.augroup = vim.api.nvim_create_augroup("Reviewit", { clear = true })
 

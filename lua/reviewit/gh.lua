@@ -216,6 +216,89 @@ function M.get_head_sha()
 	return nil, "Failed to get HEAD SHA"
 end
 
+--- Get all reviews on a PR.
+--- @param pr_number number
+--- @param callback fun(err: string|nil, reviews: table|nil)
+function M.get_reviews(pr_number, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews",
+	}, callback)
+end
+
+--- Get comments for a specific review.
+--- @param pr_number number
+--- @param review_id number
+--- @param callback fun(err: string|nil, comments: table|nil)
+function M.get_review_comments(pr_number, review_id, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews/" .. review_id .. "/comments",
+	}, callback)
+end
+
+--- Delete a review (only pending reviews can be deleted).
+--- @param pr_number number
+--- @param review_id number
+--- @param callback fun(err: string|nil)
+function M.delete_review(pr_number, review_id, callback)
+	M.run({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews/" .. review_id,
+		"--method",
+		"DELETE",
+	}, function(err, _)
+		callback(err)
+	end)
+end
+
+--- Create a pending review with comments (no event = PENDING state).
+--- @param pr_number number
+--- @param commit_id string HEAD commit SHA
+--- @param review_comments table[] array of {path, line, start_line?, body, side?}
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.create_pending_review(pr_number, commit_id, review_comments, callback)
+	local payload = {
+		commit_id = commit_id,
+		comments = review_comments,
+	}
+	local json_payload = vim.json.encode(payload)
+
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews",
+		"--method",
+		"POST",
+		"--input",
+		"-",
+	}, callback, json_payload)
+end
+
+--- Submit an existing pending review.
+--- @param pr_number number
+--- @param review_id number
+--- @param event string "COMMENT", "APPROVE", or "REQUEST_CHANGES"
+--- @param body string|nil review body (optional)
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.submit_review(pr_number, review_id, event, body, callback)
+	local payload = {
+		event = event,
+	}
+	if body and body ~= "" then
+		payload.body = body
+	end
+	local json_payload = vim.json.encode(payload)
+
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews/" .. review_id .. "/events",
+		"--method",
+		"POST",
+		"--input",
+		"-",
+	}, callback, json_payload)
+end
+
 --- Create a PR review with comments.
 --- @param pr_number number
 --- @param commit_id string HEAD commit SHA

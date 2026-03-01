@@ -224,10 +224,29 @@ function M.refresh_extmarks()
 		})
 	end
 
-	-- Draft indicators
+	-- Pending comment indicators (GitHub pending review)
+	for key, comment_data in pairs(state.pending_comments) do
+		local parsed = comments_mod.parse_draft_key(key)
+		if parsed and parsed.type == "comment" and parsed.path == rel_path then
+			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, parsed.start_line - 1, 0, {
+				virt_text = {
+					{ " " .. config.opts.signs.pending, config.opts.signs.pending_hl },
+				},
+				virt_text_pos = "eol",
+				priority = 45,
+			})
+		end
+	end
+
+	-- Draft indicators (local drafts, lower priority than pending)
 	local comments_parse = comments_mod.parse_draft_key
 	local comments_find = comments_mod.find_comment_by_id
 	for key, _ in pairs(state.drafts) do
+		-- Skip if this key is already in pending_comments
+		if state.pending_comments[key] then
+			goto draft_continue
+		end
+
 		local parsed = comments_parse(key)
 		if not parsed then
 			goto draft_continue
