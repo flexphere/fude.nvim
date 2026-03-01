@@ -9,8 +9,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **PR comments** - Create, view, and reply to review comments on specific lines
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
 - **Virtual text** - Comment and draft indicators on lines with existing comments/drafts
-- **Draft comments** - Cancelled comments are saved as drafts and restored when reopened
-- **Batch submit drafts** - Submit multiple drafts at once from the Telescope draft list
+- **Draft comments** - Comments are saved as drafts and can be submitted as a review
+- **Review submission** - Submit multiple drafts as a single GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - View PR title, description, labels, and issue-level comments
@@ -39,7 +39,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   cmd = {
     "ReviewStart", "ReviewStop", "ReviewToggle", "ReviewDiff",
     "ReviewComment", "ReviewSuggest", "ReviewViewComment", "ReviewListComments",
-    "ReviewFiles", "ReviewOverview", "ReviewApprove", "ReviewBrowse",
+    "ReviewFiles", "ReviewOverview", "ReviewApprove", "ReviewSubmit", "ReviewBrowse",
   },
   keys = {
     { "<leader>et", "<cmd>ReviewToggle<cr>", desc = "Review: Toggle" },
@@ -72,11 +72,12 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 2. Start review mode: `:ReviewStart` (detects PR, fetches comments, sets up extmarks)
 3. Optionally open diff preview: `:ReviewDiff` (toggle side-by-side diff view)
 4. Navigate code normally - the preview follows your movements when open
-5. Comment on lines with `:ReviewComment`
+5. Create draft comments with `:ReviewComment` (saves as draft, not posted immediately)
 6. View existing comments with `:ReviewViewComment`
-7. Browse changed files with `:ReviewFiles`
-8. View PR overview with `:ReviewOverview`
-9. Stop review mode: `:ReviewStop`
+7. Submit all drafts as a review: `:ReviewSubmit` (select Comment/Approve/Request Changes)
+8. Browse changed files with `:ReviewFiles`
+9. View PR overview with `:ReviewOverview`
+10. Stop review mode: `:ReviewStop`
 
 ## Commands
 
@@ -86,14 +87,15 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:ReviewStop` | Stop review session |
 | `:ReviewToggle` | Toggle review session |
 | `:ReviewDiff` | Toggle diff preview window |
-| `:ReviewComment` | Comment on current line/selection |
-| `:ReviewSuggest` | Suggest change on current line/selection |
+| `:ReviewComment` | Create draft comment on current line/selection |
+| `:ReviewSuggest` | Create draft suggestion on current line/selection |
 | `:ReviewViewComment` | View comments on current line |
 | `:ReviewFiles` | List PR changed files (Telescope/quickfix) |
 | `:ReviewOverview` | Show PR overview and issue-level comments |
 | `:ReviewApprove` | Approve PR with optional comment |
 | `:ReviewListComments` | List all PR review comments (Telescope) |
-| `:ReviewListDrafts` | List all draft comments (Telescope, `<C-s>` to batch submit) |
+| `:ReviewListDrafts` | List all draft comments (Telescope, `<C-s>` individual, `<C-r>` as review) |
+| `:ReviewSubmit` | Submit drafts as a single review (Comment/Approve/Request Changes) |
 | `:ReviewBrowse` | Open PR in browser |
 
 ## Configuration

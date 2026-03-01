@@ -77,7 +77,8 @@ Using lazy.nvim: >lua
 :ReviewComment                                              *:ReviewComment*
     Create a review comment on the current line (normal mode) or
     selected lines (visual mode). Opens a floating window for
-    composing the comment. Press `<CR>` to submit, `q` to cancel.
+    composing the comment. Press `<CR>` to save as draft, `q` to cancel.
+    Drafts can be submitted as a review using |:ReviewSubmit|.
 
 :ReviewViewComment                                      *:ReviewViewComment*
     View existing review comments on the current line in a floating
@@ -98,7 +99,8 @@ Using lazy.nvim: >lua
     Suggest a code change on the current line (normal mode) or
     selected lines (visual mode). Opens a floating window pre-filled
     with a GitHub suggestion block containing the selected code.
-    Edit the code inside the block, then press `<CR>` to submit.
+    Edit the code inside the block, then press `<CR>` to save as draft.
+    Drafts can be submitted as a review using |:ReviewSubmit|.
     The suggestion appears on the PR with an "Apply suggestion" button.
 
 :ReviewListComments                                    *:ReviewListComments*
@@ -112,8 +114,9 @@ Using lazy.nvim: >lua
     draft location with a body preview. Select an entry to jump
     to the file and line. Preview pane shows the full draft content.
     Press `d` to delete a draft. Press `<C-s>` to batch submit
-    selected drafts (use `<Tab>` to multi-select; submits all if
-    none selected). Requires an active review session.
+    selected drafts individually (use `<Tab>` to multi-select; submits
+    all if none selected). Press `<C-r>` to submit all drafts as a
+    single review (see |:ReviewSubmit|). Requires an active review session.
 
 :ReviewBrowse                                                *:ReviewBrowse*
     Open the PR in the browser using the cached PR URL.
@@ -123,6 +126,22 @@ Using lazy.nvim: >lua
     Approve the current branch's PR. Opens a floating window for an
     optional comment. Press `<CR>` to approve (with or without a
     comment), `q` to cancel.
+
+:ReviewSubmit                                              *:ReviewSubmit*
+    Submit all draft comments as a single GitHub review. This allows
+    you to batch comments together instead of posting them individually.
+
+    Workflow:
+    1. Create comments using |:ReviewComment| (saved as drafts)
+    2. Run |:ReviewSubmit| to submit all drafts as one review
+    3. Select review type: Comment, Approve, or Request Changes
+    4. Optionally add a review body message
+    5. All drafts are submitted together
+
+    Note: Replies to existing comments and PR-level comments cannot
+    be included in a review (GitHub API limitation). These drafts
+    are excluded and remain as drafts. Use |:ReviewListDrafts| with
+    `<C-s>` to submit them individually.
 
 ==============================================================================
 5. KEYMAPS                                                *reviewit-keymaps*
