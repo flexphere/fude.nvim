@@ -273,7 +273,8 @@ function M.submit_drafts(draft_entries, callback)
 			api_fn = gh.create_comment
 		end
 
-		api_fn(unpack(req.args), function(err)
+		local args = vim.list_extend({}, req.args)
+		args[#args + 1] = function(err)
 			vim.schedule(function()
 				if err then
 					failed = failed + 1
@@ -283,7 +284,8 @@ function M.submit_drafts(draft_entries, callback)
 				end
 				submit_next()
 			end)
-		end)
+		end
+		api_fn(unpack(args))
 	end
 
 	submit_next()
