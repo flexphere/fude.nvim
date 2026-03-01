@@ -225,7 +225,7 @@ function M.refresh_extmarks()
 	end
 
 	-- Pending comment indicators (GitHub pending review)
-	for key, comment_data in pairs(state.pending_comments) do
+	for key, _ in pairs(state.pending_comments) do
 		local parsed = comments_mod.parse_draft_key(key)
 		if parsed and parsed.type == "comment" and parsed.path == rel_path then
 			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, parsed.start_line - 1, 0, {
