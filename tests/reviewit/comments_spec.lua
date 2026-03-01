@@ -184,6 +184,26 @@ describe("find_comment_by_id", function()
 	end)
 end)
 
+describe("get_reply_target_id", function()
+	it("returns original id for top-level comment", function()
+		local map = {
+			["a.lua"] = { [10] = { { id = 100, body = "top-level" } } },
+		}
+		assert.are.equal(100, comments.get_reply_target_id(100, map))
+	end)
+
+	it("returns in_reply_to_id for reply comment", function()
+		local map = {
+			["a.lua"] = { [10] = { { id = 200, body = "reply", in_reply_to_id = 100 } } },
+		}
+		assert.are.equal(100, comments.get_reply_target_id(200, map))
+	end)
+
+	it("returns original id when comment not found in map", function()
+		assert.are.equal(999, comments.get_reply_target_id(999, {}))
+	end)
+end)
+
 describe("parse_draft_key", function()
 	it("parses comment draft key", function()
 		local result = comments.parse_draft_key("lua/foo.lua:10:20")

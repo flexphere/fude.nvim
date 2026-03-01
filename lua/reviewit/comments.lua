@@ -601,6 +601,19 @@ function M.view_comments()
 	ui.show_comments_float(comments)
 end
 
+--- Get the reply target ID for a comment.
+--- GitHub API doesn't allow replying to replies, so we need to find the top-level comment.
+--- @param comment_id number the comment ID
+--- @param comment_map table the comment map
+--- @return number the ID to use for reply (either original or in_reply_to_id)
+function M.get_reply_target_id(comment_id, comment_map)
+	local found = M.find_comment_by_id(comment_id, comment_map)
+	if found and found.comment.in_reply_to_id then
+		return found.comment.in_reply_to_id
+	end
+	return comment_id
+end
+
 --- Reply to the most recent comment on the current line.
 --- @param comment_id number|nil specific comment id, or nil to use latest on current line
 function M.reply_to_comment(comment_id)
@@ -625,7 +638,10 @@ function M.reply_to_comment(comment_id)
 		comment_id = comments[#comments].id
 	end
 
-	local draft_key = "reply:" .. comment_id
+	-- GitHub API doesn't allow replying to replies, find top-level comment
+	local reply_target_id = M.get_reply_target_id(comment_id, state.comment_map or {})
+
+	local draft_key = "reply:" .. reply_target_id
 	local draft = state.drafts[draft_key]
 
 	ui.open_comment_input(function(body)
@@ -635,7 +651,7 @@ function M.reply_to_comment(comment_id)
 
 		state.drafts[draft_key] = nil
 
-		gh.reply_to_comment(state.pr_number, comment_id, body, function(err, _)
+		gh.reply_to_comment(state.pr_number, reply_target_id, body, function(err, _)
 			if err then
 				vim.notify("reviewit.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
 				return
