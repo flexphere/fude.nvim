@@ -388,6 +388,7 @@ describe("build_overview_lines", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
 		local result = ui.build_overview_lines(pr, {}, identity)
 		local last_content = result.lines[#result.lines]
+		assert.truthy(last_content:find("sections"))
 		assert.truthy(last_content:find("new comment"))
 		assert.truthy(last_content:find("refresh"))
 		assert.truthy(last_content:find("close"))
@@ -504,6 +505,26 @@ describe("build_overview_lines", function()
 			end
 		end
 		assert.is_true(found_header)
+	end)
+
+	it("returns sections with 1-indexed line numbers", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_lines(pr, {}, identity)
+		assert.is_table(result.sections)
+		assert.is_number(result.sections.description)
+		assert.is_number(result.sections.ci_status)
+		assert.is_number(result.sections.comments)
+		-- Each section line should contain the section header text
+		assert.truthy(result.lines[result.sections.description]:find("DESCRIPTION"))
+		assert.truthy(result.lines[result.sections.ci_status]:find("CI STATUS"))
+		assert.truthy(result.lines[result.sections.comments]:find("COMMENTS"))
+	end)
+
+	it("returns sections in correct order", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "text" }
+		local result = ui.build_overview_lines(pr, {}, identity)
+		assert.is_true(result.sections.description < result.sections.ci_status)
+		assert.is_true(result.sections.ci_status < result.sections.comments)
 	end)
 
 	it("returns check_urls mapping for detailsUrl", function()

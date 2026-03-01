@@ -92,11 +92,11 @@ Using lazy.nvim: >lua
     Show PR overview in a centered floating window. Displays title,
     state, author, labels, description, CI check status, and
     issue-level comments. The CI status section shows each check run
-    with pass/fail indicators and a summary count. Duplicate checks
-    (re-runs) are deduplicated, showing only the latest result.
-    Press `gx` on a check line to open the workflow URL.
+    with pass/fail indicators and a summary count.
     Requires an active review session.
-    Press `c` to write a new comment, `R` to refresh, `q` to close.
+    Section marks are set automatically: `'d` (description), `'s` (CI
+    status), `'c` (comments). Customizable via `overview.marks`.
+    Press `C` to write a new comment, `R` to refresh, `q` to close.
 
 :ReviewSuggest                                            *:ReviewSuggest*
     Suggest a code change on the current line (normal mode) or
@@ -153,6 +153,7 @@ Suggested mappings:
   `]c`          Next comment
   `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
+  `'d`/`'s`/`'c`  Jump to description/CI status/comments (in overview)
 
   * Visual mode mappings must use `:ReviewComment<CR>` (not `<cmd>`)
     to preserve the range. Using `<C-u>` will clear the range and
@@ -185,6 +186,8 @@ Default configuration: >lua
       -- Width/height as percentage of screen (1-100)
       width = 80,
       height = 80,
+      -- Section marks (jump with 'd, 's, 'c)
+      marks = { description = "d", ci_status = "s", comments = "c" },
     },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
@@ -221,6 +224,12 @@ Options:
 `overview.width`    Overview window width as % of screen (default: 80).
 
 `overview.height`   Overview window height as % of screen (default: 80).
+
+`overview.marks`    Table mapping section names to mark characters.
+                  Sections: "description", "ci_status", "comments".
+                  Use `'d`, `'s`, `'c` to jump to each section.
+                  (default: { description = "d", ci_status = "s",
+                  comments = "c" }).
 
 `auto_view_comment` When true, automatically opens the comment viewer
                   float after navigating to a comment line via ]c, [c,

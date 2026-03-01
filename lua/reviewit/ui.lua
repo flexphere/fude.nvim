@@ -182,10 +182,11 @@ end
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
 --- @param format_date_fn fun(s: string): string
---- @return table { lines: string[], hl_ranges: table[], check_urls: table }
+--- @return table { lines: string[], hl_ranges: table[], check_urls: table, sections: table }
 function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 	local lines = {}
 	local hl_ranges = {}
+	local sections = {}
 
 	-- PR header
 	local title = string.format("PR #%d: %s", pr_info.number or 0, pr_info.title or "")
@@ -213,6 +214,7 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(lines, string.rep("-", 50))
 	local desc_header_line = #lines
 	table.insert(lines, "DESCRIPTION")
+	sections.description = #lines -- 1-indexed
 	table.insert(hl_ranges, { line = desc_header_line, hl = "Title" })
 	table.insert(lines, string.rep("-", 50))
 
@@ -238,6 +240,7 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 	else
 		table.insert(lines, "CI STATUS")
 	end
+	sections.ci_status = #lines -- 1-indexed
 	table.insert(hl_ranges, { line = ci_header_line, hl = "Title" })
 	table.insert(lines, string.rep("-", 50))
 
@@ -262,6 +265,7 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(lines, string.rep("-", 50))
 	local comments_header_line = #lines
 	table.insert(lines, string.format("COMMENTS (%d)", #issue_comments))
+	sections.comments = #lines -- 1-indexed
 	table.insert(hl_ranges, { line = comments_header_line, hl = "Title" })
 	table.insert(lines, string.rep("-", 50))
 
@@ -287,10 +291,10 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 
 	-- Footer
 	table.insert(lines, "")
-	table.insert(lines, " c: new comment  R: refresh  q: close")
+	table.insert(lines, " 'd/'s/'c: sections  C: new comment  R: refresh  q: close")
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
-	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls }
+	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls, sections = sections }
 end
 
 --- Refresh extmarks (virtual text) for the current buffer.
@@ -556,11 +560,21 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl.hl, hl.line, 0, -1)
 	end
 
+	-- Set section marks
+	local marks = config.opts.overview and config.opts.overview.marks
+		or { description = "d", ci_status = "s", comments = "c" }
+	for section, mark in pairs(marks) do
+		local line = result.sections[section]
+		if line and mark then
+			vim.api.nvim_buf_set_mark(buf, mark, line, 0, {})
+		end
+	end
+
 	vim.keymap.set("n", "q", function()
 		vim.api.nvim_win_close(win, true)
 	end, { buffer = buf })
 
-	vim.keymap.set("n", "c", function()
+	vim.keymap.set("n", "C", function()
 		vim.api.nvim_win_close(win, true)
 		if opts.on_new_comment then
 			opts.on_new_comment()
