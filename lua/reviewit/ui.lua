@@ -115,12 +115,36 @@ function M.format_comments_for_display(comments, format_date_fn)
 	return { lines = lines, hl_ranges = hl_ranges }
 end
 
+--- Normalize check fields into a consistent (status, conclusion) pair.
+--- Handles both CheckRun (status/conclusion) and StatusContext (state) objects.
+--- @param check table check run or status context object
+--- @return string status, string conclusion
+function M.normalize_check(check)
+	-- CheckRun: has status/conclusion fields
+	if check.status or check.conclusion then
+		return check.status or "", check.conclusion or ""
+	end
+
+	-- StatusContext: has state field (lowercase: "success", "failure", "pending", "error")
+	local state = check.state or ""
+	if state == "success" then
+		return "COMPLETED", "SUCCESS"
+	elseif state == "failure" then
+		return "COMPLETED", "FAILURE"
+	elseif state == "error" then
+		return "COMPLETED", "FAILURE"
+	elseif state == "pending" then
+		return "PENDING", ""
+	end
+
+	return "", ""
+end
+
 --- Map check conclusion/status to display symbol and highlight group.
---- @param check table check run object from statusCheckRollup
+--- @param check table check run or status context object from statusCheckRollup
 --- @return string symbol, string hl_group
 function M.format_check_status(check)
-	local status = check.status or ""
-	local conclusion = check.conclusion or ""
+	local status, conclusion = M.normalize_check(check)
 
 	-- Not yet completed
 	if status == "IN_PROGRESS" or status == "QUEUED" or status == "PENDING" then
@@ -165,8 +189,7 @@ end
 --- @param check table check run object from statusCheckRollup
 --- @return number priority, string name
 local function check_sort_key(check)
-	local status = check.status or ""
-	local conclusion = check.conclusion or ""
+	local status, conclusion = M.normalize_check(check)
 	local name = check.name or check.context or "unknown"
 
 	local priority
@@ -216,7 +239,7 @@ function M.build_checks_summary(checks)
 	end
 	local passed = 0
 	for _, check in ipairs(checks) do
-		local conclusion = check.conclusion or ""
+		local _, conclusion = M.normalize_check(check)
 		if conclusion == "SUCCESS" or conclusion == "NEUTRAL" or conclusion == "SKIPPED" then
 			passed = passed + 1
 		end
@@ -392,7 +415,8 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 		for _, check in ipairs(checks) do
 			local name = check.name or check.context or "unknown"
 			local symbol, hl = M.format_check_status(check)
-			local conclusion = check.conclusion or check.status or ""
+			local norm_status, norm_conclusion = M.normalize_check(check)
+			local conclusion = norm_conclusion ~= "" and norm_conclusion or norm_status
 			table.insert(lines, string.format("%s %s  %s", symbol, name, conclusion:lower()))
 			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
 			local url = check.detailsUrl or check.targetUrl
