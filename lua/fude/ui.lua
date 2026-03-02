@@ -1,7 +1,7 @@
 local M = {}
-local config = require("reviewit.config")
+local config = require("fude.config")
 
-local ref_ns = vim.api.nvim_create_namespace("reviewit_refs")
+local ref_ns = vim.api.nvim_create_namespace("fude_refs")
 
 --- Get repository base URL (e.g. "https://github.com/owner/repo").
 --- @param pr_url string|nil PR URL to extract from
@@ -475,7 +475,7 @@ function M.refresh_extmarks()
 
 	local buf = vim.api.nvim_get_current_buf()
 	local filepath = vim.api.nvim_buf_get_name(buf)
-	local diff = require("reviewit.diff")
+	local diff = require("fude.diff")
 	local rel_path = diff.to_repo_relative(filepath)
 	if not rel_path then
 		return
@@ -483,7 +483,7 @@ function M.refresh_extmarks()
 
 	vim.api.nvim_buf_clear_namespace(buf, state.ns_id, 0, -1)
 
-	local comments_mod = require("reviewit.comments")
+	local comments_mod = require("fude.comments")
 	local comment_lines = comments_mod.get_comment_lines(rel_path)
 
 	for _, line in ipairs(comment_lines) do
@@ -613,7 +613,7 @@ function M.open_comment_input(callback, opts)
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
-	vim.b[buf].reviewit_comment = true
+	vim.b[buf].fude_comment = true
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, initial_lines)
 
@@ -723,7 +723,7 @@ function M.show_comments_float(comments)
 		local last_comment = comments[#comments]
 		if last_comment then
 			vim.api.nvim_win_close(win, true)
-			require("reviewit.comments").reply_to_comment(last_comment.id)
+			require("fude.comments").reply_to_comment(last_comment.id)
 		end
 	end, { buffer = buf })
 
@@ -731,13 +731,13 @@ function M.show_comments_float(comments)
 	if km.next_comment then
 		vim.keymap.set("n", km.next_comment, function()
 			vim.api.nvim_win_close(win, true)
-			require("reviewit.comments").next_comment()
+			require("fude.comments").next_comment()
 		end, { buffer = buf })
 	end
 	if km.prev_comment then
 		vim.keymap.set("n", km.prev_comment, function()
 			vim.api.nvim_win_close(win, true)
-			require("reviewit.comments").prev_comment()
+			require("fude.comments").prev_comment()
 		end, { buffer = buf })
 	end
 
@@ -777,7 +777,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 
 	vim.wo[win].wrap = true
 
-	local ns = config.state.ns_id or vim.api.nvim_create_namespace("reviewit")
+	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
 	for _, hl in ipairs(result.hl_ranges) do
 		pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl.hl, hl.line, 0, -1)
 	end

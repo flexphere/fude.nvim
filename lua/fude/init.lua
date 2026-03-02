@@ -1,5 +1,5 @@
 local M = {}
-local config = require("reviewit.config")
+local config = require("fude.config")
 
 --- Setup the plugin with user options.
 --- @param opts table|nil user configuration
@@ -11,23 +11,23 @@ end
 function M.start()
 	local state = config.state
 	if state.active then
-		vim.notify("reviewit.nvim: Already active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Already active", vim.log.levels.WARN)
 		return
 	end
 
-	local diff_mod = require("reviewit.diff")
+	local diff_mod = require("fude.diff")
 	local repo_root = diff_mod.get_repo_root()
 	if not repo_root then
-		vim.notify("reviewit.nvim: Not in a git repository", vim.log.levels.ERROR)
+		vim.notify("fude.nvim: Not in a git repository", vim.log.levels.ERROR)
 		return
 	end
 
-	local gh_mod = require("reviewit.gh")
-	vim.notify("reviewit.nvim: Detecting PR...", vim.log.levels.INFO)
+	local gh_mod = require("fude.gh")
+	vim.notify("fude.nvim: Detecting PR...", vim.log.levels.INFO)
 
 	gh_mod.get_pr_info(function(err, pr_info)
 		if err then
-			vim.notify("reviewit.nvim: No PR found for current branch. " .. (err or ""), vim.log.levels.ERROR)
+			vim.notify("fude.nvim: No PR found for current branch. " .. (err or ""), vim.log.levels.ERROR)
 			return
 		end
 
@@ -38,7 +38,7 @@ function M.start()
 		state.pr_url = pr_info.url
 
 		vim.notify(
-			string.format("reviewit.nvim: PR #%d (%s <- %s)", state.pr_number, state.base_ref, state.head_ref),
+			string.format("fude.nvim: PR #%d (%s <- %s)", state.pr_number, state.base_ref, state.head_ref),
 			vim.log.levels.INFO
 		)
 
@@ -79,21 +79,21 @@ function M.start()
 			gitsigns.change_base(state.base_ref, true)
 		end
 
-		local comments_mod = require("reviewit.comments")
+		local comments_mod = require("fude.comments")
 		comments_mod.fetch_comments()
 		comments_mod.fetch_pending_review()
 
-		state.augroup = vim.api.nvim_create_augroup("Reviewit", { clear = true })
+		state.augroup = vim.api.nvim_create_augroup("Fude", { clear = true })
 
 		vim.api.nvim_create_autocmd("BufEnter", {
 			group = state.augroup,
 			callback = function()
 				vim.schedule(function()
-					require("reviewit.ui").refresh_extmarks()
+					require("fude.ui").refresh_extmarks()
 					M.setup_buf_keymaps()
 				end)
 			end,
-			desc = "reviewit.nvim: Update extmarks and keymaps",
+			desc = "fude.nvim: Update extmarks and keymaps",
 		})
 
 		-- Set keymaps on the current buffer immediately
@@ -110,12 +110,12 @@ function M.setup_buf_keymaps()
 	local km = config.opts.keymaps
 	if km.next_comment then
 		vim.keymap.set("n", km.next_comment, function()
-			require("reviewit.comments").next_comment()
+			require("fude.comments").next_comment()
 		end, { buffer = buf, desc = "Review: Next comment" })
 	end
 	if km.prev_comment then
 		vim.keymap.set("n", km.prev_comment, function()
-			require("reviewit.comments").prev_comment()
+			require("fude.comments").prev_comment()
 		end, { buffer = buf, desc = "Review: Prev comment" })
 	end
 end
@@ -138,10 +138,10 @@ end
 --- Toggle diff preview window.
 function M.toggle_diff()
 	if not config.state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
-	local preview = require("reviewit.preview")
+	local preview = require("fude.preview")
 	if config.state.preview_win and vim.api.nvim_win_is_valid(config.state.preview_win) then
 		preview.close_preview()
 	else
@@ -153,7 +153,7 @@ end
 function M.stop()
 	local state = config.state
 	if not state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.INFO)
+		vim.notify("fude.nvim: Not active", vim.log.levels.INFO)
 		return
 	end
 
@@ -161,8 +161,8 @@ function M.stop()
 		vim.api.nvim_del_augroup_by_id(state.augroup)
 	end
 
-	require("reviewit.preview").close_preview()
-	require("reviewit.ui").clear_all_extmarks()
+	require("fude.preview").close_preview()
+	require("fude.ui").clear_all_extmarks()
 	M.clear_buf_keymaps()
 
 	-- Reset gitsigns back to default (HEAD)
@@ -179,7 +179,7 @@ function M.stop()
 	local pr_number = state.pr_number
 	config.reset_state()
 
-	vim.notify("reviewit.nvim: Stopped (PR #" .. (pr_number or "?") .. ")", vim.log.levels.INFO)
+	vim.notify("fude.nvim: Stopped (PR #" .. (pr_number or "?") .. ")", vim.log.levels.INFO)
 end
 
 --- Toggle review mode.
@@ -195,29 +195,29 @@ end
 function M.mark_viewed()
 	local state = config.state
 	if not state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 	if not state.pr_node_id then
-		vim.notify("reviewit.nvim: PR node ID not available yet", vim.log.levels.WARN)
+		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
 		return
 	end
 
-	local diff_mod = require("reviewit.diff")
+	local diff_mod = require("fude.diff")
 	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
 	if not rel_path then
-		vim.notify("reviewit.nvim: Cannot determine file path", vim.log.levels.ERROR)
+		vim.notify("fude.nvim: Cannot determine file path", vim.log.levels.ERROR)
 		return
 	end
 
-	local gh_mod = require("reviewit.gh")
+	local gh_mod = require("fude.gh")
 	gh_mod.mark_file_viewed(state.pr_node_id, rel_path, function(err)
 		if err then
-			vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 			return
 		end
 		state.viewed_files[rel_path] = "VIEWED"
-		vim.notify("reviewit.nvim: Marked as viewed: " .. rel_path, vim.log.levels.INFO)
+		vim.notify("fude.nvim: Marked as viewed: " .. rel_path, vim.log.levels.INFO)
 	end)
 end
 
@@ -225,29 +225,29 @@ end
 function M.unmark_viewed()
 	local state = config.state
 	if not state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 	if not state.pr_node_id then
-		vim.notify("reviewit.nvim: PR node ID not available yet", vim.log.levels.WARN)
+		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
 		return
 	end
 
-	local diff_mod = require("reviewit.diff")
+	local diff_mod = require("fude.diff")
 	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
 	if not rel_path then
-		vim.notify("reviewit.nvim: Cannot determine file path", vim.log.levels.ERROR)
+		vim.notify("fude.nvim: Cannot determine file path", vim.log.levels.ERROR)
 		return
 	end
 
-	local gh_mod = require("reviewit.gh")
+	local gh_mod = require("fude.gh")
 	gh_mod.unmark_file_viewed(state.pr_node_id, rel_path, function(err)
 		if err then
-			vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 			return
 		end
 		state.viewed_files[rel_path] = "UNVIEWED"
-		vim.notify("reviewit.nvim: Unmarked as viewed: " .. rel_path, vim.log.levels.INFO)
+		vim.notify("fude.nvim: Unmarked as viewed: " .. rel_path, vim.log.levels.INFO)
 	end)
 end
 

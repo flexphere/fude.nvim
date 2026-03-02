@@ -67,7 +67,7 @@ M.opts = {}
 
 function M.setup(user_opts)
 	M.opts = vim.tbl_deep_extend("force", M.defaults, user_opts or {})
-	M.state.ns_id = vim.api.nvim_create_namespace("reviewit")
+	M.state.ns_id = vim.api.nvim_create_namespace("fude")
 end
 
 function M.reset_state()

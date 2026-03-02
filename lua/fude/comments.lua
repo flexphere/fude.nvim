@@ -1,8 +1,8 @@
 local M = {}
-local config = require("reviewit.config")
-local gh = require("reviewit.gh")
-local diff = require("reviewit.diff")
-local ui = require("reviewit.ui")
+local config = require("fude.config")
+local gh = require("fude.gh")
+local diff = require("fude.diff")
+local ui = require("fude.ui")
 
 --- Build a nested lookup map from a flat array of comments.
 --- Excludes comments belonging to a pending review (cannot be replied to).
@@ -250,7 +250,7 @@ end
 function M.submit_drafts(draft_entries, callback)
 	local sha, sha_err = gh.get_head_sha()
 	if not sha then
-		vim.notify("reviewit.nvim: " .. (sha_err or "Failed to get HEAD SHA"), vim.log.levels.ERROR)
+		vim.notify("fude.nvim: " .. (sha_err or "Failed to get HEAD SHA"), vim.log.levels.ERROR)
 		callback(0, #draft_entries)
 		return
 	end
@@ -307,7 +307,7 @@ function M.fetch_comments()
 
 	gh.get_pr_comments(state.pr_number, function(err, comments)
 		if err then
-			vim.notify("reviewit.nvim: Failed to fetch comments: " .. err, vim.log.levels.WARN)
+			vim.notify("fude.nvim: Failed to fetch comments: " .. err, vim.log.levels.WARN)
 			return
 		end
 
@@ -315,7 +315,7 @@ function M.fetch_comments()
 		state.comment_map = M.build_comment_map(state.comments, state.pending_review_id)
 
 		ui.refresh_extmarks()
-		vim.notify(string.format("reviewit.nvim: Loaded %d comments", #state.comments), vim.log.levels.INFO)
+		vim.notify(string.format("fude.nvim: Loaded %d comments", #state.comments), vim.log.levels.INFO)
 	end)
 end
 
@@ -354,7 +354,7 @@ function M.fetch_pending_review()
 
 	gh.get_reviews(state.pr_number, function(err, reviews)
 		if err then
-			vim.notify("reviewit.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
+			vim.notify("fude.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
 			return
 		end
 
@@ -382,7 +382,7 @@ function M.fetch_pending_review()
 		-- Fetch comments for this pending review
 		gh.get_review_comments(state.pr_number, pending_review.id, function(comments_err, comments)
 			if comments_err then
-				vim.notify("reviewit.nvim: Failed to fetch pending comments: " .. comments_err, vim.log.levels.DEBUG)
+				vim.notify("fude.nvim: Failed to fetch pending comments: " .. comments_err, vim.log.levels.DEBUG)
 				return
 			end
 
@@ -391,7 +391,7 @@ function M.fetch_pending_review()
 
 			local count = vim.tbl_count(state.pending_comments)
 			if count > 0 then
-				vim.notify(string.format("reviewit.nvim: Loaded %d pending comments", count), vim.log.levels.INFO)
+				vim.notify(string.format("fude.nvim: Loaded %d pending comments", count), vim.log.levels.INFO)
 			end
 		end)
 	end)
@@ -505,7 +505,7 @@ function M.sync_pending_review(callback)
 		gh.delete_review(state.pr_number, state.pending_review_id, function(err)
 			if err then
 				-- Ignore delete error (review might already be gone)
-				vim.notify("reviewit.nvim: Note: " .. err, vim.log.levels.DEBUG)
+				vim.notify("fude.nvim: Note: " .. err, vim.log.levels.DEBUG)
 			end
 			state.pending_review_id = nil
 			create_new_review()
@@ -520,7 +520,7 @@ end
 function M.create_comment(is_visual)
 	local state = config.state
 	if not state.active or not state.pr_number then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
@@ -528,7 +528,7 @@ function M.create_comment(is_visual)
 	local filepath = vim.api.nvim_buf_get_name(buf)
 	local rel_path = diff.to_repo_relative(filepath)
 	if not rel_path then
-		vim.notify("reviewit.nvim: File not in repository", vim.log.levels.WARN)
+		vim.notify("fude.nvim: File not in repository", vim.log.levels.WARN)
 		return
 	end
 
@@ -554,11 +554,11 @@ function M.create_comment(is_visual)
 			M.sync_pending_review(function(err)
 				vim.schedule(function()
 					if err then
-						vim.notify("reviewit.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
+						vim.notify("fude.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
 						-- Remove from pending_comments on failure
 						state.pending_comments[pending_key] = nil
 					else
-						vim.notify("reviewit.nvim: Pending comment saved", vim.log.levels.INFO)
+						vim.notify("fude.nvim: Pending comment saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()
 				end)
@@ -570,7 +570,7 @@ function M.create_comment(is_visual)
 		on_save = function(lines)
 			-- Save as local draft (fallback for q key in submit_on_enter mode)
 			state.drafts[pending_key] = lines
-			vim.notify("reviewit.nvim: Draft saved locally", vim.log.levels.INFO)
+			vim.notify("fude.nvim: Draft saved locally", vim.log.levels.INFO)
 			ui.refresh_extmarks()
 		end,
 	})
@@ -594,7 +594,7 @@ function M.view_comments()
 	local comments = M.get_comments_at(rel_path, line)
 
 	if #comments == 0 then
-		vim.notify("reviewit.nvim: No comments on this line", vim.log.levels.INFO)
+		vim.notify("fude.nvim: No comments on this line", vim.log.levels.INFO)
 		return
 	end
 
@@ -624,7 +624,7 @@ function M.reply_to_comment(comment_id)
 
 	-- GitHub API doesn't allow creating replies while a pending review exists
 	if state.pending_review_id then
-		vim.notify("reviewit.nvim: Cannot reply while pending review exists. Run :ReviewSubmit first.", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Cannot reply while pending review exists. Run :FudeSubmit first.", vim.log.levels.WARN)
 		return
 	end
 
@@ -638,7 +638,7 @@ function M.reply_to_comment(comment_id)
 		local line = vim.fn.line(".")
 		local comments = M.get_comments_at(rel_path, line)
 		if #comments == 0 then
-			vim.notify("reviewit.nvim: No comments on this line to reply to", vim.log.levels.INFO)
+			vim.notify("fude.nvim: No comments on this line to reply to", vim.log.levels.INFO)
 			return
 		end
 		comment_id = comments[#comments].id
@@ -659,10 +659,10 @@ function M.reply_to_comment(comment_id)
 
 		gh.reply_to_comment(state.pr_number, reply_target_id, body, function(err, _)
 			if err then
-				vim.notify("reviewit.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
+				vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
 				return
 			end
-			vim.notify("reviewit.nvim: Reply posted", vim.log.levels.INFO)
+			vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
 			M.fetch_comments()
 		end)
 	end, {
@@ -670,7 +670,7 @@ function M.reply_to_comment(comment_id)
 		submit_on_enter = true,
 		on_save = function(lines)
 			state.drafts[draft_key] = lines
-			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
 			ui.refresh_extmarks()
 		end,
 	})
@@ -705,18 +705,18 @@ end
 function M.list_comments()
 	local state = config.state
 	if not state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
 	if not state.comment_map or vim.tbl_isempty(state.comment_map) then
-		vim.notify("reviewit.nvim: No comments found", vim.log.levels.INFO)
+		vim.notify("fude.nvim: No comments found", vim.log.levels.INFO)
 		return
 	end
 
 	local has_telescope, pickers = pcall(require, "telescope.pickers")
 	if not has_telescope then
-		vim.notify("reviewit.nvim: telescope.nvim required for comment list", vim.log.levels.WARN)
+		vim.notify("fude.nvim: telescope.nvim required for comment list", vim.log.levels.WARN)
 		return
 	end
 
@@ -833,7 +833,7 @@ end
 function M.suggest_change(is_visual)
 	local state = config.state
 	if not state.active or not state.pr_number then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
@@ -841,7 +841,7 @@ function M.suggest_change(is_visual)
 	local filepath = vim.api.nvim_buf_get_name(buf)
 	local rel_path = diff.to_repo_relative(filepath)
 	if not rel_path then
-		vim.notify("reviewit.nvim: File not in repository", vim.log.levels.WARN)
+		vim.notify("fude.nvim: File not in repository", vim.log.levels.WARN)
 		return
 	end
 
@@ -874,10 +874,10 @@ function M.suggest_change(is_visual)
 			M.sync_pending_review(function(err)
 				vim.schedule(function()
 					if err then
-						vim.notify("reviewit.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
+						vim.notify("fude.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
 						state.pending_comments[pending_key] = nil
 					else
-						vim.notify("reviewit.nvim: Pending suggestion saved", vim.log.levels.INFO)
+						vim.notify("fude.nvim: Pending suggestion saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()
 				end)
@@ -890,7 +890,7 @@ function M.suggest_change(is_visual)
 		cursor_pos = cursor_pos,
 		on_save = function(lines)
 			state.drafts[pending_key] = lines
-			vim.notify("reviewit.nvim: Draft saved locally", vim.log.levels.INFO)
+			vim.notify("fude.nvim: Draft saved locally", vim.log.levels.INFO)
 			ui.refresh_extmarks()
 		end,
 	})
@@ -925,18 +925,18 @@ end
 function M.list_drafts()
 	local state = config.state
 	if not state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
 	if not state.drafts or vim.tbl_isempty(state.drafts) then
-		vim.notify("reviewit.nvim: No drafts", vim.log.levels.INFO)
+		vim.notify("fude.nvim: No drafts", vim.log.levels.INFO)
 		return
 	end
 
 	local has_telescope, pickers = pcall(require, "telescope.pickers")
 	if not has_telescope then
-		vim.notify("reviewit.nvim: telescope.nvim required for draft list", vim.log.levels.WARN)
+		vim.notify("fude.nvim: telescope.nvim required for draft list", vim.log.levels.WARN)
 		return
 	end
 
@@ -1045,7 +1045,7 @@ function M.list_drafts()
 					local selection = action_state.get_selected_entry()
 					if selection then
 						state.drafts[selection.draft_key] = nil
-						vim.notify("reviewit.nvim: Draft deleted", vim.log.levels.INFO)
+						vim.notify("fude.nvim: Draft deleted", vim.log.levels.INFO)
 						actions.close(prompt_bufnr)
 						ui.refresh_extmarks()
 					end
@@ -1077,7 +1077,7 @@ function M.list_drafts()
 						end
 						M.submit_drafts(to_submit, function(succeeded, failed)
 							local msg, level = M.format_submit_result(succeeded, failed, #to_submit)
-							vim.notify("reviewit.nvim: " .. msg, level)
+							vim.notify("fude.nvim: " .. msg, level)
 							ui.refresh_extmarks()
 							M.fetch_comments()
 						end)
@@ -1093,14 +1093,14 @@ function M.list_drafts()
 						ui.open_comment_input(function(body)
 							M.submit_as_review(event, body, function(err, excluded_count)
 								if err then
-									vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+									vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 									return
 								end
 								local msg = "Review submitted"
 								if excluded_count > 0 then
 									msg = msg .. string.format(" (%d drafts excluded: replies/PR comments)", excluded_count)
 								end
-								vim.notify("reviewit.nvim: " .. msg, vim.log.levels.INFO)
+								vim.notify("fude.nvim: " .. msg, vim.log.levels.INFO)
 							end)
 						end, {
 							title = " Review Body (optional) ",

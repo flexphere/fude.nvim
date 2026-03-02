@@ -1,23 +1,23 @@
-*reviewit.txt*    PR code review inside Neovim
+*fude.txt*    PR code review inside Neovim
 
 Author: flexphere
 License: MIT
 
 ==============================================================================
-CONTENTS                                                   *reviewit-contents*
+CONTENTS                                                   *fude-contents*
 
-  1. Introduction .............. |reviewit-introduction|
-  2. Requirements .............. |reviewit-requirements|
-  3. Setup ..................... |reviewit-setup|
-  4. Commands .................. |reviewit-commands|
-  5. Keymaps ................... |reviewit-keymaps|
-  6. Configuration ............. |reviewit-configuration|
-  7. Completion ................ |reviewit-completion|
+  1. Introduction .............. |fude-introduction|
+  2. Requirements .............. |fude-requirements|
+  3. Setup ..................... |fude-setup|
+  4. Commands .................. |fude-commands|
+  5. Keymaps ................... |fude-keymaps|
+  6. Configuration ............. |fude-configuration|
+  7. Completion ................ |fude-completion|
 
 ==============================================================================
-1. INTRODUCTION                                        *reviewit-introduction*
+1. INTRODUCTION                                        *fude-introduction*
 
-reviewit.nvim is a Neovim plugin that enables GitHub PR code review directly
+fude.nvim is a Neovim plugin that enables GitHub PR code review directly
 in the editor. It provides:
 
 - Base branch diff preview in a side pane
@@ -33,7 +33,7 @@ in the editor. It provides:
 - Gitsigns integration for diff base switching
 
 ==============================================================================
-2. REQUIREMENTS                                        *reviewit-requirements*
+2. REQUIREMENTS                                        *fude-requirements*
 
 - Neovim >= 0.10
 - GitHub CLI (`gh`) installed and authenticated
@@ -45,53 +45,53 @@ Optional:
 - blink.cmp or nvim-cmp for @user / #issue completion
 
 ==============================================================================
-3. SETUP                                                    *reviewit-setup*
+3. SETUP                                                    *fude-setup*
 
 Using lazy.nvim: >lua
   {
-    "flexphere/reviewit.nvim",
+    "flexphere/fude.nvim",
     opts = {},
   }
 <
 
 ==============================================================================
-4. COMMANDS                                              *reviewit-commands*
+4. COMMANDS                                              *fude-commands*
 
-:ReviewStart                                                  *:ReviewStart*
+:FudeStart                                                  *:FudeStart*
     Start review session for the current branch's PR. Detects the PR
     automatically using `gh pr view`, fetches comments, sets up
     extmarks, and switches gitsigns base to the PR base branch.
-    Does not open the diff preview (use |:ReviewDiff| for that).
+    Does not open the diff preview (use |:FudeDiff| for that).
 
-:ReviewStop                                                    *:ReviewStop*
+:FudeStop                                                    *:FudeStop*
     Stop review mode and clean up all preview windows, extmarks,
     autocommands, and restore original settings.
 
-:ReviewToggle                                                *:ReviewToggle*
+:FudeToggle                                                *:FudeToggle*
     Toggle review session on or off.
 
-:ReviewDiff                                                    *:ReviewDiff*
+:FudeDiff                                                    *:FudeDiff*
     Toggle the diff preview window. Opens a side-by-side diff view
     showing the base branch version of the current file, or closes
     it if already open. Requires an active review session.
 
-:ReviewComment                                              *:ReviewComment*
+:FudeComment                                              *:FudeComment*
     Create a review comment on the current line (normal mode) or
     selected lines (visual mode). Opens a floating window for
     composing the comment. Press `<CR>` to save as GitHub pending review
     (visible on PR page with "Pending" status), `q` to cancel.
-    Pending comments can be submitted as a review using |:ReviewSubmit|.
+    Pending comments can be submitted as a review using |:FudeSubmit|.
 
-:ReviewViewComment                                      *:ReviewViewComment*
+:FudeViewComment                                      *:FudeViewComment*
     View existing review comments on the current line in a floating
     window. Press `r` to reply, `q` to close.
 
-:ReviewFiles                                                *:ReviewFiles*
+:FudeFiles                                                *:FudeFiles*
     List files changed in the PR. Uses Telescope with diff preview
     by default, falls back to quickfix if Telescope is not available.
     Configurable via `file_list_mode`.
 
-:ReviewOverview                                            *:ReviewOverview*
+:FudeOverview                                            *:FudeOverview*
     Show PR overview in a centered floating window. Displays title,
     state, author, labels, reviewers with review status, description,
     CI check status, and issue-level comments. The reviewers section
@@ -104,52 +104,52 @@ Using lazy.nvim: >lua
     Customizable via `overview.marks`.
     Press `C` to write a new comment, `R` to refresh, `q` to close.
 
-:ReviewSuggest                                            *:ReviewSuggest*
+:FudeSuggest                                            *:FudeSuggest*
     Suggest a code change on the current line (normal mode) or
     selected lines (visual mode). Opens a floating window pre-filled
     with a GitHub suggestion block containing the selected code.
     Edit the code inside the block, then press `<CR>` to save as
     GitHub pending review. Pending comments can be submitted as a
-    review using |:ReviewSubmit|. The suggestion appears on the PR
+    review using |:FudeSubmit|. The suggestion appears on the PR
     with an "Apply suggestion" button.
 
-:ReviewListComments                                    *:ReviewListComments*
+:FudeListComments                                    *:FudeListComments*
     List all PR review comments in a Telescope picker. Shows each
     comment location with author and body preview. Select an entry
     to jump to the file and line. Preview pane shows the full comment
     thread formatted as markdown. Requires an active review session.
 
-:ReviewListDrafts                                        *:ReviewListDrafts*
+:FudeListDrafts                                        *:FudeListDrafts*
     List all local draft comments in a Telescope picker. Shows each
     draft location with a body preview. Select an entry to jump
     to the file and line. Preview pane shows the full draft content.
     Press `d` to delete a draft. Note: Most comments are saved as
-    GitHub pending review (see |:ReviewComment|), not local drafts.
+    GitHub pending review (see |:FudeComment|), not local drafts.
     Requires an active review session.
 
-:ReviewViewed                                              *:ReviewViewed*
+:FudeViewed                                              *:FudeViewed*
     Mark the current file as viewed on GitHub. Uses the GitHub
     GraphQL API to sync the viewed state. The viewed status is
-    reflected in the |:ReviewFiles| picker.
+    reflected in the |:FudeFiles| picker.
     Requires an active review session.
 
-:ReviewUnviewed                                            *:ReviewUnviewed*
+:FudeUnviewed                                            *:FudeUnviewed*
     Unmark the current file as viewed on GitHub. Resets the
     viewed status for the current file.
     Requires an active review session.
 
-:ReviewBrowse                                                *:ReviewBrowse*
+:FudeBrowse                                                *:FudeBrowse*
     Open the PR in the browser using the cached PR URL.
     Requires an active review session.
 
-:ReviewSubmit                                              *:ReviewSubmit*
+:FudeSubmit                                              *:FudeSubmit*
     Submit all pending comments as a single GitHub review. This allows
     you to batch comments together instead of posting them individually.
 
     Workflow:
-    1. Create comments using |:ReviewComment| (saved as GitHub pending)
+    1. Create comments using |:FudeComment| (saved as GitHub pending)
     2. Comments appear on the PR page with "Pending" status
-    3. Run |:ReviewSubmit| to submit all pending comments as one review
+    3. Run |:FudeSubmit| to submit all pending comments as one review
     4. Select review type: Comment, Approve, or Request Changes
     5. Optionally add a review body message
     6. All pending comments are submitted together
@@ -158,7 +158,7 @@ Using lazy.nvim: >lua
     be included in a review (GitHub API limitation).
 
 ==============================================================================
-5. KEYMAPS                                                *reviewit-keymaps*
+5. KEYMAPS                                                *fude-keymaps*
 
 Comment navigation keymaps (]c / [c by default) are set as buffer-local
 mappings during review mode and removed on stop. Other keymaps are not
@@ -183,18 +183,18 @@ Suggested mappings:
   `]c`          Next comment
   `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
-  `<Tab>`       Toggle viewed state (in |:ReviewFiles| Telescope picker)
+  `<Tab>`       Toggle viewed state (in |:FudeFiles| Telescope picker)
   `'r`/`'d`/`'s`/`'c`  Jump to reviewers/description/CI status/comments (overview)
 
-  * Visual mode mappings must use `:ReviewComment<CR>` (not `<cmd>`)
+  * Visual mode mappings must use `:FudeComment<CR>` (not `<cmd>`)
     to preserve the range. Using `<C-u>` will clear the range and
     result in single-line comments.
 
 ==============================================================================
-6. CONFIGURATION                                    *reviewit-configuration*
+6. CONFIGURATION                                    *fude-configuration*
 
 Default configuration: >lua
-  require("reviewit").setup({
+  require("fude").setup({
     -- File list mode: "telescope" or "quickfix"
     file_list_mode = "telescope",
     -- Diff filler character (nil to keep user's default)
@@ -232,7 +232,7 @@ Default configuration: >lua
 Options:
 
 `file_list_mode`    "telescope" (default) or "quickfix"
-                  Controls which picker `:ReviewFiles` uses.
+                  Controls which picker `:FudeFiles` uses.
 
 `diff_filler_char`  Character for diff filler lines (default: nil).
                   Set to " " to hide the filler indicators.
@@ -282,25 +282,25 @@ Options:
 
 `auto_view_comment` When true, automatically opens the comment viewer
                   float after navigating to a comment line via ]c, [c,
-                  or ReviewListComments (default: true).
+                  or FudeListComments (default: true).
 
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system
                   timezone before formatting.
 
 ==============================================================================
-7. COMPLETION                                          *reviewit-completion*
+7. COMPLETION                                          *fude-completion*
 
-Comment input windows (`ReviewComment`, `ReviewSuggest`) support GitHub
+Comment input windows (`FudeComment`, `FudeSuggest`) support GitHub
 completion for `@user` mentions and `#issue/PR` references.
 
 blink.cmp: >lua
   sources = {
-    default = { "lsp", "path", "buffer", "snippets", "reviewit" },
+    default = { "lsp", "path", "buffer", "snippets", "fude" },
     providers = {
-      reviewit = {
-        name = "reviewit",
-        module = "reviewit.completion.blink",
+      fude = {
+        name = "fude",
+        module = "fude.completion.blink",
         score_offset = 50,
         async = true,
       },
@@ -309,9 +309,9 @@ blink.cmp: >lua
 <
 
 nvim-cmp: >lua
-  require("cmp").register_source("reviewit",
-    require("reviewit.completion.cmp").new())
-  -- Add { name = "reviewit" } to your sources
+  require("cmp").register_source("fude",
+    require("fude.completion.cmp").new())
+  -- Add { name = "fude" } to your sources
 <
 
 Data is cached for 5 minutes per session. The first trigger of `@` or `#`

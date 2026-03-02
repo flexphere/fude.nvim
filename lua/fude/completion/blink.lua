@@ -1,5 +1,5 @@
---- blink.cmp source adapter for reviewit.nvim
---- @class reviewit.blink.Source
+--- blink.cmp source adapter for fude.nvim
+--- @class fude.blink.Source
 local source = {}
 
 function source.new()
@@ -7,7 +7,7 @@ function source.new()
 end
 
 function source:enabled()
-	return vim.b.reviewit_comment == true
+	return vim.b.fude_comment == true
 end
 
 function source:get_trigger_characters()
@@ -15,7 +15,7 @@ function source:get_trigger_characters()
 end
 
 function source:get_completions(ctx, callback)
-	local core = require("reviewit.completion")
+	local core = require("fude.completion")
 	local before = ctx.line:sub(1, ctx.cursor[2])
 	local context = core.get_context(before)
 

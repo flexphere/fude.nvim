@@ -1,5 +1,5 @@
 local M = {}
-local gh = require("reviewit.gh")
+local gh = require("fude.gh")
 
 local CACHE_TTL = 300 -- 5 minutes
 

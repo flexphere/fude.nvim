@@ -1,4 +1,4 @@
-local completion = require("reviewit.completion")
+local completion = require("fude.completion")
 
 describe("completion.get_context", function()
 	it("detects @mention at end of line", function()

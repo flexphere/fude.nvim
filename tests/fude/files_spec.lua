@@ -1,4 +1,4 @@
-local files = require("reviewit.files")
+local files = require("fude.files")
 
 describe("build_file_entries", function()
 	local icons = files.status_icons
