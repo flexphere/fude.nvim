@@ -32,11 +32,11 @@ argument-hint: [PR番号（省略時はカレントブランチのPR）]
    - PR が見つからない場合はエラーを報告して終了する
 
 2. 未対応のレビューコメント（**行コメントのみ**）を取得する
-   ```bash
+   # 現在のユーザー(login)を取得
+   CURRENT_USER=$(gh api user --jq '.login')
+
+   # PR のレビューコメント一覧を取得
    gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
-   - `in_reply_to_id` が null のコメント = スレッドのルート（レビュー指摘）
-   - ルートコメントに対して自分（PR作成者）の返信が既にある場合は「対応済み」としてスキップ
-   - bot によるコメント（user.type == "Bot"）も対象に含める
 
 3. 未対応コメントごとに、対象コードを読み込み妥当性を分析する
    - コメントの位置情報（`path` + `line` / `original_line`、あるいは `start_line` / `original_start_line` + `line` / `original_line`、`side` / `start_side` など）から、コメントが指しているコード範囲を特定する
