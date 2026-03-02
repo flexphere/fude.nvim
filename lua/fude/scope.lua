@@ -195,7 +195,11 @@ function M.apply_commit_scope(sha)
 
 	-- Check for uncommitted changes
 	local status_result = vim.system({ "git", "status", "--porcelain" }, { text = true }):wait()
-	if status_result.code == 0 and status_result.stdout ~= "" then
+	if status_result.code ~= 0 then
+		vim.notify("fude.nvim: Failed to check git status: " .. (status_result.stderr or ""), vim.log.levels.ERROR)
+		return
+	end
+	if status_result.stdout ~= "" then
 		vim.notify(
 			"fude.nvim: Uncommitted changes detected. Please commit or stash before switching scope.",
 			vim.log.levels.ERROR
