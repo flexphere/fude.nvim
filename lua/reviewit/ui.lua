@@ -115,12 +115,38 @@ function M.format_comments_for_display(comments, format_date_fn)
 	return { lines = lines, hl_ranges = hl_ranges }
 end
 
+--- Normalize check fields into a consistent (status, conclusion) pair.
+--- Handles both CheckRun (status/conclusion) and StatusContext (state) objects.
+--- @param check table check run or status context object
+--- @return string status, string conclusion
+function M.normalize_check(check)
+	-- CheckRun: has status/conclusion fields
+	if check.status or check.conclusion then
+		return check.status or "", check.conclusion or ""
+	end
+
+	-- StatusContext: has state field (uppercase: "SUCCESS", "FAILURE", "PENDING", "ERROR", "EXPECTED")
+	local state = (check.state or ""):upper()
+	if state == "SUCCESS" then
+		return "COMPLETED", "SUCCESS"
+	elseif state == "EXPECTED" then
+		return "PENDING", ""
+	elseif state == "FAILURE" then
+		return "COMPLETED", "FAILURE"
+	elseif state == "ERROR" then
+		return "COMPLETED", "FAILURE"
+	elseif state == "PENDING" then
+		return "PENDING", ""
+	end
+
+	return "", ""
+end
+
 --- Map check conclusion/status to display symbol and highlight group.
---- @param check table check run object from statusCheckRollup
+--- @param check table check run or status context object from statusCheckRollup
 --- @return string symbol, string hl_group
 function M.format_check_status(check)
-	local status = check.status or ""
-	local conclusion = check.conclusion or ""
+	local status, conclusion = M.normalize_check(check)
 
 	-- Not yet completed
 	if status == "IN_PROGRESS" or status == "QUEUED" or status == "PENDING" then
@@ -161,6 +187,52 @@ function M.deduplicate_checks(checks)
 	return result
 end
 
+--- Get sort priority for a check (lower = shown first).
+--- @param check table check run or StatusContext object from statusCheckRollup
+--- @return number priority, string name
+local function check_sort_key(check)
+	local status, conclusion = M.normalize_check(check)
+	local name = check.name or check.context or "unknown"
+
+	local priority
+	if conclusion == "FAILURE" or conclusion == "TIMED_OUT" or conclusion == "STARTUP_FAILURE" then
+		priority = 1
+	elseif conclusion == "CANCELLED" or conclusion == "ACTION_REQUIRED" then
+		priority = 2
+	elseif conclusion == "SKIPPED" or conclusion == "NEUTRAL" then
+		priority = 3
+	elseif status == "IN_PROGRESS" or status == "QUEUED" or status == "PENDING" then
+		priority = 4
+	elseif conclusion == "SUCCESS" then
+		priority = 5
+	else
+		priority = 6
+	end
+
+	return priority, name
+end
+
+--- Sort checks by priority: failures first, then cancelled/action-required, then skipped/neutral,
+--- then in-progress, then success, then any remaining states.
+--- Within the same priority, checks are sorted alphabetically by name.
+--- @param checks table[] statusCheckRollup array
+--- @return table[] sorted copy of checks
+function M.sort_checks(checks)
+	local sorted = {}
+	for i, check in ipairs(checks) do
+		sorted[i] = check
+	end
+	table.sort(sorted, function(a, b)
+		local pa, na = check_sort_key(a)
+		local pb, nb = check_sort_key(b)
+		if pa ~= pb then
+			return pa < pb
+		end
+		return na < nb
+	end)
+	return sorted
+end
+
 --- Build summary string for checks (e.g. "2/3 passed").
 --- @param checks table[] statusCheckRollup array
 --- @return string
@@ -170,7 +242,7 @@ function M.build_checks_summary(checks)
 	end
 	local passed = 0
 	for _, check in ipairs(checks) do
-		local conclusion = check.conclusion or ""
+		local _, conclusion = M.normalize_check(check)
 		if conclusion == "SUCCESS" or conclusion == "NEUTRAL" or conclusion == "SKIPPED" then
 			passed = passed + 1
 		end
@@ -325,7 +397,7 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 
 	-- CI Status
 	local raw_checks = pr_info.statusCheckRollup or {}
-	local checks = M.deduplicate_checks(raw_checks)
+	local checks = M.sort_checks(M.deduplicate_checks(raw_checks))
 	local check_urls = {}
 	table.insert(lines, "")
 	table.insert(lines, string.rep("-", 50))
@@ -346,7 +418,8 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 		for _, check in ipairs(checks) do
 			local name = check.name or check.context or "unknown"
 			local symbol, hl = M.format_check_status(check)
-			local conclusion = check.conclusion or check.status or ""
+			local norm_status, norm_conclusion = M.normalize_check(check)
+			local conclusion = norm_conclusion ~= "" and norm_conclusion or norm_status
 			table.insert(lines, string.format("%s %s  %s", symbol, name, conclusion:lower()))
 			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
 			local url = check.detailsUrl or check.targetUrl
