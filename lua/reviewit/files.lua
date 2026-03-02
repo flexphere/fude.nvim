@@ -16,8 +16,10 @@ M.status_icons = {
 --- @return string icon
 --- @return string hl highlight group name
 function M.viewed_icon(viewed_state, viewed_sign)
+	-- Use configured highlight for viewed files, falling back to the default
+	local viewed_hl = (config.opts and config.opts.signs and config.opts.signs.viewed_hl) or "DiagnosticOk"
 	if viewed_state == "VIEWED" then
-		return viewed_sign, "DiagnosticOk"
+		return viewed_sign, viewed_hl
 	end
 	return " ", "Comment"
 end
