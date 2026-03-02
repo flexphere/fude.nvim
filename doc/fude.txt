@@ -91,6 +91,23 @@ Using lazy.nvim: >lua
     by default, falls back to quickfix if Telescope is not available.
     Configurable via `file_list_mode`.
 
+:FudeReviewScope                                    *:FudeReviewScope*
+    Select the review scope. Opens a picker showing the PR's commit
+    history and a "Full PR" option. By default, the scope is the full
+    PR (base...HEAD).
+
+    When a specific commit is selected, the plugin checks out that
+    commit and switches the review context: |:FudeReviewFiles| shows
+    only files changed in that commit, and the diff preview uses the
+    commit's parent as the base. Gitsigns base is also updated.
+
+    When "Full PR" is selected, the original HEAD is restored and
+    the full PR scope is re-applied.
+
+    Note: Uncommitted changes must be committed or stashed before
+    switching to a commit scope.
+    Requires an active review session.
+
 :FudeReviewOverview                                *:FudeReviewOverview*
     Show PR overview in a split-pane floating window. The left pane
     displays title, state, author, base/head branches, description,
@@ -175,6 +192,7 @@ Suggested mappings:
   `<leader>eo`  PR overview
   `<leader>ed`  Toggle diff preview
   `<leader>eb`  Open PR in browser
+  `<leader>eC`  Select review scope (commit or full PR)
   `<leader>el`  List all review comments
   `<leader>ep`  List all drafts
   `<leader>em`  Mark current file as viewed
