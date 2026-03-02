@@ -16,6 +16,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **PR overview** - View PR title, description, labels, reviewers with review status, and issue-level comments
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user` and `#issue` completion in comment windows (blink.cmp / nvim-cmp)
+- **Viewed files** - Mark/unmark files as viewed (synced with GitHub)
 - **Open in browser** - Open the PR in your browser
 - **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
 
@@ -39,6 +40,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "ReviewStart", "ReviewStop", "ReviewToggle", "ReviewDiff",
     "ReviewComment", "ReviewSuggest", "ReviewViewComment", "ReviewListComments",
     "ReviewFiles", "ReviewOverview", "ReviewSubmit", "ReviewBrowse",
+    "ReviewViewed", "ReviewUnviewed",
   },
   keys = {
     { "<leader>et", "<cmd>ReviewToggle<cr>", desc = "Review: Toggle" },
@@ -59,7 +61,10 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
       function() require("reviewit.comments").reply_to_comment() end,
       desc = "Review: Reply",
     },
+    { "<leader>em", "<cmd>ReviewViewed<cr>", desc = "Review: Mark viewed" },
+    { "<leader>eM", "<cmd>ReviewUnviewed<cr>", desc = "Review: Unmark viewed" },
     -- ]c / [c are set automatically as buffer-local keymaps during review mode
+    -- <Tab> toggles viewed state in the ReviewFiles Telescope picker
   },
 }
 ```
@@ -93,6 +98,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:ReviewListComments` | List all PR review comments (Telescope) |
 | `:ReviewListDrafts` | List all local draft comments (Telescope) |
 | `:ReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
+| `:ReviewViewed` | Mark current file as viewed on GitHub |
+| `:ReviewUnviewed` | Unmark current file as viewed on GitHub |
 | `:ReviewBrowse` | Open PR in browser |
 
 ## Configuration
@@ -112,6 +119,8 @@ require("reviewit").setup({
     pending_hl = "DiagnosticHint",
     draft = "✎ draft comment",
     draft_hl = "DiagnosticWarn",
+    viewed = "✓",
+    viewed_hl = "DiagnosticOk",
   },
   float = {
     border = "single",

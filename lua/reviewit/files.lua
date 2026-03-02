@@ -10,14 +10,33 @@ M.status_icons = {
 	copied = "C",
 }
 
+--- Determine the viewed icon for a file.
+--- @param viewed_state string|nil "VIEWED", "UNVIEWED", "DISMISSED", or nil
+--- @param viewed_sign string character to show for viewed files
+--- @return string icon
+--- @return string hl highlight group name
+function M.viewed_icon(viewed_state, viewed_sign)
+	-- Use configured highlight for viewed files, falling back to the default
+	local viewed_hl = (config.opts and config.opts.signs and config.opts.signs.viewed_hl) or "DiagnosticOk"
+	if viewed_state == "VIEWED" then
+		return viewed_sign, viewed_hl
+	end
+	return " ", "Comment"
+end
+
 --- Build normalized file entries from changed files list.
 --- @param changed_files table[] list of { path, status, additions, deletions, patch }
 --- @param repo_root string repository root directory
 --- @param icons table status-to-icon map
+--- @param viewed_files table<string, string>|nil path-to-viewed-state map
+--- @param viewed_sign string|nil character for viewed indicator
 --- @return table[] entries
-function M.build_file_entries(changed_files, repo_root, icons)
+function M.build_file_entries(changed_files, repo_root, icons, viewed_files, viewed_sign)
+	viewed_files = viewed_files or {}
+	viewed_sign = viewed_sign or "✓"
 	local entries = {}
 	for _, file in ipairs(changed_files) do
+		local v_icon, v_hl = M.viewed_icon(viewed_files[file.path], viewed_sign)
 		table.insert(entries, {
 			path = file.path,
 			filename = repo_root .. "/" .. file.path,
@@ -26,6 +45,8 @@ function M.build_file_entries(changed_files, repo_root, icons)
 			status_hl = file.status == "added" and "DiffAdd" or file.status == "removed" and "DiffDelete" or "DiffChange",
 			additions = file.additions or 0,
 			deletions = file.deletions or 0,
+			viewed_icon = v_icon,
+			viewed_hl = v_hl,
 		})
 	end
 	return entries
@@ -73,9 +94,12 @@ function M.show_telescope()
 		return
 	end
 
+	local viewed_sign = config.opts.signs.viewed or "✓"
+
 	local displayer = entry_display.create({
 		separator = " ",
 		items = {
+			{ width = 2 },
 			{ width = 2 },
 			{ width = 5 },
 			{ width = 5 },
@@ -85,6 +109,7 @@ function M.show_telescope()
 
 	local make_display = function(entry)
 		return displayer({
+			{ entry.viewed_icon, entry.viewed_hl },
 			{ entry.status_icon, entry.status_hl },
 			{ "+" .. entry.additions, "DiffAdd" },
 			{ "-" .. entry.deletions, "DiffDelete" },
@@ -92,7 +117,8 @@ function M.show_telescope()
 		})
 	end
 
-	local raw_entries = M.build_file_entries(state.changed_files, repo_root, M.status_icons)
+	local raw_entries =
+		M.build_file_entries(state.changed_files, repo_root, M.status_icons, state.viewed_files, viewed_sign)
 	local entries = {}
 	for _, entry in ipairs(raw_entries) do
 		entry.value = entry.path
@@ -101,11 +127,11 @@ function M.show_telescope()
 		table.insert(entries, entry)
 	end
 
-	pickers
-		.new({}, {
+	local function create_picker(initial_entries)
+		return pickers.new({}, {
 			prompt_title = string.format("PR #%d Changed Files", state.pr_number),
 			finder = finders.new_table({
-				results = entries,
+				results = initial_entries,
 				entry_maker = function(entry)
 					return entry
 				end,
@@ -123,7 +149,7 @@ function M.show_telescope()
 					vim.bo[self.state.bufnr].filetype = "diff"
 				end,
 			}),
-			attach_mappings = function(prompt_bufnr, _)
+			attach_mappings = function(prompt_bufnr, map)
 				actions.select_default:replace(function()
 					actions.close(prompt_bufnr)
 					local selection = action_state.get_selected_entry()
@@ -131,10 +157,77 @@ function M.show_telescope()
 						vim.cmd("edit " .. vim.fn.fnameescape(selection.filename))
 					end
 				end)
+
+				map("i", "<Tab>", function()
+					M.toggle_viewed_in_picker(prompt_bufnr)
+				end)
+				map("n", "<Tab>", function()
+					M.toggle_viewed_in_picker(prompt_bufnr)
+				end)
+
 				return true
 			end,
 		})
-		:find()
+	end
+
+	create_picker(entries):find()
+end
+
+--- Toggle viewed state for the selected file in the Telescope picker.
+--- @param prompt_bufnr number
+function M.toggle_viewed_in_picker(prompt_bufnr)
+	local action_state = require("telescope.actions.state")
+	local selection = action_state.get_selected_entry()
+	if not selection then
+		return
+	end
+
+	local state = config.state
+	if not state.pr_node_id then
+		vim.notify("reviewit.nvim: PR node ID not available", vim.log.levels.WARN)
+		return
+	end
+
+	local path = selection.path
+	local current_state = state.viewed_files[path]
+	local gh_mod = require("reviewit.gh")
+	local viewed_sign = config.opts.signs.viewed or "✓"
+
+	if current_state == "VIEWED" then
+		gh_mod.unmark_file_viewed(state.pr_node_id, path, function(err)
+			if err then
+				vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			state.viewed_files[path] = "UNVIEWED"
+			-- Update the entry display
+			local v_icon, v_hl = M.viewed_icon("UNVIEWED", viewed_sign)
+			selection.viewed_icon = v_icon
+			selection.viewed_hl = v_hl
+			-- Refresh the picker
+			local picker = action_state.get_current_picker(prompt_bufnr)
+			if picker then
+				picker:refresh(nil, { reset_prompt = false })
+			end
+		end)
+	else
+		gh_mod.mark_file_viewed(state.pr_node_id, path, function(err)
+			if err then
+				vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			state.viewed_files[path] = "VIEWED"
+			-- Update the entry display
+			local v_icon, v_hl = M.viewed_icon("VIEWED", viewed_sign)
+			selection.viewed_icon = v_icon
+			selection.viewed_hl = v_hl
+			-- Refresh the picker
+			local picker = action_state.get_current_picker(prompt_bufnr)
+			if picker then
+				picker:refresh(nil, { reset_prompt = false })
+			end
+		end)
+	end
 end
 
 --- Show changed files in the quickfix list.
@@ -145,13 +238,22 @@ function M.show_quickfix()
 		return
 	end
 
-	local raw_entries = M.build_file_entries(state.changed_files, repo_root, M.status_icons)
+	local viewed_sign = config.opts.signs.viewed or "✓"
+	local raw_entries =
+		M.build_file_entries(state.changed_files, repo_root, M.status_icons, state.viewed_files, viewed_sign)
 	local items = {}
 	for _, entry in ipairs(raw_entries) do
 		table.insert(items, {
 			filename = entry.filename,
 			lnum = 1,
-			text = string.format("[%s] +%d -%d  %s", entry.status_icon, entry.additions, entry.deletions, entry.path),
+			text = string.format(
+				"[%s] [%s] +%d -%d  %s",
+				entry.viewed_icon,
+				entry.status_icon,
+				entry.additions,
+				entry.deletions,
+				entry.path
+			),
 		})
 	end
 

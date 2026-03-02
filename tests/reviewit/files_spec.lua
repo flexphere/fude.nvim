@@ -67,6 +67,79 @@ describe("build_file_entries", function()
 		assert.are.equal("R", entries[1].status_icon)
 		assert.are.equal("C", entries[2].status_icon)
 	end)
+
+	it("includes viewed icon for VIEWED files", function()
+		local changed = {
+			{ path = "a.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		local viewed = { ["a.lua"] = "VIEWED" }
+		local entries = files.build_file_entries(changed, "/repo", icons, viewed, "✓")
+		assert.are.equal("✓", entries[1].viewed_icon)
+		assert.are.equal("DiagnosticOk", entries[1].viewed_hl)
+	end)
+
+	it("shows space for UNVIEWED files", function()
+		local changed = {
+			{ path = "a.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		local viewed = { ["a.lua"] = "UNVIEWED" }
+		local entries = files.build_file_entries(changed, "/repo", icons, viewed, "✓")
+		assert.are.equal(" ", entries[1].viewed_icon)
+		assert.are.equal("Comment", entries[1].viewed_hl)
+	end)
+
+	it("shows space for DISMISSED files", function()
+		local changed = {
+			{ path = "a.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		local viewed = { ["a.lua"] = "DISMISSED" }
+		local entries = files.build_file_entries(changed, "/repo", icons, viewed, "✓")
+		assert.are.equal(" ", entries[1].viewed_icon)
+		assert.are.equal("Comment", entries[1].viewed_hl)
+	end)
+
+	it("defaults viewed to space when viewed_files is nil", function()
+		local changed = {
+			{ path = "a.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		local entries = files.build_file_entries(changed, "/repo", icons, nil, "✓")
+		assert.are.equal(" ", entries[1].viewed_icon)
+	end)
+
+	it("uses custom viewed sign", function()
+		local changed = {
+			{ path = "a.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		local viewed = { ["a.lua"] = "VIEWED" }
+		local entries = files.build_file_entries(changed, "/repo", icons, viewed, "V")
+		assert.are.equal("V", entries[1].viewed_icon)
+	end)
+end)
+
+describe("viewed_icon", function()
+	it("returns viewed sign for VIEWED state", function()
+		local icon, hl = files.viewed_icon("VIEWED", "✓")
+		assert.are.equal("✓", icon)
+		assert.are.equal("DiagnosticOk", hl)
+	end)
+
+	it("returns space for UNVIEWED state", function()
+		local icon, hl = files.viewed_icon("UNVIEWED", "✓")
+		assert.are.equal(" ", icon)
+		assert.are.equal("Comment", hl)
+	end)
+
+	it("returns space for DISMISSED state", function()
+		local icon, hl = files.viewed_icon("DISMISSED", "✓")
+		assert.are.equal(" ", icon)
+		assert.are.equal("Comment", hl)
+	end)
+
+	it("returns space for nil state", function()
+		local icon, hl = files.viewed_icon(nil, "✓")
+		assert.are.equal(" ", icon)
+		assert.are.equal("Comment", hl)
+	end)
 end)
 
 describe("status_icons", function()

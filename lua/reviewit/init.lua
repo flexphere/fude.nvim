@@ -57,6 +57,14 @@ function M.start()
 			end
 		end)
 
+		-- Fetch viewed file states
+		gh_mod.get_pr_viewed_files(state.pr_number, function(viewed_err, viewed_map, pr_node_id)
+			if not viewed_err and viewed_map then
+				state.viewed_files = viewed_map
+				state.pr_node_id = pr_node_id
+			end
+		end)
+
 		-- Apply diffopt settings
 		if config.opts.diffopt then
 			state.original_diffopt = vim.o.diffopt
@@ -181,6 +189,66 @@ function M.toggle()
 	else
 		M.start()
 	end
+end
+
+--- Mark the current file as viewed on GitHub.
+function M.mark_viewed()
+	local state = config.state
+	if not state.active then
+		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if not state.pr_node_id then
+		vim.notify("reviewit.nvim: PR node ID not available yet", vim.log.levels.WARN)
+		return
+	end
+
+	local diff_mod = require("reviewit.diff")
+	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
+	if not rel_path then
+		vim.notify("reviewit.nvim: Cannot determine file path", vim.log.levels.ERROR)
+		return
+	end
+
+	local gh_mod = require("reviewit.gh")
+	gh_mod.mark_file_viewed(state.pr_node_id, rel_path, function(err)
+		if err then
+			vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+			return
+		end
+		state.viewed_files[rel_path] = "VIEWED"
+		vim.notify("reviewit.nvim: Marked as viewed: " .. rel_path, vim.log.levels.INFO)
+	end)
+end
+
+--- Unmark the current file as viewed on GitHub.
+function M.unmark_viewed()
+	local state = config.state
+	if not state.active then
+		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if not state.pr_node_id then
+		vim.notify("reviewit.nvim: PR node ID not available yet", vim.log.levels.WARN)
+		return
+	end
+
+	local diff_mod = require("reviewit.diff")
+	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
+	if not rel_path then
+		vim.notify("reviewit.nvim: Cannot determine file path", vim.log.levels.ERROR)
+		return
+	end
+
+	local gh_mod = require("reviewit.gh")
+	gh_mod.unmark_file_viewed(state.pr_node_id, rel_path, function(err)
+		if err then
+			vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+			return
+		end
+		state.viewed_files[rel_path] = "UNVIEWED"
+		vim.notify("reviewit.nvim: Unmarked as viewed: " .. rel_path, vim.log.levels.INFO)
+	end)
 end
 
 --- Check if review mode is active.

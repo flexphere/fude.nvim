@@ -47,6 +47,14 @@ vim.api.nvim_create_user_command("ReviewListDrafts", function()
 	require("reviewit.comments").list_drafts()
 end, { desc = "List draft comments" })
 
+vim.api.nvim_create_user_command("ReviewViewed", function()
+	require("reviewit").mark_viewed()
+end, { desc = "Mark current file as viewed" })
+
+vim.api.nvim_create_user_command("ReviewUnviewed", function()
+	require("reviewit").unmark_viewed()
+end, { desc = "Unmark current file as viewed" })
+
 vim.api.nvim_create_user_command("ReviewBrowse", function()
 	local state = require("reviewit.config").state
 	if not state.active or not state.pr_url then

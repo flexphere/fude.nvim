@@ -29,6 +29,7 @@ in the editor. It provides:
 - View PR overview with title, description, labels, reviewers, CI status, and comments
 - Clickable GitHub references (#123) and URLs in floating windows
 - @user and #issue completion in comment windows (blink.cmp / nvim-cmp)
+- Mark files as viewed/unviewed (synced with GitHub)
 - Gitsigns integration for diff base switching
 
 ==============================================================================
@@ -126,6 +127,17 @@ Using lazy.nvim: >lua
     GitHub pending review (see |:ReviewComment|), not local drafts.
     Requires an active review session.
 
+:ReviewViewed                                              *:ReviewViewed*
+    Mark the current file as viewed on GitHub. Uses the GitHub
+    GraphQL API to sync the viewed state. The viewed status is
+    reflected in the |:ReviewFiles| picker.
+    Requires an active review session.
+
+:ReviewUnviewed                                            *:ReviewUnviewed*
+    Unmark the current file as viewed on GitHub. Resets the
+    viewed status for the current file.
+    Requires an active review session.
+
 :ReviewBrowse                                                *:ReviewBrowse*
     Open the PR in the browser using the cached PR URL.
     Requires an active review session.
@@ -166,9 +178,12 @@ Suggested mappings:
   `<leader>eb`  Open PR in browser
   `<leader>el`  List all review comments
   `<leader>ep`  List all drafts
+  `<leader>em`  Mark current file as viewed
+  `<leader>eM`  Unmark current file as viewed
   `]c`          Next comment
   `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
+  `<Tab>`       Toggle viewed state (in |:ReviewFiles| Telescope picker)
   `'r`/`'d`/`'s`/`'c`  Jump to reviewers/description/CI status/comments (overview)
 
   * Visual mode mappings must use `:ReviewComment<CR>` (not `<cmd>`)
@@ -193,6 +208,8 @@ Default configuration: >lua
       pending_hl = "DiagnosticHint",
       draft = "✎ draft comment",
       draft_hl = "DiagnosticWarn",
+      viewed = "✓",
+      viewed_hl = "DiagnosticOk",
     },
     float = {
       border = "single",
@@ -239,6 +256,12 @@ Options:
 
 `signs.draft_hl`    Highlight group for draft indicators
                   (default: "DiagnosticWarn").
+
+`signs.viewed`      Character shown in the file list for viewed files
+                  (default: "✓").
+
+`signs.viewed_hl`   Highlight group for viewed file indicators
+                  (default: "DiagnosticOk").
 
 `float.border`      Border style for floating windows.
 
