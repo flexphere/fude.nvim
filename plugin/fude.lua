@@ -31,6 +31,10 @@ vim.api.nvim_create_user_command("FudeReviewOverview", function()
 	require("fude.overview").show()
 end, { desc = "Show PR overview" })
 
+vim.api.nvim_create_user_command("FudeReviewScope", function()
+	require("fude.scope").select_scope()
+end, { desc = "Select review scope (full PR or specific commit)" })
+
 vim.api.nvim_create_user_command("FudeReviewListComments", function()
 	require("fude.comments").list_comments()
 end, { desc = "List PR review comments" })

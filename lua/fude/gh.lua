@@ -329,6 +329,54 @@ function M.get_repo_issues(callback)
 	}, callback)
 end
 
+--- Get the list of commits in a PR.
+--- @param pr_number number
+--- @param callback fun(err: string|nil, commits: table|nil)
+function M.get_pr_commits(pr_number, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/commits",
+		"--paginate",
+	}, callback)
+end
+
+--- Get the files changed in a specific commit.
+--- @param commit_sha string
+--- @param callback fun(err: string|nil, files: table|nil)
+function M.get_commit_files(commit_sha, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/commits/" .. commit_sha,
+	}, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		callback(nil, data.files)
+	end)
+end
+
+--- Parse raw commit API objects into normalized entries.
+--- @param raw_commits table[] array of commit objects from GitHub API
+--- @return table[] entries array of { sha, short_sha, message, author_name, date }
+function M.parse_commit_entries(raw_commits)
+	local entries = {}
+	for _, c in ipairs(raw_commits) do
+		local commit = c.commit or {}
+		local author = commit.author or {}
+		local message = commit.message or ""
+		-- Use only the first line of the commit message
+		local first_line = message:match("^([^\n]*)") or message
+		table.insert(entries, {
+			sha = c.sha,
+			short_sha = (c.sha or ""):sub(1, 7),
+			message = first_line,
+			author_name = author.name or "",
+			date = author.date or "",
+		})
+	end
+	return entries
+end
+
 --- Get the HEAD commit SHA (synchronous, local git operation).
 --- @return string|nil sha, string|nil err
 function M.get_head_sha()

@@ -42,6 +42,10 @@ function M.start()
 			vim.log.levels.INFO
 		)
 
+		-- Save original HEAD SHA for scope restoration
+		local head_sha, _ = gh_mod.get_head_sha()
+		state.original_head_sha = head_sha
+
 		gh_mod.get_pr_files(state.pr_number, function(files_err, files)
 			if not files_err and files then
 				state.changed_files = {}
@@ -54,6 +58,13 @@ function M.start()
 						patch = f.patch,
 					})
 				end
+			end
+		end)
+
+		-- Fetch PR commits for scope selection
+		gh_mod.get_pr_commits(state.pr_number, function(commits_err, commits)
+			if not commits_err and commits then
+				state.pr_commits = commits
 			end
 		end)
 
@@ -164,6 +175,11 @@ function M.stop()
 	require("fude.preview").close_preview()
 	require("fude.ui").clear_all_extmarks()
 	M.clear_buf_keymaps()
+
+	-- Restore original HEAD if in commit scope
+	if state.scope == "commit" and state.original_head_sha then
+		vim.system({ "git", "checkout", state.original_head_sha }, { text = true }):wait()
+	end
 
 	-- Reset gitsigns back to default (HEAD)
 	local has_gitsigns, gitsigns = pcall(require, "gitsigns")

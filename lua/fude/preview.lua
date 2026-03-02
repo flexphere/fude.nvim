@@ -24,12 +24,17 @@ function M.open_preview(source_win)
 		return
 	end
 
-	local content, _ = diff.get_base_content(state.base_ref, rel_path)
+	local base_ref = state.base_ref
+	if state.scope == "commit" and state.scope_commit_sha then
+		base_ref = state.scope_commit_sha .. "^"
+	end
+
+	local content, _ = diff.get_base_content(base_ref, rel_path)
 
 	M.close_preview()
 
 	if not content then
-		content = "-- [fude.nvim] New file: does not exist in " .. state.base_ref
+		content = "-- [fude.nvim] New file: does not exist in " .. base_ref
 	end
 
 	local preview_buf = vim.api.nvim_create_buf(false, true)

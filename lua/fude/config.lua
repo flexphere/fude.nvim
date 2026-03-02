@@ -63,6 +63,10 @@ M.state = {
 	augroup = nil,
 	ns_id = nil,
 	original_diffopt = nil,
+	scope = "full_pr", -- "full_pr" | "commit"
+	scope_commit_sha = nil, -- Selected commit SHA when scope is "commit"
+	pr_commits = {}, -- Cached list of PR commits
+	original_head_sha = nil, -- HEAD SHA before scope checkout (for restoring)
 }
 
 M.opts = {}
@@ -94,6 +98,10 @@ function M.reset_state()
 		augroup = nil,
 		ns_id = ns,
 		original_diffopt = nil,
+		scope = "full_pr",
+		scope_commit_sha = nil,
+		pr_commits = {},
+		original_head_sha = nil,
 	}
 end
 
