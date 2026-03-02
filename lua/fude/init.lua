@@ -42,9 +42,15 @@ function M.start()
 			vim.log.levels.INFO
 		)
 
-		-- Save original HEAD SHA for scope restoration
+		-- Save original HEAD ref (branch name) and SHA for scope restoration
+		-- Prefer restoring by branch name to avoid leaving the user in detached HEAD
 		local head_sha, _ = gh_mod.get_head_sha()
 		state.original_head_sha = head_sha
+
+		local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "--short", "HEAD" }, { text = true }):wait()
+		if ref_result.code == 0 and ref_result.stdout and vim.trim(ref_result.stdout) ~= "" then
+			state.original_head_ref = vim.trim(ref_result.stdout)
+		end
 
 		gh_mod.get_pr_files(state.pr_number, function(files_err, files)
 			if not files_err and files then
@@ -177,8 +183,16 @@ function M.stop()
 	M.clear_buf_keymaps()
 
 	-- Restore original HEAD if in commit scope
-	if state.scope == "commit" and state.original_head_sha then
-		vim.system({ "git", "checkout", state.original_head_sha }, { text = true }):wait()
+	if state.scope == "commit" and (state.original_head_ref or state.original_head_sha) then
+		local checkout_target = state.original_head_ref or state.original_head_sha
+		local result = vim.system({ "git", "checkout", checkout_target }, { text = true }):wait()
+		if result.code ~= 0 then
+			vim.notify(
+				"fude.nvim: Failed to restore HEAD: " .. (result.stderr or "") .. " — manual checkout may be needed",
+				vim.log.levels.ERROR
+			)
+			return
+		end
 	end
 
 	-- Reset gitsigns back to default (HEAD)

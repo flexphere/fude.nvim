@@ -126,9 +126,10 @@ function M.apply_full_pr_scope()
 		return
 	end
 
-	-- Restore original HEAD
-	if state.original_head_sha then
-		local result = vim.system({ "git", "checkout", state.original_head_sha }, { text = true }):wait()
+	-- Restore original HEAD (prefer branch name to avoid detached HEAD)
+	local checkout_target = state.original_head_ref or state.original_head_sha
+	if checkout_target then
+		local result = vim.system({ "git", "checkout", checkout_target }, { text = true }):wait()
 		if result.code ~= 0 then
 			vim.notify("fude.nvim: Failed to restore HEAD: " .. (result.stderr or ""), vim.log.levels.ERROR)
 			return
