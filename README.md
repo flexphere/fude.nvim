@@ -14,7 +14,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Pending review** - Comments are saved as GitHub pending review (visible on PR page)
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
-- **Review scope** - Review the full PR or focus on a specific commit
+- **Review scope** - Review the full PR or focus on a specific commit, mark commits as reviewed
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right)
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
@@ -68,7 +68,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>em", "<cmd>FudeReviewViewed<cr>", desc = "Review: Mark viewed" },
     { "<leader>eM", "<cmd>FudeReviewUnviewed<cr>", desc = "Review: Unmark viewed" },
     -- ]c / [c are set automatically as buffer-local keymaps during review mode
-    -- <Tab> toggles viewed state in the FudeReviewFiles Telescope picker
+    -- <Tab> toggles viewed state in FudeReviewFiles / reviewed state in FudeReviewScope
   },
 }
 ```

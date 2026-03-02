@@ -104,6 +104,10 @@ Using lazy.nvim: >lua
     When "Full PR" is selected, the original HEAD is restored and
     the full PR scope is re-applied.
 
+    Press `<Tab>` on a commit entry to toggle its reviewed state.
+    Reviewed commits are shown with a checkmark indicator. This
+    state is tracked locally within the session.
+
     Note: Uncommitted changes must be committed or stashed before
     switching to a commit scope.
     Requires an active review session.
@@ -201,6 +205,7 @@ Suggested mappings:
   `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
+                Toggle commit reviewed state (in |:FudeReviewScope| picker)
                 Switch between left/right panes (in |:FudeReviewOverview|)
   `'d`/`'c`    Jump to description/comments (overview left pane)
 
