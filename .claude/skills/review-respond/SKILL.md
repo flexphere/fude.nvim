@@ -31,10 +31,9 @@ argument-hint: [PR番号（省略時はカレントブランチのPR）]
    - 省略時はカレントブランチの PR を使う: `gh pr view --json number --jq '.number'`
    - PR が見つからない場合はエラーを報告して終了する
 
-2. 未対応のレビューコメントを取得する
+2. 未対応のレビューコメント（**行コメントのみ**）を取得する
    ```bash
-   gh api repos/{owner}/{repo}/pulls/{pr_number}/comments --paginate
-   ```
+   gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
    - `in_reply_to_id` が null のコメント = スレッドのルート（レビュー指摘）
    - ルートコメントに対して自分（PR作成者）の返信が既にある場合は「対応済み」としてスキップ
    - bot によるコメント（user.type == "Bot"）も対象に含める
