@@ -229,10 +229,10 @@ describe("normalize_check", function()
 		assert.are.equal("", conclusion)
 	end)
 
-	it("normalizes StatusContext EXPECTED to SUCCESS", function()
+	it("normalizes StatusContext EXPECTED to PENDING", function()
 		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "EXPECTED" })
-		assert.are.equal("COMPLETED", status)
-		assert.are.equal("SUCCESS", conclusion)
+		assert.are.equal("PENDING", status)
+		assert.are.equal("", conclusion)
 	end)
 
 	it("returns empty strings for unknown object", function()

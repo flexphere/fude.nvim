@@ -127,8 +127,10 @@ function M.normalize_check(check)
 
 	-- StatusContext: has state field (uppercase: "SUCCESS", "FAILURE", "PENDING", "ERROR", "EXPECTED")
 	local state = (check.state or ""):upper()
-	if state == "SUCCESS" or state == "EXPECTED" then
+	if state == "SUCCESS" then
 		return "COMPLETED", "SUCCESS"
+	elseif state == "EXPECTED" then
+		return "PENDING", ""
 	elseif state == "FAILURE" then
 		return "COMPLETED", "FAILURE"
 	elseif state == "ERROR" then
@@ -186,7 +188,7 @@ function M.deduplicate_checks(checks)
 end
 
 --- Get sort priority for a check (lower = shown first).
---- @param check table check run object from statusCheckRollup
+--- @param check table check run or StatusContext object from statusCheckRollup
 --- @return number priority, string name
 local function check_sort_key(check)
 	local status, conclusion = M.normalize_check(check)
@@ -210,7 +212,8 @@ local function check_sort_key(check)
 	return priority, name
 end
 
---- Sort checks by priority: failures first, then skipped/cancelled, then in-progress, then success.
+--- Sort checks by priority: failures first, then cancelled/action-required, then skipped/neutral,
+--- then in-progress, then success, then any remaining states.
 --- Within the same priority, checks are sorted alphabetically by name.
 --- @param checks table[] statusCheckRollup array
 --- @return table[] sorted copy of checks
