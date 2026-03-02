@@ -498,6 +498,30 @@ describe("calculate_overview_layout", function()
 		assert.are.equal(15, layout.right.width)
 	end)
 
+	it("enforces minimum left width of 20 when right_pct is very large", function()
+		local layout = ui.calculate_overview_layout(100, 50, 50, 50, 99)
+		assert.is_true(layout.left.width >= 20)
+		assert.is_true(layout.right.width >= 15)
+	end)
+
+	it("clamps total_width to ensure minimum inner space", function()
+		-- Very small screen or pct_w that would make inner < 35
+		local layout = ui.calculate_overview_layout(40, 50, 10, 50, 30)
+		assert.is_true(layout.left.width >= 20)
+		assert.is_true(layout.right.width >= 15)
+	end)
+
+	it("clamps right_pct to valid range", function()
+		-- right_pct > 100 should be clamped
+		local layout = ui.calculate_overview_layout(200, 50, 80, 80, 150)
+		assert.is_true(layout.left.width >= 20)
+		assert.is_true(layout.right.width >= 15)
+		-- right_pct < 0 should be clamped
+		local layout2 = ui.calculate_overview_layout(200, 50, 80, 80, -10)
+		assert.is_true(layout2.left.width >= 20)
+		assert.is_true(layout2.right.width >= 15)
+	end)
+
 	it("centers the layout horizontally", function()
 		local layout = ui.calculate_overview_layout(200, 50, 50, 50, 30)
 		-- total_width = 100, start_col = 50

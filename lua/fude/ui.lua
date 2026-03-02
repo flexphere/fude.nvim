@@ -326,13 +326,18 @@ end
 --- @param right_pct number right pane width as percentage of total (0-100)
 --- @return table { left: { width, height, row, col }, right: { width, height, row, col } }
 function M.calculate_overview_layout(columns, screen_lines, pct_w, pct_h, right_pct)
-	local total_width = math.floor(columns * pct_w / 100)
+	local min_left = 20
+	local min_right = 15
+	local min_inner = min_left + min_right
+
+	right_pct = math.max(0, math.min(100, right_pct))
+	local total_width = math.max(math.floor(columns * pct_w / 100), min_inner + 4)
 	local height = math.floor(screen_lines * pct_h / 100)
 	local top_row = math.floor((screen_lines - height) / 2)
 	local start_col = math.floor((columns - total_width) / 2)
 	-- Each window has 2 border chars (left+right), 2 windows = 4 border chars total
 	local inner = total_width - 4
-	local right_width = math.max(math.floor(inner * right_pct / 100), 15)
+	local right_width = math.min(math.max(math.floor(inner * right_pct / 100), min_right), inner - min_left)
 	local left_width = inner - right_width
 	return {
 		left = { width = left_width, height = height, row = top_row, col = start_col },
@@ -884,8 +889,8 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		pcall(vim.api.nvim_win_close, right_win, true)
 	end
 
-	-- WinClosed autocmd to close partner window
-	local augroup = vim.api.nvim_create_augroup("fude_overview", { clear = true })
+	-- WinClosed autocmd to close partner window (unique per instance)
+	local augroup = vim.api.nvim_create_augroup("fude_overview_" .. left_win, { clear = true })
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = augroup,
 		callback = function(ev)
