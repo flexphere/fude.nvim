@@ -178,6 +178,74 @@ function M.build_checks_summary(checks)
 	return string.format("%d/%d passed", passed, #checks)
 end
 
+--- Map review state to display symbol and highlight group.
+--- @param state string review state ("APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED", "PENDING")
+--- @return string symbol, string hl_group
+function M.format_review_status(state)
+	if state == "APPROVED" then
+		return "✓", "DiagnosticOk"
+	elseif state == "CHANGES_REQUESTED" then
+		return "✗", "DiagnosticError"
+	elseif state == "COMMENTED" then
+		return "💬", "DiagnosticInfo"
+	elseif state == "DISMISSED" then
+		return "-", "Comment"
+	elseif state == "PENDING" then
+		return "●", "DiagnosticWarn"
+	end
+	return "?", "Comment"
+end
+
+--- Build a unified list of reviewers from review requests and latest reviews.
+--- Reviewers who appear in both lists use the latestReviews state.
+--- @param review_requests table[] reviewRequests from gh pr view (each has login)
+--- @param latest_reviews table[] latestReviews from gh pr view (each has author.login, state)
+--- @return table[] list of { login: string, state: string } sorted by login
+function M.build_reviewers_list(review_requests, latest_reviews)
+	local reviewers = {}
+	local seen = {}
+
+	-- Add reviewers from latestReviews first (they have actual review state)
+	for _, review in ipairs(latest_reviews) do
+		local login = review.author and review.author.login
+		if login and not seen[login] then
+			seen[login] = true
+			table.insert(reviewers, { login = login, state = review.state or "COMMENTED" })
+		end
+	end
+
+	-- Add remaining reviewers from reviewRequests as PENDING
+	for _, req in ipairs(review_requests) do
+		local login = req.login
+		if login and not seen[login] then
+			seen[login] = true
+			table.insert(reviewers, { login = login, state = "PENDING" })
+		end
+	end
+
+	table.sort(reviewers, function(a, b)
+		return a.login < b.login
+	end)
+
+	return reviewers
+end
+
+--- Build summary string for reviewers (e.g. "1/2 approved").
+--- @param reviewers table[] list of { login: string, state: string }
+--- @return string
+function M.build_reviewers_summary(reviewers)
+	if #reviewers == 0 then
+		return ""
+	end
+	local approved = 0
+	for _, reviewer in ipairs(reviewers) do
+		if reviewer.state == "APPROVED" then
+			approved = approved + 1
+		end
+	end
+	return string.format("%d/%d approved", approved, #reviewers)
+end
+
 --- Build display lines for PR overview window.
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
@@ -208,6 +276,34 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 
 	table.insert(lines, string.format("Base: %s <- %s", pr_info.baseRefName or "", pr_info.headRefName or ""))
 	table.insert(lines, pr_info.url or "")
+
+	-- Reviewers
+	local review_requests = pr_info.reviewRequests or {}
+	local latest_reviews = pr_info.latestReviews or {}
+	local reviewers = M.build_reviewers_list(review_requests, latest_reviews)
+
+	table.insert(lines, "")
+	table.insert(lines, string.rep("-", 50))
+	local reviewers_header_line = #lines
+	local reviewers_summary = M.build_reviewers_summary(reviewers)
+	if reviewers_summary ~= "" then
+		table.insert(lines, string.format("REVIEWERS (%s)", reviewers_summary))
+	else
+		table.insert(lines, "REVIEWERS")
+	end
+	sections.reviewers = #lines -- 1-indexed
+	table.insert(hl_ranges, { line = reviewers_header_line, hl = "Title" })
+	table.insert(lines, string.rep("-", 50))
+
+	if #reviewers == 0 then
+		table.insert(lines, "(no reviewers)")
+	else
+		for _, reviewer in ipairs(reviewers) do
+			local symbol, hl = M.format_review_status(reviewer.state)
+			table.insert(lines, string.format("%s @%s  %s", symbol, reviewer.login, reviewer.state:lower()))
+			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
+		end
+	end
 
 	-- Description
 	table.insert(lines, "")
@@ -615,7 +711,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 
 	-- Set section marks
 	local marks = config.opts.overview and config.opts.overview.marks
-		or { description = "d", ci_status = "s", comments = "c" }
+		or { reviewers = "r", description = "d", ci_status = "s", comments = "c" }
 	for section, mark in pairs(marks) do
 		local line = result.sections[section]
 		if line and mark then
