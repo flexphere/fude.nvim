@@ -171,6 +171,75 @@ describe("format_check_status", function()
 		assert.are.equal("?", symbol)
 		assert.are.equal("Comment", hl)
 	end)
+
+	-- StatusContext (commit status API) tests
+	it("returns check mark for StatusContext success", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "success" })
+		assert.are.equal("✓", symbol)
+		assert.are.equal("DiagnosticOk", hl)
+	end)
+
+	it("returns x for StatusContext failure", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "failure" })
+		assert.are.equal("✗", symbol)
+		assert.are.equal("DiagnosticError", hl)
+	end)
+
+	it("returns x for StatusContext error", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "error" })
+		assert.are.equal("✗", symbol)
+		assert.are.equal("DiagnosticError", hl)
+	end)
+
+	it("returns circle for StatusContext pending", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "pending" })
+		assert.are.equal("●", symbol)
+		assert.are.equal("DiagnosticWarn", hl)
+	end)
+end)
+
+describe("normalize_check", function()
+	it("passes through CheckRun status and conclusion", function()
+		local status, conclusion = ui.normalize_check({ status = "COMPLETED", conclusion = "SUCCESS" })
+		assert.are.equal("COMPLETED", status)
+		assert.are.equal("SUCCESS", conclusion)
+	end)
+
+	it("normalizes StatusContext success", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "success" })
+		assert.are.equal("COMPLETED", status)
+		assert.are.equal("SUCCESS", conclusion)
+	end)
+
+	it("normalizes StatusContext failure", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "failure" })
+		assert.are.equal("COMPLETED", status)
+		assert.are.equal("FAILURE", conclusion)
+	end)
+
+	it("normalizes StatusContext error to FAILURE", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "error" })
+		assert.are.equal("COMPLETED", status)
+		assert.are.equal("FAILURE", conclusion)
+	end)
+
+	it("normalizes StatusContext pending", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "pending" })
+		assert.are.equal("PENDING", status)
+		assert.are.equal("", conclusion)
+	end)
+
+	it("returns empty strings for unknown object", function()
+		local status, conclusion = ui.normalize_check({})
+		assert.are.equal("", status)
+		assert.are.equal("", conclusion)
+	end)
+
+	it("prefers status/conclusion over state when both present", function()
+		local status, conclusion = ui.normalize_check({ status = "COMPLETED", conclusion = "SUCCESS", state = "failure" })
+		assert.are.equal("COMPLETED", status)
+		assert.are.equal("SUCCESS", conclusion)
+	end)
 end)
 
 describe("deduplicate_checks", function()
@@ -272,6 +341,14 @@ describe("build_checks_summary", function()
 
 	it("returns empty string for empty list", function()
 		assert.are.equal("", ui.build_checks_summary({}))
+	end)
+
+	it("counts StatusContext success as passed", function()
+		local checks = {
+			{ context = "ci/check", state = "success" },
+			{ context = "ci/build", state = "failure" },
+		}
+		assert.are.equal("1/2 passed", ui.build_checks_summary(checks))
 	end)
 end)
 
@@ -376,6 +453,20 @@ describe("sort_checks", function()
 		assert.are.equal("failure", result[1].name)
 		assert.are.equal("success", result[2].name)
 		assert.are.equal("unknown", result[3].name)
+	end)
+
+	it("sorts StatusContext checks alongside CheckRun checks", function()
+		local checks = {
+			{ name = "action-success", status = "COMPLETED", conclusion = "SUCCESS" },
+			{ context = "status-failure", state = "failure" },
+			{ context = "status-success", state = "success" },
+			{ name = "action-failure", status = "COMPLETED", conclusion = "FAILURE" },
+		}
+		local result = ui.sort_checks(checks)
+		assert.are.equal("action-failure", result[1].name or result[1].context)
+		assert.are.equal("status-failure", result[2].name or result[2].context)
+		assert.are.equal("action-success", result[3].name or result[3].context)
+		assert.are.equal("status-success", result[4].name or result[4].context)
 	end)
 end)
 
