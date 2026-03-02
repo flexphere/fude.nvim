@@ -185,6 +185,139 @@ function M.get_collaborators(callback)
 	}, callback)
 end
 
+--- Build the GraphQL query string for fetching PR viewed files.
+--- @param owner string
+--- @param repo string
+--- @param pr_number number
+--- @param cursor string|nil pagination cursor
+--- @return string query
+function M.build_viewed_files_query(owner, repo, pr_number, cursor)
+	local after = cursor and ('"' .. cursor .. '"') or "null"
+	return string.format(
+		[[
+query {
+  repository(owner: "%s", name: "%s") {
+    pullRequest(number: %d) {
+      id
+      files(first: 100, after: %s) {
+        pageInfo { hasNextPage endCursor }
+        nodes { path viewerViewedState }
+      }
+    }
+  }
+}]],
+		owner,
+		repo,
+		pr_number,
+		after
+	)
+end
+
+--- Parse viewed files from GraphQL response into a path->state map.
+--- @param data table GraphQL response data
+--- @return table<string, string> viewed_map, string|nil pr_node_id, boolean has_next, string|nil end_cursor
+function M.parse_viewed_files_response(data)
+	local pr = data.data and data.data.repository and data.data.repository.pullRequest
+	if not pr then
+		return {}, nil, false, nil
+	end
+	local viewed_map = {}
+	local files = pr.files
+	if files and files.nodes then
+		for _, node in ipairs(files.nodes) do
+			viewed_map[node.path] = node.viewerViewedState
+		end
+	end
+	local page_info = files and files.pageInfo or {}
+	return viewed_map, pr.id, page_info.hasNextPage or false, page_info.endCursor
+end
+
+--- Get the owner and repo name from gh CLI.
+--- @param callback fun(err: string|nil, owner: string|nil, repo: string|nil)
+function M.get_repo_owner(callback)
+	M.run_json({ "repo", "view", "--json", "owner,name" }, function(err, data)
+		if err then
+			return callback(err)
+		end
+		callback(nil, data.owner.login, data.name)
+	end)
+end
+
+--- Fetch viewed state for all changed files in a PR (with pagination).
+--- @param pr_number number
+--- @param callback fun(err: string|nil, viewed_map: table<string, string>|nil, pr_node_id: string|nil)
+function M.get_pr_viewed_files(pr_number, callback)
+	M.get_repo_owner(function(owner_err, owner, repo)
+		if owner_err then
+			return callback(owner_err)
+		end
+
+		local all_viewed = {}
+		local node_id = nil
+
+		local function fetch_page(cursor)
+			local query = M.build_viewed_files_query(owner, repo, pr_number, cursor)
+			M.run_json({ "api", "graphql", "-f", "query=" .. query }, function(err, data)
+				if err then
+					return callback(err)
+				end
+				local viewed_map, pr_id, has_next, end_cursor = M.parse_viewed_files_response(data)
+				if pr_id then
+					node_id = pr_id
+				end
+				for path, state in pairs(viewed_map) do
+					all_viewed[path] = state
+				end
+				if has_next and end_cursor then
+					fetch_page(end_cursor)
+				else
+					callback(nil, all_viewed, node_id)
+				end
+			end)
+		end
+
+		fetch_page(nil)
+	end)
+end
+
+--- Mark a file as viewed in a PR.
+--- @param pr_node_id string GraphQL node ID of the PR
+--- @param path string repo-relative file path
+--- @param callback fun(err: string|nil)
+function M.mark_file_viewed(pr_node_id, path, callback)
+	local query = [[
+mutation($prId: ID!, $path: String!) {
+  markFileAsViewed(input: {pullRequestId: $prId, path: $path}) {
+    pullRequest { id }
+  }
+}]]
+	M.run_json(
+		{ "api", "graphql", "-f", "query=" .. query, "-f", "prId=" .. pr_node_id, "-f", "path=" .. path },
+		function(err, _)
+			callback(err)
+		end
+	)
+end
+
+--- Unmark a file as viewed in a PR.
+--- @param pr_node_id string GraphQL node ID of the PR
+--- @param path string repo-relative file path
+--- @param callback fun(err: string|nil)
+function M.unmark_file_viewed(pr_node_id, path, callback)
+	local query = [[
+mutation($prId: ID!, $path: String!) {
+  unmarkFileAsViewed(input: {pullRequestId: $prId, path: $path}) {
+    pullRequest { id }
+  }
+}]]
+	M.run_json(
+		{ "api", "graphql", "-f", "query=" .. query, "-f", "prId=" .. pr_node_id, "-f", "path=" .. path },
+		function(err, _)
+			callback(err)
+		end
+	)
+end
+
 --- Get repository issues and PRs (for #reference completion).
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_repo_issues(callback)
