@@ -141,11 +141,13 @@ end
 --- Get extended PR info for overview display.
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_overview(callback)
+	local fields = "number,title,body,labels,assignees,state,author,"
+		.. "baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews"
 	M.run_json({
 		"pr",
 		"view",
 		"--json",
-		"number,title,body,labels,state,author,baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews",
+		fields,
 	}, callback)
 end
 

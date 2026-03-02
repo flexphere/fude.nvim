@@ -27,6 +27,8 @@ M.defaults = {
 		-- Width/height as percentage of screen (1-100)
 		width = 80,
 		height = 80,
+		-- Right pane width as percentage of total overview width (1-100)
+		right_width = 30,
 	},
 	-- Auto-open comment viewer when navigating to a comment line
 	auto_view_comment = true,

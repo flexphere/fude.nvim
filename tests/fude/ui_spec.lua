@@ -476,30 +476,90 @@ describe("sort_checks", function()
 	end)
 end)
 
-describe("build_overview_lines", function()
+describe("calculate_overview_layout", function()
+	it("calculates correct split dimensions", function()
+		local layout = ui.calculate_overview_layout(200, 50, 80, 80, 30)
+		-- total_width = 160, inner = 156, right = 46, left = 110
+		assert.are.equal(110, layout.left.width)
+		assert.are.equal(46, layout.right.width)
+		assert.are.equal(layout.left.height, layout.right.height)
+		assert.are.equal(layout.left.row, layout.right.row)
+	end)
+
+	it("positions right pane after left pane", function()
+		local layout = ui.calculate_overview_layout(200, 50, 80, 80, 30)
+		-- right col = left col + left width + 2 (for left window borders)
+		assert.are.equal(layout.left.col + layout.left.width + 2, layout.right.col)
+	end)
+
+	it("enforces minimum right width of 15", function()
+		-- Very small right_pct that would result in < 15
+		local layout = ui.calculate_overview_layout(100, 50, 50, 50, 1)
+		assert.are.equal(15, layout.right.width)
+	end)
+
+	it("enforces minimum left width of 20 when right_pct is very large", function()
+		local layout = ui.calculate_overview_layout(100, 50, 50, 50, 99)
+		assert.is_true(layout.left.width >= 20)
+		assert.is_true(layout.right.width >= 15)
+	end)
+
+	it("clamps total_width to ensure minimum inner space", function()
+		-- Very small screen or pct_w that would make inner < 35
+		local layout = ui.calculate_overview_layout(40, 50, 10, 50, 30)
+		assert.is_true(layout.left.width >= 20)
+		assert.is_true(layout.right.width >= 15)
+	end)
+
+	it("clamps right_pct to valid range", function()
+		-- right_pct > 100 should be clamped
+		local layout = ui.calculate_overview_layout(200, 50, 80, 80, 150)
+		assert.is_true(layout.left.width >= 20)
+		assert.is_true(layout.right.width >= 15)
+		-- right_pct < 0 should be clamped
+		local layout2 = ui.calculate_overview_layout(200, 50, 80, 80, -10)
+		assert.is_true(layout2.left.width >= 20)
+		assert.is_true(layout2.right.width >= 15)
+	end)
+
+	it("centers the layout horizontally", function()
+		local layout = ui.calculate_overview_layout(200, 50, 50, 50, 30)
+		-- total_width = 100, start_col = 50
+		assert.are.equal(50, layout.left.col)
+	end)
+
+	it("centers the layout vertically", function()
+		local layout = ui.calculate_overview_layout(200, 50, 50, 80, 30)
+		-- height = 40, row = 5
+		assert.are.equal(5, layout.left.row)
+		assert.are.equal(5, layout.right.row)
+	end)
+end)
+
+describe("build_overview_left_lines", function()
 	local identity = function(s)
 		return s or ""
 	end
 
 	it("includes PR title and number", function()
 		local pr = { number = 42, title = "Fix bug", state = "OPEN", url = "https://example.com" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		assert.truthy(result.lines[1]:find("PR #42: Fix bug"))
 	end)
 
 	it("includes author", function()
 		local pr = { number = 1, title = "T", state = "OPEN", author = { login = "alice" }, url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		assert.truthy(result.lines[2]:find("@alice"))
 	end)
 
 	it("uses 'unknown' for missing author", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		assert.truthy(result.lines[2]:find("unknown"))
 	end)
 
-	it("includes labels when present", function()
+	it("does not include labels (moved to right pane)", function()
 		local pr = {
 			number = 1,
 			title = "T",
@@ -507,20 +567,7 @@ describe("build_overview_lines", function()
 			url = "",
 			labels = { { name = "bug" }, { name = "urgent" } },
 		}
-		local result = ui.build_overview_lines(pr, {}, identity)
-		local found = false
-		for _, line in ipairs(result.lines) do
-			if line:find("bug, urgent") then
-				found = true
-				break
-			end
-		end
-		assert.is_true(found)
-	end)
-
-	it("omits labels line when no labels", function()
-		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		for _, line in ipairs(result.lines) do
 			assert.is_falsy(line:find("^Labels:"))
 		end
@@ -528,7 +575,7 @@ describe("build_overview_lines", function()
 
 	it("shows no description placeholder", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		local found = false
 		for _, line in ipairs(result.lines) do
 			if line:find("%(no description%)") then
@@ -541,7 +588,7 @@ describe("build_overview_lines", function()
 
 	it("shows description body", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "Hello world" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		local found = false
 		for _, line in ipairs(result.lines) do
 			if line == "Hello world" then
@@ -554,7 +601,7 @@ describe("build_overview_lines", function()
 
 	it("shows no comments placeholder", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		local found = false
 		for _, line in ipairs(result.lines) do
 			if line:find("%(no comments%)") then
@@ -570,7 +617,7 @@ describe("build_overview_lines", function()
 		local issue_comments = {
 			{ user = { login = "bob" }, created_at = "2024-01-01", body = "looks good" },
 		}
-		local result = ui.build_overview_lines(pr, issue_comments, identity)
+		local result = ui.build_overview_left_lines(pr, issue_comments, identity)
 		local found_author = false
 		local found_body = false
 		for _, line in ipairs(result.lines) do
@@ -587,19 +634,195 @@ describe("build_overview_lines", function()
 
 	it("includes footer with keybind hints", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
 		local last_content = result.lines[#result.lines]
 		assert.truthy(last_content:find("sections"))
-		assert.truthy(last_content:find("new comment"))
+		assert.truthy(last_content:find("comment"))
 		assert.truthy(last_content:find("refresh"))
 		assert.truthy(last_content:find("close"))
+		assert.truthy(last_content:find("switch"))
 	end)
 
 	it("produces correct highlight ranges", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
-		-- At minimum: title, DESCRIPTION header, CI STATUS header, COMMENTS header, footer
-		assert.is_true(#result.hl_ranges >= 5)
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		-- At minimum: title, DESCRIPTION header, COMMENTS header, footer
+		assert.is_true(#result.hl_ranges >= 4)
+	end)
+
+	it("does not include CI STATUS (moved to right pane)", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			statusCheckRollup = {
+				{ name = "lint", status = "COMPLETED", conclusion = "SUCCESS" },
+			},
+		}
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		for _, line in ipairs(result.lines) do
+			assert.is_falsy(line:find("^CI STATUS"))
+		end
+		assert.is_nil(result.sections.ci_status)
+	end)
+
+	it("returns sections with 1-indexed line numbers", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		assert.is_table(result.sections)
+		assert.is_number(result.sections.description)
+		assert.is_number(result.sections.comments)
+		-- Each section line should contain the section header text
+		assert.truthy(result.lines[result.sections.description]:find("DESCRIPTION"))
+		assert.truthy(result.lines[result.sections.comments]:find("COMMENTS"))
+	end)
+
+	it("returns sections in correct order", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "text" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		assert.is_true(result.sections.description < result.sections.comments)
+	end)
+
+	it("does not include reviewers (moved to right pane)", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			reviewRequests = { { login = "alice" } },
+		}
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		for _, line in ipairs(result.lines) do
+			assert.is_falsy(line:find("^REVIEWERS"))
+		end
+		assert.is_nil(result.sections.reviewers)
+	end)
+end)
+
+describe("build_overview_right_lines", function()
+	it("shows REVIEWERS section with reviewers", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			reviewRequests = { { login = "bob" } },
+			latestReviews = { { author = { login = "alice" }, state = "APPROVED" } },
+		}
+		local result = ui.build_overview_right_lines(pr)
+		local found_header = false
+		local found_alice = false
+		local found_bob = false
+		for _, line in ipairs(result.lines) do
+			if line:find("REVIEWERS") and line:find("1/2 approved") then
+				found_header = true
+			end
+			if line:find("✓") and line:find("@alice") and line:find("approved") then
+				found_alice = true
+			end
+			if line:find("●") and line:find("@bob") and line:find("pending") then
+				found_bob = true
+			end
+		end
+		assert.is_true(found_header)
+		assert.is_true(found_alice)
+		assert.is_true(found_bob)
+	end)
+
+	it("shows no reviewers placeholder when no reviewers", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_right_lines(pr)
+		local found = false
+		for _, line in ipairs(result.lines) do
+			if line:find("%(no reviewers%)") then
+				found = true
+				break
+			end
+		end
+		assert.is_true(found)
+	end)
+
+	it("shows ASSIGNEES section", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			assignees = { { login = "alice" }, { login = "bob" } },
+		}
+		local result = ui.build_overview_right_lines(pr)
+		local found_header = false
+		local found_alice = false
+		local found_bob = false
+		for _, line in ipairs(result.lines) do
+			if line == "ASSIGNEES" then
+				found_header = true
+			end
+			if line == "@alice" then
+				found_alice = true
+			end
+			if line == "@bob" then
+				found_bob = true
+			end
+		end
+		assert.is_true(found_header)
+		assert.is_true(found_alice)
+		assert.is_true(found_bob)
+	end)
+
+	it("shows no assignees placeholder when empty", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_right_lines(pr)
+		local found = false
+		for _, line in ipairs(result.lines) do
+			if line:find("%(no assignees%)") then
+				found = true
+				break
+			end
+		end
+		assert.is_true(found)
+	end)
+
+	it("shows LABELS section", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			labels = { { name = "bug" }, { name = "urgent" } },
+		}
+		local result = ui.build_overview_right_lines(pr)
+		local found_header = false
+		local found_bug = false
+		local found_urgent = false
+		for _, line in ipairs(result.lines) do
+			if line == "LABELS" then
+				found_header = true
+			end
+			if line == "bug" then
+				found_bug = true
+			end
+			if line == "urgent" then
+				found_urgent = true
+			end
+		end
+		assert.is_true(found_header)
+		assert.is_true(found_bug)
+		assert.is_true(found_urgent)
+	end)
+
+	it("shows no labels placeholder when empty", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_right_lines(pr)
+		local found = false
+		for _, line in ipairs(result.lines) do
+			if line:find("%(no labels%)") then
+				found = true
+				break
+			end
+		end
+		assert.is_true(found)
 	end)
 
 	it("shows CI STATUS section with checks", function()
@@ -613,7 +836,7 @@ describe("build_overview_lines", function()
 				{ name = "test", status = "COMPLETED", conclusion = "FAILURE" },
 			},
 		}
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_right_lines(pr)
 		local found_header = false
 		local found_lint = false
 		local found_test = false
@@ -635,7 +858,7 @@ describe("build_overview_lines", function()
 
 	it("shows no checks placeholder when statusCheckRollup is empty", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "", statusCheckRollup = {} }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_right_lines(pr)
 		local found = false
 		for _, line in ipairs(result.lines) do
 			if line:find("%(no checks%)") then
@@ -648,7 +871,7 @@ describe("build_overview_lines", function()
 
 	it("shows no checks placeholder when statusCheckRollup is nil", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_right_lines(pr)
 		local found = false
 		for _, line in ipairs(result.lines) do
 			if line:find("%(no checks%)") then
@@ -670,7 +893,7 @@ describe("build_overview_lines", function()
 				{ name = "test", status = "IN_PROGRESS" },
 			},
 		}
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_right_lines(pr)
 		local ok_found = false
 		local warn_found = false
 		for _, hl in ipairs(result.hl_ranges) do
@@ -697,8 +920,7 @@ describe("build_overview_lines", function()
 				{ name = "lint", status = "COMPLETED", conclusion = "SUCCESS" },
 			},
 		}
-		local result = ui.build_overview_lines(pr, {}, identity)
-		-- Should show 2/2 passed (deduplicated lint is SUCCESS)
+		local result = ui.build_overview_right_lines(pr)
 		local found_header = false
 		for _, line in ipairs(result.lines) do
 			if line:find("CI STATUS") and line:find("2/2 passed") then
@@ -706,26 +928,6 @@ describe("build_overview_lines", function()
 			end
 		end
 		assert.is_true(found_header)
-	end)
-
-	it("returns sections with 1-indexed line numbers", function()
-		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
-		assert.is_table(result.sections)
-		assert.is_number(result.sections.description)
-		assert.is_number(result.sections.ci_status)
-		assert.is_number(result.sections.comments)
-		-- Each section line should contain the section header text
-		assert.truthy(result.lines[result.sections.description]:find("DESCRIPTION"))
-		assert.truthy(result.lines[result.sections.ci_status]:find("CI STATUS"))
-		assert.truthy(result.lines[result.sections.comments]:find("COMMENTS"))
-	end)
-
-	it("returns sections in correct order", function()
-		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "text" }
-		local result = ui.build_overview_lines(pr, {}, identity)
-		assert.is_true(result.sections.description < result.sections.ci_status)
-		assert.is_true(result.sections.ci_status < result.sections.comments)
 	end)
 
 	it("returns check_urls mapping for detailsUrl", function()
@@ -739,9 +941,8 @@ describe("build_overview_lines", function()
 				{ name = "test", status = "COMPLETED", conclusion = "FAILURE" },
 			},
 		}
-		local result = ui.build_overview_lines(pr, {}, identity)
+		local result = ui.build_overview_right_lines(pr)
 		assert.is_table(result.check_urls)
-		-- Should have at least one URL mapped
 		local has_url = false
 		for _, url in pairs(result.check_urls) do
 			if url == "https://example.com/lint" then
@@ -751,67 +952,35 @@ describe("build_overview_lines", function()
 		assert.is_true(has_url)
 	end)
 
-	it("shows REVIEWERS section with reviewers", function()
+	it("highlights section headers", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_right_lines(pr)
+		-- Should have at least 4 Title highlights (REVIEWERS, ASSIGNEES, LABELS, CI STATUS)
+		local title_count = 0
+		for _, hl in ipairs(result.hl_ranges) do
+			if hl.hl == "Title" then
+				title_count = title_count + 1
+			end
+		end
+		assert.are.equal(4, title_count)
+	end)
+
+	it("highlights reviewer lines with correct groups", function()
 		local pr = {
 			number = 1,
 			title = "T",
 			state = "OPEN",
 			url = "",
-			reviewRequests = { { login = "bob" } },
 			latestReviews = { { author = { login = "alice" }, state = "APPROVED" } },
 		}
-		local result = ui.build_overview_lines(pr, {}, identity)
-		local found_header = false
-		local found_alice = false
-		local found_bob = false
-		for _, line in ipairs(result.lines) do
-			if line:find("REVIEWERS") and line:find("1/2 approved") then
-				found_header = true
-			end
-			if line:find("✓") and line:find("@alice") and line:find("approved") then
-				found_alice = true
-			end
-			if line:find("●") and line:find("@bob") and line:find("pending") then
-				found_bob = true
+		local result = ui.build_overview_right_lines(pr)
+		local ok_found = false
+		for _, hl in ipairs(result.hl_ranges) do
+			if hl.hl == "DiagnosticOk" then
+				ok_found = true
 			end
 		end
-		assert.is_true(found_header)
-		assert.is_true(found_alice)
-		assert.is_true(found_bob)
-	end)
-
-	it("shows no reviewers placeholder when no reviewers", function()
-		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_lines(pr, {}, identity)
-		local found = false
-		for _, line in ipairs(result.lines) do
-			if line:find("%(no reviewers%)") then
-				found = true
-				break
-			end
-		end
-		assert.is_true(found)
-	end)
-
-	it("places REVIEWERS section before DESCRIPTION", function()
-		local pr = {
-			number = 1,
-			title = "T",
-			state = "OPEN",
-			url = "",
-			reviewRequests = { { login = "alice" } },
-		}
-		local result = ui.build_overview_lines(pr, {}, identity)
-		assert.is_number(result.sections.reviewers)
-		assert.is_true(result.sections.reviewers < result.sections.description)
-	end)
-
-	it("includes reviewers section in correct order", function()
-		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "text" }
-		local result = ui.build_overview_lines(pr, {}, identity)
-		assert.is_true(result.sections.reviewers < result.sections.description)
-		assert.is_true(result.sections.description < result.sections.ci_status)
-		assert.is_true(result.sections.ci_status < result.sections.comments)
+		assert.is_true(ok_found)
 	end)
 end)
 

@@ -92,17 +92,16 @@ Using lazy.nvim: >lua
     Configurable via `file_list_mode`.
 
 :FudeReviewOverview                                *:FudeReviewOverview*
-    Show PR overview in a centered floating window. Displays title,
-    state, author, labels, reviewers with review status, description,
-    CI check status, and issue-level comments. The reviewers section
-    shows each reviewer with their latest review state (approved,
-    changes requested, commented, pending). The CI status section
-    shows each check run with pass/fail indicators and a summary count.
+    Show PR overview in a split-pane floating window. The left pane
+    displays title, state, author, base/head branches, description,
+    and issue-level comments. The right pane shows reviewers with
+    review status, assignees, labels, and CI check status with
+    pass/fail indicators and a summary count.
     Requires an active review session.
-    Section marks are set automatically: `'r` (reviewers),
-    `'d` (description), `'s` (CI status), `'c` (comments).
-    Customizable via `overview.marks`.
-    Press `C` to write a new comment, `R` to refresh, `q` to close.
+    Section marks are set on the left pane: `'d` (description),
+    `'c` (comments). Customizable via `overview.marks`.
+    Press `C` to write a new comment, `R` to refresh,
+    `<Tab>` to switch between panes, `q` to close.
 
 :FudeReviewSuggest                                  *:FudeReviewSuggest*
     Suggest a code change on the current line (normal mode) or
@@ -184,7 +183,8 @@ Suggested mappings:
   `[c`          Previous comment
   `gx`          Open GitHub reference or URL under cursor (in floats)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
-  `'r`/`'d`/`'s`/`'c`  Jump to reviewers/description/CI status/comments (overview)
+                Switch between left/right panes (in |:FudeReviewOverview|)
+  `'d`/`'c`    Jump to description/comments (overview left pane)
 
   * Visual mode mappings must use `:FudeReviewComment<CR>` (not `<cmd>`)
     to preserve the range. Using `<C-u>` will clear the range and
@@ -221,8 +221,10 @@ Default configuration: >lua
       -- Width/height as percentage of screen (1-100)
       width = 80,
       height = 80,
-      -- Section marks (jump with 'r, 'd, 's, 'c)
-      marks = { reviewers = "r", description = "d", ci_status = "s", comments = "c" },
+      -- Right pane width as percentage of total overview width
+      right_width = 30,
+      -- Section marks (jump with 'd, 'c in left pane)
+      marks = { description = "d", comments = "c" },
     },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
@@ -269,16 +271,21 @@ Options:
 
 `float.height`      Floating window height as % of screen (default: 50).
 
-`overview.width`    Overview window width as % of screen (default: 80).
+`overview.width`    Total overview width as % of screen (default: 80).
+                  This is split between the left and right panes.
 
 `overview.height`   Overview window height as % of screen (default: 80).
 
-`overview.marks`    Table mapping section names to mark characters.
-                  Sections: "reviewers", "description", "ci_status",
-                  "comments".
-                  Use `'r`, `'d`, `'s`, `'c` to jump to each section.
-                  (default: { reviewers = "r", description = "d",
-                  ci_status = "s", comments = "c" }).
+`overview.right_width`
+                  Right pane width as % of total overview width
+                  (default: 30). Minimum effective width is 15 columns.
+
+`overview.marks`    Table mapping section names to mark characters
+                  for the left pane.
+                  Sections: "description", "comments".
+                  Use `'d`, `'c` to jump to each section.
+                  (default: { description = "d",
+                  comments = "c" }).
 
 `auto_view_comment` When true, automatically opens the comment viewer
                   float after navigating to a comment line via ]c, [c,

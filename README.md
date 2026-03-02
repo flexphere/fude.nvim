@@ -15,7 +15,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
-- **PR overview** - View PR title, description, labels, reviewers with review status, and issue-level comments
+- **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right)
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user` and `#issue` completion in comment windows (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub)
@@ -134,6 +134,8 @@ require("fude").setup({
     -- Width/height as percentage of screen (1-100)
     width = 80,
     height = 80,
+    -- Right pane width as percentage of total overview width
+    right_width = 30,
   },
   -- Auto-open comment viewer when navigating to a comment line (]c/[c/FudeReviewListComments)
   auto_view_comment = true,
