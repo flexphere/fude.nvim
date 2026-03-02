@@ -33,7 +33,7 @@ argument-hint: [PR番号（省略時はカレントブランチのPR）]
 
 2. 未対応のレビューコメントを取得する
    ```bash
-   gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
+   gh api repos/{owner}/{repo}/pulls/{pr_number}/comments --paginate
    ```
    - `in_reply_to_id` が null のコメント = スレッドのルート（レビュー指摘）
    - ルートコメントに対して自分（PR作成者）の返信が既にある場合は「対応済み」としてスキップ
