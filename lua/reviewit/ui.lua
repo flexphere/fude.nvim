@@ -125,15 +125,15 @@ function M.normalize_check(check)
 		return check.status or "", check.conclusion or ""
 	end
 
-	-- StatusContext: has state field (lowercase: "success", "failure", "pending", "error")
-	local state = check.state or ""
-	if state == "success" then
+	-- StatusContext: has state field (uppercase: "SUCCESS", "FAILURE", "PENDING", "ERROR", "EXPECTED")
+	local state = (check.state or ""):upper()
+	if state == "SUCCESS" or state == "EXPECTED" then
 		return "COMPLETED", "SUCCESS"
-	elseif state == "failure" then
+	elseif state == "FAILURE" then
 		return "COMPLETED", "FAILURE"
-	elseif state == "error" then
+	elseif state == "ERROR" then
 		return "COMPLETED", "FAILURE"
-	elseif state == "pending" then
+	elseif state == "PENDING" then
 		return "PENDING", ""
 	end
 

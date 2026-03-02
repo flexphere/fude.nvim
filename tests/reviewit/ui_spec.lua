@@ -173,26 +173,26 @@ describe("format_check_status", function()
 	end)
 
 	-- StatusContext (commit status API) tests
-	it("returns check mark for StatusContext success", function()
-		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "success" })
+	it("returns check mark for StatusContext SUCCESS", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "SUCCESS" })
 		assert.are.equal("✓", symbol)
 		assert.are.equal("DiagnosticOk", hl)
 	end)
 
-	it("returns x for StatusContext failure", function()
-		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "failure" })
+	it("returns x for StatusContext FAILURE", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "FAILURE" })
 		assert.are.equal("✗", symbol)
 		assert.are.equal("DiagnosticError", hl)
 	end)
 
-	it("returns x for StatusContext error", function()
-		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "error" })
+	it("returns x for StatusContext ERROR", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "ERROR" })
 		assert.are.equal("✗", symbol)
 		assert.are.equal("DiagnosticError", hl)
 	end)
 
-	it("returns circle for StatusContext pending", function()
-		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "pending" })
+	it("returns circle for StatusContext PENDING", function()
+		local symbol, hl = ui.format_check_status({ context = "ci/check", state = "PENDING" })
 		assert.are.equal("●", symbol)
 		assert.are.equal("DiagnosticWarn", hl)
 	end)
@@ -205,28 +205,34 @@ describe("normalize_check", function()
 		assert.are.equal("SUCCESS", conclusion)
 	end)
 
-	it("normalizes StatusContext success", function()
-		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "success" })
+	it("normalizes StatusContext SUCCESS", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "SUCCESS" })
 		assert.are.equal("COMPLETED", status)
 		assert.are.equal("SUCCESS", conclusion)
 	end)
 
-	it("normalizes StatusContext failure", function()
-		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "failure" })
+	it("normalizes StatusContext FAILURE", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "FAILURE" })
 		assert.are.equal("COMPLETED", status)
 		assert.are.equal("FAILURE", conclusion)
 	end)
 
-	it("normalizes StatusContext error to FAILURE", function()
-		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "error" })
+	it("normalizes StatusContext ERROR to FAILURE", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "ERROR" })
 		assert.are.equal("COMPLETED", status)
 		assert.are.equal("FAILURE", conclusion)
 	end)
 
-	it("normalizes StatusContext pending", function()
-		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "pending" })
+	it("normalizes StatusContext PENDING", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "PENDING" })
 		assert.are.equal("PENDING", status)
 		assert.are.equal("", conclusion)
+	end)
+
+	it("normalizes StatusContext EXPECTED to SUCCESS", function()
+		local status, conclusion = ui.normalize_check({ context = "ci/check", state = "EXPECTED" })
+		assert.are.equal("COMPLETED", status)
+		assert.are.equal("SUCCESS", conclusion)
 	end)
 
 	it("returns empty strings for unknown object", function()
@@ -236,7 +242,7 @@ describe("normalize_check", function()
 	end)
 
 	it("prefers status/conclusion over state when both present", function()
-		local status, conclusion = ui.normalize_check({ status = "COMPLETED", conclusion = "SUCCESS", state = "failure" })
+		local status, conclusion = ui.normalize_check({ status = "COMPLETED", conclusion = "SUCCESS", state = "FAILURE" })
 		assert.are.equal("COMPLETED", status)
 		assert.are.equal("SUCCESS", conclusion)
 	end)
@@ -343,10 +349,10 @@ describe("build_checks_summary", function()
 		assert.are.equal("", ui.build_checks_summary({}))
 	end)
 
-	it("counts StatusContext success as passed", function()
+	it("counts StatusContext SUCCESS as passed", function()
 		local checks = {
-			{ context = "ci/check", state = "success" },
-			{ context = "ci/build", state = "failure" },
+			{ context = "ci/check", state = "SUCCESS" },
+			{ context = "ci/build", state = "FAILURE" },
 		}
 		assert.are.equal("1/2 passed", ui.build_checks_summary(checks))
 	end)
@@ -458,8 +464,8 @@ describe("sort_checks", function()
 	it("sorts StatusContext checks alongside CheckRun checks", function()
 		local checks = {
 			{ name = "action-success", status = "COMPLETED", conclusion = "SUCCESS" },
-			{ context = "status-failure", state = "failure" },
-			{ context = "status-success", state = "success" },
+			{ context = "status-failure", state = "FAILURE" },
+			{ context = "status-success", state = "SUCCESS" },
 			{ name = "action-failure", status = "COMPLETED", conclusion = "FAILURE" },
 		}
 		local result = ui.sort_checks(checks)
