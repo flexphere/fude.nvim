@@ -13,7 +13,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
-- **PR overview** - View PR title, description, labels, and issue-level comments
+- **PR overview** - View PR title, description, labels, reviewers with review status, and issue-level comments
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user` and `#issue` completion in comment windows (blink.cmp / nvim-cmp)
 - **Open in browser** - Open the PR in your browser
