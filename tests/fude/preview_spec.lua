@@ -1,4 +1,4 @@
-local preview = require("reviewit.preview")
+local preview = require("fude.preview")
 
 describe("should_open_preview", function()
 	it("returns true when all conditions met", function()

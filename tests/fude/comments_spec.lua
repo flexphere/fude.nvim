@@ -1,5 +1,5 @@
-local config = require("reviewit.config")
-local comments = require("reviewit.comments")
+local config = require("fude.config")
+local comments = require("fude.comments")
 
 describe("comments data access", function()
 	before_each(function()

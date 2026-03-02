@@ -1,4 +1,4 @@
-local diff = require("reviewit.diff")
+local diff = require("fude.diff")
 
 describe("make_relative", function()
 	it("strips root prefix", function()

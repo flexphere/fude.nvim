@@ -1,6 +1,6 @@
 local M = {}
-local config = require("reviewit.config")
-local diff = require("reviewit.diff")
+local config = require("fude.config")
+local diff = require("fude.diff")
 
 local opening = false
 
@@ -29,7 +29,7 @@ function M.open_preview(source_win)
 	M.close_preview()
 
 	if not content then
-		content = "-- [reviewit.nvim] New file: does not exist in " .. state.base_ref
+		content = "-- [fude.nvim] New file: does not exist in " .. state.base_ref
 	end
 
 	local preview_buf = vim.api.nvim_create_buf(false, true)
@@ -76,7 +76,7 @@ function M.open_preview(source_win)
 	end
 
 	-- Create preview-specific autocmds
-	local preview_augroup = vim.api.nvim_create_augroup("ReviewitPreview", { clear = true })
+	local preview_augroup = vim.api.nvim_create_augroup("FudePreview", { clear = true })
 
 	vim.api.nvim_create_autocmd("BufEnter", {
 		group = preview_augroup,
@@ -85,7 +85,7 @@ function M.open_preview(source_win)
 				M.on_buf_enter()
 			end)
 		end,
-		desc = "reviewit.nvim: Update diff preview",
+		desc = "fude.nvim: Update diff preview",
 	})
 
 	vim.api.nvim_create_autocmd("WinClosed", {
@@ -96,7 +96,7 @@ function M.open_preview(source_win)
 				M.close_preview()
 			end
 		end,
-		desc = "reviewit.nvim: Clean up preview on source close",
+		desc = "fude.nvim: Clean up preview on source close",
 	})
 
 	opening = false
@@ -106,7 +106,7 @@ end
 function M.close_preview()
 	local state = config.state
 
-	pcall(vim.api.nvim_del_augroup_by_name, "ReviewitPreview")
+	pcall(vim.api.nvim_del_augroup_by_name, "FudePreview")
 
 	-- diffoff! resets diff mode for all windows in the current tab
 	vim.cmd("diffoff!")

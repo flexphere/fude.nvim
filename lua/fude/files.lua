@@ -1,6 +1,6 @@
 local M = {}
-local config = require("reviewit.config")
-local diff = require("reviewit.diff")
+local config = require("fude.config")
+local diff = require("fude.diff")
 
 M.status_icons = {
 	added = "+",
@@ -56,12 +56,12 @@ end
 function M.show()
 	local state = config.state
 	if not state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
 	if #state.changed_files == 0 then
-		vim.notify("reviewit.nvim: No changed files loaded", vim.log.levels.INFO)
+		vim.notify("fude.nvim: No changed files loaded", vim.log.levels.INFO)
 		return
 	end
 
@@ -77,7 +77,7 @@ function M.show_telescope()
 	local state = config.state
 	local has_telescope, pickers = pcall(require, "telescope.pickers")
 	if not has_telescope then
-		vim.notify("reviewit.nvim: telescope.nvim not found, falling back to quickfix", vim.log.levels.WARN)
+		vim.notify("fude.nvim: telescope.nvim not found, falling back to quickfix", vim.log.levels.WARN)
 		M.show_quickfix()
 		return
 	end
@@ -184,19 +184,19 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 
 	local state = config.state
 	if not state.pr_node_id then
-		vim.notify("reviewit.nvim: PR node ID not available", vim.log.levels.WARN)
+		vim.notify("fude.nvim: PR node ID not available", vim.log.levels.WARN)
 		return
 	end
 
 	local path = selection.path
 	local current_state = state.viewed_files[path]
-	local gh_mod = require("reviewit.gh")
+	local gh_mod = require("fude.gh")
 	local viewed_sign = config.opts.signs.viewed or "✓"
 
 	if current_state == "VIEWED" then
 		gh_mod.unmark_file_viewed(state.pr_node_id, path, function(err)
 			if err then
-				vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 				return
 			end
 			state.viewed_files[path] = "UNVIEWED"
@@ -213,7 +213,7 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 	else
 		gh_mod.mark_file_viewed(state.pr_node_id, path, function(err)
 			if err then
-				vim.notify("reviewit.nvim: " .. err, vim.log.levels.ERROR)
+				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 				return
 			end
 			state.viewed_files[path] = "VIEWED"

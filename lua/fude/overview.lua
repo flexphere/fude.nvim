@@ -1,20 +1,20 @@
 local M = {}
-local config = require("reviewit.config")
+local config = require("fude.config")
 
 --- Show PR overview. Requires active review session.
 function M.show()
 	local state = config.state
 	if not state.active then
-		vim.notify("reviewit.nvim: Not active", vim.log.levels.WARN)
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
-	local gh = require("reviewit.gh")
-	local ui = require("reviewit.ui")
+	local gh = require("fude.gh")
+	local ui = require("fude.ui")
 
 	gh.get_pr_overview(function(err, pr_info)
 		if err then
-			vim.notify("reviewit.nvim: No PR found: " .. (err or ""), vim.log.levels.ERROR)
+			vim.notify("fude.nvim: No PR found: " .. (err or ""), vim.log.levels.ERROR)
 			return
 		end
 
@@ -38,8 +38,8 @@ end
 --- Create a new issue-level comment on the PR.
 --- @param pr_number number
 function M.create_comment(pr_number)
-	local ui = require("reviewit.ui")
-	local gh = require("reviewit.gh")
+	local ui = require("fude.ui")
+	local gh = require("fude.gh")
 	local state = config.state
 
 	local draft_key = "issue_comment"
@@ -54,10 +54,10 @@ function M.create_comment(pr_number)
 
 		gh.create_issue_comment(pr_number, body, function(err, _)
 			if err then
-				vim.notify("reviewit.nvim: Failed to post comment: " .. err, vim.log.levels.ERROR)
+				vim.notify("fude.nvim: Failed to post comment: " .. err, vim.log.levels.ERROR)
 				return
 			end
-			vim.notify("reviewit.nvim: Comment posted", vim.log.levels.INFO)
+			vim.notify("fude.nvim: Comment posted", vim.log.levels.INFO)
 			M.show()
 		end)
 	end, {
@@ -65,7 +65,7 @@ function M.create_comment(pr_number)
 		submit_on_enter = true,
 		on_save = function(lines)
 			state.drafts[draft_key] = lines
-			vim.notify("reviewit.nvim: Draft saved", vim.log.levels.INFO)
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
 		end,
 	})
 end

@@ -1,4 +1,4 @@
-local gh = require("reviewit.gh")
+local gh = require("fude.gh")
 
 describe("build_viewed_files_query", function()
 	it("builds query without cursor", function()

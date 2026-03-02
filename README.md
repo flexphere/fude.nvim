@@ -1,4 +1,6 @@
-# reviewit.nvim
+# fude.nvim
+
+![fude.nvim](fude.nvim.jpg)
 
 PR code review inside Neovim. Review GitHub pull requests without leaving your editor.
 
@@ -34,37 +36,37 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 
 ```lua
 {
-  "flexphere/reviewit.nvim",
+  "flexphere/fude.nvim",
   opts = {},
   cmd = {
-    "ReviewStart", "ReviewStop", "ReviewToggle", "ReviewDiff",
-    "ReviewComment", "ReviewSuggest", "ReviewViewComment", "ReviewListComments",
-    "ReviewFiles", "ReviewOverview", "ReviewSubmit", "ReviewBrowse",
-    "ReviewViewed", "ReviewUnviewed",
+    "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
+    "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
+    "FudeReviewFiles", "FudeReviewOverview", "FudeReviewSubmit", "FudeReviewBrowse",
+    "FudeReviewViewed", "FudeReviewUnviewed",
   },
   keys = {
-    { "<leader>et", "<cmd>ReviewToggle<cr>", desc = "Review: Toggle" },
-    { "<leader>es", "<cmd>ReviewStart<cr>", desc = "Review: Start" },
-    { "<leader>eq", "<cmd>ReviewStop<cr>", desc = "Review: Stop" },
-    { "<leader>ec", "<cmd>ReviewComment<cr>", desc = "Review: Comment", mode = { "n" } },
-    { "<leader>ec", ":ReviewComment<cr>", desc = "Review: Comment (selection)", mode = { "v" } },
-    { "<leader>eS", "<cmd>ReviewSuggest<cr>", desc = "Review: Suggest change", mode = { "n" } },
-    { "<leader>eS", ":ReviewSuggest<cr>", desc = "Review: Suggest change (selection)", mode = { "v" } },
-    { "<leader>ev", "<cmd>ReviewViewComment<cr>", desc = "Review: View comments" },
-    { "<leader>ef", "<cmd>ReviewFiles<cr>", desc = "Review: Changed files" },
-    { "<leader>eo", "<cmd>ReviewOverview<cr>", desc = "Review: PR Overview" },
-    { "<leader>ed", "<cmd>ReviewDiff<cr>", desc = "Review: Toggle diff" },
-    { "<leader>eb", "<cmd>ReviewBrowse<cr>", desc = "Review: Open in browser" },
-    { "<leader>el", "<cmd>ReviewListComments<cr>", desc = "Review: List comments" },
+    { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
+    { "<leader>es", "<cmd>FudeReviewStart<cr>", desc = "Review: Start" },
+    { "<leader>eq", "<cmd>FudeReviewStop<cr>", desc = "Review: Stop" },
+    { "<leader>ec", "<cmd>FudeReviewComment<cr>", desc = "Review: Comment", mode = { "n" } },
+    { "<leader>ec", ":FudeReviewComment<cr>", desc = "Review: Comment (selection)", mode = { "v" } },
+    { "<leader>eS", "<cmd>FudeReviewSuggest<cr>", desc = "Review: Suggest change", mode = { "n" } },
+    { "<leader>eS", ":FudeReviewSuggest<cr>", desc = "Review: Suggest change (selection)", mode = { "v" } },
+    { "<leader>ev", "<cmd>FudeReviewViewComment<cr>", desc = "Review: View comments" },
+    { "<leader>ef", "<cmd>FudeReviewFiles<cr>", desc = "Review: Changed files" },
+    { "<leader>eo", "<cmd>FudeReviewOverview<cr>", desc = "Review: PR Overview" },
+    { "<leader>ed", "<cmd>FudeReviewDiff<cr>", desc = "Review: Toggle diff" },
+    { "<leader>eb", "<cmd>FudeReviewBrowse<cr>", desc = "Review: Open in browser" },
+    { "<leader>el", "<cmd>FudeReviewListComments<cr>", desc = "Review: List comments" },
     {
       "<leader>er",
-      function() require("reviewit.comments").reply_to_comment() end,
+      function() require("fude.comments").reply_to_comment() end,
       desc = "Review: Reply",
     },
-    { "<leader>em", "<cmd>ReviewViewed<cr>", desc = "Review: Mark viewed" },
-    { "<leader>eM", "<cmd>ReviewUnviewed<cr>", desc = "Review: Unmark viewed" },
+    { "<leader>em", "<cmd>FudeReviewViewed<cr>", desc = "Review: Mark viewed" },
+    { "<leader>eM", "<cmd>FudeReviewUnviewed<cr>", desc = "Review: Unmark viewed" },
     -- ]c / [c are set automatically as buffer-local keymaps during review mode
-    -- <Tab> toggles viewed state in the ReviewFiles Telescope picker
+    -- <Tab> toggles viewed state in the FudeReviewFiles Telescope picker
   },
 }
 ```
@@ -72,40 +74,40 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 ## Usage
 
 1. Checkout a PR branch: `gh pr checkout <number>`
-2. Start review mode: `:ReviewStart` (detects PR, fetches comments, sets up extmarks)
-3. Optionally open diff preview: `:ReviewDiff` (toggle side-by-side diff view)
+2. Start review mode: `:FudeReviewStart` (detects PR, fetches comments, sets up extmarks)
+3. Optionally open diff preview: `:FudeReviewDiff` (toggle side-by-side diff view)
 4. Navigate code normally - the preview follows your movements when open
-5. Create comments with `:ReviewComment` (saved as GitHub pending review)
-6. View existing comments with `:ReviewViewComment`
-7. Submit pending comments as a review: `:ReviewSubmit` (select Comment/Approve/Request Changes)
-8. Browse changed files with `:ReviewFiles`
-9. View PR overview with `:ReviewOverview`
-10. Stop review mode: `:ReviewStop`
+5. Create comments with `:FudeReviewComment` (saved as GitHub pending review)
+6. View existing comments with `:FudeReviewViewComment`
+7. Submit pending comments as a review: `:FudeReviewSubmit` (select Comment/Approve/Request Changes)
+8. Browse changed files with `:FudeReviewFiles`
+9. View PR overview with `:FudeReviewOverview`
+10. Stop review mode: `:FudeReviewStop`
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `:ReviewStart` | Start review session (PR detection, comments, extmarks) |
-| `:ReviewStop` | Stop review session |
-| `:ReviewToggle` | Toggle review session |
-| `:ReviewDiff` | Toggle diff preview window |
-| `:ReviewComment` | Create pending comment on current line/selection |
-| `:ReviewSuggest` | Create pending suggestion on current line/selection |
-| `:ReviewViewComment` | View comments on current line |
-| `:ReviewFiles` | List PR changed files (Telescope/quickfix) |
-| `:ReviewOverview` | Show PR overview and issue-level comments |
-| `:ReviewListComments` | List all PR review comments (Telescope) |
-| `:ReviewListDrafts` | List all local draft comments (Telescope) |
-| `:ReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
-| `:ReviewViewed` | Mark current file as viewed on GitHub |
-| `:ReviewUnviewed` | Unmark current file as viewed on GitHub |
-| `:ReviewBrowse` | Open PR in browser |
+| `:FudeReviewStart` | Start review session (PR detection, comments, extmarks) |
+| `:FudeReviewStop` | Stop review session |
+| `:FudeReviewToggle` | Toggle review session |
+| `:FudeReviewDiff` | Toggle diff preview window |
+| `:FudeReviewComment` | Create pending comment on current line/selection |
+| `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
+| `:FudeReviewViewComment` | View comments on current line |
+| `:FudeReviewFiles` | List PR changed files (Telescope/quickfix) |
+| `:FudeReviewOverview` | Show PR overview and issue-level comments |
+| `:FudeReviewListComments` | List all PR review comments (Telescope) |
+| `:FudeReviewListDrafts` | List all local draft comments (Telescope) |
+| `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
+| `:FudeReviewViewed` | Mark current file as viewed on GitHub |
+| `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
+| `:FudeReviewBrowse` | Open PR in browser |
 
 ## Configuration
 
 ```lua
-require("reviewit").setup({
+require("fude").setup({
   -- File list mode: "telescope" or "quickfix"
   file_list_mode = "telescope",
   -- Diff filler character (nil to keep user's default)
@@ -133,7 +135,7 @@ require("reviewit").setup({
     width = 80,
     height = 80,
   },
-  -- Auto-open comment viewer when navigating to a comment line (]c/[c/ReviewListComments)
+  -- Auto-open comment viewer when navigating to a comment line (]c/[c/FudeReviewListComments)
   auto_view_comment = true,
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
@@ -150,11 +152,11 @@ Add the provider to your blink.cmp config:
 
 ```lua
 sources = {
-  default = { "lsp", "path", "buffer", "snippets", "reviewit" },
+  default = { "lsp", "path", "buffer", "snippets", "fude" },
   providers = {
-    reviewit = {
-      name = "reviewit",
-      module = "reviewit.completion.blink",
+    fude = {
+      name = "fude",
+      module = "fude.completion.blink",
       score_offset = 50,
       async = true,
     },
@@ -167,10 +169,10 @@ sources = {
 Register the source in your config:
 
 ```lua
-require("cmp").register_source("reviewit", require("reviewit.completion.cmp").new())
+require("cmp").register_source("fude", require("fude.completion.cmp").new())
 ```
 
-Then add `{ name = "reviewit" }` to your nvim-cmp sources.
+Then add `{ name = "fude" }` to your nvim-cmp sources.
 
 ## License
 

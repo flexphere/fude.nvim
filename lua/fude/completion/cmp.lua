@@ -1,5 +1,5 @@
---- nvim-cmp source adapter for reviewit.nvim
---- @class reviewit.cmp.Source
+--- nvim-cmp source adapter for fude.nvim
+--- @class fude.cmp.Source
 local source = {}
 
 function source.new()
@@ -7,7 +7,7 @@ function source.new()
 end
 
 function source:is_available()
-	return vim.b.reviewit_comment == true
+	return vim.b.fude_comment == true
 end
 
 function source:get_trigger_characters()
@@ -19,7 +19,7 @@ function source:get_keyword_pattern()
 end
 
 function source:complete(params, callback)
-	local core = require("reviewit.completion")
+	local core = require("fude.completion")
 	local before = params.context.cursor_before_line
 	local context = core.get_context(before)
 

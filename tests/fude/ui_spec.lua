@@ -1,4 +1,4 @@
-local ui = require("reviewit.ui")
+local ui = require("fude.ui")
 
 describe("calculate_float_dimensions", function()
 	it("calculates centered dimensions at 50%", function()

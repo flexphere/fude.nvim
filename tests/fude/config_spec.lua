@@ -1,4 +1,4 @@
-local config = require("reviewit.config")
+local config = require("fude.config")
 
 describe("config", function()
 	before_each(function()

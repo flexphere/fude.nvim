@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-reviewit.nvim is a Neovim plugin for GitHub PR code review. It shows base branch diffs in a side pane, lets users create/view/reply to review comments with virtual text indicators, browse changed files via Telescope or quickfix, and view PR overviews. Requires Neovim >= 0.10 and GitHub CLI (`gh`).
+fude.nvim is a Neovim plugin for GitHub PR code review. It shows base branch diffs in a side pane, lets users create/view/reply to review comments with virtual text indicators, browse changed files via Telescope or quickfix, and view PR overviews. Requires Neovim >= 0.10 and GitHub CLI (`gh`).
 
 ## Development Tools
 
@@ -14,13 +14,13 @@ reviewit.nvim is a Neovim plugin for GitHub PR code review. It shows base branch
   - Config: `.luacheckrc` (global `vim`, 120 char lines)
 - **Help tags**: `nvim --headless -c "helptags doc/" -c q`
 - **Tests**: Plenary busted — `make test` or `bash run_tests.sh`
-  - Test files: `tests/reviewit/*_spec.lua`
+  - Test files: `tests/fude/*_spec.lua`
   - Bootstrap: `tests/minimal_init.lua`
 - **All checks**: `make all` (lint + format-check + test)
 
 ## Architecture
 
-All plugin code lives under `lua/reviewit/`. The plugin entry point is `plugin/reviewit.lua` which registers user commands.
+All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.lua` which registers user commands.
 
 ### Module Responsibilities
 
@@ -38,14 +38,14 @@ All plugin code lives under `lua/reviewit/`. The plugin entry point is `plugin/r
 
 - **Async flow**: GitHub API calls use `vim.system()` callbacks with `vim.schedule()` for safe UI updates.
 - **State management**: All mutable state lives in `config.state`. Modules read/write this shared table directly.
-- **Namespace**: A single Neovim namespace `"reviewit"` (created in `config.setup()`) is used for all extmarks across the plugin.
+- **Namespace**: A single Neovim namespace `"fude"` (created in `config.setup()`) is used for all extmarks across the plugin.
 - **Window management**: Preview uses `noautocmd` commands to avoid triggering the plugin's own `BufEnter` handler during window operations.
 - **Pure function extraction**: Each module exports testable pure functions separately from side-effect code. Naming convention: `build_*`, `find_*`, `parse_*`, `format_*`, `should_*`, `make_*`, `calculate_*`. These functions take all inputs as parameters and return data without reading `config.state` or calling vim API.
 
 ## Quality Rules (MUST follow)
 
 1. **Before committing**: Always run `make all` and confirm lint, format-check, and tests all pass. Do NOT commit if any check fails.
-2. **Tests required for new code**: When adding or modifying a function that contains testable logic (pure functions, data access, parsing, etc.), add or update corresponding tests in `tests/reviewit/`. Skip tests only for thin wrappers around vim API or external commands.
+2. **Tests required for new code**: When adding or modifying a function that contains testable logic (pure functions, data access, parsing, etc.), add or update corresponding tests in `tests/fude/`. Skip tests only for thin wrappers around vim API or external commands.
 3. **Test coverage check**: After writing code, review whether the changed/added functions have test coverage. If not, write tests before committing.
 4. **Formatting**: Run `stylua lua/ plugin/ tests/` after editing any Lua file to ensure consistent formatting.
-5. **Documentation**: When adding or changing features, commands, keymaps, or configuration options, update the corresponding documentation (`README.md`, `doc/reviewit.txt`, `CLAUDE.md` Architecture section) before committing.
+5. **Documentation**: When adding or changing features, commands, keymaps, or configuration options, update the corresponding documentation (`README.md`, `doc/fude.txt`, `CLAUDE.md` Architecture section) before committing.
