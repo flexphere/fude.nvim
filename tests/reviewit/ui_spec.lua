@@ -549,4 +549,191 @@ describe("build_overview_lines", function()
 		end
 		assert.is_true(has_url)
 	end)
+
+	it("shows REVIEWERS section with reviewers", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			reviewRequests = { { login = "bob" } },
+			latestReviews = { { author = { login = "alice" }, state = "APPROVED" } },
+		}
+		local result = ui.build_overview_lines(pr, {}, identity)
+		local found_header = false
+		local found_alice = false
+		local found_bob = false
+		for _, line in ipairs(result.lines) do
+			if line:find("REVIEWERS") and line:find("1/2 approved") then
+				found_header = true
+			end
+			if line:find("✓") and line:find("@alice") and line:find("approved") then
+				found_alice = true
+			end
+			if line:find("●") and line:find("@bob") and line:find("pending") then
+				found_bob = true
+			end
+		end
+		assert.is_true(found_header)
+		assert.is_true(found_alice)
+		assert.is_true(found_bob)
+	end)
+
+	it("shows no reviewers placeholder when no reviewers", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_lines(pr, {}, identity)
+		local found = false
+		for _, line in ipairs(result.lines) do
+			if line:find("%(no reviewers%)") then
+				found = true
+				break
+			end
+		end
+		assert.is_true(found)
+	end)
+
+	it("places REVIEWERS section before DESCRIPTION", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			reviewRequests = { { login = "alice" } },
+		}
+		local result = ui.build_overview_lines(pr, {}, identity)
+		assert.is_number(result.sections.reviewers)
+		assert.is_true(result.sections.reviewers < result.sections.description)
+	end)
+
+	it("includes reviewers section in correct order", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "text" }
+		local result = ui.build_overview_lines(pr, {}, identity)
+		assert.is_true(result.sections.reviewers < result.sections.description)
+		assert.is_true(result.sections.description < result.sections.ci_status)
+		assert.is_true(result.sections.ci_status < result.sections.comments)
+	end)
+end)
+
+describe("format_review_status", function()
+	it("returns check mark for APPROVED", function()
+		local symbol, hl = ui.format_review_status("APPROVED")
+		assert.are.equal("✓", symbol)
+		assert.are.equal("DiagnosticOk", hl)
+	end)
+
+	it("returns x for CHANGES_REQUESTED", function()
+		local symbol, hl = ui.format_review_status("CHANGES_REQUESTED")
+		assert.are.equal("✗", symbol)
+		assert.are.equal("DiagnosticError", hl)
+	end)
+
+	it("returns comment icon for COMMENTED", function()
+		local symbol, hl = ui.format_review_status("COMMENTED")
+		assert.are.equal("💬", symbol)
+		assert.are.equal("DiagnosticInfo", hl)
+	end)
+
+	it("returns dash for DISMISSED", function()
+		local symbol, hl = ui.format_review_status("DISMISSED")
+		assert.are.equal("-", symbol)
+		assert.are.equal("Comment", hl)
+	end)
+
+	it("returns circle for PENDING", function()
+		local symbol, hl = ui.format_review_status("PENDING")
+		assert.are.equal("●", symbol)
+		assert.are.equal("DiagnosticWarn", hl)
+	end)
+
+	it("returns question mark for unknown state", function()
+		local symbol, hl = ui.format_review_status("SOMETHING_NEW")
+		assert.are.equal("?", symbol)
+		assert.are.equal("Comment", hl)
+	end)
+end)
+
+describe("build_reviewers_list", function()
+	it("combines review requests and latest reviews", function()
+		local requests = { { login = "bob" } }
+		local reviews = { { author = { login = "alice" }, state = "APPROVED" } }
+		local result = ui.build_reviewers_list(requests, reviews)
+		assert.are.equal(2, #result)
+		-- Sorted by login
+		assert.are.equal("alice", result[1].login)
+		assert.are.equal("APPROVED", result[1].state)
+		assert.are.equal("bob", result[2].login)
+		assert.are.equal("PENDING", result[2].state)
+	end)
+
+	it("uses latestReviews state over reviewRequests", function()
+		local requests = { { login = "alice" } }
+		local reviews = { { author = { login = "alice" }, state = "APPROVED" } }
+		local result = ui.build_reviewers_list(requests, reviews)
+		assert.are.equal(1, #result)
+		assert.are.equal("APPROVED", result[1].state)
+	end)
+
+	it("returns empty list when no reviewers", function()
+		assert.are.equal(0, #ui.build_reviewers_list({}, {}))
+	end)
+
+	it("handles reviewers only in reviewRequests", function()
+		local requests = { { login = "alice" }, { login = "bob" } }
+		local result = ui.build_reviewers_list(requests, {})
+		assert.are.equal(2, #result)
+		assert.are.equal("PENDING", result[1].state)
+		assert.are.equal("PENDING", result[2].state)
+	end)
+
+	it("handles reviewers only in latestReviews", function()
+		local reviews = { { author = { login = "alice" }, state = "CHANGES_REQUESTED" } }
+		local result = ui.build_reviewers_list({}, reviews)
+		assert.are.equal(1, #result)
+		assert.are.equal("CHANGES_REQUESTED", result[1].state)
+	end)
+
+	it("skips reviews with nil author", function()
+		local reviews = { { author = nil, state = "COMMENTED" } }
+		local result = ui.build_reviewers_list({}, reviews)
+		assert.are.equal(0, #result)
+	end)
+
+	it("sorts reviewers alphabetically by login", function()
+		local requests = { { login = "charlie" }, { login = "alice" } }
+		local reviews = { { author = { login = "bob" }, state = "APPROVED" } }
+		local result = ui.build_reviewers_list(requests, reviews)
+		assert.are.equal("alice", result[1].login)
+		assert.are.equal("bob", result[2].login)
+		assert.are.equal("charlie", result[3].login)
+	end)
+end)
+
+describe("build_reviewers_summary", function()
+	it("returns correct count for all approved", function()
+		local reviewers = {
+			{ login = "alice", state = "APPROVED" },
+			{ login = "bob", state = "APPROVED" },
+		}
+		assert.are.equal("2/2 approved", ui.build_reviewers_summary(reviewers))
+	end)
+
+	it("returns correct count for mixed states", function()
+		local reviewers = {
+			{ login = "alice", state = "APPROVED" },
+			{ login = "bob", state = "PENDING" },
+			{ login = "charlie", state = "CHANGES_REQUESTED" },
+		}
+		assert.are.equal("1/3 approved", ui.build_reviewers_summary(reviewers))
+	end)
+
+	it("returns correct count for none approved", function()
+		local reviewers = {
+			{ login = "alice", state = "PENDING" },
+		}
+		assert.are.equal("0/1 approved", ui.build_reviewers_summary(reviewers))
+	end)
+
+	it("returns empty string for empty list", function()
+		assert.are.equal("", ui.build_reviewers_summary({}))
+	end)
 end)
