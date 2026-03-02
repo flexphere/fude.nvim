@@ -34,14 +34,16 @@ function M.select_scope()
 		return
 	end
 
+	local commit_entries
 	if #state.pr_commits == 0 then
-		vim.notify("fude.nvim: No commits loaded", vim.log.levels.WARN)
-		return
+		vim.notify("fude.nvim: No commits loaded; only full PR scope is available", vim.log.levels.WARN)
+		commit_entries = {}
+	else
+		local gh_mod = require("fude.gh")
+		commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
 	end
 
-	local gh_mod = require("fude.gh")
-	local scope_entries =
-		M.build_scope_entries(gh_mod.parse_commit_entries(state.pr_commits), state.base_ref, state.head_ref)
+	local scope_entries = M.build_scope_entries(commit_entries, state.base_ref, state.head_ref)
 
 	if config.opts.file_list_mode == "telescope" then
 		M.show_telescope(scope_entries)
