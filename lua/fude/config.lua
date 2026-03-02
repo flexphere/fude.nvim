@@ -68,6 +68,7 @@ M.state = {
 	pr_commits = {}, -- Cached list of PR commits
 	original_head_sha = nil, -- HEAD SHA before scope checkout (for restoring)
 	original_head_ref = nil, -- Branch name before scope checkout (nil if detached)
+	reviewed_commits = {}, -- { [sha] = true } locally tracked reviewed commits
 }
 
 M.opts = {}
@@ -104,6 +105,7 @@ function M.reset_state()
 		pr_commits = {},
 		original_head_sha = nil,
 		original_head_ref = nil,
+		reviewed_commits = {},
 	}
 end
 

@@ -50,4 +50,48 @@ describe("build_scope_entries", function()
 		assert.truthy(entries[1].display_text:find("develop"))
 		assert.truthy(entries[1].display_text:find("feature/auth"))
 	end)
+
+	it("marks reviewed commits with reviewed = true", function()
+		local commits = {
+			{ sha = "aaa111", short_sha = "aaa111", message = "first", author_name = "A", date = "" },
+			{ sha = "bbb222", short_sha = "bbb222", message = "second", author_name = "B", date = "" },
+		}
+		local reviewed = { ["aaa111"] = true }
+		local entries = scope.build_scope_entries(commits, "main", "dev", reviewed)
+
+		assert.is_true(entries[2].reviewed)
+		assert.is_false(entries[3].reviewed)
+	end)
+
+	it("full PR entry is always not reviewed", function()
+		local reviewed = { ["abc"] = true }
+		local entries = scope.build_scope_entries({}, "main", "dev", reviewed)
+
+		assert.is_false(entries[1].reviewed)
+		assert.are.equal(" ", entries[1].reviewed_icon)
+	end)
+
+	it("defaults reviewed to false when reviewed_commits is nil", function()
+		local commits = {
+			{ sha = "aaa111", short_sha = "aaa111", message = "first", author_name = "A", date = "" },
+		}
+		local entries = scope.build_scope_entries(commits, "main", "dev")
+
+		assert.is_false(entries[2].reviewed)
+		assert.are.equal(" ", entries[2].reviewed_icon)
+	end)
+end)
+
+describe("reviewed_icon", function()
+	it("returns viewed sign for reviewed commit", function()
+		local icon, hl = scope.reviewed_icon(true)
+		assert.truthy(icon ~= " ")
+		assert.are.equal("DiagnosticOk", hl)
+	end)
+
+	it("returns space for non-reviewed commit", function()
+		local icon, hl = scope.reviewed_icon(false)
+		assert.are.equal(" ", icon)
+		assert.are.equal("Comment", hl)
+	end)
 end)
