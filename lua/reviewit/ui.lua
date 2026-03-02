@@ -291,7 +291,7 @@ function M.build_overview_lines(pr_info, issue_comments, format_date_fn)
 
 	-- Footer
 	table.insert(lines, "")
-	table.insert(lines, " 'd/'s/'c: sections  C: new comment  R: refresh  q: close")
+	table.insert(lines, " ]s/[s: sections  C: new comment  R: refresh  q: close")
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
 	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls, sections = sections }
@@ -640,6 +640,33 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			opts.on_refresh()
 		end
 	end, { buffer = buf, desc = "Refresh PR overview" })
+
+	-- Section jump keymaps
+	local section_lines = {}
+	for _, line in pairs(result.sections) do
+		table.insert(section_lines, line)
+	end
+	table.sort(section_lines)
+
+	vim.keymap.set("n", "]s", function()
+		local cur_line = vim.api.nvim_win_get_cursor(win)[1]
+		for _, line in ipairs(section_lines) do
+			if line > cur_line then
+				vim.api.nvim_win_set_cursor(win, { line, 0 })
+				return
+			end
+		end
+	end, { buffer = buf, desc = "Next section" })
+
+	vim.keymap.set("n", "[s", function()
+		local cur_line = vim.api.nvim_win_get_cursor(win)[1]
+		for i = #section_lines, 1, -1 do
+			if section_lines[i] < cur_line then
+				vim.api.nvim_win_set_cursor(win, { section_lines[i], 0 })
+				return
+			end
+		end
+	end, { buffer = buf, desc = "Previous section" })
 
 	setup_github_refs(buf, get_repo_base_url(pr_info.url), result.check_urls)
 end
