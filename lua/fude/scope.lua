@@ -138,16 +138,21 @@ function M.apply_full_pr_scope()
 		end
 	end
 
-	state.scope = "full_pr"
-	state.scope_commit_sha = nil
-
-	-- Refetch PR files
+	-- Refetch PR files (update state only on success)
+	local previous_scope_sha = state.scope_commit_sha
 	local gh_mod = require("fude.gh")
 	gh_mod.get_pr_files(state.pr_number, function(err, files)
 		if err then
 			vim.notify("fude.nvim: Failed to fetch PR files: " .. err, vim.log.levels.ERROR)
+			-- Rollback: restore previous commit checkout
+			if previous_scope_sha then
+				vim.system({ "git", "checkout", previous_scope_sha }, { text = true }):wait()
+			end
 			return
 		end
+
+		state.scope = "full_pr"
+		state.scope_commit_sha = nil
 		state.changed_files = {}
 		for _, f in ipairs(files) do
 			table.insert(state.changed_files, {
@@ -199,22 +204,32 @@ function M.apply_commit_scope(sha)
 	end
 
 	-- Checkout the commit
+	local previous_scope = state.scope
+	local previous_scope_sha = state.scope_commit_sha
 	local result = vim.system({ "git", "checkout", sha }, { text = true }):wait()
 	if result.code ~= 0 then
 		vim.notify("fude.nvim: Failed to checkout commit: " .. (result.stderr or ""), vim.log.levels.ERROR)
 		return
 	end
 
-	state.scope = "commit"
-	state.scope_commit_sha = sha
-
-	-- Fetch commit files
+	-- Fetch commit files (update state only on success)
 	local gh_mod = require("fude.gh")
 	gh_mod.get_commit_files(sha, function(err, files)
 		if err then
 			vim.notify("fude.nvim: Failed to fetch commit files: " .. err, vim.log.levels.ERROR)
+			-- Rollback: restore previous checkout
+			local rollback_target = state.original_head_ref or state.original_head_sha
+			if previous_scope == "commit" and previous_scope_sha then
+				rollback_target = previous_scope_sha
+			end
+			if rollback_target then
+				vim.system({ "git", "checkout", rollback_target }, { text = true }):wait()
+			end
 			return
 		end
+
+		state.scope = "commit"
+		state.scope_commit_sha = sha
 		state.changed_files = {}
 		for _, f in ipairs(files) do
 			table.insert(state.changed_files, {
