@@ -12,9 +12,9 @@ argument-hint: [やりたいことの概要]
 
 ## 現在のリポジトリ状態
 
-- ブランチ: !`git -C /Users/flexphere/ghq/github.com/flexphere/reviewit.nvim branch --show-current`
-- Git状態: !`git -C /Users/flexphere/ghq/github.com/flexphere/reviewit.nvim status --short`
-- 直近コミット: !`git -C /Users/flexphere/ghq/github.com/flexphere/reviewit.nvim log --oneline -5`
+- ブランチ: !`git branch --show-current`
+- Git状態: !`git status --short`
+- 直近コミット: !`git log --oneline -5`
 
 ## フェーズ間のユーザー確認ルール
 
