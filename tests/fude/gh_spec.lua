@@ -99,3 +99,72 @@ describe("parse_viewed_files_response", function()
 		assert.are.equal("PR_empty", pr_node_id)
 	end)
 end)
+
+describe("parse_commit_entries", function()
+	it("parses commits with full data", function()
+		local raw = {
+			{
+				sha = "abc1234567890abcdef",
+				commit = {
+					message = "feat: add login page\n\nDetailed description",
+					author = { name = "Alice", date = "2026-03-01T10:00:00Z" },
+				},
+			},
+			{
+				sha = "def5678901234abcdef",
+				commit = {
+					message = "fix: typo in header",
+					author = { name = "Bob", date = "2026-03-02T12:00:00Z" },
+				},
+			},
+		}
+		local entries = gh.parse_commit_entries(raw)
+		assert.are.equal(2, #entries)
+		assert.are.equal("abc1234567890abcdef", entries[1].sha)
+		assert.are.equal("abc1234", entries[1].short_sha)
+		assert.are.equal("feat: add login page", entries[1].message)
+		assert.are.equal("Alice", entries[1].author_name)
+		assert.are.equal("2026-03-01T10:00:00Z", entries[1].date)
+		assert.are.equal("def5678", entries[2].short_sha)
+		assert.are.equal("fix: typo in header", entries[2].message)
+	end)
+
+	it("uses first line of multiline commit message", function()
+		local raw = {
+			{
+				sha = "abc1234567890",
+				commit = {
+					message = "First line\nSecond line\nThird line",
+					author = { name = "Alice", date = "" },
+				},
+			},
+		}
+		local entries = gh.parse_commit_entries(raw)
+		assert.are.equal("First line", entries[1].message)
+	end)
+
+	it("handles missing commit fields gracefully", function()
+		local raw = {
+			{ sha = "abc1234567890", commit = {} },
+		}
+		local entries = gh.parse_commit_entries(raw)
+		assert.are.equal("abc1234", entries[1].short_sha)
+		assert.are.equal("", entries[1].message)
+		assert.are.equal("", entries[1].author_name)
+		assert.are.equal("", entries[1].date)
+	end)
+
+	it("handles missing commit object", function()
+		local raw = {
+			{ sha = "abc1234567890" },
+		}
+		local entries = gh.parse_commit_entries(raw)
+		assert.are.equal("abc1234", entries[1].short_sha)
+		assert.are.equal("", entries[1].message)
+	end)
+
+	it("returns empty for empty input", function()
+		local entries = gh.parse_commit_entries({})
+		assert.are.same({}, entries)
+	end)
+end)
