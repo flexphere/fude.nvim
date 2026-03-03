@@ -20,9 +20,12 @@ end
 --- @param base_ref string base branch name
 --- @param head_ref string head branch name
 --- @param reviewed_commits table<string, boolean>|nil { [sha] = true } reviewed commit map
---- @return table[] entries array of { value, display_text, sha, is_full_pr, reviewed, reviewed_icon, reviewed_hl }
-function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_commits)
+--- @param current_scope string|nil "full_pr" or "commit"
+--- @param current_scope_sha string|nil SHA of the currently selected commit scope
+--- @return table[] entries scope entry objects with index, total, and is_current fields
+function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_commits, current_scope, current_scope_sha)
 	reviewed_commits = reviewed_commits or {}
+	local total = #commit_entries
 	local entries = {}
 	table.insert(entries, {
 		value = "full_pr",
@@ -32,21 +35,28 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 		reviewed = false,
 		reviewed_icon = " ",
 		reviewed_hl = "Comment",
+		index = nil,
+		total = total,
+		is_current = current_scope == "full_pr" or current_scope == nil,
 	})
-	for _, c in ipairs(commit_entries) do
+	for i, c in ipairs(commit_entries) do
 		local is_reviewed = false
 		if c.sha ~= nil then
 			is_reviewed = reviewed_commits[c.sha] == true
 		end
 		local r_icon, r_hl = M.reviewed_icon(is_reviewed)
+		local is_current = current_scope == "commit" and current_scope_sha ~= nil and c.sha == current_scope_sha
 		table.insert(entries, {
 			value = c.sha,
-			display_text = string.format("%s %s (%s)", c.short_sha, c.message, c.author_name),
+			display_text = string.format("[%d/%d] %s %s (%s)", i, total, c.short_sha, c.message, c.author_name),
 			sha = c.sha,
 			is_full_pr = false,
 			reviewed = is_reviewed,
 			reviewed_icon = r_icon,
 			reviewed_hl = r_hl,
+			index = i,
+			total = total,
+			is_current = is_current,
 		})
 	end
 	return entries
@@ -69,7 +79,14 @@ function M.select_scope()
 		commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
 	end
 
-	local scope_entries = M.build_scope_entries(commit_entries, state.base_ref, state.head_ref, state.reviewed_commits)
+	local scope_entries = M.build_scope_entries(
+		commit_entries,
+		state.base_ref,
+		state.head_ref,
+		state.reviewed_commits,
+		state.scope,
+		state.scope_commit_sha
+	)
 
 	if config.opts.file_list_mode == "telescope" then
 		M.show_telescope(scope_entries)
@@ -98,12 +115,16 @@ function M.show_telescope(scope_entries)
 		separator = " ",
 		items = {
 			{ width = 2 },
+			{ width = 2 },
 			{ remaining = true },
 		},
 	})
 
 	local make_display = function(entry)
+		local current_icon = entry.is_current and "▶" or " "
+		local current_hl = entry.is_current and "DiagnosticInfo" or "Comment"
 		return displayer({
+			{ current_icon, current_hl },
 			{ entry.reviewed_icon, entry.reviewed_hl },
 			entry.display_text,
 		})
@@ -187,7 +208,8 @@ function M.show_vim_select(scope_entries)
 	vim.ui.select(scope_entries, {
 		prompt = "Review Scope:",
 		format_item = function(entry)
-			return entry.reviewed_icon .. " " .. entry.display_text
+			local current = entry.is_current and "▶" or " "
+			return current .. " " .. entry.reviewed_icon .. " " .. entry.display_text
 		end,
 	}, function(choice)
 		if choice then
@@ -239,6 +261,7 @@ function M.apply_full_pr_scope()
 
 		state.scope = "full_pr"
 		state.scope_commit_sha = nil
+		state.scope_commit_index = nil
 		state.changed_files = {}
 		for _, f in ipairs(files) do
 			table.insert(state.changed_files, {
@@ -320,6 +343,7 @@ function M.apply_commit_scope(sha)
 
 		state.scope = "commit"
 		state.scope_commit_sha = sha
+		state.scope_commit_index = M.find_commit_index(state.pr_commits, sha)
 		state.changed_files = {}
 		for _, f in ipairs(files) do
 			table.insert(state.changed_files, {
@@ -343,6 +367,128 @@ function M.apply_commit_scope(sha)
 		local short_sha = sha:sub(1, 7)
 		vim.notify(string.format("fude.nvim: Scope → commit %s", short_sha), vim.log.levels.INFO)
 	end)
+end
+
+--- Find the 1-based index of a commit SHA in raw pr_commits.
+--- @param pr_commits table[] raw commit objects from GitHub API
+--- @param sha string commit SHA to find
+--- @return number|nil index 1-based index, nil if not found
+function M.find_commit_index(pr_commits, sha)
+	for i, c in ipairs(pr_commits) do
+		if c.sha == sha then
+			return i
+		end
+	end
+	return nil
+end
+
+--- Format the scope label for statusline display.
+--- @param scope string "full_pr" or "commit"
+--- @param scope_commit_index number|nil 1-based index of current commit
+--- @param total_commits number total number of PR commits
+--- @return string label e.g. "Scope: PR" or "Scope: 3/10"
+function M.format_scope_label(scope, scope_commit_index, total_commits)
+	if scope == "commit" and scope_commit_index then
+		return string.format("Scope: %d/%d", scope_commit_index, total_commits)
+	end
+	return "Scope: PR"
+end
+
+--- Find the next scope index (wraps around).
+--- Index 0 = Full PR, 1..total = commits.
+--- @param current_scope string "full_pr" or "commit"
+--- @param current_index number|nil current commit index (1-based)
+--- @param total number total number of commits
+--- @return number next_index 0 for full_pr, 1..total for commits
+function M.find_next_scope_index(current_scope, current_index, total)
+	if total == 0 then
+		return 0
+	end
+	if current_scope == "full_pr" then
+		return 1
+	end
+	local idx = current_index or 0
+	if idx >= total then
+		return 0
+	end
+	return idx + 1
+end
+
+--- Find the previous scope index (wraps around).
+--- Index 0 = Full PR, 1..total = commits.
+--- @param current_scope string "full_pr" or "commit"
+--- @param current_index number|nil current commit index (1-based)
+--- @param total number total number of commits
+--- @return number prev_index 0 for full_pr, 1..total for commits
+function M.find_prev_scope_index(current_scope, current_index, total)
+	if total == 0 then
+		return 0
+	end
+	if current_scope == "full_pr" then
+		return total
+	end
+	local idx = current_index or 0
+	if idx <= 1 then
+		return 0
+	end
+	return idx - 1
+end
+
+--- Get the statusline label for the current scope.
+--- @return string label e.g. "Scope: PR" or "Scope: 3/10"
+function M.statusline()
+	local state = config.state
+	if not state.active then
+		return ""
+	end
+	local total = #state.pr_commits
+	return M.format_scope_label(state.scope, state.scope_commit_index, total)
+end
+
+--- Move to the next scope.
+function M.next_scope()
+	local state = config.state
+	if not state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
+	local gh_mod = require("fude.gh")
+	local commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
+	local total = #commit_entries
+	local next_idx = M.find_next_scope_index(state.scope, state.scope_commit_index, total)
+
+	if next_idx == 0 then
+		M.apply_full_pr_scope()
+	else
+		local entry = commit_entries[next_idx]
+		if entry and entry.sha then
+			M.apply_commit_scope(entry.sha)
+		end
+	end
+end
+
+--- Move to the previous scope.
+function M.prev_scope()
+	local state = config.state
+	if not state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
+	local gh_mod = require("fude.gh")
+	local commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
+	local total = #commit_entries
+	local prev_idx = M.find_prev_scope_index(state.scope, state.scope_commit_index, total)
+
+	if prev_idx == 0 then
+		M.apply_full_pr_scope()
+	else
+		local entry = commit_entries[prev_idx]
+		if entry and entry.sha then
+			M.apply_commit_scope(entry.sha)
+		end
+	end
 end
 
 --- Refresh the preview window if it is currently open.
