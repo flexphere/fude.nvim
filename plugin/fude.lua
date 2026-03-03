@@ -35,6 +35,14 @@ vim.api.nvim_create_user_command("FudeReviewScope", function()
 	require("fude.scope").select_scope()
 end, { desc = "Select review scope (full PR or specific commit)" })
 
+vim.api.nvim_create_user_command("FudeReviewScopeNext", function()
+	require("fude.scope").next_scope()
+end, { desc = "Move to next review scope" })
+
+vim.api.nvim_create_user_command("FudeReviewScopePrev", function()
+	require("fude.scope").prev_scope()
+end, { desc = "Move to previous review scope" })
+
 vim.api.nvim_create_user_command("FudeReviewListComments", function()
 	require("fude.comments").list_comments()
 end, { desc = "List PR review comments" })
