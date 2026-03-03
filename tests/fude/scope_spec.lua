@@ -28,15 +28,17 @@ describe("build_scope_entries", function()
 		assert.truthy(entries[1].display_text:find("main"))
 		assert.truthy(entries[1].display_text:find("feat/login"))
 
-		-- Subsequent entries are commits
+		-- Subsequent entries are commits with index
 		assert.is_false(entries[2].is_full_pr)
 		assert.are.equal("abc1234567890", entries[2].sha)
+		assert.truthy(entries[2].display_text:find("%[1/2%]"))
 		assert.truthy(entries[2].display_text:find("abc1234"))
 		assert.truthy(entries[2].display_text:find("feat: add login"))
 		assert.truthy(entries[2].display_text:find("Alice"))
 
 		assert.is_false(entries[3].is_full_pr)
 		assert.are.equal("def5678901234", entries[3].sha)
+		assert.truthy(entries[3].display_text:find("%[2/2%]"))
 	end)
 
 	it("returns only full PR entry when no commits", function()
@@ -91,6 +93,59 @@ describe("build_scope_entries", function()
 		assert.is_false(entries[2].reviewed)
 		assert.are.equal(" ", entries[2].reviewed_icon)
 	end)
+
+	it("includes index and total on commit entries", function()
+		local commits = {
+			{ sha = "aaa", short_sha = "aaa", message = "first", author_name = "A", date = "" },
+			{ sha = "bbb", short_sha = "bbb", message = "second", author_name = "B", date = "" },
+			{ sha = "ccc", short_sha = "ccc", message = "third", author_name = "C", date = "" },
+		}
+		local entries = scope.build_scope_entries(commits, "main", "dev")
+
+		-- Full PR has no index
+		assert.is_nil(entries[1].index)
+		assert.are.equal(3, entries[1].total)
+
+		-- Commits have 1-based index
+		assert.are.equal(1, entries[2].index)
+		assert.are.equal(3, entries[2].total)
+		assert.are.equal(2, entries[3].index)
+		assert.are.equal(3, entries[3].total)
+		assert.are.equal(3, entries[4].index)
+		assert.are.equal(3, entries[4].total)
+	end)
+
+	it("marks current scope as is_current for full_pr", function()
+		local commits = {
+			{ sha = "aaa", short_sha = "aaa", message = "first", author_name = "A", date = "" },
+		}
+		local entries = scope.build_scope_entries(commits, "main", "dev", {}, "full_pr", nil)
+
+		assert.is_true(entries[1].is_current)
+		assert.is_false(entries[2].is_current)
+	end)
+
+	it("marks current scope as is_current for commit", function()
+		local commits = {
+			{ sha = "aaa", short_sha = "aaa", message = "first", author_name = "A", date = "" },
+			{ sha = "bbb", short_sha = "bbb", message = "second", author_name = "B", date = "" },
+		}
+		local entries = scope.build_scope_entries(commits, "main", "dev", {}, "commit", "bbb")
+
+		assert.is_false(entries[1].is_current)
+		assert.is_false(entries[2].is_current)
+		assert.is_true(entries[3].is_current)
+	end)
+
+	it("defaults is_current to full_pr when current_scope is nil", function()
+		local commits = {
+			{ sha = "aaa", short_sha = "aaa", message = "first", author_name = "A", date = "" },
+		}
+		local entries = scope.build_scope_entries(commits, "main", "dev")
+
+		assert.is_true(entries[1].is_current)
+		assert.is_false(entries[2].is_current)
+	end)
 end)
 
 describe("reviewed_icon", function()
@@ -104,5 +159,97 @@ describe("reviewed_icon", function()
 		local icon, hl = scope.reviewed_icon(false)
 		assert.are.equal(" ", icon)
 		assert.are.equal("Comment", hl)
+	end)
+end)
+
+describe("format_scope_label", function()
+	it("returns 'Scope: PR' for full_pr scope", function()
+		assert.are.equal("Scope: PR", scope.format_scope_label("full_pr", nil, 10))
+	end)
+
+	it("returns 'Scope: PR' for full_pr scope with index", function()
+		assert.are.equal("Scope: PR", scope.format_scope_label("full_pr", 3, 10))
+	end)
+
+	it("returns 'Scope: 3/10' for commit scope", function()
+		assert.are.equal("Scope: 3/10", scope.format_scope_label("commit", 3, 10))
+	end)
+
+	it("returns 'Scope: 1/1' for single commit", function()
+		assert.are.equal("Scope: 1/1", scope.format_scope_label("commit", 1, 1))
+	end)
+
+	it("returns 'Scope: PR' when commit scope has nil index", function()
+		assert.are.equal("Scope: PR", scope.format_scope_label("commit", nil, 10))
+	end)
+end)
+
+describe("find_next_scope_index", function()
+	it("moves from full_pr to first commit", function()
+		assert.are.equal(1, scope.find_next_scope_index("full_pr", nil, 5))
+	end)
+
+	it("moves from commit 1 to commit 2", function()
+		assert.are.equal(2, scope.find_next_scope_index("commit", 1, 5))
+	end)
+
+	it("wraps from last commit to full_pr", function()
+		assert.are.equal(0, scope.find_next_scope_index("commit", 5, 5))
+	end)
+
+	it("stays at full_pr when no commits", function()
+		assert.are.equal(0, scope.find_next_scope_index("full_pr", nil, 0))
+	end)
+
+	it("handles nil current_index as 0", function()
+		assert.are.equal(1, scope.find_next_scope_index("commit", nil, 3))
+	end)
+end)
+
+describe("find_prev_scope_index", function()
+	it("moves from full_pr to last commit", function()
+		assert.are.equal(5, scope.find_prev_scope_index("full_pr", nil, 5))
+	end)
+
+	it("moves from commit 3 to commit 2", function()
+		assert.are.equal(2, scope.find_prev_scope_index("commit", 3, 5))
+	end)
+
+	it("wraps from first commit to full_pr", function()
+		assert.are.equal(0, scope.find_prev_scope_index("commit", 1, 5))
+	end)
+
+	it("stays at full_pr when no commits", function()
+		assert.are.equal(0, scope.find_prev_scope_index("full_pr", nil, 0))
+	end)
+
+	it("handles nil current_index as 0", function()
+		assert.are.equal(0, scope.find_prev_scope_index("commit", nil, 3))
+	end)
+end)
+
+describe("find_commit_index", function()
+	it("finds commit by sha", function()
+		local commits = { { sha = "aaa" }, { sha = "bbb" }, { sha = "ccc" } }
+		assert.are.equal(2, scope.find_commit_index(commits, "bbb"))
+	end)
+
+	it("returns nil when sha not found", function()
+		local commits = { { sha = "aaa" }, { sha = "bbb" } }
+		assert.is_nil(scope.find_commit_index(commits, "zzz"))
+	end)
+
+	it("returns nil for empty commits", function()
+		assert.is_nil(scope.find_commit_index({}, "aaa"))
+	end)
+
+	it("finds first commit", function()
+		local commits = { { sha = "aaa" }, { sha = "bbb" } }
+		assert.are.equal(1, scope.find_commit_index(commits, "aaa"))
+	end)
+
+	it("finds last commit", function()
+		local commits = { { sha = "aaa" }, { sha = "bbb" }, { sha = "ccc" } }
+		assert.are.equal(3, scope.find_commit_index(commits, "ccc"))
 	end)
 end)

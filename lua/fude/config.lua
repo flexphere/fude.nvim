@@ -65,6 +65,7 @@ M.state = {
 	original_diffopt = nil,
 	scope = "full_pr", -- "full_pr" | "commit"
 	scope_commit_sha = nil, -- Selected commit SHA when scope is "commit"
+	scope_commit_index = nil, -- 1-based index of selected commit (nil when full_pr)
 	pr_commits = {}, -- Cached list of PR commits
 	original_head_sha = nil, -- HEAD SHA before scope checkout (for restoring)
 	original_head_ref = nil, -- Branch name before scope checkout (nil if detached)
@@ -102,6 +103,7 @@ function M.reset_state()
 		original_diffopt = nil,
 		scope = "full_pr",
 		scope_commit_sha = nil,
+		scope_commit_index = nil,
 		pr_commits = {},
 		original_head_sha = nil,
 		original_head_ref = nil,
