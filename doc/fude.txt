@@ -109,6 +109,11 @@ Using lazy.nvim: >lua
     When "Full PR" is selected, the original HEAD is restored and
     the full PR scope is re-applied.
 
+    When using Telescope, a preview pane shows the changed files
+    for the selected scope with status icons and diff statistics
+    (+additions / -deletions). For commit entries, file data is
+    fetched asynchronously from the GitHub API and cached.
+
     Press `<Tab>` on a commit entry to toggle its reviewed state.
     Reviewed commits are shown with a checkmark indicator. This
     state is tracked locally within the session.
