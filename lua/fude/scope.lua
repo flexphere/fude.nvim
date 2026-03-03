@@ -157,6 +157,18 @@ function M.show_telescope(scope_entries)
 				title = "Changed Files",
 				define_preview = function(self, entry)
 					local bufnr = self.state.bufnr
+
+					local function apply_preview(files)
+						if not vim.api.nvim_buf_is_valid(bufnr) then
+							return
+						end
+						local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons)
+						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+						for _, hl in ipairs(hls) do
+							vim.api.nvim_buf_add_highlight(bufnr, 0, hl[4], hl[1], hl[2], hl[3])
+						end
+					end
+
 					if entry.is_full_pr then
 						local files = {}
 						for _, f in ipairs(state.changed_files) do
@@ -167,10 +179,7 @@ function M.show_telescope(scope_entries)
 								deletions = f.deletions,
 							})
 						end
-						local lines = M.format_scope_preview_lines(files, files_mod.status_icons)
-						if vim.api.nvim_buf_is_valid(bufnr) then
-							vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-						end
+						apply_preview(files)
 						return
 					end
 
@@ -180,10 +189,7 @@ function M.show_telescope(scope_entries)
 					end
 
 					if preview_cache[sha] then
-						local lines = M.format_scope_preview_lines(preview_cache[sha], files_mod.status_icons)
-						if vim.api.nvim_buf_is_valid(bufnr) then
-							vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-						end
+						apply_preview(preview_cache[sha])
 						return
 					end
 
@@ -205,10 +211,7 @@ function M.show_telescope(scope_entries)
 							})
 						end
 						preview_cache[sha] = files
-						if vim.api.nvim_buf_is_valid(bufnr) then
-							local lines = M.format_scope_preview_lines(files, files_mod.status_icons)
-							vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-						end
+						apply_preview(files)
 					end)
 				end,
 			}),
@@ -560,16 +563,31 @@ end
 --- @param files table[] array of { filename, status, additions, deletions }
 --- @param status_icons table<string, string> status-to-icon map
 --- @return string[] lines formatted lines for the previewer
+--- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 function M.format_scope_preview_lines(files, status_icons)
 	if #files == 0 then
-		return { "No changed files" }
+		return { "No changed files" }, {}
 	end
 	local lines = { string.format("Changed files: %d", #files), "" }
+	local highlights = {}
 	for _, f in ipairs(files) do
 		local icon = (status_icons and status_icons[f.status]) or "?"
-		table.insert(lines, string.format("  %s +%-4d -%-4d %s", icon, f.additions or 0, f.deletions or 0, f.filename))
+		local adds = f.additions or 0
+		local dels = f.deletions or 0
+		local add_part = string.format("+%-4d", adds)
+		local del_part = string.format("-%-4d", dels)
+		local line = "  " .. icon .. " " .. add_part .. " " .. del_part .. " " .. f.filename
+		local line_idx = #lines -- 0-indexed
+
+		local status_hl = f.status == "added" and "DiffAdd" or f.status == "removed" and "DiffDelete" or "DiffChange"
+		table.insert(highlights, { line_idx, 2, 3, status_hl })
+		table.insert(highlights, { line_idx, 4, 4 + #add_part, "DiffAdd" })
+		local del_start = 4 + #add_part + 1
+		table.insert(highlights, { line_idx, del_start, del_start + #del_part, "DiffDelete" })
+
+		table.insert(lines, line)
 	end
-	return lines
+	return lines, highlights
 end
 
 --- Refresh the preview window if it is currently open.
