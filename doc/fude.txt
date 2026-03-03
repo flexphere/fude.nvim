@@ -85,7 +85,8 @@ Using lazy.nvim: >lua
 
 :FudeReviewViewComment                          *:FudeReviewViewComment*
     View existing review comments on the current line in a floating
-    window. Press `r` to reply, `q` to close.
+    window. Press `e` to edit the comment under the cursor (only your
+    own comments can be edited), `r` to reply, `q` to close.
 
 :FudeReviewFiles                                      *:FudeReviewFiles*
     List files changed in the PR. Uses Telescope with diff preview
@@ -226,6 +227,7 @@ Suggested mappings:
   `<leader>eM`  Unmark current file as viewed
   `]c`          Next comment
   `[c`          Previous comment
+  `e`           Edit comment under cursor (in |:FudeReviewViewComment| float)
   `gx`          Open GitHub reference or URL under cursor (in floats)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
                 Toggle commit reviewed state (in |:FudeReviewScope| picker)
