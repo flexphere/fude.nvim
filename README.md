@@ -14,7 +14,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Pending review** - Comments are saved as GitHub pending review (visible on PR page)
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
-- **Review scope** - Review the full PR or focus on a specific commit, mark commits as reviewed
+- **Review scope** - Review the full PR or focus on a specific commit, navigate scopes with next/prev, mark commits as reviewed, statusline integration
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right)
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
@@ -42,7 +42,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   cmd = {
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
-    "FudeReviewFiles", "FudeReviewScope", "FudeReviewOverview", "FudeReviewSubmit", "FudeReviewBrowse",
+    "FudeReviewFiles", "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
+    "FudeReviewOverview", "FudeReviewSubmit", "FudeReviewBrowse",
     "FudeReviewViewed", "FudeReviewUnviewed",
   },
   keys = {
@@ -59,6 +60,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>ed", "<cmd>FudeReviewDiff<cr>", desc = "Review: Toggle diff" },
     { "<leader>eb", "<cmd>FudeReviewBrowse<cr>", desc = "Review: Open in browser" },
     { "<leader>eC", "<cmd>FudeReviewScope<cr>", desc = "Review: Select scope" },
+    { "<leader>e]", "<cmd>FudeReviewScopeNext<cr>", desc = "Review: Next scope" },
+    { "<leader>e[", "<cmd>FudeReviewScopePrev<cr>", desc = "Review: Prev scope" },
     { "<leader>el", "<cmd>FudeReviewListComments<cr>", desc = "Review: List comments" },
     {
       "<leader>er",
@@ -99,6 +102,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewViewComment` | View comments on current line |
 | `:FudeReviewFiles` | List PR changed files (Telescope/quickfix) |
 | `:FudeReviewScope` | Select review scope (full PR or specific commit) |
+| `:FudeReviewScopeNext` | Move to next review scope |
+| `:FudeReviewScopePrev` | Move to previous review scope |
 | `:FudeReviewOverview` | Show PR overview and issue-level comments |
 | `:FudeReviewListComments` | List all PR review comments (Telescope) |
 | `:FudeReviewListDrafts` | List all local draft comments (Telescope) |

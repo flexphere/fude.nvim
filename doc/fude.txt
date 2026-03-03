@@ -12,7 +12,8 @@ CONTENTS                                                   *fude-contents*
   4. Commands .................. |fude-commands|
   5. Keymaps ................... |fude-keymaps|
   6. Configuration ............. |fude-configuration|
-  7. Completion ................ |fude-completion|
+  7. Statusline ................ |fude-statusline|
+  8. Completion ................ |fude-completion|
 
 ==============================================================================
 1. INTRODUCTION                                        *fude-introduction*
@@ -96,6 +97,10 @@ Using lazy.nvim: >lua
     history and a "Full PR" option. By default, the scope is the full
     PR (base...HEAD).
 
+    Each commit entry shows its position as `[1/10]` to indicate
+    order within the PR. The currently active scope is marked with
+    a `▶` indicator.
+
     When a specific commit is selected, the plugin checks out that
     commit and switches the review context: |:FudeReviewFiles| shows
     only files changed in that commit, and the diff preview uses the
@@ -108,9 +113,18 @@ Using lazy.nvim: >lua
     Reviewed commits are shown with a checkmark indicator. This
     state is tracked locally within the session.
 
-
     Note: Uncommitted changes must be committed or stashed before
     switching to a commit scope.
+    Requires an active review session.
+
+:FudeReviewScopeNext                            *:FudeReviewScopeNext*
+    Move to the next review scope. Cycles through:
+    Full PR → commit 1 → commit 2 → ... → commit N → Full PR.
+    Requires an active review session.
+
+:FudeReviewScopePrev                            *:FudeReviewScopePrev*
+    Move to the previous review scope. Cycles through:
+    Full PR → commit N → ... → commit 2 → commit 1 → Full PR.
     Requires an active review session.
 
 :FudeReviewOverview                                *:FudeReviewOverview*
@@ -199,6 +213,8 @@ Suggested mappings:
   `<leader>ed`  Toggle diff preview
   `<leader>eb`  Open PR in browser
   `<leader>eC`  Select review scope (commit or full PR)
+  `<leader>e]`  Next review scope
+  `<leader>e[`  Previous review scope
   `<leader>el`  List all review comments
   `<leader>ep`  List all drafts
   `<leader>em`  Mark current file as viewed
@@ -321,7 +337,28 @@ Options:
                   timezone before formatting.
 
 ==============================================================================
-7. COMPLETION                                          *fude-completion*
+7. STATUSLINE                                        *fude-statusline*
+
+fude.nvim provides a function to display the current review scope in
+your statusline.
+
+`require("fude.scope").statusline()`
+    Returns a string representing the current scope:
+    - `"Scope: PR"` when reviewing the full PR
+    - `"Scope: 3/10"` when reviewing commit 3 of 10
+    - `""` (empty string) when fude.nvim is not active
+
+Example with lualine: >lua
+  lualine_x = {
+    {
+      function() return require("fude.scope").statusline() end,
+      cond = function() return require("fude").is_active() end,
+    },
+  }
+<
+
+==============================================================================
+8. COMPLETION                                          *fude-completion*
 
 Comment input windows (`FudeReviewComment`, `FudeReviewSuggest`) support GitHub
 completion for `@user` mentions and `#issue/PR` references.
