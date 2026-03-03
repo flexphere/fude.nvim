@@ -93,11 +93,13 @@ end
 --- Format comment objects into display lines and highlight ranges.
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
---- @return table { lines: string[], hl_ranges: table[] }
+--- @return table { lines: string[], hl_ranges: table[], comment_ranges: table[] }
 function M.format_comments_for_display(comments, format_date_fn)
 	local lines = {}
 	local hl_ranges = {}
+	local comment_ranges = {}
 	for i, comment in ipairs(comments) do
+		local start_line = #lines
 		local author = comment.user and comment.user.login or "unknown"
 		local created = format_date_fn(comment.created_at)
 		local header = string.format("@%s  %s", author, created)
@@ -106,13 +108,28 @@ function M.format_comments_for_display(comments, format_date_fn)
 		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
 			table.insert(lines, body_line)
 		end
+		local end_line = #lines - 1
+		table.insert(comment_ranges, { start_line = start_line, end_line = end_line, index = i })
 		if i < #comments then
 			table.insert(lines, "")
 			table.insert(lines, string.rep("-", 40))
 			table.insert(lines, "")
 		end
 	end
-	return { lines = lines, hl_ranges = hl_ranges }
+	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges }
+end
+
+--- Find the comment index at the given cursor line (0-indexed).
+--- @param comment_ranges table[] array of { start_line, end_line, index }
+--- @param cursor_line number 0-indexed line number
+--- @return number|nil comment index (1-based) or nil if not on a comment
+function M.find_comment_at_cursor(comment_ranges, cursor_line)
+	for _, range in ipairs(comment_ranges) do
+		if cursor_line >= range.start_line and cursor_line <= range.end_line then
+			return range.index
+		end
+	end
+	return nil
 end
 
 --- Normalize check fields into a consistent (status, conclusion) pair.
@@ -765,7 +782,7 @@ function M.show_comments_float(comments)
 		border = config.opts.float.border,
 		title = string.format(" Comments (%d) ", #comments),
 		title_pos = "center",
-		footer = " r reply | q close ",
+		footer = " e edit | r reply | q close ",
 		footer_pos = "center",
 	})
 
@@ -783,6 +800,15 @@ function M.show_comments_float(comments)
 		if last_comment then
 			vim.api.nvim_win_close(win, true)
 			require("fude.comments").reply_to_comment(last_comment.id)
+		end
+	end, { buffer = buf })
+
+	vim.keymap.set("n", "e", function()
+		local cursor_line = vim.api.nvim_win_get_cursor(win)[1] - 1
+		local idx = M.find_comment_at_cursor(result.comment_ranges, cursor_line)
+		if idx and comments[idx] then
+			vim.api.nvim_win_close(win, true)
+			require("fude.comments").edit_comment(comments[idx].id)
 		end
 	end, { buffer = buf })
 

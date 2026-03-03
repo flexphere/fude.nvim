@@ -676,6 +676,43 @@ function M.reply_to_comment(comment_id)
 	})
 end
 
+--- Edit an existing review comment.
+--- @param comment_id number comment id to edit
+function M.edit_comment(comment_id)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		return
+	end
+
+	local found = M.find_comment_by_id(comment_id, state.comment_map or {})
+	if not found then
+		vim.notify("fude.nvim: Comment not found", vim.log.levels.WARN)
+		return
+	end
+
+	local comment = found.comment
+	local initial_lines = vim.split(comment.body or "", "\n")
+
+	ui.open_comment_input(function(body)
+		if not body then
+			return
+		end
+
+		gh.edit_comment(comment_id, body, function(err, _)
+			if err then
+				vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
+			M.fetch_comments()
+		end)
+	end, {
+		initial_lines = initial_lines,
+		title = " Edit Comment ",
+		submit_on_enter = true,
+	})
+end
+
 --- Navigate to the next comment in the current file.
 function M.next_comment()
 	local state = config.state

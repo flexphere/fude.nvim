@@ -138,6 +138,21 @@ function M.reply_to_comment(pr_number, comment_id, body, callback)
 	}, callback)
 end
 
+--- Edit an existing review comment.
+--- @param comment_id number
+--- @param body string new comment body
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.edit_comment(comment_id, body, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/comments/" .. comment_id,
+		"--method",
+		"PATCH",
+		"-f",
+		"body=" .. body,
+	}, callback)
+end
+
 --- Get extended PR info for overview display.
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_overview(callback)
