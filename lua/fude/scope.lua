@@ -142,6 +142,8 @@ function M.show_telescope(scope_entries)
 	local files_mod = require("fude.files")
 	local gh_mod = require("fude.gh")
 	local preview_cache = {}
+	local inflight = {}
+	local preview_ns = vim.api.nvim_create_namespace("fude_scope_preview")
 
 	pickers
 		.new({}, {
@@ -164,12 +166,14 @@ function M.show_telescope(scope_entries)
 						end
 						local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons)
 						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+						vim.api.nvim_buf_clear_namespace(bufnr, preview_ns, 0, -1)
 						for _, hl in ipairs(hls) do
-							vim.api.nvim_buf_add_highlight(bufnr, 0, hl[4], hl[1], hl[2], hl[3])
+							vim.api.nvim_buf_add_highlight(bufnr, preview_ns, hl[4], hl[1], hl[2], hl[3])
 						end
 					end
 
 					if entry.is_full_pr then
+						self.state.current_sha = nil
 						local files = {}
 						for _, f in ipairs(state.changed_files) do
 							table.insert(files, {
@@ -188,15 +192,25 @@ function M.show_telescope(scope_entries)
 						return
 					end
 
+					self.state.current_sha = sha
+
 					if preview_cache[sha] then
 						apply_preview(preview_cache[sha])
 						return
 					end
 
 					vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Loading..." })
+					vim.api.nvim_buf_clear_namespace(bufnr, preview_ns, 0, -1)
+
+					if inflight[sha] then
+						return
+					end
+					inflight[sha] = true
+
 					gh_mod.get_commit_files(sha, function(err, raw_files)
+						inflight[sha] = nil
 						if err then
-							if vim.api.nvim_buf_is_valid(bufnr) then
+							if vim.api.nvim_buf_is_valid(bufnr) and self.state.current_sha == sha then
 								vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Error: " .. err })
 							end
 							return
@@ -211,7 +225,9 @@ function M.show_telescope(scope_entries)
 							})
 						end
 						preview_cache[sha] = files
-						apply_preview(files)
+						if self.state.current_sha == sha then
+							apply_preview(files)
+						end
 					end)
 				end,
 			}),
