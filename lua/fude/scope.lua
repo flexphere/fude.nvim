@@ -15,7 +15,7 @@ function M.reviewed_icon(reviewed)
 end
 
 --- Build scope selection entries for the picker.
---- First entry is always "Full PR", followed by commit entries (newest first).
+--- First entry is always "Full PR", followed by commit entries in input order.
 --- @param commit_entries table[] normalized commit entries from gh.parse_commit_entries
 --- @param base_ref string base branch name
 --- @param head_ref string head branch name
