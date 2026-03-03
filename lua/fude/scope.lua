@@ -34,7 +34,10 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 		reviewed_hl = "Comment",
 	})
 	for _, c in ipairs(commit_entries) do
-		local is_reviewed = reviewed_commits[c.sha] == true
+		local is_reviewed = false
+		if c.sha ~= nil then
+			is_reviewed = reviewed_commits[c.sha] == true
+		end
 		local r_icon, r_hl = M.reviewed_icon(is_reviewed)
 		table.insert(entries, {
 			value = c.sha,
@@ -154,8 +157,12 @@ function M.toggle_reviewed_in_picker(prompt_bufnr)
 		return
 	end
 
-	local state = config.state
 	local sha = selection.sha
+	if not sha then
+		return
+	end
+
+	local state = config.state
 	if state.reviewed_commits[sha] then
 		state.reviewed_commits[sha] = nil
 	else

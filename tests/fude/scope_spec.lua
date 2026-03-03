@@ -71,6 +71,17 @@ describe("build_scope_entries", function()
 		assert.are.equal(" ", entries[1].reviewed_icon)
 	end)
 
+	it("handles commit with nil sha without error", function()
+		local commits = {
+			{ sha = nil, short_sha = "", message = "broken", author_name = "C", date = "" },
+		}
+		local reviewed = { ["aaa"] = true }
+		local entries = scope.build_scope_entries(commits, "main", "dev", reviewed)
+
+		assert.is_false(entries[2].reviewed)
+		assert.are.equal(" ", entries[2].reviewed_icon)
+	end)
+
 	it("defaults reviewed to false when reviewed_commits is nil", function()
 		local commits = {
 			{ sha = "aaa111", short_sha = "aaa111", message = "first", author_name = "A", date = "" },
