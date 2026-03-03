@@ -16,11 +16,11 @@ vim.api.nvim_create_user_command("FudeReviewToggle", function()
 end, { desc = "Toggle PR review mode" })
 
 vim.api.nvim_create_user_command("FudeReviewComment", function(opts)
-	require("fude.comments").create_comment(opts.range > 0)
+	require("fude.comment_actions").create_comment(opts.range > 0)
 end, { desc = "Create PR review comment", range = true })
 
 vim.api.nvim_create_user_command("FudeReviewViewComment", function()
-	require("fude.comments").view_comments()
+	require("fude.comment_actions").view_comments()
 end, { desc = "View PR review comments on current line" })
 
 vim.api.nvim_create_user_command("FudeReviewFiles", function()
@@ -52,7 +52,7 @@ vim.api.nvim_create_user_command("FudeReviewDiff", function()
 end, { desc = "Toggle diff preview" })
 
 vim.api.nvim_create_user_command("FudeReviewSuggest", function(opts)
-	require("fude.comments").suggest_change(opts.range > 0)
+	require("fude.comment_actions").suggest_change(opts.range > 0)
 end, { desc = "Suggest change on current line/selection", range = true })
 
 vim.api.nvim_create_user_command("FudeReviewListDrafts", function()

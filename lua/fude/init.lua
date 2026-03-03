@@ -127,12 +127,12 @@ function M.setup_buf_keymaps()
 	local km = config.opts.keymaps
 	if km.next_comment then
 		vim.keymap.set("n", km.next_comment, function()
-			require("fude.comments").next_comment()
+			require("fude.comment_actions").next_comment()
 		end, { buffer = buf, desc = "Review: Next comment" })
 	end
 	if km.prev_comment then
 		vim.keymap.set("n", km.prev_comment, function()
-			require("fude.comments").prev_comment()
+			require("fude.comment_actions").prev_comment()
 		end, { buffer = buf, desc = "Review: Prev comment" })
 	end
 end

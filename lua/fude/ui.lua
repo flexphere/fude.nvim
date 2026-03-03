@@ -782,7 +782,7 @@ function M.show_comments_float(comments)
 		local last_comment = comments[#comments]
 		if last_comment then
 			vim.api.nvim_win_close(win, true)
-			require("fude.comments").reply_to_comment(last_comment.id)
+			require("fude.comment_actions").reply_to_comment(last_comment.id)
 		end
 	end, { buffer = buf })
 
@@ -790,13 +790,13 @@ function M.show_comments_float(comments)
 	if km.next_comment then
 		vim.keymap.set("n", km.next_comment, function()
 			vim.api.nvim_win_close(win, true)
-			require("fude.comments").next_comment()
+			require("fude.comment_actions").next_comment()
 		end, { buffer = buf })
 	end
 	if km.prev_comment then
 		vim.keymap.set("n", km.prev_comment, function()
 			vim.api.nvim_win_close(win, true)
-			require("fude.comments").prev_comment()
+			require("fude.comment_actions").prev_comment()
 		end, { buffer = buf })
 	end
 
