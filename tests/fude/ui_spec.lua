@@ -99,6 +99,94 @@ describe("format_comments_for_display", function()
 	end)
 end)
 
+describe("format_comments_for_display comment_ranges", function()
+	local identity = function(s)
+		return s or ""
+	end
+
+	it("returns comment_ranges for single comment", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "looks good" },
+		}
+		local result = ui.format_comments_for_display(comments, identity)
+		assert.are.equal(1, #result.comment_ranges)
+		assert.are.equal(0, result.comment_ranges[1].start_line)
+		assert.are.equal(1, result.comment_ranges[1].end_line)
+		assert.are.equal(1, result.comment_ranges[1].index)
+	end)
+
+	it("returns comment_ranges for multiple comments", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
+		}
+		local result = ui.format_comments_for_display(comments, identity)
+		assert.are.equal(2, #result.comment_ranges)
+		-- First comment: header(0) + body(1) = lines 0-1
+		assert.are.equal(0, result.comment_ranges[1].start_line)
+		assert.are.equal(1, result.comment_ranges[1].end_line)
+		assert.are.equal(1, result.comment_ranges[1].index)
+		-- Second comment: after separator(2,3,4), header(5) + body(6) = lines 5-6
+		assert.are.equal(5, result.comment_ranges[2].start_line)
+		assert.are.equal(6, result.comment_ranges[2].end_line)
+		assert.are.equal(2, result.comment_ranges[2].index)
+	end)
+
+	it("handles multiline body in comment_ranges", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\nline2\nline3" },
+		}
+		local result = ui.format_comments_for_display(comments, identity)
+		-- header(0) + body lines(1,2,3) = lines 0-3
+		assert.are.equal(0, result.comment_ranges[1].start_line)
+		assert.are.equal(3, result.comment_ranges[1].end_line)
+	end)
+end)
+
+describe("find_comment_at_cursor", function()
+	it("returns comment index when cursor is on header line", function()
+		local ranges = {
+			{ start_line = 0, end_line = 1, index = 1 },
+			{ start_line = 5, end_line = 6, index = 2 },
+		}
+		assert.are.equal(1, ui.find_comment_at_cursor(ranges, 0))
+	end)
+
+	it("returns comment index when cursor is on body line", function()
+		local ranges = {
+			{ start_line = 0, end_line = 3, index = 1 },
+		}
+		assert.are.equal(1, ui.find_comment_at_cursor(ranges, 2))
+	end)
+
+	it("returns second comment index", function()
+		local ranges = {
+			{ start_line = 0, end_line = 1, index = 1 },
+			{ start_line = 5, end_line = 6, index = 2 },
+		}
+		assert.are.equal(2, ui.find_comment_at_cursor(ranges, 5))
+	end)
+
+	it("returns nil when cursor is on separator line", function()
+		local ranges = {
+			{ start_line = 0, end_line = 1, index = 1 },
+			{ start_line = 5, end_line = 6, index = 2 },
+		}
+		assert.is_nil(ui.find_comment_at_cursor(ranges, 3))
+	end)
+
+	it("returns nil for empty ranges", function()
+		assert.is_nil(ui.find_comment_at_cursor({}, 0))
+	end)
+
+	it("returns index at end_line boundary", function()
+		local ranges = {
+			{ start_line = 0, end_line = 3, index = 1 },
+		}
+		assert.are.equal(1, ui.find_comment_at_cursor(ranges, 3))
+	end)
+end)
+
 describe("format_check_status", function()
 	it("returns check mark for SUCCESS", function()
 		local symbol, hl = ui.format_check_status({ status = "COMPLETED", conclusion = "SUCCESS" })
