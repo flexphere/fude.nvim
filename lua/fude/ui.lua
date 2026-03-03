@@ -349,11 +349,12 @@ end
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
 --- @param format_date_fn fun(s: string): string
---- @return table { lines: string[], hl_ranges: table[], sections: table }
+--- @return table { lines: string[], hl_ranges: table[], sections: table, comment_positions: number[] }
 function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	local lines = {}
 	local hl_ranges = {}
 	local sections = {}
+	local comment_positions = {}
 
 	-- PR header
 	local title = string.format("PR #%d: %s", pr_info.number or 0, pr_info.title or "")
@@ -402,6 +403,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 			table.insert(lines, "")
 			local header = string.format("@%s  %s", comment_author, created)
 			table.insert(lines, header)
+			table.insert(comment_positions, #lines) -- 1-indexed header line
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
 			for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
 				table.insert(lines, body_line)
@@ -418,7 +420,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(lines, " ]s/[s: sections  ]c/[c: comments  C: comment  R: refresh  <Tab>: switch  q: close")
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
-	return { lines = lines, hl_ranges = hl_ranges, sections = sections }
+	return { lines = lines, hl_ranges = hl_ranges, sections = sections, comment_positions = comment_positions }
 end
 
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
@@ -955,21 +957,34 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		end
 	end, { buffer = left_buf, desc = "Previous section" })
 
-	-- Comment navigation keymaps (both panes)
+	-- Comment navigation keymaps (left pane only — navigate between issue comments)
+	local comment_lines = left_result.comment_positions
 	local km = config.opts.keymaps
-	for _, buf in ipairs({ left_buf, right_buf }) do
-		if km.next_comment then
-			vim.keymap.set("n", km.next_comment, function()
-				close_both()
-				require("fude.comments").next_comment()
-			end, { buffer = buf, desc = "Next comment" })
-		end
-		if km.prev_comment then
-			vim.keymap.set("n", km.prev_comment, function()
-				close_both()
-				require("fude.comments").prev_comment()
-			end, { buffer = buf, desc = "Previous comment" })
-		end
+	if km.next_comment and #comment_lines > 0 then
+		vim.keymap.set("n", km.next_comment, function()
+			local cur_line = vim.api.nvim_win_get_cursor(left_win)[1]
+			for _, line in ipairs(comment_lines) do
+				if line > cur_line then
+					vim.api.nvim_win_set_cursor(left_win, { line, 0 })
+					return
+				end
+			end
+			-- Wrap around to first comment
+			vim.api.nvim_win_set_cursor(left_win, { comment_lines[1], 0 })
+		end, { buffer = left_buf, desc = "Next comment" })
+	end
+	if km.prev_comment and #comment_lines > 0 then
+		vim.keymap.set("n", km.prev_comment, function()
+			local cur_line = vim.api.nvim_win_get_cursor(left_win)[1]
+			for i = #comment_lines, 1, -1 do
+				if comment_lines[i] < cur_line then
+					vim.api.nvim_win_set_cursor(left_win, { comment_lines[i], 0 })
+					return
+				end
+			end
+			-- Wrap around to last comment
+			vim.api.nvim_win_set_cursor(left_win, { comment_lines[#comment_lines], 0 })
+		end, { buffer = left_buf, desc = "Previous comment" })
 	end
 
 	-- Keymaps for right buffer
