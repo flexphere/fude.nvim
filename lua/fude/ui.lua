@@ -415,7 +415,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 
 	-- Footer
 	table.insert(lines, "")
-	table.insert(lines, " ]s/[s: sections  C: comment  R: refresh  <Tab>: switch  q: close")
+	table.insert(lines, " ]s/[s: sections  ]c/[c: comments  C: comment  R: refresh  <Tab>: switch  q: close")
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
 	return { lines = lines, hl_ranges = hl_ranges, sections = sections }
@@ -954,6 +954,23 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			end
 		end
 	end, { buffer = left_buf, desc = "Previous section" })
+
+	-- Comment navigation keymaps (both panes)
+	local km = config.opts.keymaps
+	for _, buf in ipairs({ left_buf, right_buf }) do
+		if km.next_comment then
+			vim.keymap.set("n", km.next_comment, function()
+				close_both()
+				require("fude.comments").next_comment()
+			end, { buffer = buf, desc = "Next comment" })
+		end
+		if km.prev_comment then
+			vim.keymap.set("n", km.prev_comment, function()
+				close_both()
+				require("fude.comments").prev_comment()
+			end, { buffer = buf, desc = "Previous comment" })
+		end
+	end
 
 	-- Keymaps for right buffer
 	vim.keymap.set("n", "q", close_both, { buffer = right_buf })

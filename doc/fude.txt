@@ -118,7 +118,8 @@ Using lazy.nvim: >lua
     Section marks are set on the left pane: `'d` (description),
     `'c` (comments). Customizable via `overview.marks`.
     Press `C` to write a new comment, `R` to refresh,
-    `<Tab>` to switch between panes, `q` to close.
+    `<Tab>` to switch between panes, `]c`/`[c` to navigate
+    review comments, `q` to close.
 
 :FudeReviewSuggest                                  *:FudeReviewSuggest*
     Suggest a code change on the current line (normal mode) or
