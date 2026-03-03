@@ -698,6 +698,39 @@ describe("build_overview_left_lines", function()
 		end
 		assert.is_nil(result.sections.reviewers)
 	end)
+
+	it("returns empty comment_positions when no issue comments", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		assert.is_table(result.comment_positions)
+		assert.are.equal(0, #result.comment_positions)
+	end)
+
+	it("returns comment_positions pointing to comment header lines", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local issue_comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
+		}
+		local result = ui.build_overview_left_lines(pr, issue_comments, identity)
+		assert.are.equal(2, #result.comment_positions)
+		-- Each position should point to a line containing the comment author
+		assert.truthy(result.lines[result.comment_positions[1]]:find("@alice"))
+		assert.truthy(result.lines[result.comment_positions[2]]:find("@bob"))
+	end)
+
+	it("returns comment_positions in ascending order", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local issue_comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
+			{ user = { login = "carol" }, created_at = "2024-01-03", body = "third" },
+		}
+		local result = ui.build_overview_left_lines(pr, issue_comments, identity)
+		assert.are.equal(3, #result.comment_positions)
+		assert.is_true(result.comment_positions[1] < result.comment_positions[2])
+		assert.is_true(result.comment_positions[2] < result.comment_positions[3])
+	end)
 end)
 
 describe("build_overview_right_lines", function()
