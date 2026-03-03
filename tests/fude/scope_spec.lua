@@ -253,3 +253,60 @@ describe("find_commit_index", function()
 		assert.are.equal(3, scope.find_commit_index(commits, "ccc"))
 	end)
 end)
+
+describe("format_scope_preview_lines", function()
+	local icons = { added = "+", modified = "~", removed = "-", renamed = "R", copied = "C" }
+
+	it("formats multiple files with status icons and diff stats", function()
+		local files = {
+			{ filename = "lua/fude/scope.lua", status = "modified", additions = 10, deletions = 5 },
+			{ filename = "lua/fude/preview.lua", status = "added", additions = 50, deletions = 0 },
+			{ filename = "lua/fude/old.lua", status = "removed", additions = 0, deletions = 30 },
+		}
+		local lines = scope.format_scope_preview_lines(files, icons)
+
+		assert.are.equal("Changed files: 3", lines[1])
+		assert.are.equal("", lines[2])
+		assert.truthy(lines[3]:find("~"))
+		assert.truthy(lines[3]:find("+10"))
+		assert.truthy(lines[3]:find("-5"))
+		assert.truthy(lines[3]:find("lua/fude/scope.lua"))
+		assert.truthy(lines[4]:find("%+"))
+		assert.truthy(lines[4]:find("+50"))
+		assert.truthy(lines[5]:find("%-"))
+		assert.truthy(lines[5]:find("-30"))
+	end)
+
+	it("returns placeholder for empty file list", function()
+		local lines = scope.format_scope_preview_lines({}, icons)
+		assert.are.equal(1, #lines)
+		assert.are.equal("No changed files", lines[1])
+	end)
+
+	it("formats single file", function()
+		local files = {
+			{ filename = "README.md", status = "modified", additions = 3, deletions = 1 },
+		}
+		local lines = scope.format_scope_preview_lines(files, icons)
+		assert.are.equal("Changed files: 1", lines[1])
+		assert.are.equal(3, #lines)
+		assert.truthy(lines[3]:find("README.md"))
+	end)
+
+	it("uses ? for unknown status", function()
+		local files = {
+			{ filename = "test.lua", status = "unknown_status", additions = 1, deletions = 0 },
+		}
+		local lines = scope.format_scope_preview_lines(files, icons)
+		assert.truthy(lines[3]:find("?"))
+	end)
+
+	it("defaults additions and deletions to 0", function()
+		local files = {
+			{ filename = "test.lua", status = "added" },
+		}
+		local lines = scope.format_scope_preview_lines(files, icons)
+		assert.truthy(lines[3]:find("+0"))
+		assert.truthy(lines[3]:find("-0"))
+	end)
+end)
