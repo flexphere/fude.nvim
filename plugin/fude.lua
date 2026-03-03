@@ -44,7 +44,7 @@ vim.api.nvim_create_user_command("FudeReviewScopePrev", function()
 end, { desc = "Move to previous review scope" })
 
 vim.api.nvim_create_user_command("FudeReviewListComments", function()
-	require("fude.comments").list_comments()
+	require("fude.comment_pickers").list_comments()
 end, { desc = "List PR review comments" })
 
 vim.api.nvim_create_user_command("FudeReviewDiff", function()
@@ -56,7 +56,7 @@ vim.api.nvim_create_user_command("FudeReviewSuggest", function(opts)
 end, { desc = "Suggest change on current line/selection", range = true })
 
 vim.api.nvim_create_user_command("FudeReviewListDrafts", function()
-	require("fude.comments").list_drafts()
+	require("fude.comment_pickers").list_drafts()
 end, { desc = "List draft comments" })
 
 vim.api.nvim_create_user_command("FudeReviewViewed", function()
