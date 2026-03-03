@@ -110,6 +110,7 @@ function M.show_telescope(scope_entries)
 	local actions = require("telescope.actions")
 	local action_state = require("telescope.actions.state")
 	local entry_display = require("telescope.pickers.entry_display")
+	local previewers = require("telescope.previewers")
 
 	local displayer = entry_display.create({
 		separator = " ",
@@ -137,6 +138,11 @@ function M.show_telescope(scope_entries)
 		table.insert(entries, entry)
 	end
 
+	local state = config.state
+	local files_mod = require("fude.files")
+	local gh_mod = require("fude.gh")
+	local preview_cache = {}
+
 	pickers
 		.new({}, {
 			prompt_title = "Review Scope",
@@ -147,6 +153,65 @@ function M.show_telescope(scope_entries)
 				end,
 			}),
 			sorter = conf.generic_sorter({}),
+			previewer = previewers.new_buffer_previewer({
+				title = "Changed Files",
+				define_preview = function(self, entry)
+					local bufnr = self.state.bufnr
+					if entry.is_full_pr then
+						local files = {}
+						for _, f in ipairs(state.changed_files) do
+							table.insert(files, {
+								filename = f.path,
+								status = f.status,
+								additions = f.additions,
+								deletions = f.deletions,
+							})
+						end
+						local lines = M.format_scope_preview_lines(files, files_mod.status_icons)
+						if vim.api.nvim_buf_is_valid(bufnr) then
+							vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+						end
+						return
+					end
+
+					local sha = entry.sha
+					if not sha then
+						return
+					end
+
+					if preview_cache[sha] then
+						local lines = M.format_scope_preview_lines(preview_cache[sha], files_mod.status_icons)
+						if vim.api.nvim_buf_is_valid(bufnr) then
+							vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+						end
+						return
+					end
+
+					vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Loading..." })
+					gh_mod.get_commit_files(sha, function(err, raw_files)
+						if err then
+							if vim.api.nvim_buf_is_valid(bufnr) then
+								vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Error: " .. err })
+							end
+							return
+						end
+						local files = {}
+						for _, f in ipairs(raw_files or {}) do
+							table.insert(files, {
+								filename = f.filename,
+								status = f.status,
+								additions = f.additions,
+								deletions = f.deletions,
+							})
+						end
+						preview_cache[sha] = files
+						if vim.api.nvim_buf_is_valid(bufnr) then
+							local lines = M.format_scope_preview_lines(files, files_mod.status_icons)
+							vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+						end
+					end)
+				end,
+			}),
 			attach_mappings = function(prompt_bufnr, map)
 				actions.select_default:replace(function()
 					actions.close(prompt_bufnr)
@@ -489,6 +554,22 @@ function M.prev_scope()
 			M.apply_commit_scope(entry.sha)
 		end
 	end
+end
+
+--- Format preview lines for a scope entry's changed files.
+--- @param files table[] array of { filename, status, additions, deletions }
+--- @param status_icons table<string, string> status-to-icon map
+--- @return string[] lines formatted lines for the previewer
+function M.format_scope_preview_lines(files, status_icons)
+	if #files == 0 then
+		return { "No changed files" }
+	end
+	local lines = { string.format("Changed files: %d", #files), "" }
+	for _, f in ipairs(files) do
+		local icon = (status_icons and status_icons[f.status]) or "?"
+		table.insert(lines, string.format("  %s +%-4d -%-4d %s", icon, f.additions or 0, f.deletions or 0, f.filename))
+	end
+	return lines
 end
 
 --- Refresh the preview window if it is currently open.
