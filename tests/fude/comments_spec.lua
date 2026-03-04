@@ -540,3 +540,33 @@ describe("build_pending_comments_from_review", function()
 		assert.are.same({}, result)
 	end)
 end)
+
+describe("get_comment_line_range", function()
+	it("returns start_line and line for multi-line comment", function()
+		local comment = { line = 20, start_line = 10, path = "a.lua" }
+		local start_line, end_line = comments.get_comment_line_range(comment)
+		assert.are.equal(10, start_line)
+		assert.are.equal(20, end_line)
+	end)
+
+	it("returns same line for single-line comment without start_line", function()
+		local comment = { line = 15, path = "a.lua" }
+		local start_line, end_line = comments.get_comment_line_range(comment)
+		assert.are.equal(15, start_line)
+		assert.are.equal(15, end_line)
+	end)
+
+	it("uses original_line as fallback when line is nil", function()
+		local comment = { original_line = 8, path = "a.lua" }
+		local start_line, end_line = comments.get_comment_line_range(comment)
+		assert.are.equal(8, start_line)
+		assert.are.equal(8, end_line)
+	end)
+
+	it("defaults to 1 when both line and original_line are nil", function()
+		local comment = { path = "a.lua" }
+		local start_line, end_line = comments.get_comment_line_range(comment)
+		assert.are.equal(1, start_line)
+		assert.are.equal(1, end_line)
+	end)
+end)

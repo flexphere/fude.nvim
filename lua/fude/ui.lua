@@ -95,6 +95,52 @@ function M.flash_line(line)
 	end, duration)
 end
 
+-- Store current comment line highlight info
+local comment_line_highlight = {
+	buf = nil,
+	extmark_ids = {},
+}
+
+--- Highlight lines persistently (for comment viewing).
+--- @param buf number buffer handle
+--- @param start_line number 1-indexed start line number
+--- @param end_line number 1-indexed end line number
+function M.highlight_comment_lines(buf, start_line, end_line)
+	M.clear_comment_line_highlight()
+
+	-- Ensure line numbers are valid
+	start_line = tonumber(start_line)
+	end_line = tonumber(end_line)
+	if not start_line or not end_line then
+		return
+	end
+
+	local flash_opts = config.opts.flash or {}
+	local hl_group = flash_opts.hl_group or "Visual"
+
+	comment_line_highlight.buf = buf
+	comment_line_highlight.extmark_ids = {}
+
+	for line = start_line, end_line do
+		local extmark_id = vim.api.nvim_buf_set_extmark(buf, flash_ns, line - 1, 0, {
+			line_hl_group = hl_group,
+			priority = 100,
+		})
+		table.insert(comment_line_highlight.extmark_ids, extmark_id)
+	end
+end
+
+--- Clear the persistent comment line highlight.
+function M.clear_comment_line_highlight()
+	if comment_line_highlight.buf then
+		for _, extmark_id in ipairs(comment_line_highlight.extmark_ids) do
+			pcall(vim.api.nvim_buf_del_extmark, comment_line_highlight.buf, flash_ns, extmark_id)
+		end
+	end
+	comment_line_highlight.buf = nil
+	comment_line_highlight.extmark_ids = {}
+end
+
 --- Calculate centered float window dimensions from percentage-based sizes.
 --- @param columns number screen width
 --- @param screen_lines number screen height
@@ -836,7 +882,9 @@ end
 
 --- Show comments in a floating window.
 --- @param comments table[] list of comment objects from GitHub API
-function M.show_comments_float(comments)
+--- @param opts table|nil { source_buf?: number, source_start_line?: number, source_end_line?: number }
+function M.show_comments_float(comments, opts)
+	opts = opts or {}
 	local result = M.format_comments_for_display(comments, config.format_date)
 
 	local buf = vim.api.nvim_create_buf(false, true)
@@ -867,10 +915,25 @@ function M.show_comments_float(comments)
 		footer_pos = "center",
 	})
 
+	-- Highlight the source lines while the comment float is open
+	if opts.source_buf and opts.source_start_line then
+		local end_line = opts.source_end_line or opts.source_start_line
+		M.highlight_comment_lines(opts.source_buf, opts.source_start_line, end_line)
+	end
+
 	local ns = config.state.ns_id
 	for _, hl in ipairs(result.hl_ranges) do
 		pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl.hl, hl.line, 0, -1)
 	end
+
+	-- Clear highlight when window is closed
+	vim.api.nvim_create_autocmd("WinClosed", {
+		pattern = tostring(win),
+		once = true,
+		callback = function()
+			M.clear_comment_line_highlight()
+		end,
+	})
 
 	vim.keymap.set("n", "q", function()
 		vim.api.nvim_win_close(win, true)
