@@ -275,6 +275,7 @@ function M.open_pr_float(title_lines, body_lines, from_draft)
 	local augroup = vim.api.nvim_create_augroup("fude_pr_create_" .. title_win, { clear = true })
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = augroup,
+		pattern = { tostring(title_win), tostring(body_win) },
 		callback = function(ev)
 			local closed_win = tonumber(ev.match)
 			if closed_win == title_win or closed_win == body_win then
