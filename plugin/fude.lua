@@ -113,3 +113,7 @@ vim.api.nvim_create_user_command("FudeReviewSubmit", function()
 		})
 	end)
 end, { desc = "Submit drafts as review" })
+
+vim.api.nvim_create_user_command("FudeCreatePR", function()
+	require("fude.pr").create()
+end, { desc = "Create draft PR from template" })
