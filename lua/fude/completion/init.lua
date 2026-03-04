@@ -8,6 +8,8 @@ local cache = {
 	collaborators_time = 0,
 	issues = nil,
 	issues_time = 0,
+	commits = nil,
+	commits_source = nil, -- reference to state.pr_commits used to build cache
 }
 
 --- Check if cached data is still valid.
@@ -139,7 +141,7 @@ function M.build_commit_items(commit_entries)
 end
 
 --- Fetch PR commit entries and return completion items via callback.
---- Raw commits from state.pr_commits are parsed via gh.parse_commit_entries().
+--- Results are cached and invalidated when state.pr_commits changes.
 --- @param callback fun(items: table[])
 function M.fetch_commits(callback)
 	local config = require("fude.config")
@@ -147,8 +149,13 @@ function M.fetch_commits(callback)
 	if not raw_commits or #raw_commits == 0 then
 		return callback({})
 	end
+	if cache.commits ~= nil and cache.commits_source == raw_commits then
+		return callback(cache.commits)
+	end
 	local entries = gh.parse_commit_entries(raw_commits)
-	callback(M.build_commit_items(entries))
+	cache.commits = M.build_commit_items(entries)
+	cache.commits_source = raw_commits
+	callback(cache.commits)
 end
 
 --- Invalidate the cache (e.g. after creating a comment).
@@ -157,6 +164,8 @@ function M.invalidate_cache()
 	cache.collaborators_time = 0
 	cache.issues = nil
 	cache.issues_time = 0
+	cache.commits = nil
+	cache.commits_source = nil
 end
 
 return M
