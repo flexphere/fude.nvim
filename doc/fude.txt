@@ -240,6 +240,7 @@ Suggested mappings:
   `<leader>e[`  Previous review scope
   `<leader>el`  List all review comments
   `<leader>ep`  List all drafts
+  `<leader>en`  Create draft PR
   `<leader>em`  Mark current file as viewed
   `<leader>eM`  Unmark current file as viewed
   `]c`          Next comment
