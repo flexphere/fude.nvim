@@ -3,6 +3,13 @@ local config = require("fude.config")
 
 local ref_ns = vim.api.nvim_create_namespace("fude_refs")
 
+--- Normalize newlines by converting CRLF and CR to LF.
+--- @param s string|nil input string
+--- @return string normalized string
+local function normalize_newlines(s)
+	return (s or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+end
+
 --- Get the namespace ID for flash/highlight extmarks.
 --- Uses config.state.ns_id so existing cleanup paths (clear_extmarks, clear_all_extmarks) cover these.
 --- @return number
@@ -177,7 +184,8 @@ function M.format_comments_for_display(comments, format_date_fn)
 		local header = string.format("@%s  %s", author, created)
 		table.insert(lines, header)
 		table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
-		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+		local comment_body = normalize_newlines(comment.body)
+		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
 		if i < #comments then
@@ -485,7 +493,8 @@ function M.format_reply_comments_for_display(comments, format_date_fn)
 			{ line = header_line_idx, col_start = ts_start, col_end = ts_end, hl = "ReviewCommentTimestamp" }
 		)
 
-		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+		local comment_body = normalize_newlines(comment.body)
+		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
 
@@ -529,7 +538,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(hl_ranges, { line = desc_header_line, hl = "Title" })
 	table.insert(lines, string.rep("-", 50))
 
-	local body = pr_info.body or ""
+	local body = normalize_newlines(pr_info.body)
 	if body == "" then
 		table.insert(lines, "(no description)")
 	else
@@ -558,7 +567,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 			table.insert(lines, header)
 			table.insert(comment_positions, #lines) -- 1-indexed header line
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
-			for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+			local comment_body = normalize_newlines(comment.body)
+			for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 				table.insert(lines, body_line)
 			end
 			if i < #issue_comments then

@@ -88,6 +88,19 @@ describe("format_comments_for_display", function()
 		assert.are.equal("line3", result.lines[4])
 	end)
 
+	it("strips CRLF from body", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\r\nline2\r\nline3" },
+		}
+		local result = ui.format_comments_for_display(comments, identity)
+		assert.are.equal("line1", result.lines[2])
+		assert.are.equal("line2", result.lines[3])
+		assert.are.equal("line3", result.lines[4])
+		for _, line in ipairs(result.lines) do
+			assert.is_nil(line:find("\r"), "Line should not contain CR")
+		end
+	end)
+
 	it("applies format_date_fn", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z", body = "test" },
@@ -599,6 +612,26 @@ describe("build_overview_left_lines", function()
 		assert.is_true(found)
 	end)
 
+	it("strips CRLF from description body", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "Line1\r\nLine2\r\nLine3" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		for _, line in ipairs(result.lines) do
+			assert.is_nil(line:find("\r"), "Line should not contain CR: " .. vim.inspect(line))
+		end
+		local found_line1 = false
+		local found_line2 = false
+		for _, line in ipairs(result.lines) do
+			if line == "Line1" then
+				found_line1 = true
+			end
+			if line == "Line2" then
+				found_line2 = true
+			end
+		end
+		assert.is_true(found_line1)
+		assert.is_true(found_line2)
+	end)
+
 	it("shows no comments placeholder", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
@@ -630,6 +663,29 @@ describe("build_overview_left_lines", function()
 		end
 		assert.is_true(found_author)
 		assert.is_true(found_body)
+	end)
+
+	it("strips CRLF from issue comment body", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local issue_comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "First\r\nSecond" },
+		}
+		local result = ui.build_overview_left_lines(pr, issue_comments, identity)
+		for _, line in ipairs(result.lines) do
+			assert.is_nil(line:find("\r"), "Line should not contain CR: " .. vim.inspect(line))
+		end
+		local found_first = false
+		local found_second = false
+		for _, line in ipairs(result.lines) do
+			if line == "First" then
+				found_first = true
+			end
+			if line == "Second" then
+				found_second = true
+			end
+		end
+		assert.is_true(found_first)
+		assert.is_true(found_second)
 	end)
 
 	it("includes footer with keybind hints", function()
@@ -1220,5 +1276,17 @@ describe("format_reply_comments_for_display", function()
 		}
 		local result = ui.format_reply_comments_for_display(comments, identity)
 		assert.are.equal(string.rep("-", 40), result.lines[4])
+	end)
+
+	it("strips CRLF from body", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\r\nline2" },
+		}
+		local result = ui.format_reply_comments_for_display(comments, identity)
+		assert.are.equal("line1", result.lines[2])
+		assert.are.equal("line2", result.lines[3])
+		for _, line in ipairs(result.lines) do
+			assert.is_nil(line:find("\r"), "Line should not contain CR")
+		end
 	end)
 end)
