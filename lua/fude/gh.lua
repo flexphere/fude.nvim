@@ -498,4 +498,20 @@ function M.create_review(pr_number, commit_id, body, event, review_comments, cal
 	}, callback, json_payload)
 end
 
+--- Create a draft PR on the current branch.
+--- @param title string PR title
+--- @param body string PR body
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.create_draft_pr(title, body, callback)
+	M.run_json({
+		"pr",
+		"create",
+		"--draft",
+		"--title",
+		title,
+		"--body",
+		body,
+	}, callback)
+end
+
 return M
