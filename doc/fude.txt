@@ -187,8 +187,10 @@ Using lazy.nvim: >lua
     Create a draft PR from a template. Searches for GitHub PR templates
     in standard locations (`.github/PULL_REQUEST_TEMPLATE/`,
     `PULL_REQUEST_TEMPLATE.md`, etc.). If multiple templates are found,
-    shows a Telescope picker with preview. If one template is found,
-    uses it directly. If none, opens with an empty body.
+    shows a Telescope picker with preview (when Telescope is available),
+    otherwise falls back to |vim.ui.select()| without a preview pane.
+    If one template is found, uses it directly. If none, opens with an
+    empty body.
 
     Opens a two-pane floating window:
     - Upper pane: PR title (single line)
