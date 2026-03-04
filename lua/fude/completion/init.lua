@@ -121,6 +121,7 @@ function M.build_commit_items(commit_entries)
 			label = display,
 			insertText = c.short_sha,
 			filterText = "_" .. display,
+			sortText = string.format("%05d", i),
 			kind = 15, -- Reference
 			documentation = {
 				kind = "markdown",

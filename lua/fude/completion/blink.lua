@@ -29,6 +29,9 @@ function source:get_completions(ctx, callback)
 		end)
 	elseif context == "commit" then
 		core.fetch_commits(function(items)
+			for idx, item in ipairs(items) do
+				item.score_offset = 1000 - idx
+			end
 			callback({ items = items })
 		end)
 	else

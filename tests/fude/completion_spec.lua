@@ -70,10 +70,12 @@ describe("completion.build_commit_items", function()
 		assert.are.equal("[1/2] abc1234 feat: add feature (Alice)", items[1].label)
 		assert.are.equal("abc1234", items[1].insertText)
 		assert.are.equal("_[1/2] abc1234 feat: add feature (Alice)", items[1].filterText)
+		assert.are.equal("00001", items[1].sortText)
 		assert.are.equal(15, items[1].kind)
 
 		assert.are.equal("[2/2] def5678 fix: bug fix (Bob)", items[2].label)
 		assert.are.equal("def5678", items[2].insertText)
+		assert.are.equal("00002", items[2].sortText)
 	end)
 
 	it("returns empty table for empty input", function()
