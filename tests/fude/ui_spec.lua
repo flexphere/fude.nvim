@@ -1140,3 +1140,85 @@ describe("build_reviewers_summary", function()
 		assert.are.equal("", ui.build_reviewers_summary({}))
 	end)
 end)
+
+describe("calculate_comments_height", function()
+	it("returns min_height when line_count is smaller", function()
+		assert.are.equal(5, ui.calculate_comments_height(2, 5, 20))
+	end)
+
+	it("returns line_count when within range", function()
+		assert.are.equal(10, ui.calculate_comments_height(10, 5, 20))
+	end)
+
+	it("returns max_height when line_count exceeds it", function()
+		assert.are.equal(20, ui.calculate_comments_height(30, 5, 20))
+	end)
+end)
+
+describe("calculate_reply_window_dimensions", function()
+	it("calculates dimensions with defaults", function()
+		local dim = ui.calculate_reply_window_dimensions(100, 50, 10)
+		assert.are.equal(60, dim.width) -- 100 * 0.6
+		assert.are.equal(10, dim.upper_height)
+		assert.are.equal(5, dim.lower_height)
+	end)
+
+	it("clamps upper_height to max_upper_pct", function()
+		local dim = ui.calculate_reply_window_dimensions(100, 50, 100)
+		assert.are.equal(25, dim.upper_height) -- 50 * 0.5
+	end)
+
+	it("respects custom options", function()
+		local dim = ui.calculate_reply_window_dimensions(100, 50, 10, {
+			width_pct = 0.8,
+			lower_height = 10,
+		})
+		assert.are.equal(80, dim.width)
+		assert.are.equal(10, dim.lower_height)
+	end)
+end)
+
+describe("format_reply_comments_for_display", function()
+	local identity = function(s)
+		return s or ""
+	end
+
+	it("formats single comment with header", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
+		}
+		local result = ui.format_reply_comments_for_display(comments, identity)
+		assert.are.equal("@alice (2024-01-01):", result.lines[1])
+		assert.are.equal("test", result.lines[2])
+	end)
+
+	it("includes author highlight range", function()
+		local comments = {
+			{ user = { login = "bob" }, created_at = "2024-01-01", body = "x" },
+		}
+		local result = ui.format_reply_comments_for_display(comments, identity)
+		local author_hl = result.hl_ranges[1]
+		assert.are.equal(0, author_hl.line)
+		assert.are.equal(0, author_hl.col_start)
+		assert.are.equal(4, author_hl.col_end) -- "@bob"
+		assert.are.equal("ReviewCommentAuthor", author_hl.hl)
+	end)
+
+	it("includes timestamp highlight range", function()
+		local comments = {
+			{ user = { login = "bob" }, created_at = "2024-01-01", body = "x" },
+		}
+		local result = ui.format_reply_comments_for_display(comments, identity)
+		local ts_hl = result.hl_ranges[2]
+		assert.are.equal("ReviewCommentTimestamp", ts_hl.hl)
+	end)
+
+	it("adds separator between multiple comments", function()
+		local comments = {
+			{ user = { login = "a" }, created_at = "d1", body = "x" },
+			{ user = { login = "b" }, created_at = "d2", body = "y" },
+		}
+		local result = ui.format_reply_comments_for_display(comments, identity)
+		assert.are.equal(string.rep("-", 40), result.lines[4])
+	end)
+end)
