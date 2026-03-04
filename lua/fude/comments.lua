@@ -729,6 +729,15 @@ function M.next_comment()
 		return
 	end
 
+	-- Close float window if called from within one, but avoid closing modifiable floats (e.g. comment input)
+	local win_config = vim.api.nvim_win_get_config(0)
+	if win_config.relative and win_config.relative ~= "" then
+		local buf = vim.api.nvim_get_current_buf()
+		if not vim.bo[buf].modifiable then
+			vim.api.nvim_win_close(0, true)
+		end
+	end
+
 	local buf = vim.api.nvim_get_current_buf()
 	local filepath = vim.api.nvim_buf_get_name(buf)
 	local rel_path = diff.to_repo_relative(filepath)
@@ -947,6 +956,15 @@ function M.prev_comment()
 	local state = config.state
 	if not state.active then
 		return
+	end
+
+	-- Close float window if called from within one, but avoid closing modifiable floats (e.g. comment input)
+	local win_config = vim.api.nvim_win_get_config(0)
+	if win_config.relative and win_config.relative ~= "" then
+		local buf = vim.api.nvim_get_current_buf()
+		if not vim.bo[buf].modifiable then
+			vim.api.nvim_win_close(0, true)
+		end
 	end
 
 	local buf = vim.api.nvim_get_current_buf()
