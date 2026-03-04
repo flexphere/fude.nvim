@@ -145,6 +145,11 @@ require("fude").setup({
     -- Right pane width as percentage of total overview width
     right_width = 30,
   },
+  -- Flash highlight when navigating to a comment line (]c/[c)
+  flash = {
+    duration = 200, -- ms
+    hl_group = "Visual",
+  },
   -- Auto-open comment viewer when navigating to a comment line (]c/[c/FudeReviewListComments)
   auto_view_comment = true,
   -- strftime format for timestamps (system timezone)

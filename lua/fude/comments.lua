@@ -621,6 +621,15 @@ function M.create_comment(is_visual)
 	})
 end
 
+--- Get the line range for a comment (start_line to line).
+--- @param comment table comment object from GitHub API
+--- @return number start_line, number end_line
+function M.get_comment_line_range(comment)
+	local end_line = tonumber(comment.line) or tonumber(comment.original_line) or 1
+	local start_line = tonumber(comment.start_line) or end_line
+	return start_line, end_line
+end
+
 --- View comments on the current line.
 function M.view_comments()
 	local state = config.state
@@ -643,7 +652,10 @@ function M.view_comments()
 		return
 	end
 
-	ui.show_comments_float(comments)
+	-- Get the line range from the first comment (all comments at this line share the same range)
+	local start_line, end_line = M.get_comment_line_range(comments[1])
+
+	ui.show_comments_float(comments, { source_buf = buf, source_start_line = start_line, source_end_line = end_line })
 end
 
 --- Get the reply target ID for a comment.
@@ -752,6 +764,8 @@ function M.next_comment()
 		vim.api.nvim_win_set_cursor(0, { target, 0 })
 		if config.opts.auto_view_comment then
 			M.view_comments()
+		else
+			ui.flash_line(target)
 		end
 	end
 end
@@ -874,6 +888,8 @@ function M.list_comments()
 						pcall(vim.api.nvim_win_set_cursor, 0, { lnum, 0 })
 						if config.opts.auto_view_comment then
 							M.view_comments()
+						else
+							ui.flash_line(lnum)
 						end
 					end
 				end)
@@ -981,6 +997,8 @@ function M.prev_comment()
 		vim.api.nvim_win_set_cursor(0, { target, 0 })
 		if config.opts.auto_view_comment then
 			M.view_comments()
+		else
+			ui.flash_line(target)
 		end
 	end
 end

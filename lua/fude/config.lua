@@ -30,6 +30,11 @@ M.defaults = {
 		-- Right pane width as percentage of total overview width (1-100)
 		right_width = 30,
 	},
+	-- Flash highlight when navigating to a comment line
+	flash = {
+		duration = 200, -- ms
+		hl_group = "Visual",
+	},
 	-- Auto-open comment viewer when navigating to a comment line
 	auto_view_comment = true,
 	-- strftime format for timestamps (applied in system timezone)
