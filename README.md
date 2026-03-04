@@ -69,7 +69,6 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
       function() require("fude.comments").reply_to_comment() end,
       desc = "Review: Reply",
     },
-    { "<leader>en", "<cmd>FudeCreatePR<cr>", desc = "Create draft PR" },
     { "<leader>em", "<cmd>FudeReviewViewed<cr>", desc = "Review: Mark viewed" },
     { "<leader>eM", "<cmd>FudeReviewUnviewed<cr>", desc = "Review: Unmark viewed" },
     -- ]c / [c are set automatically as buffer-local keymaps during review mode
