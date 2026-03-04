@@ -20,6 +20,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub)
+- **Create PR** - Create draft PRs from templates with a two-pane float (title + body)
 - **Open in browser** - Open the PR in your browser
 - **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
 
@@ -44,7 +45,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeReviewBrowse",
-    "FudeReviewViewed", "FudeReviewUnviewed",
+    "FudeReviewViewed", "FudeReviewUnviewed", "FudeCreatePR",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
@@ -111,6 +112,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewViewed` | Mark current file as viewed on GitHub |
 | `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
 | `:FudeReviewBrowse` | Open PR in browser |
+| `:FudeCreatePR` | Create draft PR from template |
 
 ## Configuration
 
