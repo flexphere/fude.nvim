@@ -503,7 +503,7 @@ end
 --- @param body string PR body
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.create_draft_pr(title, body, callback)
-	M.run_json({
+	M.run({
 		"pr",
 		"create",
 		"--draft",
@@ -511,7 +511,14 @@ function M.create_draft_pr(title, body, callback)
 		title,
 		"--body",
 		body,
-	}, callback)
+	}, function(err, stdout)
+		if err then
+			callback(err, nil)
+			return
+		end
+		local url = stdout and vim.trim(stdout) or ""
+		callback(nil, { url = url })
+	end)
 end
 
 return M
