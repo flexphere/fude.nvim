@@ -2,7 +2,13 @@ local M = {}
 local config = require("fude.config")
 
 local ref_ns = vim.api.nvim_create_namespace("fude_refs")
-local flash_ns = vim.api.nvim_create_namespace("fude_flash")
+
+--- Get the namespace ID for flash/highlight extmarks.
+--- Uses config.state.ns_id so existing cleanup paths (clear_extmarks, clear_all_extmarks) cover these.
+--- @return number
+local function get_flash_ns()
+	return config.state.ns_id or vim.api.nvim_create_namespace("fude")
+end
 
 --- Get repository base URL (e.g. "https://github.com/owner/repo").
 --- @param pr_url string|nil PR URL to extract from
@@ -81,17 +87,18 @@ end
 --- @param line number 1-indexed line number
 function M.flash_line(line)
 	local buf = vim.api.nvim_get_current_buf()
+	local ns = get_flash_ns()
 	local flash_opts = config.opts.flash or {}
 	local duration = flash_opts.duration or 200
 	local hl_group = flash_opts.hl_group or "Visual"
 
-	local extmark_id = vim.api.nvim_buf_set_extmark(buf, flash_ns, line - 1, 0, {
+	local extmark_id = vim.api.nvim_buf_set_extmark(buf, ns, line - 1, 0, {
 		line_hl_group = hl_group,
 		priority = 100,
 	})
 
 	vim.defer_fn(function()
-		pcall(vim.api.nvim_buf_del_extmark, buf, flash_ns, extmark_id)
+		pcall(vim.api.nvim_buf_del_extmark, buf, ns, extmark_id)
 	end, duration)
 end
 
@@ -115,6 +122,7 @@ function M.highlight_comment_lines(buf, start_line, end_line)
 		return
 	end
 
+	local ns = get_flash_ns()
 	local flash_opts = config.opts.flash or {}
 	local hl_group = flash_opts.hl_group or "Visual"
 
@@ -122,7 +130,7 @@ function M.highlight_comment_lines(buf, start_line, end_line)
 	comment_line_highlight.extmark_ids = {}
 
 	for line = start_line, end_line do
-		local extmark_id = vim.api.nvim_buf_set_extmark(buf, flash_ns, line - 1, 0, {
+		local extmark_id = vim.api.nvim_buf_set_extmark(buf, ns, line - 1, 0, {
 			line_hl_group = hl_group,
 			priority = 100,
 		})
@@ -133,8 +141,9 @@ end
 --- Clear the persistent comment line highlight.
 function M.clear_comment_line_highlight()
 	if comment_line_highlight.buf then
+		local ns = get_flash_ns()
 		for _, extmark_id in ipairs(comment_line_highlight.extmark_ids) do
-			pcall(vim.api.nvim_buf_del_extmark, comment_line_highlight.buf, flash_ns, extmark_id)
+			pcall(vim.api.nvim_buf_del_extmark, comment_line_highlight.buf, ns, extmark_id)
 		end
 	end
 	comment_line_highlight.buf = nil
