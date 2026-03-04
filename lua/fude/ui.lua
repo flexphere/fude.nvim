@@ -177,7 +177,8 @@ function M.format_comments_for_display(comments, format_date_fn)
 		local header = string.format("@%s  %s", author, created)
 		table.insert(lines, header)
 		table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
-		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+		local comment_body = (comment.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
 		if i < #comments then
@@ -485,7 +486,8 @@ function M.format_reply_comments_for_display(comments, format_date_fn)
 			{ line = header_line_idx, col_start = ts_start, col_end = ts_end, hl = "ReviewCommentTimestamp" }
 		)
 
-		for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+		local comment_body = (comment.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
 
@@ -529,7 +531,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(hl_ranges, { line = desc_header_line, hl = "Title" })
 	table.insert(lines, string.rep("-", 50))
 
-	local body = pr_info.body or ""
+	local body = (pr_info.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 	if body == "" then
 		table.insert(lines, "(no description)")
 	else
@@ -558,7 +560,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 			table.insert(lines, header)
 			table.insert(comment_positions, #lines) -- 1-indexed header line
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
-			for _, body_line in ipairs(vim.split(comment.body or "", "\n")) do
+			local comment_body = (comment.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
+			for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 				table.insert(lines, body_line)
 			end
 			if i < #issue_comments then
