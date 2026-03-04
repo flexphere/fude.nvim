@@ -57,6 +57,21 @@ function M.build_template_search_paths(repo_root)
 	return { dirs = dirs, files = files }
 end
 
+--- Build picker entries for template selection (including draft if available).
+--- @param templates string[] list of template file paths
+--- @param has_draft boolean whether a draft exists
+--- @return table[] entries with display, value, and is_draft fields
+function M.build_picker_entries(templates, has_draft)
+	local entries = {}
+	if has_draft then
+		table.insert(entries, { display = "(draft)", value = "__draft__", is_draft = true })
+	end
+	for _, t in ipairs(templates) do
+		table.insert(entries, { display = vim.fn.fnamemodify(t, ":t"), value = t, is_draft = false })
+	end
+	return entries
+end
+
 --- Parse title and body from PR buffer contents.
 --- @param title_lines string[] lines from title buffer
 --- @param body_lines string[] lines from body buffer
@@ -103,26 +118,23 @@ function M.find_templates()
 	return templates
 end
 
---- Open the PR creation float with the given template content.
---- If a draft exists, it takes priority over the template.
---- @param template_lines string[] template body lines
-function M.open_pr_float(template_lines)
-	template_lines = template_lines or { "" }
-
-	-- Restore from draft if available
-	local saved = M.get_draft()
-	local initial_title = saved and saved.title_lines or { "" }
-	local initial_body = saved and saved.body_lines or template_lines
+--- Open the PR creation float with explicit title and body content.
+--- @param title_lines string[]|nil initial title lines (default: {""})
+--- @param body_lines string[]|nil initial body lines (default: {""})
+--- @param from_draft boolean|nil true when restoring from a saved draft
+function M.open_pr_float(title_lines, body_lines, from_draft)
+	title_lines = title_lines or { "" }
+	body_lines = body_lines or { "" }
 
 	-- Create title buffer (editable, single line)
 	local title_buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(title_buf, 0, -1, false, initial_title)
+	vim.api.nvim_buf_set_lines(title_buf, 0, -1, false, title_lines)
 	vim.bo[title_buf].buftype = "nofile"
 	vim.bo[title_buf].bufhidden = "wipe"
 
-	-- Create body buffer (editable, multi-line with template or draft)
+	-- Create body buffer (editable, multi-line)
 	local body_buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(body_buf, 0, -1, false, initial_body)
+	vim.api.nvim_buf_set_lines(body_buf, 0, -1, false, body_lines)
 	vim.bo[body_buf].buftype = "nofile"
 	vim.bo[body_buf].bufhidden = "wipe"
 	vim.bo[body_buf].filetype = "markdown"
@@ -167,7 +179,7 @@ function M.open_pr_float(template_lines)
 		border = lower_border,
 		title = " PR Body ",
 		title_pos = "center",
-		footer = saved and " <CR> create draft | q cancel (draft restored) " or " <CR> create draft | q cancel ",
+		footer = from_draft and " <CR> create draft | q cancel (draft restored) " or " <CR> create draft | q cancel ",
 		footer_pos = "center",
 	})
 	vim.wo[body_win].wrap = true
@@ -276,7 +288,25 @@ function M.open_pr_float(template_lines)
 	vim.cmd("startinsert")
 end
 
+--- Open the float from a draft selection.
+--- @private
+local function open_from_draft()
+	local d = M.get_draft()
+	if d then
+		M.open_pr_float(d.title_lines, d.body_lines, true)
+	end
+end
+
+--- Open the float from a template file.
+--- @param path string template file path
+--- @private
+local function open_from_template(path)
+	local lines = vim.fn.readfile(path)
+	M.open_pr_float(nil, lines)
+end
+
 --- Show PR creation flow: find templates, select if multiple, open float.
+--- When a draft exists, it is shown as a selectable option alongside templates.
 function M.create()
 	local repo_root = diff.get_repo_root()
 	if not repo_root then
@@ -285,42 +315,50 @@ function M.create()
 	end
 
 	local templates = M.find_templates()
+	local has_draft = M.get_draft() ~= nil
+	local total = #templates + (has_draft and 1 or 0)
 
-	if #templates == 0 then
-		-- No templates: open with empty body
-		M.open_pr_float({ "" })
-	elseif #templates == 1 then
-		-- Single template: read and open
-		local lines = vim.fn.readfile(templates[1])
-		M.open_pr_float(lines)
+	if total == 0 then
+		-- No templates, no draft: open with empty body
+		M.open_pr_float(nil, { "" })
+	elseif total == 1 and not has_draft then
+		-- Single template, no draft: read and open
+		open_from_template(templates[1])
+	elseif total == 1 and has_draft then
+		-- Only draft, no templates: open from draft
+		open_from_draft()
 	else
-		-- Multiple templates: show picker
-		M.select_template(templates, function(selected)
+		-- Multiple options: show picker with draft + templates
+		local entries = M.build_picker_entries(templates, has_draft)
+		M.select_template(entries, function(selected)
 			if not selected then
 				return
 			end
-			local lines = vim.fn.readfile(selected)
-			M.open_pr_float(lines)
+			if selected == "__draft__" then
+				open_from_draft()
+			else
+				open_from_template(selected)
+			end
 		end)
 	end
 end
 
---- Show template picker using Telescope or vim.ui.select.
---- @param templates string[] list of template file paths
---- @param callback fun(selected: string|nil)
-function M.select_template(templates, callback)
+--- Show template/draft picker using Telescope or vim.ui.select.
+--- @param entries table[] entries from build_picker_entries
+--- @param callback fun(selected: string|nil) receives entry value or nil
+function M.select_template(entries, callback)
 	local has_telescope, pickers = pcall(require, "telescope.pickers")
 	if not has_telescope then
 		-- Fallback to vim.ui.select
 		local items = {}
-		for _, t in ipairs(templates) do
-			table.insert(items, vim.fn.fnamemodify(t, ":t"))
+		for _, e in ipairs(entries) do
+			table.insert(items, e.display)
 		end
 		vim.ui.select(items, {
 			prompt = "Select PR template:",
 		}, function(_, idx)
 			if idx then
-				callback(templates[idx])
+				callback(entries[idx].value)
 			else
 				callback(nil)
 			end
@@ -338,20 +376,36 @@ function M.select_template(templates, callback)
 		.new({}, {
 			prompt_title = "PR Templates",
 			finder = finders.new_table({
-				results = templates,
-				entry_maker = function(path)
+				results = entries,
+				entry_maker = function(entry)
 					return {
-						value = path,
-						display = vim.fn.fnamemodify(path, ":t"),
-						ordinal = vim.fn.fnamemodify(path, ":t"),
+						value = entry.value,
+						display = entry.display,
+						ordinal = entry.display,
+						is_draft = entry.is_draft,
 					}
 				end,
 			}),
 			sorter = conf.generic_sorter({}),
 			previewer = previewers.new_buffer_previewer({
-				title = "Template Preview",
+				title = "Preview",
 				define_preview = function(self, entry)
-					local lines = vim.fn.readfile(entry.value)
+					local lines
+					if entry.is_draft then
+						local d = M.get_draft()
+						if d then
+							lines = {}
+							table.insert(lines, "Title: " .. table.concat(d.title_lines, " "))
+							table.insert(lines, "")
+							for _, line in ipairs(d.body_lines) do
+								table.insert(lines, line)
+							end
+						else
+							lines = { "" }
+						end
+					else
+						lines = vim.fn.readfile(entry.value)
+					end
 					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 					vim.bo[self.state.bufnr].filetype = "markdown"
 				end,
