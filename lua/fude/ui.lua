@@ -755,8 +755,12 @@ function M.open_comment_input(callback, opts)
 
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, initial_lines)
 
-	local ov = config.opts.overview or {}
-	local dim = M.calculate_float_dimensions(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
+	local dim = M.calculate_float_dimensions(
+		vim.o.columns,
+		vim.o.lines,
+		config.opts.float.width or 50,
+		config.opts.float.height or 50
+	)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -765,7 +769,7 @@ function M.open_comment_input(callback, opts)
 		width = dim.width,
 		height = dim.height,
 		style = "minimal",
-		border = ov.border or config.opts.float.border,
+		border = config.opts.float.border,
 		title = title,
 		title_pos = "center",
 		footer = footer,
@@ -823,8 +827,12 @@ function M.show_comments_float(comments)
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
 
-	local ov = config.opts.overview or {}
-	local dim = M.calculate_float_dimensions(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
+	local dim = M.calculate_float_dimensions(
+		vim.o.columns,
+		vim.o.lines,
+		config.opts.float.width or 50,
+		config.opts.float.height or 50
+	)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -833,7 +841,7 @@ function M.show_comments_float(comments)
 		width = dim.width,
 		height = dim.height,
 		style = "minimal",
-		border = ov.border or config.opts.float.border,
+		border = config.opts.float.border,
 		title = string.format(" Comments (%d) ", #comments),
 		title_pos = "center",
 		footer = " r reply | q close ",
@@ -1121,9 +1129,13 @@ function M.open_reply_window(comments, opts)
 	-- Format comments
 	local result = M.format_reply_comments_for_display(comments, config.format_date)
 
-	-- Calculate dimensions (same as overview window)
-	local ov = config.opts.overview or {}
-	local dim = M.calculate_float_dimensions(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
+	-- Calculate dimensions
+	local dim = M.calculate_float_dimensions(
+		vim.o.columns,
+		vim.o.lines,
+		config.opts.float.width or 50,
+		config.opts.float.height or 50
+	)
 
 	-- Split height: lower is fixed 12 lines, upper gets the rest
 	local lower_height = 12
