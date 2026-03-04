@@ -11,11 +11,11 @@ function source:is_available()
 end
 
 function source:get_trigger_characters()
-	return { "@", "#" }
+	return { "@", "#", "_" }
 end
 
 function source:get_keyword_pattern()
-	return [[\%(@\w*\|#\d*\)]]
+	return [[\%(@\w*\|#\d*\|_[0-9A-Za-z\[\]/() ]*\)]]
 end
 
 function source:complete(params, callback)
@@ -29,6 +29,10 @@ function source:complete(params, callback)
 		end)
 	elseif context == "issue" then
 		core.fetch_issues(function(items)
+			callback(items)
+		end)
+	elseif context == "commit" then
+		core.fetch_commits(function(items)
 			callback(items)
 		end)
 	else

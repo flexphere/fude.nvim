@@ -18,7 +18,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right)
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
-- **GitHub completion** - `@user` and `#issue` completion in comment windows (blink.cmp / nvim-cmp)
+- **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub)
 - **Open in browser** - Open the PR in your browser
 - **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
@@ -29,7 +29,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
 - Optional: [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) for file picker
 - Optional: [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim) for diff base switching
-- Optional: [blink.cmp](https://github.com/saghen/blink.cmp) or [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) for `@user` / `#issue` completion
+- Optional: [blink.cmp](https://github.com/saghen/blink.cmp) or [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) for `@user` / `#issue` / `_commit` completion
 
 ## Installation
 
@@ -159,7 +159,15 @@ require("fude").setup({
 
 ## Completion
 
-Comment input windows support `@user` and `#issue/PR` completion.
+Comment input windows support `@user`, `#issue/PR`, and `_commit` completion.
+
+| Trigger | Completes | Source |
+|---------|-----------|--------|
+| `@` | GitHub collaborators | GitHub API (cached 5 min) |
+| `#` | Issues and PRs | GitHub API (cached 5 min) |
+| `_` | PR commit hashes | Local cache (no API call) |
+
+Commit completion shows entries in `[n/m] <sha> <message> (<author>)` format, matching the scope picker display. Selecting a commit inserts its short SHA.
 
 ### blink.cmp
 
