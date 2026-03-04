@@ -95,7 +95,7 @@ end
 
 --- Determine completion context from text before cursor.
 --- @param line_before_cursor string
---- @return string|nil "mention", "issue", or nil
+--- @return string|nil "mention", "issue", "commit", or nil
 function M.get_context(line_before_cursor)
 	if line_before_cursor:match("@[%w_%-]*$") then
 		return "mention"
@@ -103,7 +103,51 @@ function M.get_context(line_before_cursor)
 	if line_before_cursor:match("#%d*$") then
 		return "issue"
 	end
+	if line_before_cursor:match("_[%w%d%[%]/%(%) ]*$") then
+		return "commit"
+	end
 	return nil
+end
+
+--- Build completion items from PR commit entries.
+--- @param commit_entries table[] array of { sha, short_sha, message, author_name, date }
+--- @return table[] items completion items
+function M.build_commit_items(commit_entries)
+	local items = {}
+	local total = #commit_entries
+	for i, c in ipairs(commit_entries) do
+		local display = string.format("[%d/%d] %s %s (%s)", i, total, c.short_sha, c.message, c.author_name)
+		table.insert(items, {
+			label = display,
+			insertText = c.short_sha,
+			filterText = "_" .. display,
+			kind = 15, -- Reference
+			documentation = {
+				kind = "markdown",
+				value = string.format(
+					"**Commit %s**\n%s\nAuthor: %s\nDate: %s",
+					c.sha or c.short_sha,
+					c.message,
+					c.author_name,
+					c.date
+				),
+			},
+		})
+	end
+	return items
+end
+
+--- Fetch PR commit entries and return completion items via callback.
+--- Raw commits from state.pr_commits are parsed via gh.parse_commit_entries().
+--- @param callback fun(items: table[])
+function M.fetch_commits(callback)
+	local config = require("fude.config")
+	local raw_commits = config.state.pr_commits
+	if not raw_commits or #raw_commits == 0 then
+		return callback({})
+	end
+	local entries = gh.parse_commit_entries(raw_commits)
+	callback(M.build_commit_items(entries))
 end
 
 --- Invalidate the cache (e.g. after creating a comment).

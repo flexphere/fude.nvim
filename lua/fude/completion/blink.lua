@@ -11,7 +11,7 @@ function source:enabled()
 end
 
 function source:get_trigger_characters()
-	return { "@", "#" }
+	return { "@", "#", "_" }
 end
 
 function source:get_completions(ctx, callback)
@@ -25,6 +25,10 @@ function source:get_completions(ctx, callback)
 		end)
 	elseif context == "issue" then
 		core.fetch_issues(function(items)
+			callback({ items = items })
+		end)
+	elseif context == "commit" then
+		core.fetch_commits(function(items)
 			callback({ items = items })
 		end)
 	else
