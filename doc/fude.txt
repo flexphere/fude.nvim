@@ -29,7 +29,7 @@ in the editor. It provides:
 - Browse changed files with Telescope or quickfix
 - View PR overview with title, description, labels, reviewers, CI status, and comments
 - Clickable GitHub references (#123) and URLs in floating windows
-- @user and #issue completion in comment windows (blink.cmp / nvim-cmp)
+- @user, #issue, and _commit completion in comment windows (blink.cmp / nvim-cmp)
 - Mark files as viewed/unviewed (synced with GitHub)
 - Gitsigns integration for diff base switching
 
@@ -43,7 +43,7 @@ in the editor. It provides:
 Optional:
 - telescope.nvim for file picker with diff preview
 - gitsigns.nvim for automatic diff base switching
-- blink.cmp or nvim-cmp for @user / #issue completion
+- blink.cmp or nvim-cmp for @user / #issue / _commit completion
 
 ==============================================================================
 3. SETUP                                                    *fude-setup*
@@ -376,7 +376,7 @@ Example with lualine: >lua
 8. COMPLETION                                          *fude-completion*
 
 Comment input windows (`FudeReviewComment`, `FudeReviewSuggest`) support GitHub
-completion for `@user` mentions and `#issue/PR` references.
+completion for `@user` mentions, `#issue/PR` references, and `_commit` hashes.
 
 blink.cmp: >lua
   sources = {
@@ -398,8 +398,14 @@ nvim-cmp: >lua
   -- Add { name = "fude" } to your sources
 <
 
-Data is cached for 5 minutes per session. The first trigger of `@` or `#`
-fetches data from the GitHub API asynchronously.
+Trigger characters:
+  `@`  - GitHub collaborators (@user mentions)
+  `#`  - Issues and PRs (#123 references)
+  `_`  - PR commit hashes (filtered by [n/m] index and message)
+
+Data for `@` and `#` is cached for 5 minutes per session and fetched from the
+GitHub API asynchronously. Data for `_` uses locally cached PR commits (no
+additional API call).
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:
