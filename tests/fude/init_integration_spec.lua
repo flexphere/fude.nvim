@@ -20,6 +20,10 @@ local function setup_gh_mocks()
 		["api:graphql"] = {
 			data = { repository = { pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } } } },
 		},
+		["repo:view"] = {
+			owner = { login = "owner" },
+			name = "repo",
+		},
 	})
 	helpers.mock_head_sha("abc123def456")
 
