@@ -49,7 +49,7 @@ argument-hint: [やりたいことの概要]
      - state依存: どのフィールドの R/W が変わるか
      - 影響を受けるモジュールと機能
      - エッジケース: 検討した結果と対策
-   - **テスト方針**: どの純粋関数をテストするか
+   - **テスト方針**: どの関数をテストするか（unit test / integration test の区分を明記）
    - **ドキュメント更新**: doc/fude.txt / README.md / CLAUDE.md のうちどれを更新するか、更新する内容の概要
    - **懸念事項・リスク**: 既存機能への影響、エッジケース
    - **代替案**: 別のアプローチがあれば提示
@@ -89,9 +89,15 @@ argument-hint: [やりたいことの概要]
 
 ### Phase 4: テスト [自律実行可]
 
-1. 変更対象モジュールの既存テストファイル（`tests/fude/*_spec.lua`）を読み、テストのスタイル・構造・ヘルパーの使い方を把握してから新規テストを書く
-2. 新規・変更した純粋関数に対するテストを `tests/fude/` に追加する
-3. テストファイルの命名: 対象モジュールに対応する `*_spec.lua`
+1. 変更対象モジュールの既存テストファイル（`tests/fude/*_spec.lua`, `tests/fude/*_integration_spec.lua`）を読み、テストのスタイル・構造・ヘルパーの使い方を把握してから新規テストを書く
+2. テストの種類を判断し、適切なテストを `tests/fude/` に追加する:
+   - **Unit test** (`*_spec.lua`): 純粋関数（`build_*`, `find_*`, `parse_*`, `format_*` 等）のテスト。外部依存なし
+   - **Integration test** (`*_integration_spec.lua`): vim API（バッファ、ウィンドウ、extmarks）や非同期コールバックを含む関数のテスト。`tests/helpers.lua` のヘルパーを使用する:
+     - `helpers.mock_gh(responses)` — `gh.run`/`gh.run_json` をパターンキーでモック
+     - `helpers.mock_diff(path_map)` — `diff.to_repo_relative` をモック
+     - `helpers.wait_for(fn, ms)` — 非同期コールバック完了をポーリング
+     - `helpers.cleanup()` — モック復元・テストバッファ削除・state リセット（`after_each` で呼ぶ）
+3. テストファイルの命名: 対象モジュールに対応する `*_spec.lua`（unit）または `*_integration_spec.lua`（integration）
 4. テストパターン: busted の `describe`/`it`/`assert` を使用
 5. テスト不要の判断基準: 以下の**全て**を満たす関数はテスト不要
    - 条件分岐やデータ変換を含まない
