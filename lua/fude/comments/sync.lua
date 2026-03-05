@@ -277,4 +277,25 @@ function M.sync_pending_review(callback)
 	end
 end
 
+--- Reply to a review comment on GitHub.
+--- @param comment_id number target comment ID (must be top-level)
+--- @param body string reply body
+--- @param callback fun(err: string|nil)
+function M.reply_to_comment(comment_id, body, callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active")
+		return
+	end
+
+	gh.reply_to_comment(state.pr_number, comment_id, body, function(err, _)
+		if err then
+			callback(err)
+			return
+		end
+		callback(nil)
+		M.fetch_comments()
+	end)
+end
+
 return M
