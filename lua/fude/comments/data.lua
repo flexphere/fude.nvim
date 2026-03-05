@@ -1,0 +1,289 @@
+local M = {}
+
+--- Build a nested lookup map from a flat array of comments.
+--- Excludes comments belonging to a pending review (cannot be replied to).
+--- @param comments table[] flat array of comment objects
+--- @param pending_review_id number|nil review ID to exclude
+--- @return table<string, table<number, table[]>> map[path][line] = {comments}
+function M.build_comment_map(comments, pending_review_id)
+	local map = {}
+	for _, c in ipairs(comments) do
+		-- Skip comments belonging to user's pending review (not yet submitted)
+		if pending_review_id and c.pull_request_review_id == pending_review_id then
+			goto continue
+		end
+		local path = c.path
+		local line = c.line or c.original_line
+		if path and line then
+			if not map[path] then
+				map[path] = {}
+			end
+			if not map[path][line] then
+				map[path][line] = {}
+			end
+			table.insert(map[path][line], c)
+		end
+		::continue::
+	end
+	return map
+end
+
+--- Find the next comment line after current_line, with wrap-around.
+--- @param current_line number
+--- @param sorted_lines number[]
+--- @return number|nil
+function M.find_next_comment_line(current_line, sorted_lines)
+	if #sorted_lines == 0 then
+		return nil
+	end
+	for _, line in ipairs(sorted_lines) do
+		if line > current_line then
+			return line
+		end
+	end
+	return sorted_lines[1]
+end
+
+--- Find the previous comment line before current_line, with wrap-around.
+--- @param current_line number
+--- @param sorted_lines number[]
+--- @return number|nil
+function M.find_prev_comment_line(current_line, sorted_lines)
+	if #sorted_lines == 0 then
+		return nil
+	end
+	for i = #sorted_lines, 1, -1 do
+		if sorted_lines[i] < current_line then
+			return sorted_lines[i]
+		end
+	end
+	return sorted_lines[#sorted_lines]
+end
+
+--- Find a comment by its ID in the comment map.
+--- @param comment_id number
+--- @param comment_map table<string, table<number, table[]>>
+--- @return table|nil { path: string, line: number, comment: table }
+function M.find_comment_by_id(comment_id, comment_map)
+	for path, file_lines in pairs(comment_map) do
+		for line, cmts in pairs(file_lines) do
+			for _, c in ipairs(cmts) do
+				if c.id == comment_id then
+					return { path = path, line = tonumber(line), comment = c }
+				end
+			end
+		end
+	end
+	return nil
+end
+
+--- Get all comments in a thread given any comment in the thread.
+--- @param comment_id number
+--- @param all_comments table[] flat array of all comments
+--- @return table[] thread comments sorted by created_at
+function M.get_comment_thread(comment_id, all_comments)
+	-- Build lookup by id
+	local by_id = {}
+	for _, c in ipairs(all_comments) do
+		by_id[c.id] = c
+	end
+
+	-- Find root by following in_reply_to_id chain
+	local current = by_id[comment_id]
+	if not current then
+		return {}
+	end
+
+	while current.in_reply_to_id and by_id[current.in_reply_to_id] do
+		current = by_id[current.in_reply_to_id]
+	end
+	local root_id = current.id
+
+	-- Collect all comments in thread (root + replies)
+	local thread = { current }
+	for _, c in ipairs(all_comments) do
+		if c.id ~= root_id then
+			-- Check if this comment's chain leads to root
+			local node = c
+			while node.in_reply_to_id and by_id[node.in_reply_to_id] do
+				node = by_id[node.in_reply_to_id]
+			end
+			if node.id == root_id then
+				table.insert(thread, c)
+			end
+		end
+	end
+
+	-- Sort by created_at
+	table.sort(thread, function(a, b)
+		return (a.created_at or "") < (b.created_at or "")
+	end)
+
+	return thread
+end
+
+--- Parse a draft key string into its components.
+--- @param key string "path:start:end" or "reply:comment_id"
+--- @return table|nil parsed key components
+function M.parse_draft_key(key)
+	if key == "issue_comment" then
+		return { type = "issue_comment" }
+	end
+	local reply_id = key:match("^reply:(%d+)$")
+	if reply_id then
+		return { type = "reply", comment_id = tonumber(reply_id) }
+	end
+	local path, sl, el = key:match("^(.+):(%d+):(%d+)$")
+	if path then
+		return { type = "comment", path = path, start_line = tonumber(sl), end_line = tonumber(el) }
+	end
+	return nil
+end
+
+--- Build a submit request from a parsed draft key.
+--- @param parsed table parse_draft_key() result
+--- @param body string comment body
+--- @param pr_number number
+--- @param sha string HEAD commit SHA
+--- @return table { type: "comment"|"comment_range"|"reply", args: table }
+function M.build_submit_request(parsed, body, pr_number, sha)
+	if parsed.type == "issue_comment" then
+		return { type = "issue_comment", args = { pr_number, body } }
+	end
+	if parsed.type == "reply" then
+		return { type = "reply", args = { pr_number, parsed.comment_id, body } }
+	end
+	if parsed.start_line == parsed.end_line then
+		return { type = "comment", args = { pr_number, sha, parsed.path, parsed.end_line, body } }
+	end
+	return { type = "comment_range", args = { pr_number, sha, parsed.path, parsed.start_line, parsed.end_line, body } }
+end
+
+--- Format a submit result into a notification message.
+--- @param succeeded number
+--- @param failed number
+--- @param total number
+--- @return string message, number log_level
+function M.format_submit_result(succeeded, failed, total)
+	if failed == 0 then
+		return string.format("Submitted %d/%d drafts", succeeded, total), vim.log.levels.INFO
+	end
+	return string.format("Submitted %d/%d drafts (%d failed)", succeeded, total, failed), vim.log.levels.WARN
+end
+
+--- Build review comments array from drafts.
+--- Only "comment" type drafts can be included in a review.
+--- Replies and issue_comments are excluded.
+--- @param drafts table<string, string[]> draft_key -> lines
+--- @return table { comments: table[], excluded: table<string, string> }
+function M.build_review_comments(drafts)
+	local comments = {}
+	local excluded = {}
+
+	for key, lines in pairs(drafts) do
+		local parsed = M.parse_draft_key(key)
+		if not parsed then
+			excluded[key] = "invalid_key"
+		elseif parsed.type == "reply" then
+			excluded[key] = "reply"
+		elseif parsed.type == "issue_comment" then
+			excluded[key] = "issue_comment"
+		elseif parsed.type == "comment" then
+			local body = table.concat(lines, "\n")
+			local comment = {
+				path = parsed.path,
+				body = body,
+				line = parsed.end_line,
+				side = "RIGHT",
+			}
+			if parsed.start_line ~= parsed.end_line then
+				comment.start_line = parsed.start_line
+				comment.start_side = "RIGHT"
+			end
+			table.insert(comments, comment)
+		end
+	end
+
+	return { comments = comments, excluded = excluded }
+end
+
+--- Build pending_comments from review comments array.
+--- @param comments table[] array of review comment objects from GitHub
+--- @return table<string, table> map of key -> comment data
+function M.build_pending_comments_from_review(comments)
+	local result = {}
+	for _, c in ipairs(comments) do
+		local path = c.path
+		local line = c.line or c.original_line
+		local start_line = c.start_line or line
+		if path and line then
+			local key = path .. ":" .. start_line .. ":" .. line
+			result[key] = {
+				path = path,
+				body = c.body,
+				line = line,
+				side = c.side or "RIGHT",
+			}
+			if start_line ~= line then
+				result[key].start_line = start_line
+				result[key].start_side = c.start_side or "RIGHT"
+			end
+		end
+	end
+	return result
+end
+
+--- Build a review comment object from parsed draft key components.
+--- @param path string repo-relative file path
+--- @param start_line number start line number
+--- @param end_line number end line number
+--- @param body string comment body
+--- @return table review comment object for GitHub API
+function M.build_review_comment_object(path, start_line, end_line, body)
+	local comment = {
+		path = path,
+		body = body,
+		line = end_line,
+		side = "RIGHT",
+	}
+	if start_line ~= end_line then
+		comment.start_line = start_line
+		comment.start_side = "RIGHT"
+	end
+	return comment
+end
+
+--- Convert pending_comments table to array of review comment objects.
+--- @param pending_comments table<string, table> map of key -> comment data
+--- @return table[] array of review comment objects
+function M.pending_comments_to_array(pending_comments)
+	local result = {}
+	for _, comment_data in pairs(pending_comments) do
+		table.insert(result, comment_data)
+	end
+	return result
+end
+
+--- Get the line range for a comment (start_line to line).
+--- @param comment table comment object from GitHub API
+--- @return number start_line, number end_line
+function M.get_comment_line_range(comment)
+	local end_line = tonumber(comment.line) or tonumber(comment.original_line) or 1
+	local start_line = tonumber(comment.start_line) or end_line
+	return start_line, end_line
+end
+
+--- Get the reply target ID for a comment.
+--- GitHub API doesn't allow replying to replies, so we need to find the top-level comment.
+--- @param comment_id number the comment ID
+--- @param comment_map table the comment map
+--- @return number the ID to use for reply (either original or in_reply_to_id)
+function M.get_reply_target_id(comment_id, comment_map)
+	local found = M.find_comment_by_id(comment_id, comment_map)
+	if found and found.comment.in_reply_to_id then
+		return found.comment.in_reply_to_id
+	end
+	return comment_id
+end
+
+return M

@@ -29,8 +29,12 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 - **`gh.lua`** — Async wrapper around `gh` CLI using `vim.system()`. All GitHub API calls go through `run()`/`run_json()` with callback-based async pattern. Uses `repos/{owner}/{repo}` path templates for REST API (resolved by `gh` automatically) and `gh api graphql` for GraphQL API (used by viewed file management). Supports stdin for JSON payloads (used by `create_review()`).
 - **`diff.lua`** — Local git operations (sync). Gets repo root, converts paths to repo-relative, retrieves base branch file content via `git show`, and generates file diffs. Falls back to `origin/<ref>` when local ref isn't available.
 - **`preview.lua`** — Manages the side-by-side diff preview window. Creates a scratch buffer with base branch content, opens it in a vsplit, and enables `diffthis` on both windows. Uses `noautocmd` to prevent BufEnter cascades. The `opening` flag guards against re-entrant calls.
-- **`comments.lua`** — Fetches PR review comments, builds a `comment_map[path][line]` lookup, and provides navigation (`next_comment`/`prev_comment` with wrap-around), creation (single-line and multi-line range as GitHub pending review), viewing, reply, pending review sync (`sync_pending_review()`), and review submission (`submit_as_review()` for batched GitHub reviews).
-- **`ui.lua`** — All floating window UI: comment input editor (markdown buffer with `<CR>` save to GitHub pending / `q` cancel, or `submit_on_enter` mode for immediate submit), comment viewer, PR overview window, and review event selector (`select_review_event()`). Manages extmarks (virtual text) for comment and pending indicators on lines.
+- **`comments.lua`** — Facade module re-exporting `comments/data.lua` and `comments/sync.lua`. Contains comment navigation (`next_comment`/`prev_comment`), creation, viewing, reply, and Telescope pickers (`list_comments`/`list_drafts`). `require("fude.comments")` is the public interface.
+  - **`comments/data.lua`** — Pure data functions with no state or side effects: `build_comment_map`, `find_next_comment_line`, `find_prev_comment_line`, `find_comment_by_id`, `get_comment_thread`, `parse_draft_key`, `build_submit_request`, `format_submit_result`, `build_review_comments`, `build_pending_comments_from_review`, `build_review_comment_object`, `pending_comments_to_array`, `get_comment_line_range`, `get_reply_target_id`.
+  - **`comments/sync.lua`** — GitHub API sync/submit operations: `fetch_comments`, `fetch_pending_review`, `sync_pending_review`, `submit_as_review`, `submit_drafts`. Uses lazy `require("fude.ui")` to avoid circular dependencies.
+- **`ui.lua`** — Facade module re-exporting `ui/format.lua` and `ui/extmarks.lua`. Contains floating window UI: comment input editor, comment viewer, PR overview window, reply window, and review event selector. `require("fude.ui")` is the public interface.
+  - **`ui/format.lua`** — Pure format/calculation functions with no state or vim API side effects: `calculate_float_dimensions`, `format_comments_for_display`, `normalize_check`, `format_check_status`, `deduplicate_checks`, `sort_checks`, `build_checks_summary`, `format_review_status`, `build_reviewers_list`, `build_reviewers_summary`, `calculate_overview_layout`, `calculate_comments_height`, `calculate_reply_window_dimensions`, `format_reply_comments_for_display`, `build_overview_left_lines`, `build_overview_right_lines`.
+  - **`ui/extmarks.lua`** — Extmark management: `flash_line`, `highlight_comment_lines`, `clear_comment_line_highlight`, `refresh_extmarks`, `clear_extmarks`, `clear_all_extmarks`. Uses lazy `require("fude.comments")` to avoid circular dependencies.
 - **`files.lua`** — Changed files display via Telescope picker (with diff preview and viewed state toggle via `<Tab>`) or quickfix list fallback. Shows GitHub viewed status for each file.
 - **`scope.lua`** — Review scope selection and navigation. Provides a Telescope picker (or `vim.ui.select` fallback) for choosing between full PR scope and individual commit scope, with commit index display (`[1/10]`) and current scope marker (`▶`). Supports next/prev scope navigation (`next_scope`/`prev_scope`), marking commits as reviewed via `<Tab>` in the Telescope picker (tracked locally in `state.reviewed_commits`), and statusline integration (`statusline()`). On commit scope: checks out the commit, fetches commit-specific changed files, updates gitsigns base to `sha^`, and refreshes the diff preview. On full PR scope: restores the original HEAD and re-fetches PR-wide changed files.
 - **`overview.lua`** — PR overview display: fetches extended PR info and issue-level comments, renders in a centered float with keymaps for commenting and refreshing.
@@ -50,17 +54,17 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
-| `active` | init | comments, ui, files, scope, preview, overview |
-| `pr_number` | init | comments, ui, files, scope, overview |
+| `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview |
+| `pr_number` | init | comments, comments/sync, ui, files, scope, overview |
 | `base_ref` | init | preview, scope |
 | `head_ref` | init | scope |
 | `pr_url` | init | ui |
 | `changed_files` | init, scope | files, scope |
-| `comments` | comments | comments, ui |
-| `comment_map` | comments | comments, ui |
-| `drafts` | comments, overview | comments, ui, overview |
-| `pending_comments` | comments | comments, ui |
-| `pending_review_id` | comments | comments |
+| `comments` | comments/sync | comments, comments/sync, ui/extmarks |
+| `comment_map` | comments/sync | comments, comments/sync, ui/extmarks |
+| `drafts` | comments, comments/sync, overview | comments, comments/sync, ui/extmarks, overview |
+| `pending_comments` | comments, comments/sync | comments, comments/sync, ui/extmarks |
+| `pending_review_id` | comments/sync | comments, comments/sync |
 | `pr_node_id` | init | init, files |
 | `viewed_files` | init, files | files, scope |
 | `preview_win` | preview | init, preview |
@@ -73,7 +77,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `original_head_sha` | init, scope | init, scope |
 | `original_head_ref` | init | init, scope |
 | `reviewed_commits` | scope | scope |
-| `ns_id` | config | ui, comments |
+| `ns_id` | config | ui/extmarks, comments |
 | `reply_window` | ui | ui |
 
 **高リスクフィールド**（多数のモジュールから参照）:
