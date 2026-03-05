@@ -16,6 +16,7 @@ fude.nvim is a Neovim plugin for GitHub PR code review. It shows base branch dif
 - **Tests**: Plenary busted — `make test` or `bash run_tests.sh`
   - Test files: `tests/fude/*_spec.lua`
   - Bootstrap: `tests/minimal_init.lua`
+  - Shared helpers: `tests/helpers.lua` (mock management, test buffer creation, async wait)
 - **All checks**: `make all` (lint + format-check + test)
 
 ## Architecture
@@ -89,7 +90,11 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 ## Quality Rules (MUST follow)
 
 1. **Before committing**: Always run `make all` and confirm lint, format-check, and tests all pass. Do NOT commit if any check fails.
-2. **Tests required for new code**: When adding or modifying a function that contains testable logic (pure functions, data access, parsing, etc.), add or update corresponding tests in `tests/fude/`. Skip tests only for thin wrappers around vim API or external commands.
+2. **Tests required for new code**: When adding or modifying a function that contains testable logic (pure functions, data access, parsing, etc.), add or update corresponding tests in `tests/fude/`. Skip tests only for thin wrappers around vim API or external commands. For functions that interact with vim API (buffers, windows, extmarks) or async callbacks, write integration tests using `tests/helpers.lua`:
+   - `helpers.mock_gh(responses)` — Mock `gh.run`/`gh.run_json` with pattern-keyed responses (`"args[1]:args[2]"`)
+   - `helpers.mock_diff(path_map)` — Mock `diff.to_repo_relative` for test buffer names
+   - `helpers.wait_for(fn, ms)` — Poll with `vim.wait()` for async callback completion
+   - `helpers.cleanup()` — Restore all mocks, delete test buffers, reset state (call in `after_each`)
 3. **Test coverage check**: After writing code, review whether the changed/added functions have test coverage. If not, write tests before committing.
 4. **Formatting**: Run `stylua lua/ plugin/ tests/` after editing any Lua file to ensure consistent formatting.
 5. **Documentation**: When adding or changing features, commands, keymaps, or configuration options, update the corresponding documentation (`README.md`, `doc/fude.txt`, `CLAUDE.md` Architecture section) before committing.
