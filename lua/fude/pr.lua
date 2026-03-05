@@ -390,7 +390,19 @@ function M.select_template(entries, callback)
 			sorter = conf.generic_sorter({}),
 			previewer = previewers.new_buffer_previewer({
 				title = "Preview",
+				get_buffer_by_name = function(_, entry)
+					return entry.value
+				end,
 				define_preview = function(self, entry)
+					-- Telescope defers win_set_buf via vim.schedule for new buffers,
+					-- causing a one-tick delay. Set it synchronously here to fix that.
+					if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
+						local save_ei = vim.o.eventignore
+						vim.o.eventignore = "all"
+						vim.api.nvim_win_set_buf(self.state.winid, self.state.bufnr)
+						vim.o.eventignore = save_ei
+					end
+
 					local lines
 					if entry.is_draft then
 						local d = M.get_draft()
