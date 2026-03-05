@@ -41,8 +41,14 @@ describe("sync integration", function()
 		end)
 
 		it("does not change state on error", function()
+			local done = false
 			helpers.mock_gh({
-				["api:repos/{owner}/{repo}/pulls/42/comments"] = "API error",
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = function(_, callback)
+					vim.schedule(function()
+						callback("API error", nil)
+						done = true
+					end)
+				end,
 			})
 
 			config.state.pr_number = 42
@@ -51,10 +57,9 @@ describe("sync integration", function()
 
 			sync.fetch_comments()
 
-			-- Wait a bit for the async callback
-			vim.wait(200, function()
-				return false
-			end, 10)
+			helpers.wait_for(function()
+				return done
+			end)
 
 			assert.are.equal(0, #config.state.comments)
 		end)
@@ -85,10 +90,14 @@ describe("sync integration", function()
 		end)
 
 		it("does nothing when no pending review exists", function()
+			local done = false
 			helpers.mock_gh({
-				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {
-					{ id = 1, state = "APPROVED" },
-				},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = function(_, callback)
+					vim.schedule(function()
+						callback(nil, { { id = 1, state = "APPROVED" } })
+						done = true
+					end)
+				end,
 			})
 
 			config.state.pr_number = 42
@@ -96,10 +105,9 @@ describe("sync integration", function()
 
 			sync.fetch_pending_review()
 
-			-- Wait a bit for the async callback
-			vim.wait(200, function()
-				return false
-			end, 10)
+			helpers.wait_for(function()
+				return done
+			end)
 
 			assert.is_nil(config.state.pending_review_id)
 		end)
