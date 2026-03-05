@@ -1,5 +1,6 @@
 local config = require("fude.config")
 local comments = require("fude.comments")
+local data = require("fude.comments.data")
 
 describe("comments data access", function()
 	before_each(function()
@@ -568,5 +569,172 @@ describe("get_comment_line_range", function()
 		local start_line, end_line = comments.get_comment_line_range(comment)
 		assert.are.equal(1, start_line)
 		assert.are.equal(1, end_line)
+	end)
+end)
+
+-- Tests for pure data functions added during refactoring
+
+describe("data.get_comments_at (pure)", function()
+	it("returns comments for existing path and line", function()
+		local map = { ["a.lua"] = { [10] = { { id = 1, body = "hello" } } } }
+		local result = data.get_comments_at(map, "a.lua", 10)
+		assert.are.equal(1, #result)
+		assert.are.equal("hello", result[1].body)
+	end)
+
+	it("returns empty table for missing path", function()
+		local result = data.get_comments_at({}, "nope.lua", 10)
+		assert.are.same({}, result)
+	end)
+
+	it("returns empty table for missing line", function()
+		local map = { ["a.lua"] = { [10] = { { id = 1 } } } }
+		local result = data.get_comments_at(map, "a.lua", 99)
+		assert.are.same({}, result)
+	end)
+end)
+
+describe("data.get_comment_lines (pure)", function()
+	it("returns sorted line numbers", function()
+		local map = { ["a.lua"] = { [25] = { {} }, [10] = { {} }, [5] = { {} } } }
+		local result = data.get_comment_lines(map, "a.lua")
+		assert.are.same({ 5, 10, 25 }, result)
+	end)
+
+	it("returns empty table for missing path", function()
+		local result = data.get_comment_lines({}, "nope.lua")
+		assert.are.same({}, result)
+	end)
+end)
+
+describe("data.build_comment_entries", function()
+	local function id_fn(s)
+		return s
+	end
+
+	it("builds entries from comment map", function()
+		local map = {
+			["a.lua"] = {
+				[10] = {
+					{ id = 1, body = "hello", user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z" },
+				},
+			},
+		}
+		local entries = data.build_comment_entries(map, "/repo", id_fn)
+		assert.are.equal(1, #entries)
+		assert.are.equal("/repo/a.lua", entries[1].filename)
+		assert.are.equal(10, entries[1].lnum)
+		assert.are.equal("2024-01-01T00:00:00Z", entries[1].last_ts)
+	end)
+
+	it("sorts entries by last_ts descending", function()
+		local map = {
+			["a.lua"] = {
+				[10] = { { id = 1, body = "old", user = { login = "a" }, created_at = "2024-01-01T00:00:00Z" } },
+				[20] = { { id = 2, body = "new", user = { login = "b" }, created_at = "2024-02-01T00:00:00Z" } },
+			},
+		}
+		local entries = data.build_comment_entries(map, "/repo", id_fn)
+		assert.are.equal(2, #entries)
+		assert.are.equal(20, entries[1].lnum) -- newer first
+		assert.are.equal(10, entries[2].lnum)
+	end)
+
+	it("truncates body preview over 60 chars", function()
+		local long_body = string.rep("x", 100)
+		local map = {
+			["a.lua"] = {
+				[1] = { { id = 1, body = long_body, user = { login = "a" }, created_at = "2024-01-01T00:00:00Z" } },
+			},
+		}
+		local entries = data.build_comment_entries(map, "/repo", id_fn)
+		assert.is_true(#entries[1].detail < #long_body + 50)
+	end)
+
+	it("returns empty for empty map", function()
+		local entries = data.build_comment_entries({}, "/repo", id_fn)
+		assert.are.same({}, entries)
+	end)
+
+	it("uses last comment created_at for sorting", function()
+		local map = {
+			["a.lua"] = {
+				[10] = {
+					{ id = 1, body = "first", user = { login = "a" }, created_at = "2024-01-01T00:00:00Z" },
+					{ id = 2, body = "reply", user = { login = "b" }, created_at = "2024-03-01T00:00:00Z" },
+				},
+			},
+		}
+		local entries = data.build_comment_entries(map, "/repo", id_fn)
+		assert.are.equal("2024-03-01T00:00:00Z", entries[1].last_ts)
+	end)
+end)
+
+describe("data.build_draft_entries", function()
+	it("builds comment type entries", function()
+		local drafts = { ["src/a.lua:10:20"] = { "fix this" } }
+		local entries = data.build_draft_entries(drafts, {}, "/repo")
+		assert.are.equal(1, #entries)
+		assert.are.equal("src/a.lua:10-20  fix this", entries[1].detail)
+		assert.are.equal("/repo/src/a.lua", entries[1].filename)
+		assert.are.equal(10, entries[1].lnum)
+		assert.are.equal("src/a.lua:10:20", entries[1].draft_key)
+	end)
+
+	it("builds single-line comment without range", function()
+		local drafts = { ["src/b.lua:5:5"] = { "note" } }
+		local entries = data.build_draft_entries(drafts, {}, "/repo")
+		assert.are.equal(1, #entries)
+		assert.are.equal("src/b.lua:5  note", entries[1].detail)
+	end)
+
+	it("builds reply type entries", function()
+		local comment_map = {
+			["x.lua"] = { [15] = { { id = 42, body = "original" } } },
+		}
+		local drafts = { ["reply:42"] = { "thanks" } }
+		local entries = data.build_draft_entries(drafts, comment_map, "/repo")
+		assert.are.equal(1, #entries)
+		assert.are.equal("x.lua:15  (reply)  thanks", entries[1].detail)
+		assert.are.equal("/repo/x.lua", entries[1].filename)
+	end)
+
+	it("builds reply entry with fallback when comment not found", function()
+		local drafts = { ["reply:999"] = { "orphan reply" } }
+		local entries = data.build_draft_entries(drafts, {}, "/repo")
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].detail:find("reply:999") ~= nil)
+		assert.is_nil(entries[1].filename)
+	end)
+
+	it("builds issue_comment type entries", function()
+		local drafts = { ["issue_comment"] = { "pr note" } }
+		local entries = data.build_draft_entries(drafts, {}, "/repo")
+		assert.are.equal(1, #entries)
+		assert.are.equal("PR comment  pr note", entries[1].detail)
+		assert.is_nil(entries[1].filename)
+	end)
+
+	it("skips invalid keys", function()
+		local drafts = { ["invalid"] = { "body" } }
+		local entries = data.build_draft_entries(drafts, {}, "/repo")
+		assert.are.same({}, entries)
+	end)
+
+	it("sorts entries by value ascending", function()
+		local drafts = {
+			["src/z.lua:1:1"] = { "z entry" },
+			["src/a.lua:1:1"] = { "a entry" },
+		}
+		local entries = data.build_draft_entries(drafts, {}, "/repo")
+		assert.are.equal(2, #entries)
+		assert.is_true(entries[1].value < entries[2].value)
+	end)
+
+	it("truncates body preview over 60 chars", function()
+		local long_body = string.rep("y", 100)
+		local drafts = { ["src/a.lua:1:1"] = { long_body } }
+		local entries = data.build_draft_entries(drafts, {}, "/repo")
+		assert.is_true(entries[1].detail:find("%.%.%.") ~= nil)
 	end)
 end)

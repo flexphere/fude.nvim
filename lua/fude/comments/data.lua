@@ -286,4 +286,140 @@ function M.get_reply_target_id(comment_id, comment_map)
 	return comment_id
 end
 
+--- Get comments at a specific file and line from a comment map.
+--- @param comment_map table<string, table<number, table[]>>
+--- @param rel_path string repo-relative file path
+--- @param line number line number
+--- @return table[] comments
+function M.get_comments_at(comment_map, rel_path, line)
+	if not comment_map[rel_path] then
+		return {}
+	end
+	return comment_map[rel_path][line] or {}
+end
+
+--- Get all line numbers with comments for a file from a comment map.
+--- @param comment_map table<string, table<number, table[]>>
+--- @param rel_path string repo-relative file path
+--- @return number[] sorted line numbers
+function M.get_comment_lines(comment_map, rel_path)
+	if not comment_map[rel_path] then
+		return {}
+	end
+	local lines = {}
+	for line, _ in pairs(comment_map[rel_path]) do
+		table.insert(lines, tonumber(line))
+	end
+	table.sort(lines)
+	return lines
+end
+
+--- Build sorted Telescope entries from a comment map.
+--- @param comment_map table<string, table<number, table[]>>
+--- @param repo_root string
+--- @param format_date_fn fun(s: string): string
+--- @return table[] entries sorted by last_ts descending
+function M.build_comment_entries(comment_map, repo_root, format_date_fn)
+	local entries = {}
+	for path, file_lines in pairs(comment_map) do
+		for line_key, comments in pairs(file_lines) do
+			local line = math.floor(tonumber(line_key) or 1)
+			local first = comments[1]
+			local last = comments[#comments]
+			local author = first.user and first.user.login or "unknown"
+			local last_ts = last.created_at or ""
+			local last_date = format_date_fn(last_ts)
+			local body_preview = (first.body or ""):gsub("\r?\n", " ")
+			if #body_preview > 60 then
+				body_preview = body_preview:sub(1, 57) .. "..."
+			end
+			local detail = string.format("%s:%d  @%s  %s", path, line, author, body_preview)
+			table.insert(entries, {
+				value = detail,
+				ordinal = string.format("%s:%d %s", path, line, first.body or ""),
+				filename = repo_root .. "/" .. path,
+				lnum = line,
+				last_ts = last_ts,
+				last_date = last_date,
+				detail = detail,
+				comments = comments,
+			})
+		end
+	end
+	table.sort(entries, function(a, b)
+		return a.last_ts > b.last_ts
+	end)
+	return entries
+end
+
+--- Build sorted Telescope entries from drafts.
+--- @param drafts table<string, string[]> draft_key -> lines
+--- @param comment_map table<string, table<number, table[]>>
+--- @param repo_root string
+--- @return table[] entries sorted by value ascending
+function M.build_draft_entries(drafts, comment_map, repo_root)
+	local entries = {}
+	for key, draft_lines in pairs(drafts) do
+		local parsed = M.parse_draft_key(key)
+		if not parsed then
+			goto continue
+		end
+
+		local body_preview = table.concat(draft_lines, " "):gsub("%s+", " ")
+		if #body_preview > 60 then
+			body_preview = body_preview:sub(1, 57) .. "..."
+		end
+
+		if parsed.type == "comment" then
+			local range_str = parsed.start_line == parsed.end_line and tostring(parsed.start_line)
+				or string.format("%d-%d", parsed.start_line, parsed.end_line)
+			local detail = string.format("%s:%s  %s", parsed.path, range_str, body_preview)
+			table.insert(entries, {
+				value = detail,
+				ordinal = string.format("%s:%d %s", parsed.path, parsed.start_line, table.concat(draft_lines, " ")),
+				filename = repo_root .. "/" .. parsed.path,
+				lnum = parsed.start_line,
+				detail = detail,
+				draft_key = key,
+				draft_lines = draft_lines,
+				display = detail,
+			})
+		elseif parsed.type == "reply" then
+			local found = M.find_comment_by_id(parsed.comment_id, comment_map)
+			local reply_path = found and found.path
+			local reply_line = found and found.line
+			local loc = reply_path and string.format("%s:%d", reply_path, reply_line or 1) or "reply:" .. parsed.comment_id
+			local detail = string.format("%s  (reply)  %s", loc, body_preview)
+			table.insert(entries, {
+				value = detail,
+				ordinal = string.format("%s %s", loc, table.concat(draft_lines, " ")),
+				filename = reply_path and (repo_root .. "/" .. reply_path) or nil,
+				lnum = reply_line,
+				detail = detail,
+				draft_key = key,
+				draft_lines = draft_lines,
+				display = detail,
+			})
+		elseif parsed.type == "issue_comment" then
+			local detail = string.format("PR comment  %s", body_preview)
+			table.insert(entries, {
+				value = detail,
+				ordinal = "PR comment " .. table.concat(draft_lines, " "),
+				filename = nil,
+				lnum = nil,
+				detail = detail,
+				draft_key = key,
+				draft_lines = draft_lines,
+				display = detail,
+			})
+		end
+
+		::continue::
+	end
+	table.sort(entries, function(a, b)
+		return a.value < b.value
+	end)
+	return entries
+end
+
 return M
