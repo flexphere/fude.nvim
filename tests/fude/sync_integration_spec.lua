@@ -57,9 +57,10 @@ describe("sync integration", function()
 
 			sync.fetch_comments()
 
-			helpers.wait_for(function()
+			local ok = helpers.wait_for(function()
 				return done
 			end)
+			assert.is_true(ok, "Should have received error callback")
 
 			assert.are.equal(0, #config.state.comments)
 		end)
@@ -105,9 +106,10 @@ describe("sync integration", function()
 
 			sync.fetch_pending_review()
 
-			helpers.wait_for(function()
+			local ok = helpers.wait_for(function()
 				return done
 			end)
+			assert.is_true(ok, "Should have received review callback")
 
 			assert.is_nil(config.state.pending_review_id)
 		end)
@@ -138,9 +140,10 @@ describe("sync integration", function()
 				cb_called = true
 			end)
 
-			helpers.wait_for(function()
+			local ok = helpers.wait_for(function()
 				return cb_called
 			end)
+			assert.is_true(ok, "Should have received submit callback")
 
 			assert.is_nil(cb_err)
 			assert.are.equal(1, cb_excluded) -- reply is excluded
@@ -188,9 +191,10 @@ describe("sync integration", function()
 				cb_called = true
 			end)
 
-			helpers.wait_for(function()
+			local ok = helpers.wait_for(function()
 				return cb_called
 			end)
+			assert.is_true(ok, "Should have received submit callback")
 
 			assert.are.equal(2, cb_excluded) -- reply + issue_comment
 		end)
