@@ -43,6 +43,43 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 - **Window management**: Preview uses `noautocmd` commands to avoid triggering the plugin's own `BufEnter` handler during window operations.
 - **Pure function extraction**: Each module exports testable pure functions separately from side-effect code. Naming convention: `build_*`, `find_*`, `parse_*`, `format_*`, `should_*`, `make_*`, `calculate_*`. These functions take all inputs as parameters and return data without reading `config.state` or calling vim API.
 
+### State Dependencies
+
+`config.state` の各フィールドを書き込む(W)モジュールと読み取る(R)モジュールの一覧。変更時は W/R 両方のモジュールへの影響を確認すること。
+
+| Field | W (Write) | R (Read) |
+|-------|-----------|----------|
+| `active` | init | comments, ui, files, scope, preview, overview |
+| `pr_number` | init | comments, ui, files, scope, overview |
+| `base_ref` | init | preview, scope |
+| `head_ref` | init | scope |
+| `pr_url` | init | ui |
+| `changed_files` | init, scope | files, scope |
+| `comments` | comments | comments, ui |
+| `comment_map` | comments | comments, ui |
+| `drafts` | comments, overview | comments, ui, overview |
+| `pending_comments` | comments | comments, ui |
+| `pending_review_id` | comments | comments |
+| `pr_node_id` | init | init, files |
+| `viewed_files` | init, files | files, scope |
+| `preview_win` | preview | init, preview |
+| `preview_buf` | preview | preview |
+| `source_win` | preview | preview, scope |
+| `scope` | scope | scope, preview, init |
+| `scope_commit_sha` | scope | scope, preview, init |
+| `scope_commit_index` | scope | scope |
+| `pr_commits` | init | scope |
+| `original_head_sha` | init, scope | init, scope |
+| `original_head_ref` | init | init, scope |
+| `reviewed_commits` | scope | scope |
+| `ns_id` | config | ui, comments |
+| `reply_window` | ui | ui |
+
+**高リスクフィールド**（多数のモジュールから参照）:
+- `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認
+- `pr_number` — 5モジュールが参照。PR切替時の整合性に注意
+- `changed_files` — scope変更時に上書きされる。files表示との同期に注意
+
 ## Quality Rules (MUST follow)
 
 1. **Before committing**: Always run `make all` and confirm lint, format-check, and tests all pass. Do NOT commit if any check fails.
