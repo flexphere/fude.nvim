@@ -41,10 +41,13 @@ local function fetch_comments()
 					vim.list_extend(comments, rev_comments)
 					-- Also build pending_comments from the same data
 					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
+				else
+					state.pending_comments = {}
 				end
 				apply(comments)
 			end)
 		else
+			state.pending_comments = {}
 			apply(comments)
 		end
 	end)
