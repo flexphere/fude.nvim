@@ -284,7 +284,15 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending
 			local line = math.floor(tonumber(line_key) or 1)
 			local first = comments[1]
 			local last = comments[#comments]
-			local is_pending = pending_review_id and first.pull_request_review_id == pending_review_id
+			local is_pending = false
+			if pending_review_id then
+				for _, c in ipairs(comments) do
+					if c.pull_request_review_id == pending_review_id then
+						is_pending = true
+						break
+					end
+				end
+			end
 			local author = first.user and first.user.login or "unknown"
 			local last_ts = last.created_at or ""
 			local last_date = format_date_fn(last_ts)
