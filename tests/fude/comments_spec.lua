@@ -335,11 +335,33 @@ end)
 describe("pending_comments_to_array", function()
 	it("converts map to array", function()
 		local pending = {
-			["a.lua:1:1"] = { path = "a.lua", line = 1, body = "comment 1" },
-			["b.lua:10:20"] = { path = "b.lua", line = 20, start_line = 10, body = "comment 2" },
+			["a.lua:1:1"] = { path = "a.lua", line = 1, body = "comment 1", side = "RIGHT" },
+			["b.lua:10:20"] = {
+				path = "b.lua",
+				line = 20,
+				start_line = 10,
+				start_side = "RIGHT",
+				body = "comment 2",
+				side = "RIGHT",
+			},
 		}
 		local result = comments.pending_comments_to_array(pending)
 		assert.are.equal(2, #result)
+		for _, entry in ipairs(result) do
+			assert.is_not_nil(entry.path)
+			assert.is_not_nil(entry.body)
+			assert.is_not_nil(entry.line)
+		end
+	end)
+
+	it("excludes id field from output", function()
+		local pending = {
+			["a.lua:1:1"] = { id = 999, path = "a.lua", line = 1, body = "comment", side = "RIGHT" },
+		}
+		local result = comments.pending_comments_to_array(pending)
+		assert.are.equal(1, #result)
+		assert.is_nil(result[1].id)
+		assert.are.equal("a.lua", result[1].path)
 	end)
 
 	it("returns empty array for empty map", function()
