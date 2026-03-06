@@ -103,7 +103,7 @@ vim.api.nvim_create_user_command("FudeReviewSubmit", function()
 			footer = " <CR> submit | q skip body ",
 		})
 	end)
-end, { desc = "Submit drafts as review" })
+end, { desc = "Submit review" })
 
 vim.api.nvim_create_user_command("FudeCreatePR", function()
 	require("fude.pr").create()
