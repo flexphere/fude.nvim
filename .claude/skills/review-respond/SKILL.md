@@ -147,7 +147,7 @@ Phase 1 で「✅ 修正する」と決まったコメントに対して:
 4. ユーザーの承認後に返信を実行する
    ```bash
    gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
-     -f body="Fixed in <sha> — <description>" \
+     -f body="<sha> で修正 — <説明>" \
      -F in_reply_to=<comment_id>
    ```
 
