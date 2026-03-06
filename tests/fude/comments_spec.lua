@@ -547,7 +547,8 @@ describe("data.build_comment_entries", function()
 			},
 		}
 		local entries = data.build_comment_entries(map, "/repo", id_fn)
-		assert.is_true(#entries[1].detail < #long_body + 50)
+		assert.is_true(#entries[1].detail < #long_body, "detail should be shorter than full body")
+		assert.is_truthy(entries[1].detail:match("%.%.%.$"), "truncated detail should end with '...'")
 	end)
 
 	it("returns empty for empty map", function()
