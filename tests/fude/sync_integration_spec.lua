@@ -106,40 +106,39 @@ describe("sync integration", function()
 	end)
 
 	describe("submit_as_review", function()
-		it("creates review and clears comment-type drafts", function()
+		it("submits pending review and clears pending state", function()
+			local gh = require("fude.gh")
+			helpers.mock(gh, "submit_review", function(_, _, _, _, callback)
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end)
 			helpers.mock_gh({
-				["api:repos/{owner}/{repo}/pulls/42/reviews"] = function(_, callback)
-					vim.schedule(function()
-						callback(nil, { id = 100 })
-					end)
-				end,
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
 			})
 
 			config.state.active = true
 			config.state.pr_number = 42
-			config.state.drafts = {
-				["src/main.lua:5:5"] = { "comment body" },
-				["reply:123"] = { "reply body" }, -- should be excluded
+			config.state.pending_review_id = 100
+			config.state.pending_comments = {
+				["src/main.lua:5:5"] = { path = "src/main.lua", body = "comment", line = 5, side = "RIGHT" },
 			}
 
-			local cb_err, cb_excluded
+			local cb_err
 			local cb_called = false
-			sync.submit_as_review("COMMENT", nil, function(err, excluded_count)
+			sync.submit_as_review("COMMENT", nil, function(err)
 				cb_err = err
-				cb_excluded = excluded_count
 				cb_called = true
 			end)
 
-			helpers.wait_for(function()
+			local ok = helpers.wait_for(function()
 				return cb_called
 			end)
+			assert.is_true(ok, "Callback should be called")
 
 			assert.is_nil(cb_err)
-			assert.are.equal(1, cb_excluded) -- reply is excluded
-			-- Comment-type draft should be cleared
-			assert.is_nil(config.state.drafts["src/main.lua:5:5"])
-			-- Reply draft should remain
-			assert.is_not_nil(config.state.drafts["reply:123"])
+			assert.is_nil(config.state.pending_review_id)
+			assert.are.same({}, config.state.pending_comments)
 		end)
 
 		it("returns error when not active", function()
@@ -147,7 +146,7 @@ describe("sync integration", function()
 
 			local cb_err
 			local cb_called = false
-			sync.submit_as_review("COMMENT", nil, function(err, _)
+			sync.submit_as_review("COMMENT", nil, function(err)
 				cb_err = err
 				cb_called = true
 			end)
@@ -156,79 +155,23 @@ describe("sync integration", function()
 			assert.are.equal("Not active", cb_err)
 		end)
 
-		it("reports excluded count for reply and issue_comment drafts", function()
+		it("creates review with body when no pending review exists", function()
 			helpers.mock_gh({
 				["api:repos/{owner}/{repo}/pulls/42/reviews"] = function(_, callback)
 					vim.schedule(function()
-						callback(nil, { id = 101 })
+						callback(nil, { id = 102 })
 					end)
 				end,
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
 			})
 
 			config.state.active = true
 			config.state.pr_number = 42
-			config.state.drafts = {
-				["reply:100"] = { "reply" },
-				["issue_comment"] = { "issue comment" },
-				["file.lua:1:1"] = { "normal comment" },
-			}
 
-			local cb_excluded
+			local cb_err
 			local cb_called = false
-			sync.submit_as_review("COMMENT", nil, function(_, excluded_count)
-				cb_excluded = excluded_count
-				cb_called = true
-			end)
-
-			helpers.wait_for(function()
-				return cb_called
-			end)
-
-			assert.are.equal(2, cb_excluded) -- reply + issue_comment
-		end)
-	end)
-
-	describe("submit_drafts", function()
-		it("reports success and failure counts", function()
-			local call_count = 0
-			-- Mock individual gh API functions used by submit_drafts
-			local gh = require("fude.gh")
-			helpers.mock(gh, "create_comment", function(_, _, _, _, _, callback)
-				call_count = call_count + 1
-				vim.schedule(function()
-					if call_count == 1 then
-						callback(nil) -- first succeeds
-					else
-						callback("API error") -- second fails
-					end
-				end)
-			end)
-
-			config.state.active = true
-			config.state.pr_number = 42
-			config.state.drafts = {
-				["file1.lua:1:1"] = { "comment 1" },
-				["file2.lua:2:2"] = { "comment 2" },
-			}
-
-			local entries = {
-				{
-					draft_key = "file1.lua:1:1",
-					draft_lines = { "comment 1" },
-					parsed = { type = "comment", path = "file1.lua", start_line = 1, end_line = 1 },
-				},
-				{
-					draft_key = "file2.lua:2:2",
-					draft_lines = { "comment 2" },
-					parsed = { type = "comment", path = "file2.lua", start_line = 2, end_line = 2 },
-				},
-			}
-
-			local result_succeeded, result_failed
-			local cb_called = false
-			sync.submit_drafts(entries, function(succeeded, failed)
-				result_succeeded = succeeded
-				result_failed = failed
+			sync.submit_as_review("APPROVE", "LGTM", function(err)
+				cb_err = err
 				cb_called = true
 			end)
 
@@ -236,11 +179,22 @@ describe("sync integration", function()
 				return cb_called
 			end)
 			assert.is_true(ok, "Callback should be called")
-			assert.are.equal(1, result_succeeded)
-			assert.are.equal(1, result_failed)
-			-- First draft should be cleared, second should remain
-			assert.is_nil(config.state.drafts["file1.lua:1:1"])
-			assert.is_not_nil(config.state.drafts["file2.lua:2:2"])
+			assert.is_nil(cb_err)
+		end)
+
+		it("returns error when no pending review and no body", function()
+			config.state.active = true
+			config.state.pr_number = 42
+
+			local cb_err
+			local cb_called = false
+			sync.submit_as_review("COMMENT", nil, function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			assert.is_true(cb_called)
+			assert.are.equal("No pending review to submit", cb_err)
 		end)
 	end)
 
