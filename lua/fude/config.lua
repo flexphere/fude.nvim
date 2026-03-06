@@ -10,8 +10,6 @@ M.defaults = {
 	signs = {
 		comment = "#",
 		comment_hl = "DiagnosticInfo",
-		draft = "✎ draft comment",
-		draft_hl = "DiagnosticWarn",
 		pending = "⏳ pending",
 		pending_hl = "DiagnosticHint",
 		viewed = "✓",
@@ -57,7 +55,6 @@ M.state = {
 	changed_files = {},
 	comments = {},
 	comment_map = {},
-	drafts = {},
 	pending_comments = {}, -- Comments in GitHub pending review: { [path:start:end] = { path, line, start_line?, body } }
 	pending_review_id = nil, -- Current pending review ID on GitHub
 	pr_node_id = nil, -- GraphQL node ID for viewed file API
@@ -96,7 +93,6 @@ function M.reset_state()
 		changed_files = {},
 		comments = {},
 		comment_map = {},
-		drafts = {},
 		pending_comments = {},
 		pending_review_id = nil,
 		pr_node_id = nil,

@@ -46,12 +46,6 @@ describe("config", function()
 			assert.is_nil(config.state.pr_number)
 			assert.are.equal(ns, config.state.ns_id)
 		end)
-
-		it("clears drafts", function()
-			config.state.drafts["test:1:1"] = { "hello" }
-			config.reset_state()
-			assert.are.same({}, config.state.drafts)
-		end)
 	end)
 
 	describe("format_date", function()

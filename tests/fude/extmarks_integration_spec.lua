@@ -72,33 +72,6 @@ describe("extmarks integration", function()
 			assert.is_true(found_pending, "Should have pending indicator on start_line")
 		end)
 
-		it("sets draft indicators", function()
-			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
-			vim.api.nvim_set_current_buf(buf)
-
-			config.state.active = true
-			config.state.comment_map = {}
-			config.state.pending_comments = {}
-			config.state.drafts = {
-				["test.lua:1:1"] = { "draft comment" },
-			}
-
-			extmarks.refresh_extmarks()
-
-			local marks = vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })
-			local found_draft = false
-			for _, mark in ipairs(marks) do
-				local details = mark[4]
-				if details.virt_text then
-					local text = details.virt_text[1][1]
-					if text:find("draft", 1, true) then
-						found_draft = true
-					end
-				end
-			end
-			assert.is_true(found_draft, "Should have draft indicator")
-		end)
-
 		it("does nothing when not active", function()
 			local buf = helpers.create_buf({ "line1", "line2" }, "test.lua")
 			vim.api.nvim_set_current_buf(buf)

@@ -160,14 +160,6 @@ Using lazy.nvim: >lua
     to jump to the file and line. Preview pane shows the full comment
     thread formatted as markdown. Requires an active review session.
 
-:FudeReviewListDrafts                            *:FudeReviewListDrafts*
-    List all local draft comments in a Telescope picker. Shows each
-    draft location with a body preview. Select an entry to jump
-    to the file and line. Preview pane shows the full draft content.
-    Press `d` to delete a draft. Note: Most comments are saved as
-    GitHub pending review (see |:FudeReviewComment|), not local drafts.
-    Requires an active review session.
-
 :FudeReviewViewed                                    *:FudeReviewViewed*
     Mark the current file as viewed on GitHub. Uses the GitHub
     GraphQL API to sync the viewed state. The viewed status is
@@ -215,8 +207,8 @@ Using lazy.nvim: >lua
     5. Optionally add a review body message
     6. All pending comments are submitted together
 
-    Note: Replies to existing comments and PR-level comments cannot
-    be included in a review (GitHub API limitation).
+    If there are no pending comments, you can still submit a review
+    with just a body (useful for Approve or Request Changes).
 
 ==============================================================================
 5. KEYMAPS                                                *fude-keymaps*
@@ -241,7 +233,6 @@ Suggested mappings:
   `<leader>e]`  Next review scope
   `<leader>e[`  Previous review scope
   `<leader>el`  List all review comments
-  `<leader>ep`  List all drafts
   `<leader>em`  Mark current file as viewed
   `<leader>eM`  Unmark current file as viewed
   `]c`          Next comment
@@ -272,8 +263,6 @@ Default configuration: >lua
       comment_hl = "DiagnosticInfo",
       pending = "⏳ pending",
       pending_hl = "DiagnosticHint",
-      draft = "✎ draft comment",
-      draft_hl = "DiagnosticWarn",
       viewed = "✓",
       viewed_hl = "DiagnosticOk",
     },
@@ -322,13 +311,6 @@ Options:
 
 `signs.pending_hl`  Highlight group for pending indicators
                   (default: "DiagnosticHint").
-
-`signs.draft`       Text shown in virtual text for local draft indicators
-                  (default: "✎ draft comment"). Local drafts are fallback
-                  storage when GitHub API fails.
-
-`signs.draft_hl`    Highlight group for draft indicators
-                  (default: "DiagnosticWarn").
 
 `signs.viewed`      Character shown in the file list for viewed files
                   (default: "✓").

@@ -40,17 +40,11 @@ end
 function M.create_comment(pr_number)
 	local ui = require("fude.ui")
 	local gh = require("fude.gh")
-	local state = config.state
-
-	local draft_key = "issue_comment"
-	local draft = state.drafts[draft_key]
 
 	ui.open_comment_input(function(body)
 		if not body then
 			return
 		end
-
-		state.drafts[draft_key] = nil
 
 		gh.create_issue_comment(pr_number, body, function(err, _)
 			if err then
@@ -61,12 +55,7 @@ function M.create_comment(pr_number)
 			M.show()
 		end)
 	end, {
-		initial_lines = draft or nil,
-		submit_on_enter = true,
-		on_save = function(lines)
-			state.drafts[draft_key] = lines
-			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
-		end,
+		footer = " <CR> submit | q cancel ",
 	})
 end
 
