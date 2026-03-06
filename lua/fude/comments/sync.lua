@@ -231,4 +231,45 @@ function M.reply_to_comment(comment_id, body, callback)
 	end)
 end
 
+--- Edit a submitted review comment on GitHub.
+--- @param comment_id number target comment ID
+--- @param body string new comment body
+--- @param callback fun(err: string|nil)
+function M.edit_comment(comment_id, body, callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active")
+		return
+	end
+
+	gh.update_comment(comment_id, body, function(err, _)
+		if err then
+			callback(err)
+			return
+		end
+		callback(nil)
+		fetch_comments()
+	end)
+end
+
+--- Delete a submitted review comment on GitHub.
+--- @param comment_id number target comment ID
+--- @param callback fun(err: string|nil)
+function M.delete_comment(comment_id, callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active")
+		return
+	end
+
+	gh.delete_comment(comment_id, function(err)
+		if err then
+			callback(err)
+			return
+		end
+		callback(nil)
+		fetch_comments()
+	end)
+end
+
 return M

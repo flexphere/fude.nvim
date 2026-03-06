@@ -23,7 +23,7 @@ in the editor. It provides:
 
 - Base branch diff preview in a side pane
 - Virtual text indicators for existing PR comments
-- Create, view, and reply to PR review comments
+- Create, view, reply, edit, and delete PR review comments
 - Suggest code changes with GitHub's suggestion blocks
 - Navigate between comments
 - Browse changed files with Telescope or quickfix
@@ -86,7 +86,10 @@ Using lazy.nvim: >lua
 :FudeReviewViewComment                          *:FudeReviewViewComment*
     View existing review comments on the current line in a floating
     window. Both submitted and pending review comments are shown.
-    Press `r` to reply, `q` to close.
+    Press `r` to reply, `e` to edit, `d` to delete, `q` to close.
+    Edit and delete are only available for your own comments.
+    Editing opens a two-pane window (thread above, editable comment
+    below) pre-filled with the original comment body.
 
 :FudeReviewFiles                                      *:FudeReviewFiles*
     List files changed in the PR. Uses Telescope with diff preview
@@ -239,6 +242,8 @@ Suggested mappings:
   `<leader>eM`  Unmark current file as viewed
   `]c`          Next comment
   `[c`          Previous comment
+  `e`           Edit comment (in |:FudeReviewViewComment| float, own comments only)
+  `d`           Delete comment (in |:FudeReviewViewComment| float, own comments only)
   `gx`          Open GitHub reference or URL under cursor (in floats)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
                 Toggle commit reviewed state (in |:FudeReviewScope| picker)

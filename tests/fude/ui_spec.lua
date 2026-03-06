@@ -110,6 +110,44 @@ describe("format_comments_for_display", function()
 		end)
 		assert.truthy(result.lines[1]:find("FORMATTED"))
 	end)
+
+	it("returns comment_ranges for single comment", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "hello" },
+		}
+		local result = ui.format_comments_for_display(comments, identity)
+		assert.are.equal(1, #result.comment_ranges)
+		assert.are.equal(0, result.comment_ranges[1].start_line)
+		assert.are.equal(1, result.comment_ranges[1].end_line)
+		assert.are.equal(1, result.comment_ranges[1].index)
+	end)
+
+	it("returns comment_ranges for multiple comments", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
+		}
+		local result = ui.format_comments_for_display(comments, identity)
+		assert.are.equal(2, #result.comment_ranges)
+		-- First comment: header (0) + body (1)
+		assert.are.equal(0, result.comment_ranges[1].start_line)
+		assert.are.equal(1, result.comment_ranges[1].end_line)
+		assert.are.equal(1, result.comment_ranges[1].index)
+		-- Second comment: after separator (empty + --- + empty = lines 2,3,4), header (5) + body (6)
+		assert.are.equal(5, result.comment_ranges[2].start_line)
+		assert.are.equal(6, result.comment_ranges[2].end_line)
+		assert.are.equal(2, result.comment_ranges[2].index)
+	end)
+
+	it("returns comment_ranges for multiline body", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\nline2\nline3" },
+		}
+		local result = ui.format_comments_for_display(comments, identity)
+		assert.are.equal(1, #result.comment_ranges)
+		assert.are.equal(0, result.comment_ranges[1].start_line)
+		assert.are.equal(3, result.comment_ranges[1].end_line) -- header + 3 body lines
+	end)
 end)
 
 describe("format_check_status", function()

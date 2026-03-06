@@ -8,7 +8,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 
 - **Base branch preview** - Toggle side-by-side diff view showing the base branch version
 - **Follow code jumps** - Preview updates when navigating to other files via LSP
-- **PR comments** - Create, view, and reply to review comments on specific lines
+- **PR comments** - Create, view, reply, edit, and delete review comments on specific lines
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
 - **Virtual text** - Comment and pending indicators on lines with existing comments
 - **Pending review** - Comments are saved as GitHub pending review (visible on PR page)

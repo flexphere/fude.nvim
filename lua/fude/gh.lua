@@ -521,4 +521,44 @@ function M.create_draft_pr(title, body, callback)
 	end)
 end
 
+--- Get the authenticated GitHub username.
+--- @param callback fun(err: string|nil, login: string|nil)
+function M.get_authenticated_user(callback)
+	M.run({ "api", "user", "--jq", ".login" }, function(err, stdout)
+		if err then
+			return callback(err, nil)
+		end
+		callback(nil, stdout and vim.trim(stdout) or nil)
+	end)
+end
+
+--- Update a review comment body.
+--- @param comment_id number
+--- @param body string new comment body
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.update_comment(comment_id, body, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/comments/" .. comment_id,
+		"--method",
+		"PATCH",
+		"-f",
+		"body=" .. body,
+	}, callback)
+end
+
+--- Delete a review comment.
+--- @param comment_id number
+--- @param callback fun(err: string|nil)
+function M.delete_comment(comment_id, callback)
+	M.run({
+		"api",
+		"repos/{owner}/{repo}/pulls/comments/" .. comment_id,
+		"--method",
+		"DELETE",
+	}, function(err, _)
+		callback(err)
+	end)
+end
+
 return M

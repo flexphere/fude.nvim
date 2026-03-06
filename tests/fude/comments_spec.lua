@@ -335,11 +335,33 @@ end)
 describe("pending_comments_to_array", function()
 	it("converts map to array", function()
 		local pending = {
-			["a.lua:1:1"] = { path = "a.lua", line = 1, body = "comment 1" },
-			["b.lua:10:20"] = { path = "b.lua", line = 20, start_line = 10, body = "comment 2" },
+			["a.lua:1:1"] = { path = "a.lua", line = 1, body = "comment 1", side = "RIGHT" },
+			["b.lua:10:20"] = {
+				path = "b.lua",
+				line = 20,
+				start_line = 10,
+				start_side = "RIGHT",
+				body = "comment 2",
+				side = "RIGHT",
+			},
 		}
 		local result = comments.pending_comments_to_array(pending)
 		assert.are.equal(2, #result)
+		for _, entry in ipairs(result) do
+			assert.is_not_nil(entry.path)
+			assert.is_not_nil(entry.body)
+			assert.is_not_nil(entry.line)
+		end
+	end)
+
+	it("excludes id field from output", function()
+		local pending = {
+			["a.lua:1:1"] = { id = 999, path = "a.lua", line = 1, body = "comment", side = "RIGHT" },
+		}
+		local result = comments.pending_comments_to_array(pending)
+		assert.are.equal(1, #result)
+		assert.is_nil(result[1].id)
+		assert.are.equal("a.lua", result[1].path)
 	end)
 
 	it("returns empty array for empty map", function()
@@ -351,11 +373,12 @@ end)
 describe("build_pending_comments_from_review", function()
 	it("builds map from single-line comments", function()
 		local review_comments = {
-			{ path = "a.lua", line = 10, body = "fix this", side = "RIGHT" },
+			{ id = 101, path = "a.lua", line = 10, body = "fix this", side = "RIGHT" },
 		}
 		local result = comments.build_pending_comments_from_review(review_comments)
 		local key = "a.lua:10:10"
 		assert.is_not_nil(result[key])
+		assert.are.equal(101, result[key].id)
 		assert.are.equal("a.lua", result[key].path)
 		assert.are.equal(10, result[key].line)
 		assert.are.equal("fix this", result[key].body)
@@ -503,6 +526,93 @@ describe("data.get_comment_lines (pure)", function()
 	it("returns empty table for missing path", function()
 		local result = data.get_comment_lines({}, "nope.lua")
 		assert.are.same({}, result)
+	end)
+end)
+
+describe("is_own_comment", function()
+	before_each(function()
+		config.setup({})
+	end)
+
+	it("returns true when comment user matches github_user", function()
+		config.state.github_user = "alice"
+		local comment = { user = { login = "alice" }, body = "test" }
+		assert.is_true(comments.is_own_comment(comment))
+	end)
+
+	it("returns false when comment user does not match", function()
+		config.state.github_user = "alice"
+		local comment = { user = { login = "bob" }, body = "test" }
+		assert.is_false(comments.is_own_comment(comment))
+	end)
+
+	it("returns false when github_user is nil", function()
+		config.state.github_user = nil
+		local comment = { user = { login = "alice" }, body = "test" }
+		assert.is_false(comments.is_own_comment(comment))
+	end)
+
+	it("returns false when comment has no user field", function()
+		config.state.github_user = "alice"
+		local comment = { body = "test" }
+		assert.is_false(comments.is_own_comment(comment))
+	end)
+
+	it("returns false when comment user login is nil", function()
+		config.state.github_user = "alice"
+		local comment = { user = {}, body = "test" }
+		assert.is_false(comments.is_own_comment(comment))
+	end)
+end)
+
+describe("is_pending_comment", function()
+	before_each(function()
+		config.setup({})
+	end)
+
+	it("returns true when comment belongs to pending review", function()
+		config.state.pending_review_id = 200
+		local comment = { pull_request_review_id = 200, body = "test" }
+		assert.is_true(comments.is_pending_comment(comment))
+	end)
+
+	it("returns false when comment belongs to different review", function()
+		config.state.pending_review_id = 200
+		local comment = { pull_request_review_id = 100, body = "test" }
+		assert.is_false(comments.is_pending_comment(comment))
+	end)
+
+	it("returns false when no pending review exists", function()
+		config.state.pending_review_id = nil
+		local comment = { pull_request_review_id = 100, body = "test" }
+		assert.is_false(comments.is_pending_comment(comment))
+	end)
+end)
+
+describe("find_pending_key", function()
+	before_each(function()
+		config.setup({})
+	end)
+
+	it("returns key when matching comment id found", function()
+		config.state.pending_comments = {
+			["a.lua:5:5"] = { id = 10, path = "a.lua", body = "comment", line = 5 },
+			["b.lua:10:20"] = { id = 20, path = "b.lua", body = "other", line = 20 },
+		}
+		assert.are.equal("a.lua:5:5", comments.find_pending_key(10))
+		assert.are.equal("b.lua:10:20", comments.find_pending_key(20))
+	end)
+
+	it("returns nil when comment id not found", function()
+		config.state.pending_comments = {
+			["a.lua:5:5"] = { id = 10, path = "a.lua", body = "comment", line = 5 },
+		}
+		assert.is_nil(comments.find_pending_key(999))
+	end)
+
+	it("returns nil when pending_comments is empty", function()
+		config.state.pending_comments = {}
+		assert.is_nil(comments.find_pending_key(1))
 	end)
 end)
 

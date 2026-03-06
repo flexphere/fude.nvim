@@ -176,6 +176,7 @@ function M.build_pending_comments_from_review(comments)
 		if path and line then
 			local key = path .. ":" .. start_line .. ":" .. line
 			result[key] = {
+				id = c.id,
 				path = path,
 				body = c.body,
 				line = line,
@@ -216,7 +217,17 @@ end
 function M.pending_comments_to_array(pending_comments)
 	local result = {}
 	for _, comment_data in pairs(pending_comments) do
-		table.insert(result, comment_data)
+		local entry = {
+			path = comment_data.path,
+			body = comment_data.body,
+			line = comment_data.line,
+			side = comment_data.side,
+		}
+		if comment_data.start_line then
+			entry.start_line = comment_data.start_line
+			entry.start_side = comment_data.start_side
+		end
+		table.insert(result, entry)
 	end
 	return result
 end
