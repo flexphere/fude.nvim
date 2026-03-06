@@ -574,8 +574,8 @@ function M.calculate_comment_browser_layout(columns, screen_lines, pct_w, pct_h,
 	local right_inner = total_height - 3 -- subtract gap between upper/lower
 	local lower_height = math.max(math.floor(right_inner * lower_pct / 100), min_lower)
 	local upper_height = math.max(right_inner - lower_height, min_upper)
-	-- Re-clamp lower if upper was clamped up
-	lower_height = right_inner - upper_height
+	-- Re-clamp lower if upper was clamped up, but keep minimum
+	lower_height = math.max(right_inner - upper_height, min_lower)
 
 	local right_col = start_col + left_width + 2
 
