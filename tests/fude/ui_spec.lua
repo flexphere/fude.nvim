@@ -1328,3 +1328,197 @@ describe("format_reply_comments_for_display", function()
 		end
 	end)
 end)
+
+describe("calculate_comment_browser_layout", function()
+	it("returns 3-pane layout with correct structure", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		assert.is_table(layout.left)
+		assert.is_table(layout.right_upper)
+		assert.is_table(layout.right_lower)
+		assert.is_number(layout.left.width)
+		assert.is_number(layout.right_upper.width)
+		assert.is_number(layout.right_lower.width)
+	end)
+
+	it("right panes share same width", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		assert.are.equal(layout.right_upper.width, layout.right_lower.width)
+	end)
+
+	it("right panes share same col", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		assert.are.equal(layout.right_upper.col, layout.right_lower.col)
+	end)
+
+	it("right_lower.row = right_upper.row + right_upper.height + 3 (gap)", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		assert.are.equal(layout.right_upper.row + layout.right_upper.height + 3, layout.right_lower.row)
+	end)
+
+	it("upper + lower height + 3 gap rows equals total height", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		assert.are.equal(layout.left.height, layout.right_upper.height + layout.right_lower.height + 3)
+	end)
+
+	it("left + right widths + 4 border chars fits in total", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		-- Total width = left_width + 2 (left border) + right_width + 2 (right border)
+		local total = layout.left.width + layout.right_upper.width + 4
+		assert.is_true(total <= math.floor(200 * 80 / 100) + 4) -- within expected range
+	end)
+
+	it("enforces minimum dimensions for small terminal", function()
+		local layout = ui.calculate_comment_browser_layout(60, 15, 100, 100)
+		assert.is_true(layout.left.width >= 20)
+		assert.is_true(layout.right_upper.width >= 25)
+		assert.is_true(layout.right_upper.height >= 5)
+		assert.is_true(layout.right_lower.height >= 5)
+	end)
+
+	it("right pane starts after left pane with 2 border chars", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		assert.are.equal(layout.left.col + layout.left.width + 2, layout.right_upper.col)
+	end)
+end)
+
+describe("format_comment_browser_list", function()
+	local id_fn = function(s)
+		return s or ""
+	end
+
+	it("returns one line per entry", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01T00:00:00Z",
+				author = "alice",
+				path = "src/a.lua",
+				line = 10,
+				is_pending = false,
+			},
+			{ type = "issue", last_ts = "2024-01-02T00:00:00Z", author = "bob", is_pending = false },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.are.equal(2, #result.lines)
+	end)
+
+	it("formats review entry with author and path", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "src/a.lua", line = 10, is_pending = false },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_truthy(result.lines[1]:find("@alice"))
+		assert.is_truthy(result.lines[1]:find("src/a.lua:10"))
+	end)
+
+	it("formats issue entry with PR Comment label and no author", function()
+		local entries = {
+			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_truthy(result.lines[1]:find("PR Comment"))
+		assert.is_falsy(result.lines[1]:find("@"))
+	end)
+
+	it("formats pending entry with [pending] label", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "src/a.lua", line = 5, is_pending = true },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_truthy(result.lines[1]:find("%[pending%]"))
+	end)
+
+	it("truncates long lines to max_width", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "alice",
+				path = "very/long/path/that/is/really/long/file.lua",
+				line = 10,
+				is_pending = false,
+			},
+		}
+		local result = ui.format_comment_browser_list(entries, 30, id_fn)
+		assert.is_true(#result.lines[1] <= 30)
+		assert.is_truthy(result.lines[1]:find("%.%.%."))
+	end)
+
+	it("includes highlight ranges for PR Comment", function()
+		local entries = {
+			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_true(#result.hl_ranges > 0)
+		assert.are.equal("DiagnosticInfo", result.hl_ranges[1].hl)
+	end)
+
+	it("includes highlight ranges for pending", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "a", path = "f.lua", line = 1, is_pending = true },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_true(#result.hl_ranges > 0)
+		assert.are.equal("DiagnosticHint", result.hl_ranges[1].hl)
+	end)
+
+	it("returns empty lines for empty entries", function()
+		local result = ui.format_comment_browser_list({}, 120, id_fn)
+		assert.are.equal(0, #result.lines)
+	end)
+end)
+
+describe("format_comment_browser_thread", function()
+	local id_fn = function(s)
+		return s or ""
+	end
+
+	it("formats review comment thread", function()
+		local entry = {
+			type = "review",
+			comments = {
+				{ id = 1, user = { login = "alice" }, created_at = "2024-01-01", body = "fix this" },
+			},
+		}
+		local all_comments = {
+			{ id = 1, user = { login = "alice" }, created_at = "2024-01-01", body = "fix this", in_reply_to_id = nil },
+		}
+		local result = ui.format_comment_browser_thread(entry, all_comments, {}, id_fn)
+		assert.is_true(#result.lines > 0)
+		assert.is_truthy(result.lines[1]:find("@alice"))
+	end)
+
+	it("formats issue comments showing all issue comments", function()
+		local entry = {
+			type = "issue",
+			comments = {
+				{ id = 10, user = { login = "bob" }, created_at = "2024-01-01", body = "great work" },
+			},
+		}
+		local all_issue_comments = {
+			{ id = 10, user = { login = "bob" }, created_at = "2024-01-01", body = "great work" },
+			{ id = 11, user = { login = "carol" }, created_at = "2024-01-02", body = "thanks" },
+		}
+		local result = ui.format_comment_browser_thread(entry, {}, all_issue_comments, id_fn)
+		assert.is_true(#result.lines > 0)
+		-- Both issue comments should be shown
+		local has_bob = false
+		local has_carol = false
+		for _, line in ipairs(result.lines) do
+			if line:find("@bob") then
+				has_bob = true
+			end
+			if line:find("@carol") then
+				has_carol = true
+			end
+		end
+		assert.is_true(has_bob)
+		assert.is_true(has_carol)
+	end)
+
+	it("returns placeholder for empty comment", function()
+		local entry = { type = "review", comments = {} }
+		local result = ui.format_comment_browser_thread(entry, {}, {}, id_fn)
+		assert.is_true(#result.lines > 0)
+	end)
+end)
