@@ -3,6 +3,53 @@ local config = require("fude.config")
 local gh = require("fude.gh")
 local data = require("fude.comments.data")
 
+--- Fetch all PR review comments and build the lookup map.
+--- GET /pulls/{pr}/comments does not include pending review comments,
+--- so when a pending review exists, also fetches from the review-specific endpoint
+--- and builds pending_comments from the same data.
+local function fetch_comments()
+	local state = config.state
+	if not state.pr_number then
+		return
+	end
+
+	local function apply(comments)
+		state.comments = comments
+		state.comment_map = data.build_comment_map(comments)
+		require("fude.ui").refresh_extmarks()
+		vim.notify(string.format("fude.nvim: Loaded %d comments", #comments), vim.log.levels.INFO)
+	end
+
+	gh.get_pr_comments(state.pr_number, function(err, comments)
+		if err then
+			vim.notify("fude.nvim: Failed to fetch comments: " .. err, vim.log.levels.WARN)
+			return
+		end
+
+		comments = comments or {}
+
+		if state.pending_review_id then
+			gh.get_review_comments(state.pr_number, state.pending_review_id, function(rev_err, rev_comments)
+				if not rev_err and rev_comments then
+					-- Review-specific endpoint returns `position` instead of `line`.
+					-- Convert to `line` using diff_hunk so build_comment_map can index them.
+					for _, c in ipairs(rev_comments) do
+						if not c.line and not c.original_line then
+							c.line = data.line_from_diff_hunk(c.diff_hunk, c.position)
+						end
+					end
+					vim.list_extend(comments, rev_comments)
+					-- Also build pending_comments from the same data
+					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
+				end
+				apply(comments)
+			end)
+		else
+			apply(comments)
+		end
+	end)
+end
+
 --- Submit pending review or create a new review with event and body.
 --- If pending_comments exist (already on GitHub), submits the existing pending review.
 --- Otherwise, creates a new review with just event and body (for APPROVE/REQUEST_CHANGES).
@@ -28,10 +75,8 @@ function M.submit_as_review(event, body, callback)
 			state.pending_review_id = nil
 			state.pending_comments = {}
 
-			vim.schedule(function()
-				require("fude.ui").refresh_extmarks()
-			end)
-			M.fetch_comments()
+			require("fude.ui").refresh_extmarks()
+			fetch_comments()
 
 			callback(nil)
 		end)
@@ -56,37 +101,16 @@ function M.submit_as_review(event, body, callback)
 			return
 		end
 
-		M.fetch_comments()
+		fetch_comments()
 
 		callback(nil)
 	end)
 end
 
---- Fetch all PR review comments and build the lookup map.
-function M.fetch_comments()
-	local state = config.state
-	if not state.pr_number then
-		return
-	end
-
-	gh.get_pr_comments(state.pr_number, function(err, comments)
-		if err then
-			vim.notify("fude.nvim: Failed to fetch comments: " .. err, vim.log.levels.WARN)
-			return
-		end
-
-		state.comments = comments or {}
-		state.comment_map = data.build_comment_map(state.comments, state.pending_review_id)
-
-		vim.schedule(function()
-			require("fude.ui").refresh_extmarks()
-		end)
-		vim.notify(string.format("fude.nvim: Loaded %d comments", #state.comments), vim.log.levels.INFO)
-	end)
-end
-
---- Fetch existing pending review from GitHub and load into state.
-function M.fetch_pending_review()
+--- Load all comment data: detect pending review, then fetch comments.
+--- This is the main entry point for initializing comment state on start.
+--- For refreshing after mutations (submit, reply, sync), use fetch_comments directly.
+function M.load_comments()
 	local state = config.state
 	if not state.pr_number then
 		return
@@ -95,6 +119,8 @@ function M.fetch_pending_review()
 	gh.get_reviews(state.pr_number, function(err, reviews)
 		if err then
 			vim.notify("fude.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
+			-- Still fetch comments even if reviews fail
+			fetch_comments()
 			return
 		end
 
@@ -107,37 +133,11 @@ function M.fetch_pending_review()
 			end
 		end
 
-		if not pending_review then
-			return
+		if pending_review then
+			state.pending_review_id = pending_review.id
 		end
 
-		state.pending_review_id = pending_review.id
-
-		-- Rebuild comment_map to exclude pending review comments
-		if state.comments then
-			state.comment_map = data.build_comment_map(state.comments, state.pending_review_id)
-			vim.schedule(function()
-				require("fude.ui").refresh_extmarks()
-			end)
-		end
-
-		-- Fetch comments for this pending review
-		gh.get_review_comments(state.pr_number, pending_review.id, function(comments_err, comments)
-			if comments_err then
-				vim.notify("fude.nvim: Failed to fetch pending comments: " .. comments_err, vim.log.levels.DEBUG)
-				return
-			end
-
-			state.pending_comments = data.build_pending_comments_from_review(comments or {})
-			vim.schedule(function()
-				require("fude.ui").refresh_extmarks()
-			end)
-
-			local count = vim.tbl_count(state.pending_comments)
-			if count > 0 then
-				vim.notify(string.format("fude.nvim: Loaded %d pending comments", count), vim.log.levels.INFO)
-			end
-		end)
+		fetch_comments()
 	end)
 end
 
@@ -181,7 +181,11 @@ function M.sync_pending_review(callback)
 				return
 			end
 			state.pending_review_id = review_data and review_data.id
+
 			callback(nil)
+
+			-- fetch_comments also fetches pending review comments when pending_review_id is set
+			fetch_comments()
 		end)
 	end
 
@@ -217,7 +221,7 @@ function M.reply_to_comment(comment_id, body, callback)
 			return
 		end
 		callback(nil)
-		M.fetch_comments()
+		fetch_comments()
 	end)
 end
 

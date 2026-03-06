@@ -91,26 +91,16 @@ describe("build_comment_map", function()
 		assert.are.same({}, map)
 	end)
 
-	it("excludes comments belonging to pending review", function()
+	it("includes all comments regardless of review id", function()
 		local input = {
 			{ path = "a.lua", line = 10, body = "submitted", pull_request_review_id = 100 },
 			{ path = "a.lua", line = 20, body = "pending", pull_request_review_id = 200 },
 			{ path = "b.lua", line = 5, body = "also submitted", pull_request_review_id = 100 },
 		}
-		local map = comments.build_comment_map(input, 200)
-		assert.are.equal(1, #map["a.lua"][10])
-		assert.is_nil(map["a.lua"][20])
-		assert.are.equal(1, #map["b.lua"][5])
-	end)
-
-	it("includes all comments when pending_review_id is nil", function()
-		local input = {
-			{ path = "a.lua", line = 10, body = "first", pull_request_review_id = 100 },
-			{ path = "a.lua", line = 20, body = "second", pull_request_review_id = 200 },
-		}
-		local map = comments.build_comment_map(input, nil)
+		local map = comments.build_comment_map(input)
 		assert.are.equal(1, #map["a.lua"][10])
 		assert.are.equal(1, #map["a.lua"][20])
+		assert.are.equal(1, #map["b.lua"][5])
 	end)
 end)
 
@@ -441,6 +431,48 @@ end)
 
 -- Tests for pure data functions added during refactoring
 
+describe("data.line_from_diff_hunk", function()
+	it("returns line for new file at position 1", function()
+		local hunk = "@@ -0,0 +1,113 @@\n+package main"
+		assert.are.equal(1, data.line_from_diff_hunk(hunk, 1))
+	end)
+
+	it("returns correct line for later position in new file", function()
+		local hunk = "@@ -0,0 +1,5 @@\n+line1\n+line2\n+line3"
+		assert.are.equal(1, data.line_from_diff_hunk(hunk, 1))
+		assert.are.equal(2, data.line_from_diff_hunk(hunk, 2))
+		assert.are.equal(3, data.line_from_diff_hunk(hunk, 3))
+	end)
+
+	it("handles modified file with context and additions", function()
+		local hunk = "@@ -10,5 +20,8 @@\n context\n+added"
+		assert.are.equal(20, data.line_from_diff_hunk(hunk, 1))
+		assert.are.equal(21, data.line_from_diff_hunk(hunk, 2))
+	end)
+
+	it("skips deletion lines for new file line count", function()
+		local hunk = "@@ -10,3 +20,3 @@\n context\n-deleted\n+added\n context2"
+		assert.are.equal(20, data.line_from_diff_hunk(hunk, 1)) -- context
+		-- pos 2 is deletion: skipped for RIGHT side
+		assert.are.equal(21, data.line_from_diff_hunk(hunk, 3)) -- added
+		assert.are.equal(22, data.line_from_diff_hunk(hunk, 4)) -- context2
+	end)
+
+	it("returns nil for nil inputs", function()
+		assert.is_nil(data.line_from_diff_hunk(nil, 1))
+		assert.is_nil(data.line_from_diff_hunk("@@ -0,0 +1 @@\n+x", nil))
+	end)
+
+	it("returns nil when position exceeds hunk lines", function()
+		local hunk = "@@ -0,0 +1,1 @@\n+only"
+		assert.is_nil(data.line_from_diff_hunk(hunk, 99))
+	end)
+
+	it("returns nil for invalid hunk header", function()
+		assert.is_nil(data.line_from_diff_hunk("no header here", 1))
+	end)
+end)
+
 describe("data.get_comments_at (pure)", function()
 	it("returns comments for existing path and line", function()
 		local map = { ["a.lua"] = { [10] = { { id = 1, body = "hello" } } } }
@@ -534,5 +566,66 @@ describe("data.build_comment_entries", function()
 		}
 		local entries = data.build_comment_entries(map, "/repo", id_fn)
 		assert.are.equal("2024-03-01T00:00:00Z", entries[1].last_ts)
+	end)
+
+	it("labels pending review comments with [pending]", function()
+		local map = {
+			["a.lua"] = {
+				[10] = {
+					{
+						id = 1,
+						body = "submitted",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						pull_request_review_id = 100,
+					},
+				},
+				[20] = {
+					{
+						id = 2,
+						body = "my pending",
+						user = { login = "bob" },
+						created_at = "2024-02-01T00:00:00Z",
+						pull_request_review_id = 200,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_entries(map, "/repo", id_fn, 200)
+		assert.are.equal(2, #entries)
+		-- Find the pending entry
+		local pending_entry, submitted_entry
+		for _, e in ipairs(entries) do
+			if e.is_pending then
+				pending_entry = e
+			else
+				submitted_entry = e
+			end
+		end
+		assert.is_not_nil(pending_entry)
+		assert.is_not_nil(submitted_entry)
+		assert.is_truthy(pending_entry.detail:find("%[pending%]"))
+		assert.is_truthy(submitted_entry.detail:find("@alice"))
+		assert.is_false(submitted_entry.is_pending)
+	end)
+
+	it("does not label as pending when pending_review_id is nil", function()
+		local map = {
+			["a.lua"] = {
+				[10] = {
+					{
+						id = 1,
+						body = "comment",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						pull_request_review_id = 100,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_entries(map, "/repo", id_fn, nil)
+		assert.are.equal(1, #entries)
+		assert.is_false(entries[1].is_pending)
+		assert.is_truthy(entries[1].detail:find("@alice"))
 	end)
 end)
