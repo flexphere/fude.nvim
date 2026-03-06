@@ -24,7 +24,6 @@ describe("extmarks integration", function()
 				},
 			}
 			config.state.pending_comments = {}
-			config.state.drafts = {}
 
 			extmarks.refresh_extmarks()
 
@@ -43,23 +42,25 @@ describe("extmarks integration", function()
 			assert.is_true(found, "Should have extmark on line 2")
 		end)
 
-		it("sets pending comment indicators", function()
-			local buf = helpers.create_buf({ "line1", "line2", "line3", "line4", "line5" }, "test.lua")
+		it("shows pending indicator for comments in comment_map with pending_review_id", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
 			vim.api.nvim_set_current_buf(buf)
 
 			config.state.active = true
-			config.state.comment_map = {}
-			config.state.pending_comments = {
-				["test.lua:3:5"] = { path = "test.lua", body = "pending", line = 5, start_line = 3 },
+			config.state.pending_review_id = 999
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = { { id = 1, body = "pending comment", pull_request_review_id = 999 } },
+				},
 			}
-			config.state.drafts = {}
+			config.state.pending_comments = {}
 
 			extmarks.refresh_extmarks()
 
 			local marks = vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })
 			local found_pending = false
 			for _, mark in ipairs(marks) do
-				if mark[2] == 2 then -- 0-indexed line 2 = line 3 (start_line)
+				if mark[2] == 1 then -- 0-indexed line 1 = line 2
 					local details = mark[4]
 					if details.virt_text then
 						local text = details.virt_text[1][1]
@@ -69,7 +70,7 @@ describe("extmarks integration", function()
 					end
 				end
 			end
-			assert.is_true(found_pending, "Should have pending indicator on start_line")
+			assert.is_true(found_pending, "Should show pending indicator for pending review comment in comment_map")
 		end)
 
 		it("does nothing when not active", function()
@@ -93,7 +94,6 @@ describe("extmarks integration", function()
 
 			config.state.active = true
 			config.state.pending_comments = {}
-			config.state.drafts = {}
 
 			-- First call: comment on line 1
 			config.state.comment_map = {

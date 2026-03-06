@@ -85,7 +85,8 @@ Using lazy.nvim: >lua
 
 :FudeReviewViewComment                          *:FudeReviewViewComment*
     View existing review comments on the current line in a floating
-    window. Press `r` to reply, `q` to close.
+    window. Both submitted and pending review comments are shown.
+    Press `r` to reply, `q` to close.
 
 :FudeReviewFiles                                      *:FudeReviewFiles*
     List files changed in the PR. Uses Telescope with diff preview
@@ -155,10 +156,11 @@ Using lazy.nvim: >lua
     with an "Apply suggestion" button.
 
 :FudeReviewListComments                        *:FudeReviewListComments*
-    List all PR review comments in a Telescope picker. Shows each
-    comment location with author and body preview. Select an entry
-    to jump to the file and line. Preview pane shows the full comment
-    thread formatted as markdown. Requires an active review session.
+    List all PR review comments in a Telescope picker, including
+    pending review comments. Submitted comments show `@author`,
+    pending comments show `[pending]`. Select an entry to jump to
+    the file and line. Preview pane shows the full comment thread
+    formatted as markdown. Requires an active review session.
 
 :FudeReviewViewed                                    *:FudeReviewViewed*
     Mark the current file as viewed on GitHub. Uses the GitHub
@@ -306,8 +308,9 @@ Options:
 
 `signs.comment_hl`  Highlight group for comment indicators.
 
-`signs.pending`     Text shown in virtual text for pending review comments
-                  (default: "⏳ pending").
+`signs.pending`     Text shown in virtual text for pending review comments.
+                  Displayed alongside `signs.comment` when a line has both
+                  submitted and pending comments (default: "⏳ pending").
 
 `signs.pending_hl`  Highlight group for pending indicators
                   (default: "DiagnosticHint").

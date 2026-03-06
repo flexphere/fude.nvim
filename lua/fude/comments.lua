@@ -21,8 +21,7 @@ M.get_reply_target_id = data.get_reply_target_id
 
 -- Re-export sync functions (facade)
 M.submit_as_review = sync.submit_as_review
-M.fetch_comments = sync.fetch_comments
-M.fetch_pending_review = sync.fetch_pending_review
+M.load_comments = sync.load_comments
 M.sync_pending_review = sync.sync_pending_review
 M.reply_to_comment_sync = sync.reply_to_comment
 

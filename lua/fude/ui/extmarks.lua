@@ -97,22 +97,27 @@ function M.refresh_extmarks()
 
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)
-		local count = #comments
+		local submitted_count = 0
+		local has_pending = false
+		for _, c in ipairs(comments) do
+			if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
+				has_pending = true
+			else
+				submitted_count = submitted_count + 1
+			end
+		end
 
-		pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
-			virt_text = {
-				{ string.format(" %s%d", config.opts.signs.comment, count), config.opts.signs.comment_hl },
-			},
-			virt_text_pos = "eol",
-			priority = 50,
-		})
-	end
-
-	-- Pending comment indicators (GitHub pending review)
-	for key, _ in pairs(state.pending_comments) do
-		local parsed = comments_mod.parse_draft_key(key)
-		if parsed and parsed.type == "comment" and parsed.path == rel_path then
-			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, parsed.start_line - 1, 0, {
+		if submitted_count > 0 then
+			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+				virt_text = {
+					{ string.format(" %s%d", config.opts.signs.comment, submitted_count), config.opts.signs.comment_hl },
+				},
+				virt_text_pos = "eol",
+				priority = 50,
+			})
+		end
+		if has_pending then
+			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
 				virt_text = {
 					{ " " .. config.opts.signs.pending, config.opts.signs.pending_hl },
 				},

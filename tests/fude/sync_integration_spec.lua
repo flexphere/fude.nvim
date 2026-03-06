@@ -14,9 +14,10 @@ describe("sync integration", function()
 		helpers.cleanup()
 	end)
 
-	describe("fetch_comments", function()
-		it("populates state.comments and state.comment_map", function()
+	describe("load_comments", function()
+		it("populates state.comments and state.comment_map without pending review", function()
 			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
 				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
 					{ id = 1, path = "foo.lua", line = 10, body = "fix this", in_reply_to_id = vim.NIL },
 					{ id = 2, path = "foo.lua", line = 20, body = "also this", in_reply_to_id = vim.NIL },
@@ -26,7 +27,7 @@ describe("sync integration", function()
 			config.state.pr_number = 42
 			config.state.active = true
 
-			sync.fetch_comments()
+			sync.load_comments()
 
 			local ok = helpers.wait_for(function()
 				return #config.state.comments > 0
@@ -40,8 +41,83 @@ describe("sync integration", function()
 			assert.is_not_nil(config.state.comment_map["foo.lua"][20])
 		end)
 
-		it("does not change state on error", function()
+		it("loads pending review and pending comments in one flow", function()
 			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {
+					{ id = 99, state = "PENDING" },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "submitted", pull_request_review_id = 50 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/reviews/99/comments"] = {
+					{ path = "bar.lua", line = 5, body = "pending comment", side = "RIGHT", start_line = 5 },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			sync.load_comments()
+
+			local ok = helpers.wait_for(function()
+				return config.state.pending_review_id ~= nil and #config.state.comments > 0
+			end)
+			assert.is_true(ok, "Should have loaded pending review and comments")
+			assert.are.equal(99, config.state.pending_review_id)
+
+			-- comment_map should include both submitted and pending comments
+			assert.is_not_nil(config.state.comment_map["foo.lua"])
+			assert.is_not_nil(config.state.comment_map["foo.lua"][10])
+			assert.is_not_nil(config.state.comment_map["bar.lua"])
+			assert.is_not_nil(config.state.comment_map["bar.lua"][5])
+
+			-- pending_comments should be built from review comments
+			assert.are.equal(1, vim.tbl_count(config.state.pending_comments))
+		end)
+
+		it("does not set pending_review_id when no pending review exists", function()
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {
+					{ id = 1, state = "APPROVED" },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			sync.load_comments()
+
+			local ok = helpers.wait_for(function()
+				return config.state.comment_map ~= nil
+			end)
+			assert.is_true(ok, "Should have fetched comments")
+			assert.is_nil(config.state.pending_review_id)
+		end)
+
+		it("fetches comments even when reviews API fails", function()
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = "API error",
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "comment" },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			sync.load_comments()
+
+			local ok = helpers.wait_for(function()
+				return #config.state.comments > 0
+			end)
+			assert.is_true(ok, "Should have fetched comments despite reviews error")
+			assert.are.equal(1, #config.state.comments)
+		end)
+
+		it("does not change state on comments API error", function()
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
 				["api:repos/{owner}/{repo}/pulls/42/comments"] = "API error",
 			})
 
@@ -49,7 +125,7 @@ describe("sync integration", function()
 			config.state.active = true
 			config.state.comments = {}
 
-			sync.fetch_comments()
+			sync.load_comments()
 
 			-- Wait a bit for the async callback
 			vim.wait(200, function()
@@ -57,51 +133,6 @@ describe("sync integration", function()
 			end, 10)
 
 			assert.are.equal(0, #config.state.comments)
-		end)
-	end)
-
-	describe("fetch_pending_review", function()
-		it("loads pending review from GitHub", function()
-			helpers.mock_gh({
-				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {
-					{ id = 99, state = "PENDING" },
-				},
-				["api:repos/{owner}/{repo}/pulls/42/reviews/99/comments"] = {
-					{ path = "bar.lua", line = 5, body = "pending comment", side = "RIGHT" },
-				},
-			})
-
-			config.state.pr_number = 42
-			config.state.active = true
-			config.state.comments = {}
-
-			sync.fetch_pending_review()
-
-			local ok = helpers.wait_for(function()
-				return config.state.pending_review_id ~= nil
-			end)
-			assert.is_true(ok, "Should have loaded pending review")
-			assert.are.equal(99, config.state.pending_review_id)
-		end)
-
-		it("does nothing when no pending review exists", function()
-			helpers.mock_gh({
-				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {
-					{ id = 1, state = "APPROVED" },
-				},
-			})
-
-			config.state.pr_number = 42
-			config.state.active = true
-
-			sync.fetch_pending_review()
-
-			-- Wait a bit for the async callback
-			vim.wait(200, function()
-				return false
-			end, 10)
-
-			assert.is_nil(config.state.pending_review_id)
 		end)
 	end)
 

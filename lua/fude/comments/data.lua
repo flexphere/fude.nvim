@@ -1,17 +1,42 @@
 local M = {}
 
+--- Compute the file line number (RIGHT side) from a diff_hunk and position.
+--- The review-specific endpoint (GET /reviews/{id}/comments) returns `position`
+--- instead of `line` for pending review comments. This converts position to line.
+--- @param diff_hunk string the diff hunk text from the API
+--- @param position number 1-indexed position within the diff hunk
+--- @return number|nil line number in the new file
+function M.line_from_diff_hunk(diff_hunk, position)
+	if not diff_hunk or not position then
+		return nil
+	end
+	local new_start = tonumber(diff_hunk:match("%+(%d+)"))
+	if not new_start then
+		return nil
+	end
+	local new_line = new_start
+	local pos = 0
+	for hunk_line in diff_hunk:gmatch("[^\n]+") do
+		if not hunk_line:match("^@@") then
+			pos = pos + 1
+			if hunk_line:sub(1, 1) ~= "-" then
+				-- Context or addition: belongs to new file
+				if pos == position then
+					return new_line
+				end
+				new_line = new_line + 1
+			end
+		end
+	end
+	return nil
+end
+
 --- Build a nested lookup map from a flat array of comments.
---- Excludes comments belonging to a pending review (cannot be replied to).
 --- @param comments table[] flat array of comment objects
---- @param pending_review_id number|nil review ID to exclude
 --- @return table<string, table<number, table[]>> map[path][line] = {comments}
-function M.build_comment_map(comments, pending_review_id)
+function M.build_comment_map(comments)
 	local map = {}
 	for _, c in ipairs(comments) do
-		-- Skip comments belonging to user's pending review (not yet submitted)
-		if pending_review_id and c.pull_request_review_id == pending_review_id then
-			goto continue
-		end
 		local path = c.path
 		local line = c.line or c.original_line
 		if path and line then
@@ -23,7 +48,6 @@ function M.build_comment_map(comments, pending_review_id)
 			end
 			table.insert(map[path][line], c)
 		end
-		::continue::
 	end
 	return map
 end
@@ -251,14 +275,24 @@ end
 --- @param comment_map table<string, table<number, table[]>>
 --- @param repo_root string
 --- @param format_date_fn fun(s: string): string
+--- @param pending_review_id number|nil pending review ID for labeling
 --- @return table[] entries sorted by last_ts descending
-function M.build_comment_entries(comment_map, repo_root, format_date_fn)
+function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending_review_id)
 	local entries = {}
 	for path, file_lines in pairs(comment_map) do
 		for line_key, comments in pairs(file_lines) do
 			local line = math.floor(tonumber(line_key) or 1)
 			local first = comments[1]
 			local last = comments[#comments]
+			local is_pending = false
+			if pending_review_id then
+				for _, c in ipairs(comments) do
+					if c.pull_request_review_id == pending_review_id then
+						is_pending = true
+						break
+					end
+				end
+			end
 			local author = first.user and first.user.login or "unknown"
 			local last_ts = last.created_at or ""
 			local last_date = format_date_fn(last_ts)
@@ -266,7 +300,8 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn)
 			if #body_preview > 60 then
 				body_preview = body_preview:sub(1, 57) .. "..."
 			end
-			local detail = string.format("%s:%d  @%s  %s", path, line, author, body_preview)
+			local label = is_pending and "[pending]" or ("@" .. author)
+			local detail = string.format("%s:%d  %s  %s", path, line, label, body_preview)
 			table.insert(entries, {
 				value = detail,
 				ordinal = string.format("%s:%d %s", path, line, first.body or ""),
@@ -276,6 +311,7 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn)
 				last_date = last_date,
 				detail = detail,
 				comments = comments,
+				is_pending = is_pending or false,
 			})
 		end
 	end

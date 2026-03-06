@@ -59,7 +59,7 @@ function M.list_comments()
 		})
 	end
 
-	local entries = data.build_comment_entries(state.comment_map, repo_root, config.format_date)
+	local entries = data.build_comment_entries(state.comment_map, repo_root, config.format_date, state.pending_review_id)
 	for _, entry in ipairs(entries) do
 		entry.display = make_display
 	end

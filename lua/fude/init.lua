@@ -97,8 +97,7 @@ function M.start()
 		end
 
 		local comments_mod = require("fude.comments")
-		comments_mod.fetch_comments()
-		comments_mod.fetch_pending_review()
+		comments_mod.load_comments()
 
 		state.augroup = vim.api.nvim_create_augroup("Fude", { clear = true })
 
