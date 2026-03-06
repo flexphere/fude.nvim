@@ -570,11 +570,12 @@ function M.calculate_comment_browser_layout(columns, screen_lines, pct_w, pct_h,
 	-- Re-clamp left if right was clamped up
 	left_width = inner - right_width
 
-	-- Vertical split of right side
-	local lower_height = math.max(math.floor(total_height * lower_pct / 100), min_lower)
-	local upper_height = math.max(total_height - lower_height, min_upper)
+	-- Vertical split of right side (3 row gap between upper and lower)
+	local right_inner = total_height - 3 -- subtract gap between upper/lower
+	local lower_height = math.max(math.floor(right_inner * lower_pct / 100), min_lower)
+	local upper_height = math.max(right_inner - lower_height, min_upper)
 	-- Re-clamp lower if upper was clamped up
-	lower_height = total_height - upper_height
+	lower_height = right_inner - upper_height
 
 	local right_col = start_col + left_width + 2
 
@@ -584,7 +585,7 @@ function M.calculate_comment_browser_layout(columns, screen_lines, pct_w, pct_h,
 		right_lower = {
 			width = right_width,
 			height = lower_height,
-			row = top_row + upper_height,
+			row = top_row + upper_height + 3, -- gap between upper and lower panes
 			col = right_col,
 		},
 	}
@@ -605,7 +606,7 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn)
 		local text
 		if entry.type == "issue" then
 			local date = format_date_fn(entry.last_ts)
-			text = string.format("%s  PR Comment  @%s", date, entry.author)
+			text = string.format("%s  PR Comment", date)
 			-- Highlight "PR Comment" label
 			local pr_start = #date + 2
 			local pr_end = pr_start + #"PR Comment"

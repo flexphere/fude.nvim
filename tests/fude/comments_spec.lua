@@ -774,17 +774,19 @@ describe("build_comment_browser_entries", function()
 		assert.is_false(entries[1].is_pending)
 	end)
 
-	it("builds issue entries from issue_comments", function()
+	it("builds single issue entry from issue_comments with latest timestamp", function()
 		local issue_comments = {
-			{ id = 100, body = "looks good", user = { login = "bob" }, created_at = "2024-01-02T00:00:00Z" },
+			{ id = 100, body = "first", user = { login = "bob" }, created_at = "2024-01-01T00:00:00Z" },
+			{ id = 101, body = "second", user = { login = "alice" }, created_at = "2024-01-03T00:00:00Z" },
 		}
 		local entries = data.build_comment_browser_entries({}, issue_comments, "/repo", id_fn, nil, nil)
 		assert.are.equal(1, #entries)
 		assert.are.equal("issue", entries[1].type)
 		assert.is_nil(entries[1].path)
 		assert.is_nil(entries[1].filename)
-		assert.are.equal("bob", entries[1].author)
-		assert.are.equal(100, entries[1].comment_id)
+		assert.is_nil(entries[1].author)
+		assert.are.equal("2024-01-03T00:00:00Z", entries[1].last_ts)
+		assert.are.equal(2, #entries[1].comments)
 	end)
 
 	it("merges and sorts by timestamp descending", function()

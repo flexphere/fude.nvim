@@ -1350,14 +1350,14 @@ describe("calculate_comment_browser_layout", function()
 		assert.are.equal(layout.right_upper.col, layout.right_lower.col)
 	end)
 
-	it("right_lower.row = right_upper.row + right_upper.height", function()
+	it("right_lower.row = right_upper.row + right_upper.height + 3 (gap)", function()
 		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
-		assert.are.equal(layout.right_upper.row + layout.right_upper.height, layout.right_lower.row)
+		assert.are.equal(layout.right_upper.row + layout.right_upper.height + 3, layout.right_lower.row)
 	end)
 
-	it("upper + lower height equals total height", function()
+	it("upper + lower height + 3 gap rows equals total height", function()
 		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
-		assert.are.equal(layout.left.height, layout.right_upper.height + layout.right_lower.height)
+		assert.are.equal(layout.left.height, layout.right_upper.height + layout.right_lower.height + 3)
 	end)
 
 	it("left + right widths + 4 border chars fits in total", function()
@@ -1411,13 +1411,13 @@ describe("format_comment_browser_list", function()
 		assert.is_truthy(result.lines[1]:find("src/a.lua:10"))
 	end)
 
-	it("formats issue entry with PR Comment label", function()
+	it("formats issue entry with PR Comment label and no author", function()
 		local entries = {
-			{ type = "issue", last_ts = "2024-01-01", author = "bob", is_pending = false },
+			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
 		}
 		local result = ui.format_comment_browser_list(entries, 120, id_fn)
 		assert.is_truthy(result.lines[1]:find("PR Comment"))
-		assert.is_truthy(result.lines[1]:find("@bob"))
+		assert.is_falsy(result.lines[1]:find("@"))
 	end)
 
 	it("formats pending entry with [pending] label", function()
@@ -1446,7 +1446,7 @@ describe("format_comment_browser_list", function()
 
 	it("includes highlight ranges for PR Comment", function()
 		local entries = {
-			{ type = "issue", last_ts = "2024-01-01", author = "bob", is_pending = false },
+			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
 		}
 		local result = ui.format_comment_browser_list(entries, 120, id_fn)
 		assert.is_true(#result.hl_ranges > 0)

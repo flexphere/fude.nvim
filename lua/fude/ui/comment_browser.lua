@@ -76,17 +76,24 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 		end
 	end
 
-	-- Update lower pane title based on entry type
-	if vim.api.nvim_win_is_valid(browser.lower_win) then
-		local title = entry.type == "issue" and " New PR Comment " or " Reply "
-		pcall(vim.api.nvim_win_set_config, browser.lower_win, { title = title, title_pos = "center" })
+	-- Set lower pane mode and title based on entry type
+	if entry.type == "issue" then
+		browser.mode = "new_pr_comment"
+		if vim.api.nvim_win_is_valid(browser.lower_win) then
+			pcall(vim.api.nvim_win_set_config, browser.lower_win, { title = " New PR Comment ", title_pos = "center" })
+		end
+	else
+		browser.mode = "reply"
+		if vim.api.nvim_win_is_valid(browser.lower_win) then
+			pcall(vim.api.nvim_win_set_config, browser.lower_win, { title = " Reply ", title_pos = "center" })
+		end
 	end
 
-	-- Clear lower buffer and reset mode
+	-- Clear lower buffer and reset edit target
 	if vim.api.nvim_buf_is_valid(browser.lower_buf) then
 		vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, { "" })
 	end
-	browser.mode = "idle"
+	browser.edit_target = nil
 end
 
 --- Create the 3-pane browser windows.
@@ -136,8 +143,6 @@ local function create_browser(entries, issue_comments)
 
 	-- Border definitions
 	local border = config.opts.float.border or "single"
-	local upper_border = { "╭", "─", "╮", "│", "", "", "", "│" }
-	local lower_border = { "├", "─", "┤", "│", "╯", "─", "╰", "│" }
 
 	-- Open left window (focused)
 	local left_win = vim.api.nvim_open_win(left_buf, true, {
@@ -148,9 +153,9 @@ local function create_browser(entries, issue_comments)
 		height = layout.left.height,
 		style = "minimal",
 		border = border,
-		title = string.format(" Comments (%d) ", #entries),
+		title = string.format(" Threads (%d) ", #entries),
 		title_pos = "center",
-		footer = " r reply | e edit | d delete | C new | R refresh | q close ",
+		footer = " <CR> jump | R refresh | <Tab> switch | q close ",
 		footer_pos = "center",
 	})
 	vim.wo[left_win].cursorline = true
@@ -163,9 +168,11 @@ local function create_browser(entries, issue_comments)
 		width = layout.right_upper.width,
 		height = layout.right_upper.height,
 		style = "minimal",
-		border = upper_border,
-		title = " Thread ",
+		border = border,
+		title = " Comments ",
 		title_pos = "center",
+		footer = " e edit | d delete | <Tab> switch | q close ",
+		footer_pos = "center",
 	})
 	vim.wo[upper_win].wrap = true
 	vim.wo[upper_win].cursorline = false
@@ -178,7 +185,7 @@ local function create_browser(entries, issue_comments)
 		width = layout.right_lower.width,
 		height = layout.right_lower.height,
 		style = "minimal",
-		border = lower_border,
+		border = border,
 		title = " Reply ",
 		title_pos = "center",
 		footer = " <CR> submit | q cancel | <Tab> switch | <C-u/d> scroll ",
@@ -207,7 +214,7 @@ local function create_browser(entries, issue_comments)
 		issue_comments = issue_comments,
 		current_entry_idx = 0,
 		closing = false,
-		mode = "idle", -- "idle" | "reply" | "edit" | "new_pr_comment"
+		mode = "reply", -- "reply" | "edit" | "new_pr_comment"
 		augroup = nil,
 	}
 	state.comment_browser = browser
@@ -247,8 +254,6 @@ local function create_browser(entries, issue_comments)
 				return
 			end
 			browser.current_entry_idx = cursor_line
-			-- Reset mode when changing entry
-			browser.mode = "idle"
 			update_right_panes(browser, entries[cursor_line], state.comments or {}, issue_comments)
 		end,
 	})
@@ -324,7 +329,7 @@ local function create_browser(entries, issue_comments)
 			-- Update title
 			if vim.api.nvim_win_is_valid(left_win) then
 				pcall(vim.api.nvim_win_set_config, left_win, {
-					title = string.format(" Comments (%d) ", #new_entries),
+					title = string.format(" Threads (%d) ", #new_entries),
 					title_pos = "center",
 				})
 			end
@@ -433,8 +438,20 @@ local function create_browser(entries, issue_comments)
 		if vim.api.nvim_buf_is_valid(lower_buf) then
 			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
 		end
-		browser.mode = "idle"
 		browser.edit_target = nil
+
+		-- Restore default mode based on current entry
+		if entry.type == "issue" then
+			browser.mode = "new_pr_comment"
+			if vim.api.nvim_win_is_valid(lower_win) then
+				pcall(vim.api.nvim_win_set_config, lower_win, { title = " New PR Comment ", title_pos = "center" })
+			end
+		else
+			browser.mode = "reply"
+			if vim.api.nvim_win_is_valid(lower_win) then
+				pcall(vim.api.nvim_win_set_config, lower_win, { title = " Reply ", title_pos = "center" })
+			end
+		end
 
 		-- Return focus to left pane
 		if vim.api.nvim_win_is_valid(left_win) then
@@ -442,13 +459,25 @@ local function create_browser(entries, issue_comments)
 		end
 	end
 
-	-- Cancel: clear lower buf and return to left pane
+	-- Cancel: clear lower buf, restore default mode, and return to left pane
 	local function cancel_lower()
 		if vim.api.nvim_buf_is_valid(lower_buf) then
 			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
 		end
-		browser.mode = "idle"
 		browser.edit_target = nil
+		-- Restore default mode based on current entry
+		local entry = current_entry()
+		if entry and entry.type == "issue" then
+			browser.mode = "new_pr_comment"
+			if vim.api.nvim_win_is_valid(lower_win) then
+				pcall(vim.api.nvim_win_set_config, lower_win, { title = " New PR Comment ", title_pos = "center" })
+			end
+		else
+			browser.mode = "reply"
+			if vim.api.nvim_win_is_valid(lower_win) then
+				pcall(vim.api.nvim_win_set_config, lower_win, { title = " Reply ", title_pos = "center" })
+			end
+		end
 		if vim.api.nvim_win_is_valid(left_win) then
 			vim.api.nvim_set_current_win(left_win)
 		end
@@ -473,73 +502,62 @@ local function create_browser(entries, issue_comments)
 		end
 	end, { buffer = left_buf, desc = "Jump to file" })
 
-	vim.keymap.set("n", "r", function()
-		local entry = current_entry()
-		if not entry then
-			return
+	vim.keymap.set("n", "R", function()
+		refresh()
+	end, { buffer = left_buf, desc = "Refresh" })
+
+	vim.keymap.set("n", "<Tab>", function()
+		if vim.api.nvim_win_is_valid(upper_win) then
+			vim.api.nvim_set_current_win(upper_win)
 		end
-		if entry.type == "issue" then
-			vim.notify("fude.nvim: Use 'C' to add a new PR comment", vim.log.levels.INFO)
-			return
-		end
-		if state.pending_review_id then
-			vim.notify(
-				"fude.nvim: Cannot reply while pending review exists. Run :FudeReviewSubmit first.",
-				vim.log.levels.WARN
-			)
-			return
-		end
-		browser.mode = "reply"
-		if vim.api.nvim_buf_is_valid(lower_buf) then
-			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
-		end
+	end, { buffer = left_buf, desc = "Go to thread pane" })
+
+	-- === UPPER PANE KEYMAPS ===
+
+	vim.keymap.set("n", "q", close_browser, { buffer = upper_buf, desc = "Close" })
+
+	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(lower_win) then
-			pcall(vim.api.nvim_win_set_config, lower_win, { title = " Reply ", title_pos = "center" })
 			vim.api.nvim_set_current_win(lower_win)
 		end
-		vim.cmd("startinsert")
-	end, { buffer = left_buf, desc = "Reply to comment" })
+	end, { buffer = upper_buf, desc = "Go to input pane" })
+
+	vim.keymap.set("n", "<S-Tab>", function()
+		if vim.api.nvim_win_is_valid(left_win) then
+			vim.api.nvim_set_current_win(left_win)
+		end
+	end, { buffer = upper_buf, desc = "Go to list pane" })
 
 	vim.keymap.set("n", "e", function()
 		local entry = current_entry()
 		if not entry then
 			return
 		end
-		if not entry.is_own then
-			vim.notify("fude.nvim: Cannot edit another user's comment", vim.log.levels.WARN)
+
+		-- Find the target comment (last own comment in the thread)
+		local target_comment
+		for i = #entry.comments, 1, -1 do
+			local c = entry.comments[i]
+			if c.user and c.user.login == state.github_user then
+				target_comment = c
+				break
+			end
+		end
+		if not target_comment then
+			vim.notify("fude.nvim: No editable comment found", vim.log.levels.WARN)
 			return
 		end
 
 		-- For review comments, block edit of submitted if pending review exists
 		if entry.type == "review" then
 			local comments_mod = get_comments()
-			local target = entry.comments[#entry.comments]
-			if not comments_mod.is_pending_comment(target) and state.pending_review_id then
+			if not comments_mod.is_pending_comment(target_comment) and state.pending_review_id then
 				vim.notify(
 					"fude.nvim: Cannot edit submitted comment while pending review exists. Run :FudeReviewSubmit first.",
 					vim.log.levels.WARN
 				)
 				return
 			end
-		end
-
-		-- Find the target comment (last one in the thread for review, the comment for issue)
-		local target_comment
-		if entry.type == "issue" then
-			target_comment = entry.comments[1]
-		else
-			-- Edit the last own comment in the thread
-			for i = #entry.comments, 1, -1 do
-				local c = entry.comments[i]
-				if c.user and c.user.login == state.github_user then
-					target_comment = c
-					break
-				end
-			end
-		end
-		if not target_comment then
-			vim.notify("fude.nvim: No editable comment found", vim.log.levels.WARN)
-			return
 		end
 
 		browser.mode = "edit"
@@ -552,28 +570,20 @@ local function create_browser(entries, issue_comments)
 			pcall(vim.api.nvim_win_set_config, lower_win, { title = " Edit Comment ", title_pos = "center" })
 			vim.api.nvim_set_current_win(lower_win)
 		end
-	end, { buffer = left_buf, desc = "Edit comment" })
+	end, { buffer = upper_buf, desc = "Edit comment" })
 
 	vim.keymap.set("n", "d", function()
 		local entry = current_entry()
 		if not entry then
 			return
 		end
-		if not entry.is_own then
-			vim.notify("fude.nvim: Cannot delete another user's comment", vim.log.levels.WARN)
-			return
-		end
-
+		-- Find the target comment (last own comment in the thread)
 		local target_comment
-		if entry.type == "issue" then
-			target_comment = entry.comments[1]
-		else
-			for i = #entry.comments, 1, -1 do
-				local c = entry.comments[i]
-				if c.user and c.user.login == state.github_user then
-					target_comment = c
-					break
-				end
+		for i = #entry.comments, 1, -1 do
+			local c = entry.comments[i]
+			if c.user and c.user.login == state.github_user then
+				target_comment = c
+				break
 			end
 		end
 		if not target_comment then
@@ -608,7 +618,6 @@ local function create_browser(entries, issue_comments)
 					refresh()
 				end)
 			else
-				-- Delegate to existing comments.delete_comment logic (handles pending vs submitted)
 				local comments_mod = get_comments()
 				if comments_mod.is_pending_comment(target_comment) then
 					local pending_key = comments_mod.find_pending_key(target_comment.id)
@@ -638,45 +647,7 @@ local function create_browser(entries, issue_comments)
 				end
 			end
 		end)
-	end, { buffer = left_buf, desc = "Delete comment" })
-
-	vim.keymap.set("n", "C", function()
-		browser.mode = "new_pr_comment"
-		if vim.api.nvim_buf_is_valid(lower_buf) then
-			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
-		end
-		if vim.api.nvim_win_is_valid(lower_win) then
-			pcall(vim.api.nvim_win_set_config, lower_win, { title = " New PR Comment ", title_pos = "center" })
-			vim.api.nvim_set_current_win(lower_win)
-		end
-		vim.cmd("startinsert")
-	end, { buffer = left_buf, desc = "New PR comment" })
-
-	vim.keymap.set("n", "R", function()
-		refresh()
-	end, { buffer = left_buf, desc = "Refresh" })
-
-	vim.keymap.set("n", "<Tab>", function()
-		if vim.api.nvim_win_is_valid(upper_win) then
-			vim.api.nvim_set_current_win(upper_win)
-		end
-	end, { buffer = left_buf, desc = "Go to thread pane" })
-
-	-- === UPPER PANE KEYMAPS ===
-
-	vim.keymap.set("n", "q", close_browser, { buffer = upper_buf, desc = "Close" })
-
-	vim.keymap.set("n", "<Tab>", function()
-		if vim.api.nvim_win_is_valid(lower_win) then
-			vim.api.nvim_set_current_win(lower_win)
-		end
-	end, { buffer = upper_buf, desc = "Go to input pane" })
-
-	vim.keymap.set("n", "<S-Tab>", function()
-		if vim.api.nvim_win_is_valid(left_win) then
-			vim.api.nvim_set_current_win(left_win)
-		end
-	end, { buffer = upper_buf, desc = "Go to list pane" })
+	end, { buffer = upper_buf, desc = "Delete comment" })
 
 	-- === LOWER PANE KEYMAPS ===
 

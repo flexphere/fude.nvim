@@ -385,24 +385,27 @@ function M.build_comment_browser_entries(
 		end
 	end
 
-	-- Issue comment entries (PR-level comments)
-	for _, comment in ipairs(issue_comments or {}) do
-		local author = comment.user and comment.user.login or "unknown"
-		local ts = comment.created_at or ""
-		local is_own = github_user ~= nil and author == github_user
+	-- Issue comment entry (PR-level comments as single entry)
+	if issue_comments and #issue_comments > 0 then
+		local latest_ts = ""
+		for _, comment in ipairs(issue_comments) do
+			local ts = comment.created_at or ""
+			if ts > latest_ts then
+				latest_ts = ts
+			end
+		end
 		table.insert(entries, {
 			type = "issue",
 			path = nil,
 			line = nil,
 			filename = nil,
 			lnum = nil,
-			author = author,
-			last_ts = ts,
-			last_date = format_date_fn(ts),
-			comments = { comment },
+			author = nil,
+			last_ts = latest_ts,
+			last_date = format_date_fn(latest_ts),
+			comments = issue_comments,
 			is_pending = false,
-			is_own = is_own,
-			comment_id = comment.id,
+			is_own = false,
 		})
 	end
 
