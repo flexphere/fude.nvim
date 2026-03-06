@@ -138,6 +138,9 @@ function M.load_comments()
 
 		if pending_review then
 			state.pending_review_id = pending_review.id
+		else
+			state.pending_review_id = nil
+			state.pending_comments = {}
 		end
 
 		fetch_comments()
