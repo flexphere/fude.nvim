@@ -216,6 +216,7 @@ end
 function M.edit_comment(comment_id)
 	local state = config.state
 	if not state.active or not state.pr_number then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
@@ -299,6 +300,7 @@ end
 function M.delete_comment(comment_id)
 	local state = config.state
 	if not state.active or not state.pr_number then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 
