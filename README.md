@@ -107,7 +107,6 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewScopePrev` | Move to previous review scope |
 | `:FudeReviewOverview` | Show PR overview and issue-level comments |
 | `:FudeReviewListComments` | List all PR review comments (Telescope) |
-| `:FudeReviewListDrafts` | List all local draft comments (Telescope) |
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
 | `:FudeReviewViewed` | Mark current file as viewed on GitHub |
 | `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
@@ -129,8 +128,6 @@ require("fude").setup({
     comment_hl = "DiagnosticInfo",
     pending = "⏳ pending",
     pending_hl = "DiagnosticHint",
-    draft = "✎ draft comment",
-    draft_hl = "DiagnosticWarn",
     viewed = "✓",
     viewed_hl = "DiagnosticOk",
   },

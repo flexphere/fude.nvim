@@ -33,7 +33,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 - **`comments.lua`** — Facade module re-exporting `comments/data.lua`, `comments/sync.lua`, and `comments/pickers.lua`. Contains comment navigation (`next_comment`/`prev_comment`), creation (`create_comment`/`suggest_change`), viewing (`view_comments`), and reply (`reply_to_comment`). `require("fude.comments")` is the public interface.
   - **`comments/data.lua`** — Pure data functions with no state or side effects: `build_comment_map`, `find_next_comment_line`, `find_prev_comment_line`, `find_comment_by_id`, `get_comment_thread`, `parse_draft_key`, `build_submit_request`, `format_submit_result`, `build_review_comments`, `build_pending_comments_from_review`, `build_review_comment_object`, `pending_comments_to_array`, `get_comment_line_range`, `get_reply_target_id`, `get_comments_at`, `get_comment_lines`, `build_comment_entries`, `build_draft_entries`.
   - **`comments/sync.lua`** — GitHub API sync/submit operations: `fetch_comments`, `fetch_pending_review`, `sync_pending_review`, `submit_as_review`, `submit_drafts`, `reply_to_comment`. Uses lazy `require("fude.ui")` to avoid circular dependencies.
-  - **`comments/pickers.lua`** — Telescope integration: `list_comments` (PR review comments picker), `list_drafts` (draft comments picker with delete/submit/review keymaps). Uses lazy requires for `fude.ui` and `fude.comments` to avoid circular dependencies.
+  - **`comments/pickers.lua`** — Telescope integration: `list_comments` (PR review comments picker). Uses lazy requires for `fude.ui` and `fude.comments` to avoid circular dependencies.
 - **`ui.lua`** — Facade module re-exporting `ui/format.lua` and `ui/extmarks.lua`. Contains floating window UI: comment input editor, comment viewer, PR overview window, reply window, and review event selector. `require("fude.ui")` is the public interface.
   - **`ui/format.lua`** — Pure format/calculation functions with no state or vim API side effects: `calculate_float_dimensions`, `format_comments_for_display`, `normalize_check`, `format_check_status`, `deduplicate_checks`, `sort_checks`, `build_checks_summary`, `format_review_status`, `build_reviewers_list`, `build_reviewers_summary`, `calculate_overview_layout`, `calculate_comments_height`, `calculate_reply_window_dimensions`, `format_reply_comments_for_display`, `build_overview_left_lines`, `build_overview_right_lines`.
   - **`ui/extmarks.lua`** — Extmark management: `flash_line`, `highlight_comment_lines`, `clear_comment_line_highlight`, `refresh_extmarks`, `clear_extmarks`, `clear_all_extmarks`. Uses lazy `require("fude.comments")` to avoid circular dependencies.
@@ -64,7 +64,6 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `changed_files` | init, scope | files, scope |
 | `comments` | comments/sync | comments, comments/sync, ui/extmarks |
 | `comment_map` | comments/sync | comments, comments/sync, ui/extmarks |
-| `drafts` | comments, comments/sync, overview | comments, comments/pickers, comments/sync, ui/extmarks, overview |
 | `pending_comments` | comments, comments/sync | comments, comments/sync, ui/extmarks |
 | `pending_review_id` | comments/sync | comments, comments/sync |
 | `pr_node_id` | init | init, files |
