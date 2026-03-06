@@ -3,28 +3,24 @@ local config = require("fude.config")
 local gh = require("fude.gh")
 local data = require("fude.comments.data")
 
---- Submit drafts as a single review.
+--- Submit pending review or create a new review with event and body.
 --- If pending_comments exist (already on GitHub), submits the existing pending review.
---- Otherwise, creates a new review with local drafts.
+--- Otherwise, creates a new review with just event and body (for APPROVE/REQUEST_CHANGES).
 --- @param event string "COMMENT", "APPROVE", or "REQUEST_CHANGES"
 --- @param body string|nil review body (optional)
---- @param callback fun(err: string|nil, excluded_count: number)
+--- @param callback fun(err: string|nil)
 function M.submit_as_review(event, body, callback)
 	local state = config.state
 	if not state.active or not state.pr_number then
-		callback("Not active", 0)
+		callback("Not active")
 		return
 	end
-
-	-- Count excluded drafts (replies and issue_comments cannot be submitted as review)
-	local result = data.build_review_comments(state.drafts)
-	local excluded_count = vim.tbl_count(result.excluded)
 
 	-- If we have a pending review on GitHub, submit it
 	if state.pending_review_id and vim.tbl_count(state.pending_comments) > 0 then
 		gh.submit_review(state.pr_number, state.pending_review_id, event, body, function(err, _)
 			if err then
-				callback(err, excluded_count)
+				callback(err)
 				return
 			end
 
@@ -32,111 +28,38 @@ function M.submit_as_review(event, body, callback)
 			state.pending_review_id = nil
 			state.pending_comments = {}
 
-			-- Also clear local drafts that were comment type
-			for key, _ in pairs(state.drafts) do
-				local parsed = data.parse_draft_key(key)
-				if parsed and parsed.type == "comment" then
-					state.drafts[key] = nil
-				end
-			end
-
 			vim.schedule(function()
 				require("fude.ui").refresh_extmarks()
 			end)
 			M.fetch_comments()
 
-			callback(nil, excluded_count)
+			callback(nil)
 		end)
 		return
 	end
 
-	-- No pending review on GitHub, check local drafts
+	-- No pending review on GitHub, create a new review (for APPROVE/REQUEST_CHANGES with body)
 	local sha, sha_err = gh.get_head_sha()
 	if not sha then
-		callback(sha_err or "Failed to get HEAD SHA", 0)
+		callback(sha_err or "Failed to get HEAD SHA")
 		return
 	end
 
-	if #result.comments == 0 and (not body or body == "") then
-		callback("No comments to submit", excluded_count)
+	if not body or body == "" then
+		callback("No pending review to submit")
 		return
 	end
 
-	gh.create_review(state.pr_number, sha, body, event, result.comments, function(err, _)
+	gh.create_review(state.pr_number, sha, body, event, {}, function(err, _)
 		if err then
-			callback(err, excluded_count)
+			callback(err)
 			return
 		end
 
-		-- Clear submitted drafts (only "comment" type)
-		for key, _ in pairs(state.drafts) do
-			local parsed = data.parse_draft_key(key)
-			if parsed and parsed.type == "comment" then
-				state.drafts[key] = nil
-			end
-		end
-
-		vim.schedule(function()
-			require("fude.ui").refresh_extmarks()
-		end)
 		M.fetch_comments()
 
-		callback(nil, excluded_count)
+		callback(nil)
 	end)
-end
-
---- Submit multiple draft comments sequentially.
---- @param draft_entries table[] { draft_key, draft_lines, parsed }
---- @param callback fun(succeeded: number, failed: number)
-function M.submit_drafts(draft_entries, callback)
-	local sha, sha_err = gh.get_head_sha()
-	if not sha then
-		vim.notify("fude.nvim: " .. (sha_err or "Failed to get HEAD SHA"), vim.log.levels.ERROR)
-		callback(0, #draft_entries)
-		return
-	end
-
-	local state = config.state
-	local idx = 0
-	local succeeded, failed = 0, 0
-
-	local function submit_next()
-		idx = idx + 1
-		if idx > #draft_entries then
-			callback(succeeded, failed)
-			return
-		end
-		local entry = draft_entries[idx]
-		local entry_body = table.concat(entry.draft_lines, "\n")
-		local req = data.build_submit_request(entry.parsed, entry_body, state.pr_number, sha)
-
-		local api_fn
-		if req.type == "issue_comment" then
-			api_fn = gh.create_issue_comment
-		elseif req.type == "reply" then
-			api_fn = gh.reply_to_comment
-		elseif req.type == "comment_range" then
-			api_fn = gh.create_comment_range
-		else
-			api_fn = gh.create_comment
-		end
-
-		local args = vim.list_extend({}, req.args)
-		args[#args + 1] = function(err)
-			vim.schedule(function()
-				if err then
-					failed = failed + 1
-				else
-					succeeded = succeeded + 1
-					state.drafts[entry.draft_key] = nil
-				end
-				submit_next()
-			end)
-		end
-		api_fn(unpack(args))
-	end
-
-	submit_next()
 end
 
 --- Fetch all PR review comments and build the lookup map.

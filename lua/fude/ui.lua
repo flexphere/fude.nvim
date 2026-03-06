@@ -128,14 +128,12 @@ end
 
 --- Open a floating window to compose a comment.
 --- @param callback fun(body: string|nil) called with comment body or nil if cancelled
---- @param opts table|nil optional settings: initial_lines, title, footer, cursor_pos, submit_on_enter, on_save
+--- @param opts table|nil optional settings: initial_lines, title, footer, cursor_pos
 function M.open_comment_input(callback, opts)
 	opts = opts or {}
-	local submit_on_enter = opts.submit_on_enter or false
 	local initial_lines = opts.initial_lines or { "" }
 	local title = opts.title or " Review Comment "
-	local default_footer = submit_on_enter and " <CR> submit | q save draft " or " <CR> save draft | q cancel "
-	local footer = opts.footer or default_footer
+	local footer = opts.footer or " <CR> save | q cancel "
 
 	local buf = vim.api.nvim_create_buf(false, true)
 
@@ -178,32 +176,17 @@ function M.open_comment_input(callback, opts)
 		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 		local body = vim.trim(table.concat(lines, "\n"))
 		vim.api.nvim_win_close(win, true)
-		if not submit_on_enter then
-			-- Draft mode: save draft via on_save callback
-			if opts.on_save and body ~= "" then
-				opts.on_save(lines)
-			end
-		end
 		if callback then
 			callback(body ~= "" and body or nil)
 		end
-	end, { buffer = buf, desc = submit_on_enter and "Submit" or "Save draft" })
+	end, { buffer = buf, desc = "Save" })
 
 	vim.keymap.set("n", "q", function()
-		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-		local body = vim.trim(table.concat(lines, "\n"))
 		vim.api.nvim_win_close(win, true)
-		if submit_on_enter then
-			-- Submit mode: save draft on cancel
-			if opts.on_save and body ~= "" then
-				opts.on_save(lines)
-			end
-		end
-		-- In draft mode (default), q cancels without saving
 		if callback then
 			callback(nil)
 		end
-	end, { buffer = buf, desc = submit_on_enter and "Save draft" or "Cancel" })
+	end, { buffer = buf, desc = "Cancel" })
 end
 
 --- Show comments in a floating window.
@@ -522,7 +505,7 @@ end
 --- Open a two-pane reply window (existing comments above, input below).
 --- @param comments table[] list of comment objects
 --- @param opts table { on_submit: fun(body: string), filetype?: string,
----   width?: number, on_cancel?: fun(lines: string[]) }
+---   width?: number }
 function M.open_reply_window(comments, opts)
 	opts = opts or {}
 	local state = config.state
@@ -595,7 +578,7 @@ function M.open_reply_window(comments, opts)
 		border = lower_border,
 		title = " Reply ",
 		title_pos = "center",
-		footer = " <CR> submit | q save draft | <Tab> switch | <C-u/d> scroll ",
+		footer = " <CR> submit | q cancel | <Tab> switch | <C-u/d> scroll ",
 		footer_pos = "center",
 	})
 
@@ -637,12 +620,7 @@ function M.open_reply_window(comments, opts)
 
 	-- Cancel handler
 	local function cancel()
-		local lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)
-		local body = vim.trim(table.concat(lines, "\n"))
 		close_all()
-		if opts.on_cancel and body ~= "" then
-			opts.on_cancel(lines)
-		end
 	end
 
 	-- Helper to scroll upper window from lower
@@ -659,8 +637,8 @@ function M.open_reply_window(comments, opts)
 
 	-- Lower window keymaps
 	vim.keymap.set("n", "<CR>", submit, { buffer = lower_buf, desc = "Submit reply" })
-	vim.keymap.set("n", "q", cancel, { buffer = lower_buf, desc = "Save draft" })
-	vim.keymap.set("n", "<Esc>", cancel, { buffer = lower_buf, desc = "Save draft" })
+	vim.keymap.set("n", "q", cancel, { buffer = lower_buf, desc = "Cancel" })
+	vim.keymap.set("n", "<Esc>", cancel, { buffer = lower_buf, desc = "Cancel" })
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(upper_win) then
 			vim.api.nvim_set_current_win(upper_win)
@@ -680,8 +658,8 @@ function M.open_reply_window(comments, opts)
 	)
 
 	-- Upper window keymaps
-	vim.keymap.set("n", "q", cancel, { buffer = upper_buf, desc = "Save draft" })
-	vim.keymap.set("n", "<Esc>", cancel, { buffer = upper_buf, desc = "Save draft" })
+	vim.keymap.set("n", "q", cancel, { buffer = upper_buf, desc = "Cancel" })
+	vim.keymap.set("n", "<Esc>", cancel, { buffer = upper_buf, desc = "Cancel" })
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(lower_win) then
 			vim.api.nvim_set_current_win(lower_win)

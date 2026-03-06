@@ -13,9 +13,6 @@ M.find_prev_comment_line = data.find_prev_comment_line
 M.find_comment_by_id = data.find_comment_by_id
 M.get_comment_thread = data.get_comment_thread
 M.parse_draft_key = data.parse_draft_key
-M.build_submit_request = data.build_submit_request
-M.format_submit_result = data.format_submit_result
-M.build_review_comments = data.build_review_comments
 M.build_pending_comments_from_review = data.build_pending_comments_from_review
 M.build_review_comment_object = data.build_review_comment_object
 M.pending_comments_to_array = data.pending_comments_to_array
@@ -24,7 +21,6 @@ M.get_reply_target_id = data.get_reply_target_id
 
 -- Re-export sync functions (facade)
 M.submit_as_review = sync.submit_as_review
-M.submit_drafts = sync.submit_drafts
 M.fetch_comments = sync.fetch_comments
 M.fetch_pending_review = sync.fetch_pending_review
 M.sync_pending_review = sync.sync_pending_review
@@ -32,7 +28,6 @@ M.reply_to_comment_sync = sync.reply_to_comment
 
 -- Re-export picker functions (facade)
 M.list_comments = pickers.list_comments
-M.list_drafts = pickers.list_drafts
 
 --- Get comments at a specific file and line.
 --- @param rel_path string repo-relative file path
@@ -101,12 +96,6 @@ function M.create_comment(is_visual)
 		-- nil: q pressed, cancel without saving
 	end, {
 		initial_lines = initial_lines,
-		on_save = function(lines)
-			-- Save as local draft (fallback for q key in submit_on_enter mode)
-			state.drafts[pending_key] = lines
-			vim.notify("fude.nvim: Draft saved locally", vim.log.levels.INFO)
-			ui.refresh_extmarks()
-		end,
 	})
 end
 
@@ -178,12 +167,8 @@ function M.reply_to_comment(comment_id)
 	-- GitHub API doesn't allow replying to replies, find top-level comment
 	local reply_target_id = data.get_reply_target_id(comment_id, state.comment_map or {})
 
-	local draft_key = "reply:" .. reply_target_id
-
 	ui.open_reply_window(thread, {
 		on_submit = function(reply_body)
-			state.drafts[draft_key] = nil
-
 			sync.reply_to_comment(reply_target_id, reply_body, function(err)
 				if err then
 					vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
@@ -191,11 +176,6 @@ function M.reply_to_comment(comment_id)
 				end
 				vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
 			end)
-		end,
-		on_cancel = function(lines)
-			state.drafts[draft_key] = lines
-			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
-			ui.refresh_extmarks()
 		end,
 	})
 end
@@ -296,11 +276,6 @@ function M.suggest_change(is_visual)
 		initial_lines = initial_lines,
 		title = " Suggest Change ",
 		cursor_pos = cursor_pos,
-		on_save = function(lines)
-			state.drafts[pending_key] = lines
-			vim.notify("fude.nvim: Draft saved locally", vim.log.levels.INFO)
-			ui.refresh_extmarks()
-		end,
 	})
 end
 

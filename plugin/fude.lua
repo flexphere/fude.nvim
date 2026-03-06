@@ -55,10 +55,6 @@ vim.api.nvim_create_user_command("FudeReviewSuggest", function(opts)
 	require("fude.comments").suggest_change(opts.range > 0)
 end, { desc = "Suggest change on current line/selection", range = true })
 
-vim.api.nvim_create_user_command("FudeReviewListDrafts", function()
-	require("fude.comments").list_drafts()
-end, { desc = "List draft comments" })
-
 vim.api.nvim_create_user_command("FudeReviewViewed", function()
 	require("fude").mark_viewed()
 end, { desc = "Mark current file as viewed" })
@@ -95,21 +91,16 @@ vim.api.nvim_create_user_command("FudeReviewSubmit", function()
 		-- Step 2: Input review body (optional)
 		ui.open_comment_input(function(body)
 			-- Step 3: Submit review
-			comments.submit_as_review(event, body, function(err, excluded_count)
+			comments.submit_as_review(event, body, function(err)
 				if err then
 					vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 					return
 				end
-				local msg = "Review submitted"
-				if excluded_count > 0 then
-					msg = msg .. string.format(" (%d drafts excluded: replies/PR comments)", excluded_count)
-				end
-				vim.notify("fude.nvim: " .. msg, vim.log.levels.INFO)
+				vim.notify("fude.nvim: Review submitted", vim.log.levels.INFO)
 			end)
 		end, {
 			title = " Review Body (optional) ",
 			footer = " <CR> submit | q skip body ",
-			submit_on_enter = true,
 		})
 	end)
 end, { desc = "Submit drafts as review" })
