@@ -88,6 +88,7 @@ function M.show_telescope()
 	local action_state = require("telescope.actions.state")
 	local entry_display = require("telescope.pickers.entry_display")
 	local previewers = require("telescope.previewers")
+	local ui = require("fude.ui")
 
 	local repo_root = diff.get_repo_root()
 	if not repo_root then
@@ -143,14 +144,7 @@ function M.show_telescope()
 					return entry.path
 				end,
 				define_preview = function(self, entry)
-					-- Telescope defers win_set_buf via vim.schedule for new buffers,
-					-- causing a one-tick delay. Set it synchronously here to fix that.
-					if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
-						local save_ei = vim.o.eventignore
-						vim.o.eventignore = "all"
-						vim.api.nvim_win_set_buf(self.state.winid, self.state.bufnr)
-						vim.o.eventignore = save_ei
-					end
+					ui.sync_preview_buffer(self)
 
 					if entry.patch == "" then
 						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, { "(no diff)" })
