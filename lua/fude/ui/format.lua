@@ -541,4 +541,130 @@ function M.build_overview_right_lines(pr_info)
 	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls }
 end
 
+--- Calculate 3-pane layout for comment browser.
+--- @param columns number screen width
+--- @param screen_lines number screen height
+--- @param pct_w number total width percentage (0-100)
+--- @param pct_h number total height percentage (0-100)
+--- @param left_pct number left pane width as percentage of inner width (0-100), default 35
+--- @param lower_pct number right-lower height as percentage of right height (0-100), default 25
+--- @return table { left, right_upper, right_lower: { width, height, row, col } }
+function M.calculate_comment_browser_layout(columns, screen_lines, pct_w, pct_h, left_pct, lower_pct)
+	left_pct = left_pct or 35
+	lower_pct = lower_pct or 25
+
+	local min_left = 20
+	local min_right = 25
+	local min_upper = 5
+	local min_lower = 5
+
+	local total_width = math.max(math.floor(columns * pct_w / 100), min_left + min_right + 4)
+	local total_height = math.max(math.floor(screen_lines * pct_h / 100), min_upper + min_lower)
+	local top_row = math.floor((screen_lines - total_height) / 2)
+	local start_col = math.floor((columns - total_width) / 2)
+
+	-- 2 windows horizontally = 4 border chars total (left+right per window)
+	local inner = total_width - 4
+	local left_width = math.max(math.floor(inner * left_pct / 100), min_left)
+	local right_width = math.max(inner - left_width, min_right)
+	-- Re-clamp left if right was clamped up
+	left_width = inner - right_width
+
+	-- Vertical split of right side (3 row gap between upper and lower)
+	local right_inner = total_height - 3 -- subtract gap between upper/lower
+	local lower_height = math.max(math.floor(right_inner * lower_pct / 100), min_lower)
+	local upper_height = math.max(right_inner - lower_height, min_upper)
+	-- Re-clamp lower if upper was clamped up, but keep minimum
+	lower_height = math.max(right_inner - upper_height, min_lower)
+
+	local right_col = start_col + left_width + 2
+
+	return {
+		left = { width = left_width, height = total_height, row = top_row, col = start_col },
+		right_upper = { width = right_width, height = upper_height, row = top_row, col = right_col },
+		right_lower = {
+			width = right_width,
+			height = lower_height,
+			row = top_row + upper_height + 3, -- gap between upper and lower panes
+			col = right_col,
+		},
+	}
+end
+
+--- Format entries for the comment browser left pane.
+--- Each entry occupies exactly 1 line for direct cursor-to-entry mapping.
+--- @param entries table[] from build_comment_browser_entries
+--- @param max_width number available character width
+--- @param format_date_fn fun(s: string): string
+--- @return table { lines: string[], hl_ranges: table[] }
+function M.format_comment_browser_list(entries, max_width, format_date_fn)
+	local lines = {}
+	local hl_ranges = {}
+
+	for i, entry in ipairs(entries) do
+		local line_idx = i - 1 -- 0-indexed for highlights
+		local text
+		if entry.type == "issue" then
+			local date = format_date_fn(entry.last_ts)
+			text = string.format("%s  PR Comment", date)
+			-- Highlight "PR Comment" label
+			local pr_start = #date + 2
+			local pr_end = pr_start + #"PR Comment"
+			table.insert(hl_ranges, { line = line_idx, col_start = pr_start, col_end = pr_end, hl = "DiagnosticInfo" })
+		else
+			local date = format_date_fn(entry.last_ts)
+			if entry.is_pending then
+				text = string.format("%s  [pending]  %s:%d", date, entry.path, entry.line)
+				local pending_start = #date + 2
+				local pending_end = pending_start + #"[pending]"
+				table.insert(
+					hl_ranges,
+					{ line = line_idx, col_start = pending_start, col_end = pending_end, hl = "DiagnosticHint" }
+				)
+			else
+				text = string.format("%s  @%s  %s:%d", date, entry.author, entry.path, entry.line)
+				local author_start = #date + 2
+				local author_end = author_start + 1 + #entry.author -- "@" + name
+				table.insert(hl_ranges, { line = line_idx, col_start = author_start, col_end = author_end, hl = "Title" })
+			end
+		end
+
+		if max_width > 0 and #text > max_width then
+			text = text:sub(1, max_width - 3) .. "..."
+		end
+		table.insert(lines, text)
+	end
+
+	return { lines = lines, hl_ranges = hl_ranges }
+end
+
+--- Format a comment thread for the comment browser right upper pane.
+--- For review comments: shows the full thread (root + replies).
+--- For issue comments: shows all issue comments.
+--- @param entry table a single entry from build_comment_browser_entries
+--- @param all_comments table[] flat array of all review comments (for thread lookup)
+--- @param all_issue_comments table[] all PR-level issue comments
+--- @param format_date_fn fun(s: string): string
+--- @return table { lines: string[], hl_ranges: table[] }
+function M.format_comment_browser_thread(entry, all_comments, all_issue_comments, format_date_fn)
+	if entry.type == "issue" then
+		-- Show all issue comments as a thread
+		return M.format_reply_comments_for_display(all_issue_comments or {}, format_date_fn)
+	end
+
+	-- Review comment: get the full thread
+	local data = require("fude.comments.data")
+	local first_comment = entry.comments[1]
+	if not first_comment then
+		return { lines = { "(no comments)" }, hl_ranges = {} }
+	end
+
+	local thread = data.get_comment_thread(first_comment.id, all_comments or {})
+	if #thread == 0 then
+		thread = entry.comments
+	end
+
+	return M.format_reply_comments_for_display(thread, format_date_fn)
+end
+
 return M
