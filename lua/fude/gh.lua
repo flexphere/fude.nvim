@@ -533,14 +533,13 @@ function M.get_authenticated_user(callback)
 end
 
 --- Update a review comment body.
---- @param pr_number number
 --- @param comment_id number
 --- @param body string new comment body
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.update_comment(pr_number, comment_id, body, callback)
+function M.update_comment(comment_id, body, callback)
 	M.run_json({
 		"api",
-		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/comments/" .. comment_id,
+		"repos/{owner}/{repo}/pulls/comments/" .. comment_id,
 		"--method",
 		"PATCH",
 		"-f",
@@ -549,13 +548,12 @@ function M.update_comment(pr_number, comment_id, body, callback)
 end
 
 --- Delete a review comment.
---- @param pr_number number
 --- @param comment_id number
 --- @param callback fun(err: string|nil)
-function M.delete_comment(pr_number, comment_id, callback)
+function M.delete_comment(comment_id, callback)
 	M.run({
 		"api",
-		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/comments/" .. comment_id,
+		"repos/{owner}/{repo}/pulls/comments/" .. comment_id,
 		"--method",
 		"DELETE",
 	}, function(err, _)

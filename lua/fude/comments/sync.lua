@@ -242,7 +242,7 @@ function M.edit_comment(comment_id, body, callback)
 		return
 	end
 
-	gh.update_comment(state.pr_number, comment_id, body, function(err, _)
+	gh.update_comment(comment_id, body, function(err, _)
 		if err then
 			callback(err)
 			return
@@ -262,7 +262,7 @@ function M.delete_comment(comment_id, callback)
 		return
 	end
 
-	gh.delete_comment(state.pr_number, comment_id, function(err)
+	gh.delete_comment(comment_id, function(err)
 		if err then
 			callback(err)
 			return
