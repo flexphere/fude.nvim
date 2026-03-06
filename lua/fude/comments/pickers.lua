@@ -78,7 +78,19 @@ function M.list_comments()
 			sorter = conf.generic_sorter({}),
 			previewer = previewers.new_buffer_previewer({
 				title = "Comment Thread",
+				get_buffer_by_name = function(_, entry)
+					return entry.key
+				end,
 				define_preview = function(self, entry)
+					-- Telescope defers win_set_buf via vim.schedule for new buffers,
+					-- causing a one-tick delay. Set it synchronously here to fix that.
+					if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
+						local save_ei = vim.o.eventignore
+						vim.o.eventignore = "all"
+						vim.api.nvim_win_set_buf(self.state.winid, self.state.bufnr)
+						vim.o.eventignore = save_ei
+					end
+
 					local preview_lines = {}
 					for _, comment in ipairs(entry.comments) do
 						local author = comment.user and comment.user.login or "unknown"

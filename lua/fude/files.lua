@@ -139,7 +139,19 @@ function M.show_telescope()
 			sorter = conf.generic_sorter({}),
 			previewer = previewers.new_buffer_previewer({
 				title = "Diff",
+				get_buffer_by_name = function(_, entry)
+					return entry.path
+				end,
 				define_preview = function(self, entry)
+					-- Telescope defers win_set_buf via vim.schedule for new buffers,
+					-- causing a one-tick delay. Set it synchronously here to fix that.
+					if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
+						local save_ei = vim.o.eventignore
+						vim.o.eventignore = "all"
+						vim.api.nvim_win_set_buf(self.state.winid, self.state.bufnr)
+						vim.o.eventignore = save_ei
+					end
+
 					if entry.patch == "" then
 						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, { "(no diff)" })
 						return
