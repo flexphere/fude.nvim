@@ -272,19 +272,32 @@ function M.show_comments_float(comments, opts)
 		end
 	end, { buffer = buf })
 
+	local function find_comment_at_cursor()
+		if #comments == 0 then
+			return nil
+		end
+		local cursor_line = vim.api.nvim_win_get_cursor(win)[1] - 1 -- 0-indexed
+		for _, range in ipairs(result.comment_ranges or {}) do
+			if cursor_line >= range.start_line and cursor_line <= range.end_line then
+				return comments[range.index]
+			end
+		end
+		return comments[#comments]
+	end
+
 	vim.keymap.set("n", "e", function()
-		local last_comment = comments[#comments]
-		if last_comment then
+		local target = find_comment_at_cursor()
+		if target then
 			vim.api.nvim_win_close(win, true)
-			require("fude.comments").edit_comment(last_comment.id)
+			require("fude.comments").edit_comment(target.id)
 		end
 	end, { buffer = buf, desc = "Edit comment" })
 
 	vim.keymap.set("n", "d", function()
-		local last_comment = comments[#comments]
-		if last_comment then
+		local target = find_comment_at_cursor()
+		if target then
 			vim.api.nvim_win_close(win, true)
-			require("fude.comments").delete_comment(last_comment.id)
+			require("fude.comments").delete_comment(target.id)
 		end
 	end, { buffer = buf, desc = "Delete comment" })
 
@@ -560,9 +573,12 @@ function M.open_edit_window(thread, comment, opts)
 		config.opts.float.height or 50
 	)
 
-	-- Split height: lower is fixed 12 lines, upper gets the rest
-	local lower_height = 12
-	local upper_height = math.max(3, dim.height - lower_height)
+	-- Split height: lower prefers 12 lines, but clamp to dim.height while keeping upper >= 3 lines
+	local min_upper_height = 3
+	local desired_lower_height = 12
+	local max_lower_height = math.max(1, dim.height - min_upper_height)
+	local lower_height = math.min(desired_lower_height, max_lower_height)
+	local upper_height = dim.height - lower_height
 
 	-- Create upper buffer (readonly thread)
 	local upper_buf = vim.api.nvim_create_buf(false, true)
@@ -742,9 +758,12 @@ function M.open_reply_window(comments, opts)
 		config.opts.float.height or 50
 	)
 
-	-- Split height: lower is fixed 12 lines, upper gets the rest
-	local lower_height = 12
-	local upper_height = math.max(3, dim.height - lower_height)
+	-- Split height: lower prefers 12 lines, but clamp to dim.height while keeping upper >= 3 lines
+	local min_upper_height = 3
+	local desired_lower_height = 12
+	local max_lower_height = math.max(1, dim.height - min_upper_height)
+	local lower_height = math.min(desired_lower_height, max_lower_height)
+	local upper_height = dim.height - lower_height
 
 	-- Create upper buffer (readonly comments)
 	local upper_buf = vim.api.nvim_create_buf(false, true)

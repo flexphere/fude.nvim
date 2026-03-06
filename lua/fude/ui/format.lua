@@ -28,7 +28,9 @@ end
 function M.format_comments_for_display(comments, format_date_fn)
 	local lines = {}
 	local hl_ranges = {}
+	local comment_ranges = {}
 	for i, comment in ipairs(comments) do
+		local start_line = #lines
 		local author = comment.user and comment.user.login or "unknown"
 		local created = format_date_fn(comment.created_at)
 		local header = string.format("@%s  %s", author, created)
@@ -38,13 +40,14 @@ function M.format_comments_for_display(comments, format_date_fn)
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
+		table.insert(comment_ranges, { start_line = start_line, end_line = #lines - 1, index = i })
 		if i < #comments then
 			table.insert(lines, "")
 			table.insert(lines, string.rep("-", 40))
 			table.insert(lines, "")
 		end
 	end
-	return { lines = lines, hl_ranges = hl_ranges }
+	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges }
 end
 
 --- Normalize check fields into a consistent (status, conclusion) pair.
