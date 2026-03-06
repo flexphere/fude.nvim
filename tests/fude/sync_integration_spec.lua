@@ -270,4 +270,149 @@ describe("sync integration", function()
 			assert.are.equal("Not active", cb_err)
 		end)
 	end)
+
+	describe("edit_comment", function()
+		it("calls update_comment API and refreshes comments", function()
+			local gh = require("fude.gh")
+			local update_called = false
+			helpers.mock(gh, "update_comment", function(pr, cid, body, callback)
+				update_called = true
+				assert.are.equal(42, pr)
+				assert.are.equal(1, cid)
+				assert.are.equal("updated body", body)
+				vim.schedule(function()
+					callback(nil, { id = 1, body = "updated body" })
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "updated body" },
+				},
+			})
+
+			config.state.active = true
+			config.state.pr_number = 42
+
+			local cb_err
+			local cb_called = false
+			sync.edit_comment(1, "updated body", function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "Callback should be called")
+			assert.is_nil(cb_err)
+			assert.is_true(update_called)
+		end)
+
+		it("returns error when not active", function()
+			config.state.active = false
+
+			local cb_err
+			sync.edit_comment(1, "body", function(err)
+				cb_err = err
+			end)
+
+			assert.are.equal("Not active", cb_err)
+		end)
+
+		it("passes API error to callback", function()
+			local gh = require("fude.gh")
+			helpers.mock(gh, "update_comment", function(_, _, _, callback)
+				vim.schedule(function()
+					callback("Not found", nil)
+				end)
+			end)
+
+			config.state.active = true
+			config.state.pr_number = 42
+
+			local cb_err
+			local cb_called = false
+			sync.edit_comment(1, "body", function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok)
+			assert.are.equal("Not found", cb_err)
+		end)
+	end)
+
+	describe("delete_comment", function()
+		it("calls delete_comment API and refreshes comments", function()
+			local gh = require("fude.gh")
+			local delete_called = false
+			helpers.mock(gh, "delete_comment", function(pr, cid, callback)
+				delete_called = true
+				assert.are.equal(42, pr)
+				assert.are.equal(1, cid)
+				vim.schedule(function()
+					callback(nil)
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+			})
+
+			config.state.active = true
+			config.state.pr_number = 42
+
+			local cb_err
+			local cb_called = false
+			sync.delete_comment(1, function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "Callback should be called")
+			assert.is_nil(cb_err)
+			assert.is_true(delete_called)
+		end)
+
+		it("returns error when not active", function()
+			config.state.active = false
+
+			local cb_err
+			sync.delete_comment(1, function(err)
+				cb_err = err
+			end)
+
+			assert.are.equal("Not active", cb_err)
+		end)
+
+		it("passes API error to callback", function()
+			local gh = require("fude.gh")
+			helpers.mock(gh, "delete_comment", function(_, _, callback)
+				vim.schedule(function()
+					callback("Forbidden")
+				end)
+			end)
+
+			config.state.active = true
+			config.state.pr_number = 42
+
+			local cb_err
+			local cb_called = false
+			sync.delete_comment(1, function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok)
+			assert.are.equal("Forbidden", cb_err)
+		end)
+	end)
 end)
