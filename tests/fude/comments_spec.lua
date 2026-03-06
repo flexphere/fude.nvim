@@ -740,3 +740,145 @@ describe("data.build_comment_entries", function()
 		assert.is_truthy(entries[1].detail:find("@alice"))
 	end)
 end)
+
+describe("build_comment_browser_entries", function()
+	local id_fn = function(s)
+		return s or ""
+	end
+
+	it("returns empty for no comments and no issue comments", function()
+		local entries = data.build_comment_browser_entries({}, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(0, #entries)
+	end)
+
+	it("builds review entries from comment_map", function()
+		local map = {
+			["src/foo.lua"] = {
+				[10] = {
+					{
+						id = 1,
+						body = "fix this",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.are.equal("review", entries[1].type)
+		assert.are.equal("src/foo.lua", entries[1].path)
+		assert.are.equal(10, entries[1].line)
+		assert.are.equal("/repo/src/foo.lua", entries[1].filename)
+		assert.are.equal("alice", entries[1].author)
+		assert.is_false(entries[1].is_pending)
+	end)
+
+	it("builds issue entries from issue_comments", function()
+		local issue_comments = {
+			{ id = 100, body = "looks good", user = { login = "bob" }, created_at = "2024-01-02T00:00:00Z" },
+		}
+		local entries = data.build_comment_browser_entries({}, issue_comments, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.are.equal("issue", entries[1].type)
+		assert.is_nil(entries[1].path)
+		assert.is_nil(entries[1].filename)
+		assert.are.equal("bob", entries[1].author)
+		assert.are.equal(100, entries[1].comment_id)
+	end)
+
+	it("merges and sorts by timestamp descending", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "old",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+					},
+				},
+			},
+		}
+		local issue_comments = {
+			{ id = 2, body = "new", user = { login = "bob" }, created_at = "2024-01-03T00:00:00Z" },
+		}
+		local entries = data.build_comment_browser_entries(map, issue_comments, "/repo", id_fn, nil, nil)
+		assert.are.equal(2, #entries)
+		assert.are.equal("issue", entries[1].type) -- newer first
+		assert.are.equal("review", entries[2].type)
+	end)
+
+	it("marks pending review comments", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "pending",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						pull_request_review_id = 42,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, 42, nil)
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_pending)
+	end)
+
+	it("marks is_own when github_user matches author", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "mine",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, "alice")
+		assert.is_true(entries[1].is_own)
+	end)
+
+	it("marks is_own false when github_user differs", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "not mine",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, "bob")
+		assert.is_false(entries[1].is_own)
+	end)
+
+	it("handles missing user gracefully", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{ id = 1, body = "x", user = nil, created_at = "2024-01-01T00:00:00Z" },
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal("unknown", entries[1].author)
+	end)
+
+	it("issue comments have is_pending false", function()
+		local issue_comments = {
+			{ id = 1, body = "x", user = { login = "a" }, created_at = "2024-01-01T00:00:00Z" },
+		}
+		local entries = data.build_comment_browser_entries({}, issue_comments, "/repo", id_fn, 42, nil)
+		assert.is_false(entries[1].is_pending)
+	end)
+end)

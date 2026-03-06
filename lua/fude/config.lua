@@ -74,6 +74,7 @@ M.state = {
 	reviewed_commits = {}, -- { [sha] = true } locally tracked reviewed commits
 	reply_window = nil,
 	github_user = nil, -- Authenticated GitHub username (for ownership check)
+	comment_browser = nil, -- 3-pane comment browser window state
 }
 
 M.opts = {}
@@ -113,6 +114,7 @@ function M.reset_state()
 		reviewed_commits = {},
 		reply_window = nil,
 		github_user = nil,
+		comment_browser = nil,
 	}
 end
 

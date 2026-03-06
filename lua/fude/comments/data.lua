@@ -332,4 +332,84 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending
 	return entries
 end
 
+--- Build unified entries for comment browser (review + issue comments).
+--- @param comment_map table<string, table<number, table[]>> review comment map
+--- @param issue_comments table[] PR-level issue comments
+--- @param repo_root string
+--- @param format_date_fn fun(s: string): string
+--- @param pending_review_id number|nil pending review ID for labeling
+--- @param github_user string|nil authenticated user for ownership marking
+--- @return table[] entries sorted by last_ts descending (newest first)
+function M.build_comment_browser_entries(
+	comment_map,
+	issue_comments,
+	repo_root,
+	format_date_fn,
+	pending_review_id,
+	github_user
+)
+	local entries = {}
+
+	-- Review comment entries (grouped by path:line, same as build_comment_entries)
+	for path, file_lines in pairs(comment_map or {}) do
+		for line_key, comments in pairs(file_lines) do
+			local line = math.floor(tonumber(line_key) or 1)
+			local first = comments[1]
+			local last = comments[#comments]
+			local is_pending = false
+			if pending_review_id then
+				for _, c in ipairs(comments) do
+					if c.pull_request_review_id == pending_review_id then
+						is_pending = true
+						break
+					end
+				end
+			end
+			local author = first.user and first.user.login or "unknown"
+			local last_ts = last.created_at or ""
+			local last_date = format_date_fn(last_ts)
+			local is_own = github_user ~= nil and author == github_user
+			table.insert(entries, {
+				type = "review",
+				path = path,
+				line = line,
+				filename = repo_root .. "/" .. path,
+				lnum = line,
+				author = author,
+				last_ts = last_ts,
+				last_date = last_date,
+				comments = comments,
+				is_pending = is_pending,
+				is_own = is_own,
+			})
+		end
+	end
+
+	-- Issue comment entries (PR-level comments)
+	for _, comment in ipairs(issue_comments or {}) do
+		local author = comment.user and comment.user.login or "unknown"
+		local ts = comment.created_at or ""
+		local is_own = github_user ~= nil and author == github_user
+		table.insert(entries, {
+			type = "issue",
+			path = nil,
+			line = nil,
+			filename = nil,
+			lnum = nil,
+			author = author,
+			last_ts = ts,
+			last_date = format_date_fn(ts),
+			comments = { comment },
+			is_pending = false,
+			is_own = is_own,
+			comment_id = comment.id,
+		})
+	end
+
+	table.sort(entries, function(a, b)
+		return a.last_ts > b.last_ts
+	end)
+	return entries
+end
+
 return M

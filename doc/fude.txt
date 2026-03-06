@@ -159,11 +159,37 @@ Using lazy.nvim: >lua
     with an "Apply suggestion" button.
 
 :FudeReviewListComments                        *:FudeReviewListComments*
-    List all PR review comments in a Telescope picker, including
-    pending review comments. Submitted comments show `@author`,
-    pending comments show `[pending]`. Select an entry to jump to
-    the file and line. Preview pane shows the full comment thread
-    formatted as markdown. Requires an active review session.
+    Open a 3-pane floating comment browser showing all PR review
+    comments and PR-level (issue) comments. Does not require
+    Telescope.
+
+    Left pane: comment list sorted by time (newest first).
+      - Review comments: `@author  path:line`
+      - PR-level comments: `PR Comment  @author`
+      - Pending comments: `[pending]  path:line`
+    Right upper: thread display for the selected comment.
+    Right lower: input area for reply/edit/new comment.
+
+    Cursor movement in the left pane auto-updates the right side.
+
+    Keymaps (left pane):~
+      `r`       Reply to comment (review comments only)
+      `e`       Edit own comment
+      `d`       Delete own comment (with confirmation)
+      `C`       New PR-level comment
+      `<CR>`    Jump to file at comment line (review comments)
+      `R`       Refresh comments
+      `q`       Close browser
+      `<Tab>`   Switch to thread pane
+
+    Keymaps (lower pane):~
+      `<CR>`    Submit reply/edit/new comment
+      `q`       Cancel and return to list
+      `<Tab>`   Switch to list pane
+      `<C-u>`   Scroll thread pane up
+      `<C-d>`   Scroll thread pane down
+
+    Requires an active review session.
 
 :FudeReviewViewed                                    *:FudeReviewViewed*
     Mark the current file as viewed on GitHub. Uses the GitHub

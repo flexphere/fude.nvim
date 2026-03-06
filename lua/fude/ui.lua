@@ -22,6 +22,9 @@ M.calculate_reply_window_dimensions = format.calculate_reply_window_dimensions
 M.format_reply_comments_for_display = format.format_reply_comments_for_display
 M.build_overview_left_lines = format.build_overview_left_lines
 M.build_overview_right_lines = format.build_overview_right_lines
+M.calculate_comment_browser_layout = format.calculate_comment_browser_layout
+M.format_comment_browser_list = format.format_comment_browser_list
+M.format_comment_browser_thread = format.format_comment_browser_thread
 
 -- Re-export extmark functions (facade)
 M.flash_line = extmarks.flash_line
