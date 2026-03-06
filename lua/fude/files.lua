@@ -88,6 +88,7 @@ function M.show_telescope()
 	local action_state = require("telescope.actions.state")
 	local entry_display = require("telescope.pickers.entry_display")
 	local previewers = require("telescope.previewers")
+	local ui = require("fude.ui")
 
 	local repo_root = diff.get_repo_root()
 	if not repo_root then
@@ -139,7 +140,12 @@ function M.show_telescope()
 			sorter = conf.generic_sorter({}),
 			previewer = previewers.new_buffer_previewer({
 				title = "Diff",
+				get_buffer_by_name = function(_, entry)
+					return entry.path
+				end,
 				define_preview = function(self, entry)
+					ui.sync_preview_buffer(self)
+
 					if entry.patch == "" then
 						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, { "(no diff)" })
 						return

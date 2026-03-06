@@ -78,7 +78,12 @@ function M.list_comments()
 			sorter = conf.generic_sorter({}),
 			previewer = previewers.new_buffer_previewer({
 				title = "Comment Thread",
+				get_buffer_by_name = function(_, entry)
+					return entry.value
+				end,
 				define_preview = function(self, entry)
+					ui.sync_preview_buffer(self)
+
 					local preview_lines = {}
 					for _, comment in ipairs(entry.comments) do
 						local author = comment.user and comment.user.login or "unknown"

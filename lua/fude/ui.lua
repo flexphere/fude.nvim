@@ -31,6 +31,22 @@ M.refresh_extmarks = extmarks.refresh_extmarks
 M.clear_extmarks = extmarks.clear_extmarks
 M.clear_all_extmarks = extmarks.clear_all_extmarks
 
+--- Synchronously set preview buffer in Telescope to avoid one-tick delay.
+--- Telescope defers win_set_buf via vim.schedule for new buffers; calling
+--- nvim_win_set_buf directly with eventignore suppressed fixes this.
+--- @param previewer_self table the `self` argument inside define_preview
+function M.sync_preview_buffer(previewer_self)
+	if previewer_self.state.winid and vim.api.nvim_win_is_valid(previewer_self.state.winid) then
+		local save_ei = vim.o.eventignore
+		vim.o.eventignore = "all"
+		local ok = pcall(vim.api.nvim_win_set_buf, previewer_self.state.winid, previewer_self.state.bufnr)
+		vim.o.eventignore = save_ei
+		if not ok then
+			return
+		end
+	end
+end
+
 --- Get repository base URL (e.g. "https://github.com/owner/repo").
 --- @param pr_url string|nil PR URL to extract from
 --- @return string|nil
