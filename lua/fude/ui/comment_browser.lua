@@ -89,9 +89,15 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 		end
 	end
 
-	-- Clear lower buffer and reset edit target
+	-- Clear lower buffer and reset edit target (skip if user has typed content)
+	local lower_has_content = false
 	if vim.api.nvim_buf_is_valid(browser.lower_buf) then
-		vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, { "" })
+		lower_has_content = get_lower_text(browser.lower_buf) ~= ""
+	end
+	if not browser.edit_target and not lower_has_content then
+		if vim.api.nvim_buf_is_valid(browser.lower_buf) then
+			vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, { "" })
+		end
 	end
 	browser.edit_target = nil
 end
@@ -347,6 +353,40 @@ local function create_browser(entries, issue_comments)
 		end)
 	end
 
+	-- Restore lower pane to default state after successful submit
+	local function restore_lower_after_submit()
+		vim.schedule(function()
+			if vim.api.nvim_buf_is_valid(lower_buf) then
+				vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
+			end
+			browser.edit_target = nil
+			local entry = current_entry()
+			if entry and entry.type == "issue" then
+				browser.mode = "new_pr_comment"
+				if vim.api.nvim_win_is_valid(lower_win) then
+					pcall(vim.api.nvim_win_set_config, lower_win, { title = " New PR Comment ", title_pos = "center" })
+				end
+			else
+				browser.mode = "reply"
+				if vim.api.nvim_win_is_valid(lower_win) then
+					pcall(vim.api.nvim_win_set_config, lower_win, { title = " Reply ", title_pos = "center" })
+				end
+			end
+			if vim.api.nvim_win_is_valid(left_win) then
+				vim.api.nvim_set_current_win(left_win)
+			end
+		end)
+	end
+
+	-- Restore text to lower buffer on error
+	local function restore_lower_text(saved_lines)
+		vim.schedule(function()
+			if vim.api.nvim_buf_is_valid(lower_buf) then
+				vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, saved_lines)
+			end
+		end)
+	end
+
 	-- Submit handler for lower pane
 	local function submit()
 		local body = get_lower_text(lower_buf)
@@ -359,15 +399,20 @@ local function create_browser(entries, issue_comments)
 			return
 		end
 
+		-- Save text for error recovery
+		local saved_lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)
+
 		if browser.mode == "reply" then
 			if entry.type == "review" then
 				local reply_target_id = data.get_reply_target_id(entry.comments[1].id, state.comment_map or {})
 				get_sync().reply_to_comment(reply_target_id, body, function(err)
 					if err then
 						vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
+						restore_lower_text(saved_lines)
 						return
 					end
 					vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
+					restore_lower_after_submit()
 					refresh()
 				end)
 			end
@@ -386,8 +431,10 @@ local function create_browser(entries, issue_comments)
 							vim.schedule(function()
 								if err then
 									vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+									restore_lower_text(saved_lines)
 								else
 									vim.notify("fude.nvim: Pending comment updated", vim.log.levels.INFO)
+									restore_lower_after_submit()
 								end
 								get_ui().refresh_extmarks()
 								refresh()
@@ -397,9 +444,11 @@ local function create_browser(entries, issue_comments)
 						get_sync().edit_comment(target_comment.id, body, function(err)
 							if err then
 								vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+								restore_lower_text(saved_lines)
 								return
 							end
 							vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
+							restore_lower_after_submit()
 							refresh()
 						end)
 					end
@@ -407,9 +456,11 @@ local function create_browser(entries, issue_comments)
 					get_sync().edit_comment(target_comment.id, body, function(err)
 						if err then
 							vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+							restore_lower_text(saved_lines)
 							return
 						end
 						vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
+						restore_lower_after_submit()
 						refresh()
 					end)
 				end
@@ -417,9 +468,11 @@ local function create_browser(entries, issue_comments)
 				get_gh().update_issue_comment(target_comment.id, body, function(err, _)
 					if err then
 						vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+						restore_lower_text(saved_lines)
 						return
 					end
 					vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
+					restore_lower_after_submit()
 					refresh()
 				end)
 			end
@@ -427,33 +480,19 @@ local function create_browser(entries, issue_comments)
 			get_gh().create_issue_comment(state.pr_number, body, function(err, _)
 				if err then
 					vim.notify("fude.nvim: Failed to post comment: " .. err, vim.log.levels.ERROR)
+					restore_lower_text(saved_lines)
 					return
 				end
 				vim.notify("fude.nvim: Comment posted", vim.log.levels.INFO)
+				restore_lower_after_submit()
 				refresh()
 			end)
 		end
 
-		-- Clear lower buf after submit
+		-- Show submitting state
 		if vim.api.nvim_buf_is_valid(lower_buf) then
-			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
+			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "Submitting..." })
 		end
-		browser.edit_target = nil
-
-		-- Restore default mode based on current entry
-		if entry.type == "issue" then
-			browser.mode = "new_pr_comment"
-			if vim.api.nvim_win_is_valid(lower_win) then
-				pcall(vim.api.nvim_win_set_config, lower_win, { title = " New PR Comment ", title_pos = "center" })
-			end
-		else
-			browser.mode = "reply"
-			if vim.api.nvim_win_is_valid(lower_win) then
-				pcall(vim.api.nvim_win_set_config, lower_win, { title = " Reply ", title_pos = "center" })
-			end
-		end
-
-		-- Return focus to left pane
 		if vim.api.nvim_win_is_valid(left_win) then
 			vim.api.nvim_set_current_win(left_win)
 		end
