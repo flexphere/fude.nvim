@@ -182,6 +182,8 @@ make all
    - コミットメッセージ: Conventional Commits 形式 (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`)
 2. ユーザーの承認後にコミットを実行する
 3. draft PRを作成する。PR本文は [pr-template.md](pr-template.md) に従う
+   - **PRタイトル・本文は日本語で記述する**（コード例・変数名・ファイルパスは英語のまま）
+   - コミットメッセージは英語の Conventional Commits 形式を維持する
 4. PR作成後、URLをユーザーに共有する
 
 ## 注意事項
