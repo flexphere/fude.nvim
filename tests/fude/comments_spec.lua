@@ -351,11 +351,12 @@ end)
 describe("build_pending_comments_from_review", function()
 	it("builds map from single-line comments", function()
 		local review_comments = {
-			{ path = "a.lua", line = 10, body = "fix this", side = "RIGHT" },
+			{ id = 101, path = "a.lua", line = 10, body = "fix this", side = "RIGHT" },
 		}
 		local result = comments.build_pending_comments_from_review(review_comments)
 		local key = "a.lua:10:10"
 		assert.is_not_nil(result[key])
+		assert.are.equal(101, result[key].id)
 		assert.are.equal("a.lua", result[key].path)
 		assert.are.equal(10, result[key].line)
 		assert.are.equal("fix this", result[key].body)

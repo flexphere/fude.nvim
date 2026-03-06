@@ -176,6 +176,7 @@ function M.build_pending_comments_from_review(comments)
 		if path and line then
 			local key = path .. ":" .. start_line .. ":" .. line
 			result[key] = {
+				id = c.id,
 				path = path,
 				body = c.body,
 				line = line,
