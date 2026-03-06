@@ -179,6 +179,194 @@ function M.reply_to_comment(comment_id)
 	})
 end
 
+--- Check if a comment is owned by the authenticated user.
+--- @param comment table comment object from GitHub API
+--- @return boolean
+function M.is_own_comment(comment)
+	local github_user = config.state.github_user
+	if not github_user then
+		return false
+	end
+	return (comment.user and comment.user.login == github_user) == true
+end
+
+--- Find the pending_comments key for a given comment ID.
+--- @param comment_id number
+--- @return string|nil key
+function M.find_pending_key(comment_id)
+	local state = config.state
+	for key, pc in pairs(state.pending_comments) do
+		if pc.id == comment_id then
+			return key
+		end
+	end
+	return nil
+end
+
+--- Check if a comment belongs to the current pending review.
+--- @param comment table comment object
+--- @return boolean
+function M.is_pending_comment(comment)
+	local state = config.state
+	return state.pending_review_id ~= nil and comment.pull_request_review_id == state.pending_review_id
+end
+
+--- Edit a comment (pending or submitted).
+--- @param comment_id number comment ID to edit
+function M.edit_comment(comment_id)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		return
+	end
+
+	if not state.github_user then
+		vim.notify("fude.nvim: GitHub user not available yet", vim.log.levels.WARN)
+		return
+	end
+
+	-- Find the comment
+	local found = data.find_comment_by_id(comment_id, state.comment_map or {})
+	if not found then
+		vim.notify("fude.nvim: Comment not found", vim.log.levels.WARN)
+		return
+	end
+
+	local comment = found.comment
+
+	-- Ownership check
+	if not M.is_own_comment(comment) then
+		vim.notify("fude.nvim: Cannot edit another user's comment", vim.log.levels.WARN)
+		return
+	end
+
+	local is_pending = M.is_pending_comment(comment)
+
+	-- For submitted comments, block if pending review exists (GitHub API limitation)
+	if not is_pending and state.pending_review_id then
+		vim.notify(
+			"fude.nvim: Cannot edit submitted comment while pending review exists. Run :FudeReviewSubmit first.",
+			vim.log.levels.WARN
+		)
+		return
+	end
+
+	-- Get thread for display in upper pane
+	local thread = data.get_comment_thread(comment_id, state.comments or {})
+
+	ui.open_edit_window(thread, comment, {
+		on_submit = function(new_body)
+			if is_pending then
+				-- Pending comment: update in pending_comments and re-sync
+				local pending_key = M.find_pending_key(comment_id)
+				if pending_key and state.pending_comments[pending_key] then
+					state.pending_comments[pending_key].body = new_body
+					sync.sync_pending_review(function(err)
+						vim.schedule(function()
+							if err then
+								vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+							else
+								vim.notify("fude.nvim: Pending comment updated", vim.log.levels.INFO)
+							end
+							ui.refresh_extmarks()
+						end)
+					end)
+				else
+					-- Pending key not found in local state, try API update
+					sync.edit_comment(comment_id, new_body, function(err)
+						if err then
+							vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+							return
+						end
+						vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
+					end)
+				end
+			else
+				-- Submitted comment: direct API update
+				sync.edit_comment(comment_id, new_body, function(err)
+					if err then
+						vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
+						return
+					end
+					vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
+				end)
+			end
+		end,
+	})
+end
+
+--- Delete a comment (pending or submitted).
+--- @param comment_id number comment ID to delete
+function M.delete_comment(comment_id)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		return
+	end
+
+	if not state.github_user then
+		vim.notify("fude.nvim: GitHub user not available yet", vim.log.levels.WARN)
+		return
+	end
+
+	-- Find the comment
+	local found = data.find_comment_by_id(comment_id, state.comment_map or {})
+	if not found then
+		vim.notify("fude.nvim: Comment not found", vim.log.levels.WARN)
+		return
+	end
+
+	local comment = found.comment
+
+	-- Ownership check
+	if not M.is_own_comment(comment) then
+		vim.notify("fude.nvim: Cannot delete another user's comment", vim.log.levels.WARN)
+		return
+	end
+
+	local is_pending = M.is_pending_comment(comment)
+
+	-- For submitted comments, block if pending review exists
+	if not is_pending and state.pending_review_id then
+		vim.notify(
+			"fude.nvim: Cannot delete submitted comment while pending review exists. Run :FudeReviewSubmit first.",
+			vim.log.levels.WARN
+		)
+		return
+	end
+
+	vim.ui.select({ "Yes", "No" }, { prompt = "Delete this comment?" }, function(choice)
+		if choice ~= "Yes" then
+			return
+		end
+
+		if is_pending then
+			-- Pending comment: remove from pending_comments and re-sync
+			local pending_key = M.find_pending_key(comment_id)
+			if pending_key then
+				state.pending_comments[pending_key] = nil
+			end
+			sync.sync_pending_review(function(err)
+				vim.schedule(function()
+					if err then
+						vim.notify("fude.nvim: Delete failed: " .. err, vim.log.levels.ERROR)
+					else
+						vim.notify("fude.nvim: Pending comment deleted", vim.log.levels.INFO)
+					end
+					ui.refresh_extmarks()
+				end)
+			end)
+		else
+			-- Submitted comment: direct API delete
+			sync.delete_comment(comment_id, function(err)
+				if err then
+					vim.notify("fude.nvim: Delete failed: " .. err, vim.log.levels.ERROR)
+					return
+				end
+				vim.notify("fude.nvim: Comment deleted", vim.log.levels.INFO)
+			end)
+		end
+	end)
+end
+
 --- Navigate to the next comment in the current file.
 function M.next_comment()
 	local state = config.state

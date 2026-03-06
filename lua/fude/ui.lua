@@ -236,7 +236,7 @@ function M.show_comments_float(comments, opts)
 		border = config.opts.float.border,
 		title = string.format(" Comments (%d) ", #comments),
 		title_pos = "center",
-		footer = " r reply | q close ",
+		footer = " r reply | e edit | d delete | q close ",
 		footer_pos = "center",
 	})
 
@@ -271,6 +271,22 @@ function M.show_comments_float(comments, opts)
 			require("fude.comments").reply_to_comment(last_comment.id)
 		end
 	end, { buffer = buf })
+
+	vim.keymap.set("n", "e", function()
+		local last_comment = comments[#comments]
+		if last_comment then
+			vim.api.nvim_win_close(win, true)
+			require("fude.comments").edit_comment(last_comment.id)
+		end
+	end, { buffer = buf, desc = "Edit comment" })
+
+	vim.keymap.set("n", "d", function()
+		local last_comment = comments[#comments]
+		if last_comment then
+			vim.api.nvim_win_close(win, true)
+			require("fude.comments").delete_comment(last_comment.id)
+		end
+	end, { buffer = buf, desc = "Delete comment" })
 
 	local km = config.opts.keymaps
 	if km.next_comment then
@@ -516,6 +532,188 @@ local function close_reply_window(state_reply)
 	state_reply.lower_win = nil
 	state_reply.lower_buf = nil
 	state_reply.closing = false
+end
+
+--- Open a two-pane edit window (thread above, editable comment below).
+--- @param thread table[] list of comment objects in the thread
+--- @param comment table the specific comment to edit
+--- @param opts table { on_submit: fun(body: string) }
+function M.open_edit_window(thread, comment, opts)
+	opts = opts or {}
+	local state = config.state
+
+	-- Close if already open (shares state.reply_window)
+	if state.reply_window and state.reply_window.upper_win then
+		close_reply_window(state.reply_window)
+	end
+
+	M.setup_reply_highlights()
+
+	-- Format thread for upper pane
+	local result = format.format_reply_comments_for_display(thread, config.format_date)
+
+	-- Calculate dimensions
+	local dim = format.calculate_float_dimensions(
+		vim.o.columns,
+		vim.o.lines,
+		config.opts.float.width or 50,
+		config.opts.float.height or 50
+	)
+
+	-- Split height: lower is fixed 12 lines, upper gets the rest
+	local lower_height = 12
+	local upper_height = math.max(3, dim.height - lower_height)
+
+	-- Create upper buffer (readonly thread)
+	local upper_buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(upper_buf, 0, -1, false, result.lines)
+	vim.bo[upper_buf].modifiable = false
+	vim.bo[upper_buf].buftype = "nofile"
+	vim.bo[upper_buf].bufhidden = "wipe"
+	vim.bo[upper_buf].filetype = "markdown"
+
+	-- Create lower buffer (editable, pre-filled with comment body)
+	local lower_buf = vim.api.nvim_create_buf(false, true)
+	local initial_lines = vim.split(comment.body or "", "\n")
+	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, initial_lines)
+	vim.bo[lower_buf].buftype = "nofile"
+	vim.bo[lower_buf].bufhidden = "wipe"
+	vim.bo[lower_buf].filetype = "markdown"
+	vim.b[lower_buf].fude_comment = true
+
+	-- Border definitions: upper has no bottom, lower connects
+	local upper_border = { "╭", "─", "╮", "│", "", "", "", "│" }
+	local lower_border = { "├", "─", "┤", "│", "╯", "─", "╰", "│" }
+
+	-- Open upper window
+	local upper_win = vim.api.nvim_open_win(upper_buf, false, {
+		relative = "editor",
+		row = dim.row,
+		col = dim.col,
+		width = dim.width,
+		height = upper_height,
+		style = "minimal",
+		border = upper_border,
+		title = " Thread ",
+		title_pos = "center",
+	})
+	vim.wo[upper_win].wrap = true
+	vim.wo[upper_win].cursorline = false
+
+	-- Open lower window
+	local lower_win = vim.api.nvim_open_win(lower_buf, true, {
+		relative = "editor",
+		row = dim.row + upper_height,
+		col = dim.col,
+		width = dim.width,
+		height = lower_height,
+		style = "minimal",
+		border = lower_border,
+		title = " Edit Comment ",
+		title_pos = "center",
+		footer = " <CR> save | q cancel | <Tab> switch | <C-u/d> scroll ",
+		footer_pos = "center",
+	})
+
+	-- Save state (shared with reply_window)
+	state.reply_window = {
+		upper_win = upper_win,
+		upper_buf = upper_buf,
+		lower_win = lower_win,
+		lower_buf = lower_buf,
+		closing = false,
+	}
+
+	-- Apply highlights
+	local ns = state.ns_id or vim.api.nvim_create_namespace("fude")
+	for _, hl in ipairs(result.hl_ranges) do
+		if hl.col_start and hl.col_end then
+			pcall(vim.api.nvim_buf_add_highlight, upper_buf, ns, hl.hl, hl.line, hl.col_start, hl.col_end)
+		else
+			pcall(vim.api.nvim_buf_add_highlight, upper_buf, ns, hl.hl, hl.line, 0, -1)
+		end
+	end
+
+	setup_github_refs(upper_buf, get_repo_base_url())
+
+	-- Helper to close both windows
+	local function close_all()
+		close_reply_window(state.reply_window)
+	end
+
+	-- Submit handler
+	local function submit()
+		local lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)
+		local body = vim.trim(table.concat(lines, "\n"))
+		close_all()
+		if body ~= "" and opts.on_submit then
+			opts.on_submit(body)
+		end
+	end
+
+	-- Cancel handler
+	local function cancel()
+		close_all()
+	end
+
+	-- Helper to scroll upper window from lower
+	local function scroll_upper(keys)
+		local termcodes = vim.api.nvim_replace_termcodes(keys, true, false, true)
+		return function()
+			if vim.api.nvim_win_is_valid(upper_win) then
+				vim.api.nvim_win_call(upper_win, function()
+					vim.cmd("normal! " .. termcodes)
+				end)
+			end
+		end
+	end
+
+	-- Lower window keymaps
+	vim.keymap.set("n", "<CR>", submit, { buffer = lower_buf, desc = "Save edit" })
+	vim.keymap.set("n", "q", cancel, { buffer = lower_buf, desc = "Cancel" })
+	vim.keymap.set("n", "<Esc>", cancel, { buffer = lower_buf, desc = "Cancel" })
+	vim.keymap.set("n", "<Tab>", function()
+		if vim.api.nvim_win_is_valid(upper_win) then
+			vim.api.nvim_set_current_win(upper_win)
+		end
+	end, { buffer = lower_buf, desc = "Go to thread" })
+	vim.keymap.set(
+		{ "n", "i" },
+		"<C-u>",
+		scroll_upper("<C-u>"),
+		{ buffer = lower_buf, nowait = true, desc = "Scroll thread up" }
+	)
+	vim.keymap.set(
+		{ "n", "i" },
+		"<C-d>",
+		scroll_upper("<C-d>"),
+		{ buffer = lower_buf, nowait = true, desc = "Scroll thread down" }
+	)
+
+	-- Upper window keymaps
+	vim.keymap.set("n", "q", cancel, { buffer = upper_buf, desc = "Cancel" })
+	vim.keymap.set("n", "<Esc>", cancel, { buffer = upper_buf, desc = "Cancel" })
+	vim.keymap.set("n", "<Tab>", function()
+		if vim.api.nvim_win_is_valid(lower_win) then
+			vim.api.nvim_set_current_win(lower_win)
+		end
+	end, { buffer = upper_buf, desc = "Go to input" })
+
+	-- Autocmd: close both when one closes
+	local augroup = vim.api.nvim_create_augroup("fude_edit_window_" .. lower_win, { clear = true })
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = augroup,
+		pattern = { tostring(upper_win), tostring(lower_win) },
+		callback = function()
+			vim.schedule(function()
+				close_all()
+				pcall(vim.api.nvim_del_augroup_by_id, augroup)
+			end)
+		end,
+	})
+
+	-- Start in normal mode (cursor at beginning of pre-filled content)
+	vim.api.nvim_win_set_cursor(lower_win, { 1, 0 })
 end
 
 --- Open a two-pane reply window (existing comments above, input below).

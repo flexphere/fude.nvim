@@ -96,6 +96,13 @@ function M.start()
 			gitsigns.change_base(state.base_ref, true)
 		end
 
+		-- Fetch authenticated user for ownership checks
+		gh_mod.get_authenticated_user(function(user_err, login)
+			if not user_err and login then
+				state.github_user = login
+			end
+		end)
+
 		local comments_mod = require("fude.comments")
 		comments_mod.load_comments()
 
