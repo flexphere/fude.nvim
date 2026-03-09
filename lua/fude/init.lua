@@ -53,6 +53,7 @@ function M.start()
 		end
 
 		-- Completion barrier: fire on_review_start after all async fetches complete
+		-- 5 async fetches: get_pr_files, get_pr_commits, get_pr_viewed_files, get_authenticated_user, load_comments
 		local remaining = 5
 		local function on_ready()
 			remaining = remaining - 1
