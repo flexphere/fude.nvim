@@ -17,8 +17,28 @@ describe("parse_log_first_subject", function()
 		assert.is_nil(diff.parse_log_first_subject(nil))
 	end)
 
-	it("returns nil for whitespace-only first line", function()
+	it("returns nil for empty first line", function()
 		assert.is_nil(diff.parse_log_first_subject("\nSecond line"))
+	end)
+
+	it("returns nil for whitespace-only first line", function()
+		assert.is_nil(diff.parse_log_first_subject("   \nSecond line"))
+	end)
+
+	it("trims whitespace from subject", function()
+		assert.are.equal("Trimmed subject", diff.parse_log_first_subject("  Trimmed subject  \n"))
+	end)
+
+	it("truncates subject exceeding 100 characters", function()
+		local long_subject = string.rep("a", 150)
+		local result = diff.parse_log_first_subject(long_subject)
+		assert.are.equal(100, #result)
+		assert.are.equal(string.rep("a", 100), result)
+	end)
+
+	it("does not truncate subject at exactly 100 characters", function()
+		local exact_subject = string.rep("b", 100)
+		assert.are.equal(exact_subject, diff.parse_log_first_subject(exact_subject))
 	end)
 
 	it("handles CRLF line endings", function()
