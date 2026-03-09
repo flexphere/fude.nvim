@@ -54,10 +54,11 @@ local function fetch_comments()
 end
 
 --- Submit pending review or create a new review with event and body.
---- If pending_comments exist (already on GitHub), submits the existing pending review.
---- Otherwise, creates a new review with just event and body (for APPROVE/REQUEST_CHANGES).
+--- If a pending review exists on GitHub, submits it (with or without comments).
+--- Otherwise, creates a new review. APPROVE works without body; COMMENT and
+--- REQUEST_CHANGES require a body (GitHub API constraint).
 --- @param event string "COMMENT", "APPROVE", or "REQUEST_CHANGES"
---- @param body string|nil review body (optional)
+--- @param body string|nil review body (optional for APPROVE, required for others)
 --- @param callback fun(err: string|nil)
 function M.submit_as_review(event, body, callback)
 	local state = config.state
@@ -67,7 +68,7 @@ function M.submit_as_review(event, body, callback)
 	end
 
 	-- If we have a pending review on GitHub, submit it
-	if state.pending_review_id and vim.tbl_count(state.pending_comments) > 0 then
+	if state.pending_review_id then
 		gh.submit_review(state.pr_number, state.pending_review_id, event, body, function(err, _)
 			if err then
 				callback(err)
@@ -86,15 +87,17 @@ function M.submit_as_review(event, body, callback)
 		return
 	end
 
-	-- No pending review on GitHub, create a new review (for APPROVE/REQUEST_CHANGES with body)
-	local sha, sha_err = gh.get_head_sha()
-	if not sha then
-		callback(sha_err or "Failed to get HEAD SHA")
+	-- No pending review on GitHub — create a new review.
+	-- APPROVE works without body; COMMENT/REQUEST_CHANGES require body.
+	local has_body = body and body ~= ""
+	if not has_body and event ~= "APPROVE" then
+		callback("Review body is required for " .. event)
 		return
 	end
 
-	if not body or body == "" then
-		callback("No pending review to submit")
+	local sha, sha_err = gh.get_head_sha()
+	if not sha then
+		callback(sha_err or "Failed to get HEAD SHA")
 		return
 	end
 
