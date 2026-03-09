@@ -213,7 +213,7 @@ describe("sync integration", function()
 			assert.is_nil(cb_err)
 		end)
 
-		it("returns error when no pending review and no body", function()
+		it("returns error when COMMENT without body and no pending review", function()
 			config.state.active = true
 			config.state.pr_number = 42
 
@@ -225,7 +225,82 @@ describe("sync integration", function()
 			end)
 
 			assert.is_true(cb_called)
-			assert.are.equal("No pending review to submit", cb_err)
+			assert.are.equal("Review body is required for COMMENT", cb_err)
+		end)
+
+		it("returns error when REQUEST_CHANGES without body and no pending review", function()
+			config.state.active = true
+			config.state.pr_number = 42
+
+			local cb_err
+			local cb_called = false
+			sync.submit_as_review("REQUEST_CHANGES", nil, function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			assert.is_true(cb_called)
+			assert.are.equal("Review body is required for REQUEST_CHANGES", cb_err)
+		end)
+
+		it("allows APPROVE without body and no pending review", function()
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = function(_, callback)
+					vim.schedule(function()
+						callback(nil, { id = 103 })
+					end)
+				end,
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+			})
+
+			config.state.active = true
+			config.state.pr_number = 42
+
+			local cb_err
+			local cb_called = false
+			sync.submit_as_review("APPROVE", nil, function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "Callback should be called")
+			assert.is_nil(cb_err)
+		end)
+
+		it("submits pending review with no comments", function()
+			local gh = require("fude.gh")
+			helpers.mock(gh, "submit_review", function(_, _, _, _, callback)
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+			})
+
+			config.state.active = true
+			config.state.pr_number = 42
+			config.state.pending_review_id = 100
+			config.state.pending_comments = {}
+
+			local cb_err
+			local cb_called = false
+			sync.submit_as_review("APPROVE", nil, function(err)
+				cb_err = err
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "Callback should be called")
+
+			assert.is_nil(cb_err)
+			assert.is_nil(config.state.pending_review_id)
+			assert.are.same({}, config.state.pending_comments)
 		end)
 	end)
 
