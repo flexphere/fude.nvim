@@ -308,6 +308,16 @@ local function open_from_template(path, default_title)
 	M.open_pr_float(title_lines, lines)
 end
 
+--- Get default PR title from first commit message (lazy helper).
+--- @return string|nil default_title
+local function get_default_title()
+	local default_branch = diff.get_default_branch()
+	if default_branch then
+		return diff.get_first_commit_subject(default_branch)
+	end
+	return nil
+end
+
 --- Show PR creation flow: find templates, select if multiple, open float.
 --- When a draft exists, it is shown as a selectable option alongside templates.
 function M.create()
@@ -317,23 +327,18 @@ function M.create()
 		return
 	end
 
-	-- Get default title from first commit message
-	local default_title = nil
-	local default_branch = diff.get_default_branch()
-	if default_branch then
-		default_title = diff.get_first_commit_subject(default_branch)
-	end
-
 	local templates = M.find_templates()
 	local has_draft = M.get_draft() ~= nil
 	local total = #templates + (has_draft and 1 or 0)
 
 	if total == 0 then
 		-- No templates, no draft: open with empty body
+		local default_title = get_default_title()
 		local title_lines = default_title and { default_title } or nil
 		M.open_pr_float(title_lines, { "" })
 	elseif total == 1 and not has_draft then
 		-- Single template, no draft: read and open
+		local default_title = get_default_title()
 		open_from_template(templates[1], default_title)
 	elseif total == 1 and has_draft then
 		-- Only draft, no templates: open from draft
@@ -348,6 +353,8 @@ function M.create()
 			if selected == "__draft__" then
 				open_from_draft()
 			else
+				-- Lazy: only fetch default title when template is selected
+				local default_title = get_default_title()
 				open_from_template(selected, default_title)
 			end
 		end)
