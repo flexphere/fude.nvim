@@ -72,18 +72,29 @@ function M.get_file_diff(base_ref, file_path)
 	return nil
 end
 
+--- Maximum length for PR title default value.
+local MAX_TITLE_LENGTH = 100
+
 --- Parse the first line (subject) from git log output.
---- @param output string git log output
+--- @param output string|nil git log output
 --- @return string|nil subject first commit subject, or nil if empty
 function M.parse_log_first_subject(output)
 	if not output or output == "" then
 		return nil
 	end
 	local first_line = output:match("^([^\r\n]*)")
-	if first_line and first_line ~= "" then
-		return first_line
+	if not first_line then
+		return nil
 	end
-	return nil
+	local subject = vim.trim(first_line)
+	if subject == "" then
+		return nil
+	end
+	-- Truncate if exceeds max length
+	if #subject > MAX_TITLE_LENGTH then
+		return subject:sub(1, MAX_TITLE_LENGTH)
+	end
+	return subject
 end
 
 --- Get the repository's default branch name.
@@ -94,7 +105,7 @@ function M.get_default_branch()
 	if result.code == 0 and result.stdout then
 		local branch = vim.trim(result.stdout)
 		-- Strip "origin/" prefix if present
-		return branch:gsub("^origin/", "")
+		return (branch:gsub("^origin/", ""))
 	end
 
 	-- Fallback: check common default branch names
@@ -113,6 +124,7 @@ end
 --- @return string|nil subject first commit message subject
 function M.get_first_commit_subject(base_ref)
 	-- Get first commit (oldest) since diverging from base
+	-- Note: --reverse without -1, then parse_log_first_subject takes the first line
 	local result = vim
 		.system({
 			"git",
@@ -120,7 +132,6 @@ function M.get_first_commit_subject(base_ref)
 			base_ref .. "..HEAD",
 			"--reverse",
 			"--format=%s",
-			"-1",
 		}, { text = true })
 		:wait()
 
@@ -136,7 +147,6 @@ function M.get_first_commit_subject(base_ref)
 			"origin/" .. base_ref .. "..HEAD",
 			"--reverse",
 			"--format=%s",
-			"-1",
 		}, { text = true })
 		:wait()
 
