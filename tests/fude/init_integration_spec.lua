@@ -17,6 +17,7 @@ local function setup_gh_mocks()
 		},
 		["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
 		["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+		["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
 		["api:graphql"] = {
 			data = { repository = { pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } } } },
 		},
@@ -125,6 +126,58 @@ describe("init integration", function()
 			init.start() -- Should be a no-op
 
 			assert.are.equal(pr_number, config.state.pr_number)
+		end)
+
+		it("calls on_review_start callback after all data is fetched", function()
+			local cb_called = false
+			local cb_info = nil
+			config.setup({
+				on_review_start = function(info)
+					cb_called = true
+					cb_info = info
+				end,
+			})
+			setup_gh_mocks()
+
+			init.start()
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "on_review_start should be called")
+			assert.are.equal(42, cb_info.pr_number)
+			assert.are.equal("main", cb_info.base_ref)
+			assert.are.equal("feature-branch", cb_info.head_ref)
+			assert.are.equal("https://github.com/owner/repo/pull/42", cb_info.pr_url)
+		end)
+
+		it("does not error when on_review_start is nil", function()
+			config.setup({ on_review_start = nil })
+			setup_gh_mocks()
+
+			init.start()
+
+			local ok = helpers.wait_for(function()
+				return config.state.active
+			end)
+			assert.is_true(ok, "Should activate without on_review_start")
+		end)
+
+		it("catches errors from on_review_start callback", function()
+			config.setup({
+				on_review_start = function()
+					error("user callback error")
+				end,
+			})
+			setup_gh_mocks()
+
+			-- Should not raise an error
+			init.start()
+
+			local ok = helpers.wait_for(function()
+				return config.state.active
+			end)
+			assert.is_true(ok, "Should activate even if on_review_start errors")
 		end)
 	end)
 
