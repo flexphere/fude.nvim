@@ -52,6 +52,27 @@ function M.start()
 			state.original_head_ref = vim.trim(ref_result.stdout)
 		end
 
+		-- Completion barrier: fire on_review_start after all async fetches complete
+		-- 5 async fetches: get_pr_files, get_pr_commits, get_pr_viewed_files, get_authenticated_user, load_comments
+		local remaining = 5
+		local function on_ready()
+			remaining = remaining - 1
+			if remaining > 0 then
+				return
+			end
+			if config.opts.on_review_start then
+				local ok, cb_err = pcall(config.opts.on_review_start, {
+					pr_number = state.pr_number,
+					base_ref = state.base_ref,
+					head_ref = state.head_ref,
+					pr_url = state.pr_url,
+				})
+				if not ok then
+					vim.notify("fude.nvim: on_review_start error: " .. tostring(cb_err), vim.log.levels.ERROR)
+				end
+			end
+		end
+
 		gh_mod.get_pr_files(state.pr_number, function(files_err, files)
 			if not files_err and files then
 				state.changed_files = {}
@@ -65,6 +86,7 @@ function M.start()
 					})
 				end
 			end
+			on_ready()
 		end)
 
 		-- Fetch PR commits for scope selection
@@ -72,6 +94,7 @@ function M.start()
 			if not commits_err and commits then
 				state.pr_commits = commits
 			end
+			on_ready()
 		end)
 
 		-- Fetch viewed file states
@@ -80,6 +103,7 @@ function M.start()
 				state.viewed_files = viewed_map
 				state.pr_node_id = pr_node_id
 			end
+			on_ready()
 		end)
 
 		-- Apply diffopt settings
@@ -101,10 +125,11 @@ function M.start()
 			if not user_err and login then
 				state.github_user = login
 			end
+			on_ready()
 		end)
 
 		local comments_mod = require("fude.comments")
-		comments_mod.load_comments()
+		comments_mod.load_comments(on_ready)
 
 		state.augroup = vim.api.nvim_create_augroup("Fude", { clear = true })
 

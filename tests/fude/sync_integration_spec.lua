@@ -134,6 +134,60 @@ describe("sync integration", function()
 
 			assert.are.equal(0, #config.state.comments)
 		end)
+
+		it("invokes callback after comments are loaded", function()
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "fix this", in_reply_to_id = vim.NIL },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			local cb_called = false
+			sync.load_comments(function()
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "Callback should be called after comments loaded")
+			assert.are.equal(1, #config.state.comments)
+		end)
+
+		it("invokes callback even when pr_number is nil", function()
+			config.state.pr_number = nil
+
+			local cb_called = false
+			sync.load_comments(function()
+				cb_called = true
+			end)
+
+			assert.is_true(cb_called)
+		end)
+
+		it("invokes callback on comments API error", function()
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = "API error",
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			local cb_called = false
+			sync.load_comments(function()
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "Callback should be called even on error")
+		end)
 	end)
 
 	describe("submit_as_review", function()

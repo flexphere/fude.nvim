@@ -391,6 +391,19 @@ Options:
                   Timestamps from GitHub (UTC) are converted to the system
                   timezone before formatting.
 
+`on_review_start`   Callback function invoked after |:FudeReviewStart|
+                  completes all data fetching (changed files, commits,
+                  viewed files, comments, authenticated user).
+                  Receives a table with PR information:
+                  `{ pr_number, base_ref, head_ref, pr_url }`
+                  (default: nil). >lua
+                    require("fude").setup({
+                      on_review_start = function(info)
+                        vim.notify("Review started: PR #" .. info.pr_number)
+                      end,
+                    })
+<
+
 ==============================================================================
 7. STATUSLINE                                        *fude-statusline*
 

@@ -7,9 +7,13 @@ local data = require("fude.comments.data")
 --- GET /pulls/{pr}/comments does not include pending review comments,
 --- so when a pending review exists, also fetches from the review-specific endpoint
 --- and builds pending_comments from the same data.
-local function fetch_comments()
+--- @param callback fun()|nil optional callback invoked after comments are applied
+local function fetch_comments(callback)
 	local state = config.state
 	if not state.pr_number then
+		if callback then
+			callback()
+		end
 		return
 	end
 
@@ -18,11 +22,17 @@ local function fetch_comments()
 		state.comment_map = data.build_comment_map(comments)
 		require("fude.ui").refresh_extmarks()
 		vim.notify(string.format("fude.nvim: Loaded %d comments", #comments), vim.log.levels.INFO)
+		if callback then
+			callback()
+		end
 	end
 
 	gh.get_pr_comments(state.pr_number, function(err, comments)
 		if err then
 			vim.notify("fude.nvim: Failed to fetch comments: " .. err, vim.log.levels.WARN)
+			if callback then
+				callback()
+			end
 			return
 		end
 
@@ -116,9 +126,13 @@ end
 --- Load all comment data: detect pending review, then fetch comments.
 --- This is the main entry point for initializing comment state on start.
 --- For refreshing after mutations (submit, reply, sync), use fetch_comments directly.
-function M.load_comments()
+--- @param callback fun()|nil optional callback invoked after comments are loaded
+function M.load_comments(callback)
 	local state = config.state
 	if not state.pr_number then
+		if callback then
+			callback()
+		end
 		return
 	end
 
@@ -126,7 +140,7 @@ function M.load_comments()
 		if err then
 			vim.notify("fude.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
 			-- Still fetch comments even if reviews fail
-			fetch_comments()
+			fetch_comments(callback)
 			return
 		end
 
@@ -146,7 +160,7 @@ function M.load_comments()
 			state.pending_comments = {}
 		end
 
-		fetch_comments()
+		fetch_comments(callback)
 	end)
 end
 

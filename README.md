@@ -153,6 +153,9 @@ require("fude").setup({
   auto_view_comment = true,
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
+  -- Callback after review start completes (all data fetched)
+  -- Receives: { pr_number, base_ref, head_ref, pr_url }
+  on_review_start = nil,
 })
 ```
 
