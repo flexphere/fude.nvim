@@ -101,9 +101,12 @@ end
 --- @return string|nil branch name (e.g., "main", "master")
 function M.get_default_branch()
 	-- Try to get default branch from remote HEAD
-	local result = vim.system({ "git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short" }, { text = true }):wait()
+	local result = vim.system({ "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD" }, { text = true }):wait()
 	if result.code == 0 and result.stdout then
 		local branch = vim.trim(result.stdout)
+		if branch == "" then
+			return nil
+		end
 		-- Strip "origin/" prefix if present
 		return (branch:gsub("^origin/", ""))
 	end
