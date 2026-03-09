@@ -72,4 +72,79 @@ function M.get_file_diff(base_ref, file_path)
 	return nil
 end
 
+--- Parse the first line (subject) from git log output.
+--- @param output string git log output
+--- @return string|nil subject first commit subject, or nil if empty
+function M.parse_log_first_subject(output)
+	if not output or output == "" then
+		return nil
+	end
+	local first_line = output:match("^([^\r\n]*)")
+	if first_line and first_line ~= "" then
+		return first_line
+	end
+	return nil
+end
+
+--- Get the repository's default branch name.
+--- @return string|nil branch name (e.g., "main", "master")
+function M.get_default_branch()
+	-- Try to get default branch from remote HEAD
+	local result = vim.system({ "git", "symbolic-ref", "refs/remotes/origin/HEAD", "--short" }, { text = true }):wait()
+	if result.code == 0 and result.stdout then
+		local branch = vim.trim(result.stdout)
+		-- Strip "origin/" prefix if present
+		return branch:gsub("^origin/", "")
+	end
+
+	-- Fallback: check common default branch names
+	for _, name in ipairs({ "main", "master" }) do
+		local check = vim.system({ "git", "rev-parse", "--verify", "origin/" .. name }, { text = true }):wait()
+		if check.code == 0 then
+			return name
+		end
+	end
+
+	return nil
+end
+
+--- Get the subject of the first commit since base branch.
+--- @param base_ref string base branch name (e.g., "main")
+--- @return string|nil subject first commit message subject
+function M.get_first_commit_subject(base_ref)
+	-- Get first commit (oldest) since diverging from base
+	local result = vim
+		.system({
+			"git",
+			"log",
+			base_ref .. "..HEAD",
+			"--reverse",
+			"--format=%s",
+			"-1",
+		}, { text = true })
+		:wait()
+
+	if result.code == 0 and result.stdout then
+		return M.parse_log_first_subject(result.stdout)
+	end
+
+	-- Try with origin/ prefix
+	local result2 = vim
+		.system({
+			"git",
+			"log",
+			"origin/" .. base_ref .. "..HEAD",
+			"--reverse",
+			"--format=%s",
+			"-1",
+		}, { text = true })
+		:wait()
+
+	if result2.code == 0 and result2.stdout then
+		return M.parse_log_first_subject(result2.stdout)
+	end
+
+	return nil
+end
+
 return M
