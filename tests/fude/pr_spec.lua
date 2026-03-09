@@ -50,6 +50,7 @@ describe("create passes default title to open_pr_float", function()
 		end)
 		pr.create()
 		assert.is_nil(captured_title_lines)
+		assert.are.same({ "" }, captured_body_lines)
 	end)
 
 	it("passes nil title when first commit subject is nil", function()
@@ -58,6 +59,24 @@ describe("create passes default title to open_pr_float", function()
 		end)
 		pr.create()
 		assert.is_nil(captured_title_lines)
+		assert.are.same({ "" }, captured_body_lines)
+	end)
+
+	it("passes default title when single template exists", function()
+		helpers.mock(pr, "find_templates", function()
+			return { "/repo/.github/template.md" }
+		end)
+		-- Mock vim.fn.readfile to return template body
+		local original_readfile = vim.fn.readfile
+		vim.fn.readfile = function(_)
+			return { "Template body line 1", "Template body line 2" }
+		end
+
+		pr.create()
+
+		vim.fn.readfile = original_readfile
+		assert.are.same({ "Initial commit message" }, captured_title_lines)
+		assert.are.same({ "Template body line 1", "Template body line 2" }, captured_body_lines)
 	end)
 
 	it("does not fetch default title when only draft exists", function()
