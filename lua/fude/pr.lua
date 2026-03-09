@@ -300,10 +300,22 @@ end
 
 --- Open the float from a template file.
 --- @param path string template file path
+--- @param default_title string|nil default title from first commit
 --- @private
-local function open_from_template(path)
+local function open_from_template(path, default_title)
 	local lines = vim.fn.readfile(path)
-	M.open_pr_float(nil, lines)
+	local title_lines = default_title and { default_title } or nil
+	M.open_pr_float(title_lines, lines)
+end
+
+--- Get default PR title from first commit message (lazy helper).
+--- @return string|nil default_title
+local function get_default_title()
+	local default_branch = diff.get_default_branch()
+	if default_branch then
+		return diff.get_first_commit_subject(default_branch)
+	end
+	return nil
 end
 
 --- Show PR creation flow: find templates, select if multiple, open float.
@@ -321,10 +333,13 @@ function M.create()
 
 	if total == 0 then
 		-- No templates, no draft: open with empty body
-		M.open_pr_float(nil, { "" })
+		local default_title = get_default_title()
+		local title_lines = default_title and { default_title } or nil
+		M.open_pr_float(title_lines, { "" })
 	elseif total == 1 and not has_draft then
 		-- Single template, no draft: read and open
-		open_from_template(templates[1])
+		local default_title = get_default_title()
+		open_from_template(templates[1], default_title)
 	elseif total == 1 and has_draft then
 		-- Only draft, no templates: open from draft
 		open_from_draft()
@@ -338,7 +353,9 @@ function M.create()
 			if selected == "__draft__" then
 				open_from_draft()
 			else
-				open_from_template(selected)
+				-- Lazy: only fetch default title when template is selected
+				local default_title = get_default_title()
+				open_from_template(selected, default_title)
 			end
 		end)
 	end
