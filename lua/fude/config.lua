@@ -44,6 +44,9 @@ M.defaults = {
 		next_comment = "]c",
 		prev_comment = "[c",
 	},
+	-- Callback invoked after review start completes (all data fetched).
+	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }
+	on_review_start = nil,
 }
 
 M.state = {
