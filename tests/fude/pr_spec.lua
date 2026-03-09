@@ -1,4 +1,87 @@
 local pr = require("fude.pr")
+local diff = require("fude.diff")
+local helpers = require("tests.helpers")
+
+describe("create passes default title to open_pr_float", function()
+	local captured_title_lines
+	local captured_body_lines
+
+	before_each(function()
+		captured_title_lines = nil
+		captured_body_lines = nil
+		pr.clear_draft()
+
+		-- Mock diff functions
+		helpers.mock(diff, "get_repo_root", function()
+			return "/repo"
+		end)
+		helpers.mock(diff, "get_default_branch", function()
+			return "main"
+		end)
+		helpers.mock(diff, "get_first_commit_subject", function(_)
+			return "Initial commit message"
+		end)
+
+		-- Mock find_templates to return empty (no templates, no draft)
+		helpers.mock(pr, "find_templates", function()
+			return {}
+		end)
+
+		-- Mock open_pr_float to capture arguments
+		helpers.mock(pr, "open_pr_float", function(title_lines, body_lines)
+			captured_title_lines = title_lines
+			captured_body_lines = body_lines
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("passes default title when no templates and no draft", function()
+		pr.create()
+		assert.are.same({ "Initial commit message" }, captured_title_lines)
+		assert.are.same({ "" }, captured_body_lines)
+	end)
+
+	it("passes nil title when default branch is nil", function()
+		helpers.mock(diff, "get_default_branch", function()
+			return nil
+		end)
+		pr.create()
+		assert.is_nil(captured_title_lines)
+	end)
+
+	it("passes nil title when first commit subject is nil", function()
+		helpers.mock(diff, "get_first_commit_subject", function(_)
+			return nil
+		end)
+		pr.create()
+		assert.is_nil(captured_title_lines)
+	end)
+
+	it("does not fetch default title when only draft exists", function()
+		local get_first_commit_called = false
+		helpers.mock(diff, "get_first_commit_subject", function(_)
+			get_first_commit_called = true
+			return "Should not be called"
+		end)
+
+		-- Save a draft
+		pr.save_draft({ "Draft title" }, { "Draft body" })
+
+		-- Mock open_pr_float to track if draft is restored
+		local draft_title_lines
+		helpers.mock(pr, "open_pr_float", function(title_lines, _)
+			draft_title_lines = title_lines
+		end)
+
+		pr.create()
+
+		assert.is_false(get_first_commit_called)
+		assert.are.same({ "Draft title" }, draft_title_lines)
+	end)
+end)
 
 describe("build_template_search_paths", function()
 	it("returns expected directory paths", function()
