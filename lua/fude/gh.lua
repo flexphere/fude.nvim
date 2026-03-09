@@ -177,6 +177,35 @@ function M.create_issue_comment(pr_number, body, callback)
 	}, callback)
 end
 
+--- Update an issue-level comment.
+--- @param comment_id number
+--- @param body string new comment body
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.update_issue_comment(comment_id, body, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/issues/comments/" .. comment_id,
+		"--method",
+		"PATCH",
+		"-f",
+		"body=" .. body,
+	}, callback)
+end
+
+--- Delete an issue-level comment.
+--- @param comment_id number
+--- @param callback fun(err: string|nil)
+function M.delete_issue_comment(comment_id, callback)
+	M.run({
+		"api",
+		"repos/{owner}/{repo}/issues/comments/" .. comment_id,
+		"--method",
+		"DELETE",
+	}, function(err, _)
+		callback(err)
+	end)
+end
+
 --- Get repository collaborators (for @mention completion).
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_collaborators(callback)
