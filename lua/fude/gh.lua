@@ -81,20 +81,20 @@ function M.get_pr_by_commit(sha, callback)
 end
 
 --- Get PR info for the current branch.
---- Falls back to commit-based lookup when in detached HEAD state.
+--- Detects detached HEAD synchronously and uses commit-based lookup directly,
+--- avoiding `gh pr view` which may hang without a branch.
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_info(callback)
-	M.run_json({ "pr", "view", "--json", "number,baseRefName,headRefName,url" }, function(err, data)
-		if not err then
-			return callback(nil, data)
-		end
-		-- Fallback: detached HEAD → find PR by commit SHA
+	-- Detect detached HEAD: use commit-based lookup directly
+	local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "HEAD" }, { text = true }):wait()
+	if ref_result.code ~= 0 then
 		local sha, sha_err = M.get_head_sha()
 		if not sha then
-			return callback(sha_err or err, nil)
+			return callback(sha_err or "Not in a git repository", nil)
 		end
-		M.get_pr_by_commit(sha, callback)
-	end)
+		return M.get_pr_by_commit(sha, callback)
+	end
+	M.run_json({ "pr", "view", "--json", "number,baseRefName,headRefName,url" }, callback)
 end
 
 --- Get the list of files changed in a PR.
