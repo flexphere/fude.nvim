@@ -55,8 +55,8 @@ function M.parse_pr_from_commit_api(data)
 	end
 	return {
 		number = pr.number,
-		baseRefName = pr.base and pr.base.ref,
-		headRefName = pr.head and pr.head.ref,
+		baseRefName = (pr.base and pr.base.ref) or "",
+		headRefName = (pr.head and pr.head.ref) or "",
 		url = pr.html_url,
 	}
 end

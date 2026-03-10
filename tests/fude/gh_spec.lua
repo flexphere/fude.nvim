@@ -240,7 +240,7 @@ describe("parse_pr_from_commit_api", function()
 		assert.is_nil(result)
 	end)
 
-	it("handles missing base and head fields", function()
+	it("defaults to empty string for missing base and head fields", function()
 		local data = {
 			{
 				number = 99,
@@ -250,7 +250,7 @@ describe("parse_pr_from_commit_api", function()
 		}
 		local result = gh.parse_pr_from_commit_api(data)
 		assert.are.equal(99, result.number)
-		assert.is_nil(result.baseRefName)
-		assert.is_nil(result.headRefName)
+		assert.are.equal("", result.baseRefName)
+		assert.are.equal("", result.headRefName)
 	end)
 end)
