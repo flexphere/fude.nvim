@@ -4,6 +4,20 @@ local helpers = require("tests.helpers")
 
 --- Standard mock responses for init.start()
 local function setup_gh_mocks()
+	-- Mock git symbolic-ref to always succeed (simulate normal branch checkout).
+	-- This is needed because CI runs in detached HEAD, which would skip the "pr:view" path.
+	local original_system = vim.system
+	helpers.mock(vim, "system", function(cmd, opts)
+		if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
+			return {
+				wait = function()
+					return { code = 0, stdout = "refs/heads/feature-branch\n", stderr = "" }
+				end,
+			}
+		end
+		return original_system(cmd, opts)
+	end)
+
 	helpers.mock_gh({
 		["pr:view"] = {
 			number = 42,
