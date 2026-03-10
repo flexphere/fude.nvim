@@ -37,10 +37,64 @@ function M.run_json(args, callback, stdin)
 	end, stdin)
 end
 
+--- Parse commits API response into PR info format.
+--- Prefers open PRs when multiple results exist.
+--- @param data table[] array of PR objects from commits/{sha}/pulls API
+--- @return table|nil pr_info {number, baseRefName, headRefName, url} or nil
+function M.parse_pr_from_commit_api(data)
+	if not data or #data == 0 then
+		return nil
+	end
+	-- Prefer open PR
+	local pr = data[1]
+	for _, p in ipairs(data) do
+		if p.state == "open" then
+			pr = p
+			break
+		end
+	end
+	return {
+		number = pr.number,
+		baseRefName = pr.base and pr.base.ref,
+		headRefName = pr.head and pr.head.ref,
+		url = pr.html_url,
+	}
+end
+
+--- Find PR associated with a commit SHA (fallback for detached HEAD).
+--- @param sha string commit SHA
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.get_pr_by_commit(sha, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/commits/" .. sha .. "/pulls",
+	}, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		local pr_info = M.parse_pr_from_commit_api(data)
+		if not pr_info then
+			return callback("No PR found for commit " .. sha:sub(1, 7), nil)
+		end
+		callback(nil, pr_info)
+	end)
+end
+
 --- Get PR info for the current branch.
+--- Falls back to commit-based lookup when in detached HEAD state.
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_info(callback)
-	M.run_json({ "pr", "view", "--json", "number,baseRefName,headRefName,url" }, callback)
+	M.run_json({ "pr", "view", "--json", "number,baseRefName,headRefName,url" }, function(err, data)
+		if not err then
+			return callback(nil, data)
+		end
+		-- Fallback: detached HEAD → find PR by commit SHA
+		local sha, sha_err = M.get_head_sha()
+		if not sha then
+			return callback(sha_err or err, nil)
+		end
+		M.get_pr_by_commit(sha, callback)
+	end)
 end
 
 --- Get the list of files changed in a PR.
