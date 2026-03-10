@@ -52,13 +52,22 @@ function M.start()
 			state.original_head_ref = vim.trim(ref_result.stdout)
 		end
 
+		-- Detect detached HEAD: start with commit scope automatically
+		local started_detached = state.original_head_ref == nil
+
 		-- Completion barrier: fire on_review_start after all async fetches complete
-		-- 5 async fetches: get_pr_files, get_pr_commits, get_pr_viewed_files, get_authenticated_user, load_comments
+		-- 5 async fetches: files, get_pr_commits, get_pr_viewed_files, get_authenticated_user, load_comments
 		local remaining = 5
 		local function on_ready()
 			remaining = remaining - 1
 			if remaining > 0 then
 				return
+			end
+			-- Set commit scope if started in detached HEAD
+			if started_detached and state.original_head_sha then
+				state.scope = "commit"
+				state.scope_commit_sha = state.original_head_sha
+				state.scope_commit_index = require("fude.scope").find_commit_index(state.pr_commits, state.original_head_sha)
 			end
 			if config.opts.on_review_start then
 				local ok, cb_err = pcall(config.opts.on_review_start, {
@@ -73,21 +82,40 @@ function M.start()
 			end
 		end
 
-		gh_mod.get_pr_files(state.pr_number, function(files_err, files)
-			if not files_err and files then
-				state.changed_files = {}
-				for _, f in ipairs(files) do
-					table.insert(state.changed_files, {
-						path = f.filename,
-						status = f.status,
-						additions = f.additions,
-						deletions = f.deletions,
-						patch = f.patch,
-					})
+		-- Fetch changed files: commit-specific when detached, PR-wide otherwise
+		if started_detached and state.original_head_sha then
+			gh_mod.get_commit_files(state.original_head_sha, function(files_err, files)
+				if not files_err and files then
+					state.changed_files = {}
+					for _, f in ipairs(files) do
+						table.insert(state.changed_files, {
+							path = f.filename,
+							status = f.status,
+							additions = f.additions,
+							deletions = f.deletions,
+							patch = f.patch,
+						})
+					end
 				end
-			end
-			on_ready()
-		end)
+				on_ready()
+			end)
+		else
+			gh_mod.get_pr_files(state.pr_number, function(files_err, files)
+				if not files_err and files then
+					state.changed_files = {}
+					for _, f in ipairs(files) do
+						table.insert(state.changed_files, {
+							path = f.filename,
+							status = f.status,
+							additions = f.additions,
+							deletions = f.deletions,
+							patch = f.patch,
+						})
+					end
+				end
+				on_ready()
+			end)
+		end
 
 		-- Fetch PR commits for scope selection
 		gh_mod.get_pr_commits(state.pr_number, function(commits_err, commits)
@@ -114,10 +142,14 @@ function M.start()
 			end
 		end
 
-		-- Switch gitsigns base to PR base branch
+		-- Switch gitsigns base: commit parent when detached, PR base branch otherwise
 		local has_gitsigns, gitsigns = pcall(require, "gitsigns")
 		if has_gitsigns then
-			gitsigns.change_base(state.base_ref, true)
+			if started_detached and state.original_head_sha then
+				gitsigns.change_base(state.original_head_sha .. "^", true)
+			else
+				gitsigns.change_base(state.base_ref, true)
+			end
 		end
 
 		-- Fetch authenticated user for ownership checks
