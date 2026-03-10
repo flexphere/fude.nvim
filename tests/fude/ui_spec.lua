@@ -740,8 +740,8 @@ describe("build_overview_left_lines", function()
 	it("produces correct highlight ranges", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		-- At minimum: title, DESCRIPTION header, COMMENTS header, footer
-		assert.is_true(#result.hl_ranges >= 4)
+		-- At minimum: footer (section headers use markdown syntax highlighting via treesitter)
+		assert.is_true(#result.hl_ranges >= 1)
 	end)
 
 	it("does not include CI STATUS (moved to right pane)", function()
@@ -825,6 +825,58 @@ describe("build_overview_left_lines", function()
 		assert.is_true(result.comment_positions[1] < result.comment_positions[2])
 		assert.is_true(result.comment_positions[2] < result.comment_positions[3])
 	end)
+
+	it("uses markdown # heading for PR title", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		assert.truthy(result.lines[1]:match("^# "))
+	end)
+
+	it("uses markdown ## headings for sections", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "text" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		local heading_count = 0
+		for _, line in ipairs(result.lines) do
+			if line:match("^## ") then
+				heading_count = heading_count + 1
+			end
+		end
+		assert.are.equal(2, heading_count) -- DESCRIPTION, COMMENTS
+	end)
+
+	it("uses markdown ### headings for individual comments", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
+		}
+		local result = ui.build_overview_left_lines(pr, comments, identity)
+		local h3_count = 0
+		for _, line in ipairs(result.lines) do
+			if line:match("^### ") then
+				h3_count = h3_count + 1
+			end
+		end
+		assert.are.equal(2, h3_count)
+	end)
+
+	it("does not contain separator lines", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", body = "text" }
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+		}
+		local result = ui.build_overview_left_lines(pr, comments, identity)
+		for _, line in ipairs(result.lines) do
+			assert.is_falsy(line:match("^%-%-%-%-%-%-%-%-%-%-"), "Should not contain separator: " .. line)
+		end
+	end)
+
+	it("includes fold hint in footer", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		local last = result.lines[#result.lines]
+		assert.truthy(last:find("fold"))
+	end)
 end)
 
 describe("build_overview_right_lines", function()
@@ -883,7 +935,7 @@ describe("build_overview_right_lines", function()
 		local found_alice = false
 		local found_bob = false
 		for _, line in ipairs(result.lines) do
-			if line == "ASSIGNEES" then
+			if line == "## ASSIGNEES" then
 				found_header = true
 			end
 			if line == "@alice" then
@@ -924,7 +976,7 @@ describe("build_overview_right_lines", function()
 		local found_bug = false
 		local found_urgent = false
 		for _, line in ipairs(result.lines) do
-			if line == "LABELS" then
+			if line == "## LABELS" then
 				found_header = true
 			end
 			if line == "bug" then
@@ -1079,17 +1131,17 @@ describe("build_overview_right_lines", function()
 		assert.is_true(has_url)
 	end)
 
-	it("highlights section headers", function()
+	it("uses markdown headings for sections", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
 		local result = ui.build_overview_right_lines(pr)
-		-- Should have at least 4 Title highlights (REVIEWERS, ASSIGNEES, LABELS, CI STATUS)
-		local title_count = 0
-		for _, hl in ipairs(result.hl_ranges) do
-			if hl.hl == "Title" then
-				title_count = title_count + 1
+		-- Section headers use markdown ## syntax (highlighted by treesitter, not manual hl_ranges)
+		local heading_count = 0
+		for _, line in ipairs(result.lines) do
+			if line:match("^## ") then
+				heading_count = heading_count + 1
 			end
 		end
-		assert.are.equal(4, title_count)
+		assert.are.equal(4, heading_count)
 	end)
 
 	it("highlights reviewer lines with correct groups", function()
@@ -1108,6 +1160,24 @@ describe("build_overview_right_lines", function()
 			end
 		end
 		assert.is_true(ok_found)
+	end)
+
+	it("does not contain separator lines", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			assignees = { { login = "alice" } },
+			labels = { { name = "bug" } },
+			statusCheckRollup = {
+				{ name = "lint", status = "COMPLETED", conclusion = "SUCCESS" },
+			},
+		}
+		local result = ui.build_overview_right_lines(pr)
+		for _, line in ipairs(result.lines) do
+			assert.is_falsy(line:match("^%-%-%-%-%-%-%-%-%-%-"), "Should not contain separator: " .. line)
+		end
 	end)
 end)
 
