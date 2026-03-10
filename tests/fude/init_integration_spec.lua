@@ -7,15 +7,23 @@ local function setup_gh_mocks()
 	-- Mock git symbolic-ref to always succeed (simulate normal branch checkout).
 	-- This is needed because CI runs in detached HEAD, which would skip the "pr:view" path.
 	local original_system = vim.system
-	helpers.mock(vim, "system", function(cmd, opts)
+	helpers.mock(vim, "system", function(cmd, ...)
 		if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
+			-- --short returns branch name, --quiet suppresses output
+			local has_short = false
+			for _, arg in ipairs(cmd) do
+				if arg == "--short" then
+					has_short = true
+					break
+				end
+			end
 			return {
 				wait = function()
-					return { code = 0, stdout = "refs/heads/feature-branch\n", stderr = "" }
+					return { code = 0, stdout = has_short and "feature-branch\n" or "", stderr = "" }
 				end,
 			}
 		end
-		return original_system(cmd, opts)
+		return original_system(cmd, ...)
 	end)
 
 	helpers.mock_gh({
@@ -258,7 +266,7 @@ describe("init integration", function()
 		it("sets commit scope automatically", function()
 			-- Mock vim.system to simulate detached HEAD (symbolic-ref fails)
 			local original_system = vim.system
-			helpers.mock(vim, "system", function(cmd, opts)
+			helpers.mock(vim, "system", function(cmd, ...)
 				if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
 					return {
 						wait = function()
@@ -266,7 +274,7 @@ describe("init integration", function()
 						end,
 					}
 				end
-				return original_system(cmd, opts)
+				return original_system(cmd, ...)
 			end)
 
 			-- Mock responses for detached HEAD startup
