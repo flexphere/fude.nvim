@@ -168,3 +168,89 @@ describe("parse_commit_entries", function()
 		assert.are.same({}, entries)
 	end)
 end)
+
+describe("parse_pr_from_commit_api", function()
+	it("parses single PR with full data", function()
+		local data = {
+			{
+				number = 42,
+				state = "open",
+				html_url = "https://github.com/owner/repo/pull/42",
+				base = { ref = "main" },
+				head = { ref = "feature-branch" },
+			},
+		}
+		local result = gh.parse_pr_from_commit_api(data)
+		assert.are.equal(42, result.number)
+		assert.are.equal("main", result.baseRefName)
+		assert.are.equal("feature-branch", result.headRefName)
+		assert.are.equal("https://github.com/owner/repo/pull/42", result.url)
+	end)
+
+	it("prefers open PR over closed", function()
+		local data = {
+			{
+				number = 10,
+				state = "closed",
+				html_url = "https://github.com/owner/repo/pull/10",
+				base = { ref = "main" },
+				head = { ref = "old-branch" },
+			},
+			{
+				number = 20,
+				state = "open",
+				html_url = "https://github.com/owner/repo/pull/20",
+				base = { ref = "main" },
+				head = { ref = "current-branch" },
+			},
+		}
+		local result = gh.parse_pr_from_commit_api(data)
+		assert.are.equal(20, result.number)
+		assert.are.equal("current-branch", result.headRefName)
+	end)
+
+	it("uses first PR when all are closed", function()
+		local data = {
+			{
+				number = 5,
+				state = "closed",
+				html_url = "https://github.com/owner/repo/pull/5",
+				base = { ref = "main" },
+				head = { ref = "branch-a" },
+			},
+			{
+				number = 6,
+				state = "closed",
+				html_url = "https://github.com/owner/repo/pull/6",
+				base = { ref = "main" },
+				head = { ref = "branch-b" },
+			},
+		}
+		local result = gh.parse_pr_from_commit_api(data)
+		assert.are.equal(5, result.number)
+	end)
+
+	it("returns nil for empty array", function()
+		local result = gh.parse_pr_from_commit_api({})
+		assert.is_nil(result)
+	end)
+
+	it("returns nil for nil input", function()
+		local result = gh.parse_pr_from_commit_api(nil)
+		assert.is_nil(result)
+	end)
+
+	it("handles missing base and head fields", function()
+		local data = {
+			{
+				number = 99,
+				state = "open",
+				html_url = "https://github.com/owner/repo/pull/99",
+			},
+		}
+		local result = gh.parse_pr_from_commit_api(data)
+		assert.are.equal(99, result.number)
+		assert.is_nil(result.baseRefName)
+		assert.is_nil(result.headRefName)
+	end)
+end)
