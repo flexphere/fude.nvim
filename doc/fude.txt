@@ -143,6 +143,10 @@ Using lazy.nvim: >lua
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count.
     Requires an active review session.
+    Sections use Markdown headings (`##`) and are foldable with
+    standard Neovim fold commands (`za`, `zc`, `zo`, `zM`, `zR`).
+    Individual comments use `###` headings and can be folded
+    independently. All folds are open by default.
     Section marks are set on the left pane: `'d` (description),
     `'c` (comments). Customizable via `overview.marks`.
     Press `C` to write a new comment, `R` to refresh,
@@ -279,6 +283,8 @@ Suggested mappings:
                 Toggle commit reviewed state (in |:FudeReviewScope| picker)
                 Switch between left/right panes (in |:FudeReviewOverview|)
   `'d`/`'c`    Jump to description/comments (overview left pane)
+  `za`/`zc`/`zo` Toggle/close/open fold (overview sections and comments)
+  `zM`/`zR`     Close/open all folds (in |:FudeReviewOverview|)
 
   * Visual mode mappings must use `:FudeReviewComment<CR>` (not `<cmd>`)
     to preserve the range. Using `<C-u>` will clear the range and

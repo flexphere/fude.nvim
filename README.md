@@ -16,7 +16,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Review scope** - Review the full PR or focus on a specific commit, navigate scopes with next/prev, mark commits as reviewed, statusline integration
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
-- **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right)
+- **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right). Sections are foldable with standard Neovim fold commands
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub)
