@@ -37,9 +37,63 @@ function M.run_json(args, callback, stdin)
 	end, stdin)
 end
 
+--- Parse commits API response into PR info format.
+--- Prefers open PRs when multiple results exist.
+--- @param data table[]|nil array of PR objects from commits/{sha}/pulls API
+--- @return table|nil pr_info {number, baseRefName, headRefName, url} or nil
+function M.parse_pr_from_commit_api(data)
+	if not data or #data == 0 then
+		return nil
+	end
+	-- Prefer open PR
+	local pr = data[1]
+	for _, p in ipairs(data) do
+		if p.state == "open" then
+			pr = p
+			break
+		end
+	end
+	return {
+		number = pr.number,
+		baseRefName = (pr.base and pr.base.ref) or "",
+		headRefName = (pr.head and pr.head.ref) or "",
+		url = pr.html_url,
+	}
+end
+
+--- Find PR associated with a commit SHA (fallback for detached HEAD).
+--- @param sha string commit SHA
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.get_pr_by_commit(sha, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/commits/" .. sha .. "/pulls",
+	}, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		local pr_info = M.parse_pr_from_commit_api(data)
+		if not pr_info then
+			return callback("No PR found for commit " .. sha:sub(1, 7), nil)
+		end
+		callback(nil, pr_info)
+	end)
+end
+
 --- Get PR info for the current branch.
+--- Detects detached HEAD synchronously and uses commit-based lookup directly,
+--- avoiding `gh pr view` which may hang without a branch.
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_info(callback)
+	-- Detect detached HEAD: use commit-based lookup directly
+	local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "HEAD" }, { text = true }):wait()
+	if ref_result.code ~= 0 then
+		local sha, sha_err = M.get_head_sha()
+		if not sha then
+			return callback(sha_err or "Not in a git repository", nil)
+		end
+		return M.get_pr_by_commit(sha, callback)
+	end
 	M.run_json({ "pr", "view", "--json", "number,baseRefName,headRefName,url" }, callback)
 end
 
