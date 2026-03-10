@@ -240,6 +240,69 @@ describe("init integration", function()
 		end)
 	end)
 
+	describe("start in detached HEAD", function()
+		it("sets commit scope automatically", function()
+			-- Mock vim.system to simulate detached HEAD (symbolic-ref fails)
+			local original_system = vim.system
+			helpers.mock(vim, "system", function(cmd, opts)
+				if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
+					return {
+						wait = function()
+							return { code = 1, stdout = "", stderr = "" }
+						end,
+					}
+				end
+				return original_system(cmd, opts)
+			end)
+
+			-- Mock responses for detached HEAD startup
+			helpers.mock_gh({
+				-- get_pr_by_commit: finds PR via commits API
+				["api:repos/{owner}/{repo}/commits/abc123def456/pulls"] = {
+					{
+						number = 42,
+						state = "open",
+						html_url = "https://github.com/owner/repo/pull/42",
+						base = { ref = "main" },
+						head = { ref = "feature-branch" },
+					},
+				},
+				-- get_commit_files: commit-specific changed files
+				["api:repos/{owner}/{repo}/commits/abc123def456"] = {
+					files = {
+						{ filename = "lua/fude/gh.lua", status = "modified", additions = 5, deletions = 2 },
+					},
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/commits"] = {
+					{ sha = "abc123def456", commit = { message = "test commit", author = { name = "test" } } },
+				},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+				["api:user"] = { login = "testuser" },
+			})
+			helpers.mock_head_sha("abc123def456")
+
+			init.start()
+
+			local ok = helpers.wait_for(function()
+				return config.state.active and config.state.scope == "commit"
+			end)
+			assert.is_true(ok, "Should activate with commit scope")
+			assert.are.equal("commit", config.state.scope)
+			assert.are.equal("abc123def456", config.state.scope_commit_sha)
+			assert.are.equal(1, #config.state.changed_files)
+			assert.are.equal("lua/fude/gh.lua", config.state.changed_files[1].path)
+		end)
+	end)
+
 	describe("toggle", function()
 		it("starts when inactive", function()
 			init.toggle()
