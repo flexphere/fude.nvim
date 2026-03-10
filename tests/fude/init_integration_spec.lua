@@ -9,7 +9,7 @@ local function setup_gh_mocks()
 	local original_system = vim.system
 	helpers.mock(vim, "system", function(cmd, ...)
 		if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
-			-- --short returns branch name, --quiet suppresses output
+			-- --short returns branch name, without --short returns full ref
 			local has_short = false
 			for _, arg in ipairs(cmd) do
 				if arg == "--short" then
@@ -19,7 +19,11 @@ local function setup_gh_mocks()
 			end
 			return {
 				wait = function()
-					return { code = 0, stdout = has_short and "feature-branch\n" or "", stderr = "" }
+					return {
+						code = 0,
+						stdout = has_short and "feature-branch\n" or "refs/heads/feature-branch\n",
+						stderr = "",
+					}
 				end,
 			}
 		end
