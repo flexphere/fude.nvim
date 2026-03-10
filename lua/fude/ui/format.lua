@@ -372,9 +372,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	local comment_positions = {}
 
 	-- PR header
-	local title = string.format("PR #%d: %s", pr_info.number or 0, pr_info.title or "")
+	local title = string.format("# PR #%d: %s", pr_info.number or 0, pr_info.title or "")
 	table.insert(lines, title)
-	table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
 
 	local author = pr_info.author and pr_info.author.login or "unknown"
 	table.insert(lines, string.format("State: %s    Author: @%s", pr_info.state or "UNKNOWN", author))
@@ -384,12 +383,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 
 	-- Description
 	table.insert(lines, "")
-	table.insert(lines, string.rep("-", 50))
-	local desc_header_line = #lines
-	table.insert(lines, "DESCRIPTION")
+	table.insert(lines, "## DESCRIPTION")
 	sections.description = #lines -- 1-indexed
-	table.insert(hl_ranges, { line = desc_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 50))
 
 	local body = normalize_newlines(pr_info.body)
 	if body == "" then
@@ -402,21 +397,17 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 
 	-- Comments
 	table.insert(lines, "")
-	table.insert(lines, string.rep("-", 50))
-	local comments_header_line = #lines
-	table.insert(lines, string.format("COMMENTS (%d)", #issue_comments))
+	table.insert(lines, string.format("## COMMENTS (%d)", #issue_comments))
 	sections.comments = #lines -- 1-indexed
-	table.insert(hl_ranges, { line = comments_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 50))
 
 	if #issue_comments == 0 then
 		table.insert(lines, "(no comments)")
 	else
-		for i, comment in ipairs(issue_comments) do
+		for _, comment in ipairs(issue_comments) do
 			local comment_author = comment.user and comment.user.login or "unknown"
 			local created = format_date_fn(comment.created_at)
 			table.insert(lines, "")
-			local header = string.format("@%s  %s", comment_author, created)
+			local header = string.format("### @%s  %s", comment_author, created)
 			table.insert(lines, header)
 			table.insert(comment_positions, #lines) -- 1-indexed header line
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
@@ -424,16 +415,12 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 			for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 				table.insert(lines, body_line)
 			end
-			if i < #issue_comments then
-				table.insert(lines, "")
-				table.insert(lines, string.rep("-", 30))
-			end
 		end
 	end
 
 	-- Footer
 	table.insert(lines, "")
-	table.insert(lines, " ]s/[s: sections  ]c/[c: comments  C: comment  R: refresh  <Tab>: switch  q: close")
+	table.insert(lines, " ]s/[s: sections  ]c/[c: comments  C: comment  za: fold  R: refresh  <Tab>: switch  q: close")
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
 	return { lines = lines, hl_ranges = hl_ranges, sections = sections, comment_positions = comment_positions }
@@ -451,15 +438,12 @@ function M.build_overview_right_lines(pr_info)
 	local latest_reviews = pr_info.latestReviews or {}
 	local reviewers = M.build_reviewers_list(review_requests, latest_reviews)
 
-	local reviewers_header_line = #lines
 	local reviewers_summary = M.build_reviewers_summary(reviewers)
 	if reviewers_summary ~= "" then
-		table.insert(lines, string.format("REVIEWERS (%s)", reviewers_summary))
+		table.insert(lines, string.format("## REVIEWERS (%s)", reviewers_summary))
 	else
-		table.insert(lines, "REVIEWERS")
+		table.insert(lines, "## REVIEWERS")
 	end
-	table.insert(hl_ranges, { line = reviewers_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 25))
 
 	if #reviewers == 0 then
 		table.insert(lines, "(no reviewers)")
@@ -474,10 +458,7 @@ function M.build_overview_right_lines(pr_info)
 	-- Assignees
 	local assignees = pr_info.assignees or {}
 	table.insert(lines, "")
-	local assignees_header_line = #lines
-	table.insert(lines, "ASSIGNEES")
-	table.insert(hl_ranges, { line = assignees_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 25))
+	table.insert(lines, "## ASSIGNEES")
 
 	if #assignees == 0 then
 		table.insert(lines, "(no assignees)")
@@ -491,10 +472,7 @@ function M.build_overview_right_lines(pr_info)
 	-- Labels
 	local labels = pr_info.labels or {}
 	table.insert(lines, "")
-	local labels_header_line = #lines
-	table.insert(lines, "LABELS")
-	table.insert(hl_ranges, { line = labels_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 25))
+	table.insert(lines, "## LABELS")
 
 	if #labels == 0 then
 		table.insert(lines, "(no labels)")
@@ -510,16 +488,12 @@ function M.build_overview_right_lines(pr_info)
 	local checks = M.sort_checks(M.deduplicate_checks(raw_checks))
 	local check_urls = {}
 	table.insert(lines, "")
-	table.insert(lines, string.rep("-", 25))
-	local ci_header_line = #lines
 	local summary = M.build_checks_summary(checks)
 	if summary ~= "" then
-		table.insert(lines, string.format("CI STATUS (%s)", summary))
+		table.insert(lines, string.format("## CI STATUS (%s)", summary))
 	else
-		table.insert(lines, "CI STATUS")
+		table.insert(lines, "## CI STATUS")
 	end
-	table.insert(hl_ranges, { line = ci_header_line, hl = "Title" })
-	table.insert(lines, string.rep("-", 25))
 
 	if #checks == 0 then
 		table.insert(lines, "(no checks)")

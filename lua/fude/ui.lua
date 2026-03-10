@@ -367,6 +367,10 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		title_pos = "center",
 	})
 	vim.wo[left_win].wrap = true
+	vim.wo[left_win].foldenable = true
+	vim.wo[left_win].foldmethod = "expr"
+	vim.wo[left_win].foldexpr = "v:lua.vim.treesitter.foldexpr()"
+	vim.wo[left_win].foldlevel = 99
 
 	-- Open right window (not focused)
 	local right_win = vim.api.nvim_open_win(right_buf, false, {
@@ -379,6 +383,10 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		border = config.opts.float.border,
 	})
 	vim.wo[right_win].wrap = true
+	vim.wo[right_win].foldenable = true
+	vim.wo[right_win].foldmethod = "expr"
+	vim.wo[right_win].foldexpr = "v:lua.vim.treesitter.foldexpr()"
+	vim.wo[right_win].foldlevel = 99
 
 	-- Apply highlights
 	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
