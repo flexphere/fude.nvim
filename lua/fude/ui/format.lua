@@ -641,14 +641,45 @@ function M.format_comment_browser_thread(entry, all_comments, all_issue_comments
 	return M.format_reply_comments_for_display(thread, format_date_fn)
 end
 
+--- Wrap a line to fit within max_width (display cells).
+--- @param line string input line
+--- @param max_width number maximum display width
+--- @return string[] wrapped lines
+local function wrap_line(line, max_width)
+	if vim.fn.strdisplaywidth(line) <= max_width then
+		return { line }
+	end
+
+	local result = {}
+	local current = ""
+	local current_width = 0
+
+	for char in line:gmatch(".[\128-\191]*") do
+		local char_width = vim.fn.strdisplaywidth(char)
+		if current_width + char_width > max_width then
+			table.insert(result, current)
+			current = char
+			current_width = char_width
+		else
+			current = current .. char
+			current_width = current_width + char_width
+		end
+	end
+
+	if current ~= "" then
+		table.insert(result, current)
+	end
+
+	return result
+end
+
 --- Format comments for inline display (virt_lines below code line).
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
---- @param opts table|nil options: max_lines, show_author, show_timestamp, hl_group, author_hl, timestamp_hl
+--- @param opts table|nil options: show_author, show_timestamp, hl_group, author_hl, timestamp_hl, border_hl
 --- @return table { virt_lines: table[][] } virt_line chunks for nvim_buf_set_extmark
 function M.format_comments_for_inline(comments, format_date_fn, opts)
 	opts = opts or {}
-	local max_lines = opts.max_lines or 5
 	local show_author = opts.show_author ~= false
 	local show_timestamp = opts.show_timestamp ~= false
 	local hl_group = opts.hl_group or "Comment"
@@ -657,17 +688,35 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 	local border_hl = opts.border_hl or "DiagnosticInfo"
 
 	local virt_lines = {}
-	local indent = "    " -- Left margin
-	local box_width = 50 -- Fixed width for borders
+	local indent = "    " -- Left margin (4 chars)
+	local indent_width = 4
+	local right_margin = 4
+
+	-- Calculate available text area width
+	local win = vim.api.nvim_get_current_win()
+	local win_width = vim.api.nvim_win_get_width(win)
+	local textoff = vim.fn.getwininfo(win)[1].textoff or 0
+	local text_width = win_width - textoff
+
+	-- Max width to fit "reply from floating window" x4 = 107 chars
+	local max_body_width = 107
+	local max_box_width = max_body_width + 4
+
+	-- Use smaller of max width or available window width
+	local available_width = text_width - indent_width - right_margin
+	local box_width = math.min(max_box_width, math.max(50, available_width))
+	local body_max_width = box_width - 4
 
 	for i, comment in ipairs(comments) do
 		local is_pending = comment.is_pending
 
 		-- Top border: ╭─ Comment ─────────────────────╮
+		-- Use strdisplaywidth for correct UTF-8 width calculation
 		local label = is_pending and " Comment [pending] " or " Comment "
-		local top_content_width = box_width - 2 -- -2 for ╭ and ╮
-		local label_len = #label
-		local right_padding = math.max(0, top_content_width - 1 - label_len) -- -1 for left ─
+		local corner_width = 2 -- ╭ and ╮ are 1 cell each
+		local left_dash_width = 1 -- ─ after ╭
+		local label_display_width = vim.fn.strdisplaywidth(label)
+		local right_padding = math.max(0, box_width - corner_width - left_dash_width - label_display_width)
 		local top_border = indent .. "╭─" .. label .. string.rep("─", right_padding) .. "╮"
 		table.insert(virt_lines, { { top_border, border_hl } })
 
@@ -690,21 +739,20 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 			table.insert(virt_lines, header_chunks)
 		end
 
-		-- Comment body
+		-- Comment body with wrapping (no truncation)
 		local body = normalize_newlines(comment.body)
 		local body_lines = vim.split(body, "\n")
-		local line_count = 0
 
 		for _, body_line in ipairs(body_lines) do
-			if line_count >= max_lines then
-				table.insert(virt_lines, { { indent .. " ", "" }, { "...", hl_group } })
-				break
+			-- Wrap long lines
+			local wrapped = wrap_line(body_line, body_max_width)
+			for _, wrapped_line in ipairs(wrapped) do
+				table.insert(virt_lines, { { indent .. " ", "" }, { wrapped_line, hl_group } })
 			end
-			table.insert(virt_lines, { { indent .. " ", "" }, { body_line, hl_group } })
-			line_count = line_count + 1
 		end
 
 		-- Bottom border: ╰─────────────────────────────╯
+		-- box_width - 2 for corner characters (╰ and ╯ are 1 cell each)
 		local bottom_border = indent .. "╰" .. string.rep("─", box_width - 2) .. "╯"
 		table.insert(virt_lines, { { bottom_border, border_hl } })
 

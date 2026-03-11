@@ -39,7 +39,6 @@ M.defaults = {
 	comment_style = "virtualText",
 	-- Inline display options (used when comment_style = "inline")
 	inline = {
-		max_lines = 5, -- Maximum lines per comment body
 		show_author = true,
 		show_timestamp = true,
 		hl_group = "Comment",

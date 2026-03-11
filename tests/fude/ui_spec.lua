@@ -1668,23 +1668,13 @@ describe("format_comments_for_inline", function()
 		assert.are.equal(6, #result.virt_lines)
 	end)
 
-	it("truncates body at max_lines", function()
+	it("displays all body lines without truncation", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "1\n2\n3\n4\n5\n6\n7" },
 		}
-		local result = ui.format_comments_for_inline(comments, identity, { max_lines = 3 })
-		-- top border + header + 3 body lines + "..." line + bottom border
-		assert.are.equal(7, #result.virt_lines)
-		-- 2nd to last line should contain "..."
-		local truncation_line = result.virt_lines[6]
-		local found_ellipsis = false
-		for _, chunk in ipairs(truncation_line) do
-			if chunk[1]:find("%.%.%.") then
-				found_ellipsis = true
-				break
-			end
-		end
-		assert.is_true(found_ellipsis)
+		local result = ui.format_comments_for_inline(comments, identity, {})
+		-- top border + header + 7 body lines + bottom border = 10 lines
+		assert.are.equal(10, #result.virt_lines)
 	end)
 
 	it("has horizontal border lines", function()

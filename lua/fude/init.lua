@@ -176,6 +176,16 @@ function M.start()
 			desc = "fude.nvim: Update extmarks and keymaps",
 		})
 
+		vim.api.nvim_create_autocmd("WinResized", {
+			group = state.augroup,
+			callback = function()
+				vim.schedule(function()
+					require("fude.ui").refresh_extmarks()
+				end)
+			end,
+			desc = "fude.nvim: Update extmarks on window resize",
+		})
+
 		-- Set keymaps on the current buffer immediately
 		M.setup_buf_keymaps()
 

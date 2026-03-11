@@ -99,31 +99,19 @@ function M.refresh_extmarks()
 
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)
-		local submitted_count = 0
-		local has_pending = false
-		local submitted_comments = {}
-		local pending_comments = {}
-
-		for _, c in ipairs(comments) do
-			if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
-				has_pending = true
-				local pc = vim.tbl_extend("force", {}, c)
-				pc.is_pending = true
-				table.insert(pending_comments, pc)
-			else
-				submitted_count = submitted_count + 1
-				table.insert(submitted_comments, c)
-			end
-		end
 
 		if style == "inline" then
 			-- Inline mode: display full comment content below the line
+			-- Build arrays only when needed for inline display
 			local all_comments_for_display = {}
-			for _, c in ipairs(submitted_comments) do
-				table.insert(all_comments_for_display, c)
-			end
-			for _, c in ipairs(pending_comments) do
-				table.insert(all_comments_for_display, c)
+			for _, c in ipairs(comments) do
+				if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
+					local pc = vim.tbl_extend("force", {}, c)
+					pc.is_pending = true
+					table.insert(all_comments_for_display, pc)
+				else
+					table.insert(all_comments_for_display, c)
+				end
 			end
 
 			if #all_comments_for_display > 0 then
@@ -138,6 +126,17 @@ function M.refresh_extmarks()
 			end
 		else
 			-- virtualText mode: display indicators at end of line (original behavior)
+			-- Only compute counts, avoid building arrays
+			local submitted_count = 0
+			local has_pending = false
+			for _, c in ipairs(comments) do
+				if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
+					has_pending = true
+				else
+					submitted_count = submitted_count + 1
+				end
+			end
+
 			if submitted_count > 0 then
 				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
 					virt_text = {
@@ -198,6 +197,14 @@ local current_hint = {
 	extmark_id = nil,
 }
 
+-- Cache for keymaps (avoid repeated keymap lookups on CursorMoved)
+local cached_view_comment_keymap = nil
+local cached_toggle_style_keymap = nil
+local keymap_cache_initialized = false
+
+-- Cache for repo root (avoid repeated git command on CursorMoved)
+local cached_repo_root = nil
+
 --- Clear the inline hint extmark.
 function M.clear_inline_hint()
 	if current_hint.buf and current_hint.extmark_id then
@@ -222,19 +229,20 @@ local function format_keymap_for_display(lhs)
 	return vim.fn.keytrans(lhs)
 end
 
---- Find keybinding for FudeReviewViewComment command.
+--- Search keymaps for a command pattern.
+--- @param pattern string pattern to search for in rhs
+--- @param desc_pattern string|nil pattern to search for in desc (optional)
 --- @return string|nil keymap string if found, nil otherwise
-local function find_view_comment_keymap()
+local function search_keymap_for_command(pattern, desc_pattern)
 	local keymaps = vim.api.nvim_get_keymap("n")
 	for _, km in ipairs(keymaps) do
 		local rhs = km.rhs or ""
-		local callback = km.callback
-		-- Check if rhs contains FudeReviewViewComment
-		if rhs:find("FudeReviewViewComment") then
+		-- Check if rhs contains the pattern
+		if rhs:find(pattern) then
 			return format_keymap_for_display(km.lhs)
 		end
 		-- Check callback-based keymaps by checking desc
-		if callback and km.desc and km.desc:find("View") and km.desc:find("comment") then
+		if desc_pattern and km.callback and km.desc and km.desc:find(desc_pattern) then
 			return format_keymap_for_display(km.lhs)
 		end
 	end
@@ -242,18 +250,41 @@ local function find_view_comment_keymap()
 	local buf_keymaps = vim.api.nvim_buf_get_keymap(0, "n")
 	for _, km in ipairs(buf_keymaps) do
 		local rhs = km.rhs or ""
-		if rhs:find("FudeReviewViewComment") then
+		if rhs:find(pattern) then
 			return format_keymap_for_display(km.lhs)
 		end
-		if km.callback and km.desc and km.desc:find("View") and km.desc:find("comment") then
+		if desc_pattern and km.callback and km.desc and km.desc:find(desc_pattern) then
 			return format_keymap_for_display(km.lhs)
 		end
 	end
 	return nil
 end
 
+--- Initialize keymap caches.
+local function init_keymap_cache()
+	if not keymap_cache_initialized then
+		cached_view_comment_keymap = search_keymap_for_command("FudeReviewViewComment", "View.*comment")
+		cached_toggle_style_keymap = search_keymap_for_command("FudeReviewToggleCommentStyle", "Toggle.*style")
+		keymap_cache_initialized = true
+	end
+end
+
+--- Find keybinding for FudeReviewViewComment command (cached).
+--- @return string|nil keymap string if found, nil otherwise
+local function find_view_comment_keymap()
+	init_keymap_cache()
+	return cached_view_comment_keymap
+end
+
+--- Find keybinding for FudeReviewToggleCommentStyle command (cached).
+--- @return string|nil keymap string if found, nil otherwise
+local function find_toggle_style_keymap()
+	init_keymap_cache()
+	return cached_toggle_style_keymap
+end
+
 --- Update inline hint based on cursor position.
---- Shows a tip when cursor is on a comment line in inline mode.
+--- Shows a tip when cursor is on a comment line (in both virtualText and inline modes).
 function M.update_inline_hint()
 	local state = config.state
 	if not state.active then
@@ -261,17 +292,21 @@ function M.update_inline_hint()
 		return
 	end
 
-	-- Only show hint in inline mode
-	local style = config.get_comment_style()
-	if style ~= "inline" then
+	local buf = vim.api.nvim_get_current_buf()
+	local filepath = vim.api.nvim_buf_get_name(buf)
+
+	-- Use cached repo root to avoid git command on every CursorMoved
+	if not cached_repo_root then
+		local diff = require("fude.diff")
+		cached_repo_root = diff.get_repo_root()
+	end
+	if not cached_repo_root then
 		M.clear_inline_hint()
 		return
 	end
 
-	local buf = vim.api.nvim_get_current_buf()
-	local filepath = vim.api.nvim_buf_get_name(buf)
 	local diff = require("fude.diff")
-	local rel_path = diff.to_repo_relative(filepath)
+	local rel_path = diff.make_relative(vim.fn.fnamemodify(filepath, ":p"), cached_repo_root)
 	if not rel_path then
 		M.clear_inline_hint()
 		return
@@ -295,15 +330,26 @@ function M.update_inline_hint()
 	-- Clear previous hint
 	M.clear_inline_hint()
 
-	-- Show new hint with keymap if available
+	-- Build hint text with available keymaps
 	local ns = get_hint_ns()
-	local keymap = find_view_comment_keymap()
-	local hint_text
-	if keymap then
-		hint_text = "💡 " .. keymap .. ": reply/edit/delete comments"
+	local view_keymap = find_view_comment_keymap()
+	local toggle_keymap = find_toggle_style_keymap()
+
+	local hints = {}
+	-- View comment hint
+	if view_keymap then
+		table.insert(hints, view_keymap .. ": view/reply/edit/delete")
 	else
-		hint_text = "💡 :FudeReviewViewComment: reply/edit/delete comments"
+		table.insert(hints, ":FudeReviewViewComment")
 	end
+	-- Toggle style hint
+	if toggle_keymap then
+		table.insert(hints, toggle_keymap .. ": toggle comment style")
+	else
+		table.insert(hints, ":FudeReviewToggleCommentStyle")
+	end
+
+	local hint_text = "💡 " .. table.concat(hints, " | ")
 	local extmark_id = vim.api.nvim_buf_set_extmark(buf, ns, cursor_line - 1, 0, {
 		virt_text = { { hint_text, "DiagnosticHint" } },
 		virt_text_pos = "eol",
@@ -339,6 +385,11 @@ function M.teardown_inline_hint_autocmd()
 		hint_augroup = nil
 	end
 	M.clear_inline_hint()
+	-- Clear caches for next session
+	cached_view_comment_keymap = nil
+	cached_toggle_style_keymap = nil
+	keymap_cache_initialized = false
+	cached_repo_root = nil
 end
 
 return M

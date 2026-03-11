@@ -111,6 +111,10 @@ end, { desc = "Create draft PR from template" })
 
 vim.api.nvim_create_user_command("FudeReviewToggleCommentStyle", function()
 	local config = require("fude.config")
+	if not config.state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
 	local new_style = config.toggle_comment_style()
 	vim.notify("fude.nvim: Comment style: " .. new_style, vim.log.levels.INFO)
 	require("fude.ui").refresh_extmarks()

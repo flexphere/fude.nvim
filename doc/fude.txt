@@ -354,7 +354,6 @@ Default configuration: >lua
     comment_style = "virtualText",
     -- Inline display options (used when comment_style = "inline")
     inline = {
-      max_lines = 5,         -- Maximum lines per comment body
       show_author = true,
       show_timestamp = true,
       hl_group = "Comment",
@@ -433,9 +432,6 @@ Options:
                   - "inline": Shows full comment content below lines
                     using virtual lines.
                   Can be toggled at runtime with |:FudeReviewToggleCommentStyle|.
-
-`inline.max_lines`  Maximum lines to display per comment body in inline
-                  mode (default: 5). Longer comments show "..." truncation.
 
 `inline.show_author`
                   Show author name in inline display (default: true).

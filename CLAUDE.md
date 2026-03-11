@@ -83,7 +83,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `reply_window` | ui | ui |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
 | `github_user` | init | comments, ui/comment_browser |
-| `current_comment_style` | config | ui/extmarks |
+| `current_comment_style` | config | ui/extmarks, comments |
 
 **高リスクフィールド**（多数のモジュールから参照）:
 - `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認
