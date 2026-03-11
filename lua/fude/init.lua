@@ -178,6 +178,9 @@ function M.start()
 
 		-- Set keymaps on the current buffer immediately
 		M.setup_buf_keymaps()
+
+		-- Setup inline hint autocmd for inline mode
+		require("fude.ui").setup_inline_hint_autocmd()
 	end)
 end
 
@@ -243,6 +246,7 @@ function M.stop()
 
 	require("fude.preview").close_preview()
 	require("fude.ui").clear_all_extmarks()
+	require("fude.ui").teardown_inline_hint_autocmd()
 	M.clear_buf_keymaps()
 
 	-- Restore original HEAD if in commit scope

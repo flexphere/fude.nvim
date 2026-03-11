@@ -34,6 +34,8 @@ M.clear_comment_line_highlight = extmarks.clear_comment_line_highlight
 M.refresh_extmarks = extmarks.refresh_extmarks
 M.clear_extmarks = extmarks.clear_extmarks
 M.clear_all_extmarks = extmarks.clear_all_extmarks
+M.setup_inline_hint_autocmd = extmarks.setup_inline_hint_autocmd
+M.teardown_inline_hint_autocmd = extmarks.teardown_inline_hint_autocmd
 
 --- Synchronously set preview buffer in Telescope to avoid one-tick delay.
 --- Telescope defers win_set_buf via vim.schedule for new buffers; calling

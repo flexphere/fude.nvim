@@ -182,4 +182,113 @@ function M.clear_all_extmarks()
 	end
 end
 
+-- Namespace for inline hint extmarks (separate from main extmarks)
+local hint_ns = nil
+local function get_hint_ns()
+	if not hint_ns then
+		hint_ns = vim.api.nvim_create_namespace("fude_inline_hint")
+	end
+	return hint_ns
+end
+
+-- Track current hint state
+local current_hint = {
+	buf = nil,
+	line = nil,
+	extmark_id = nil,
+}
+
+--- Clear the inline hint extmark.
+function M.clear_inline_hint()
+	if current_hint.buf and current_hint.extmark_id then
+		pcall(vim.api.nvim_buf_del_extmark, current_hint.buf, get_hint_ns(), current_hint.extmark_id)
+	end
+	current_hint.buf = nil
+	current_hint.line = nil
+	current_hint.extmark_id = nil
+end
+
+--- Update inline hint based on cursor position.
+--- Shows a tip when cursor is on a comment line in inline mode.
+function M.update_inline_hint()
+	local state = config.state
+	if not state.active then
+		M.clear_inline_hint()
+		return
+	end
+
+	-- Only show hint in inline mode
+	local style = config.get_comment_style()
+	if style ~= "inline" then
+		M.clear_inline_hint()
+		return
+	end
+
+	local buf = vim.api.nvim_get_current_buf()
+	local filepath = vim.api.nvim_buf_get_name(buf)
+	local diff = require("fude.diff")
+	local rel_path = diff.to_repo_relative(filepath)
+	if not rel_path then
+		M.clear_inline_hint()
+		return
+	end
+
+	local cursor_line = vim.fn.line(".")
+	local comments_mod = require("fude.comments")
+	local comments = comments_mod.get_comments_at(rel_path, cursor_line)
+
+	-- If no comments on this line, clear hint
+	if #comments == 0 then
+		M.clear_inline_hint()
+		return
+	end
+
+	-- If hint already shown for this line, do nothing
+	if current_hint.buf == buf and current_hint.line == cursor_line then
+		return
+	end
+
+	-- Clear previous hint
+	M.clear_inline_hint()
+
+	-- Show new hint
+	local ns = get_hint_ns()
+	local hint_text = "💡 :FudeReviewViewComment to reply/edit/delete"
+	local extmark_id = vim.api.nvim_buf_set_extmark(buf, ns, cursor_line - 1, 0, {
+		virt_text = { { hint_text, "DiagnosticHint" } },
+		virt_text_pos = "eol",
+		priority = 200,
+	})
+
+	current_hint.buf = buf
+	current_hint.line = cursor_line
+	current_hint.extmark_id = extmark_id
+end
+
+-- Autocmd group for inline hint
+local hint_augroup = nil
+
+--- Setup autocmd for inline hint updates.
+function M.setup_inline_hint_autocmd()
+	if hint_augroup then
+		return
+	end
+	hint_augroup = vim.api.nvim_create_augroup("fude_inline_hint", { clear = true })
+	vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+		group = hint_augroup,
+		callback = function()
+			M.update_inline_hint()
+		end,
+	})
+end
+
+--- Teardown autocmd for inline hint.
+function M.teardown_inline_hint_autocmd()
+	if hint_augroup then
+		pcall(vim.api.nvim_del_augroup_by_id, hint_augroup)
+		hint_augroup = nil
+	end
+	M.clear_inline_hint()
+end
+
 return M
