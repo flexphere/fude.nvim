@@ -261,6 +261,11 @@ Using lazy.nvim: >lua
     In inline mode, `]c` / `[c` navigation moves between comments
     without opening the floating comment viewer (since comments are
     already visible inline). The flash highlight still applies.
+
+    When the cursor is on a comment line in inline mode, a hint is
+    displayed at the end of the line:
+    "💡 :FudeReviewViewComment to reply/edit/delete"
+    The hint disappears when the cursor moves to a non-comment line.
     Requires an active review session.
 
 ==============================================================================
