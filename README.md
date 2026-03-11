@@ -162,6 +162,15 @@ require("fude").setup({
     author_hl = "Title",
     timestamp_hl = "NonText",
     border_hl = "DiagnosticInfo",
+    -- Markdown syntax highlighting (requires tree-sitter markdown_inline)
+    markdown_highlight = true,
+    markdown_hl = {
+      bold = "@markup.strong",
+      italic = "@markup.italic",
+      code = "@markup.raw",
+      link = "@markup.link",
+      link_url = "@markup.link.url",
+    },
   },
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",

@@ -26,6 +26,9 @@ M.calculate_comment_browser_layout = format.calculate_comment_browser_layout
 M.format_comment_browser_list = format.format_comment_browser_list
 M.format_comment_browser_thread = format.format_comment_browser_thread
 M.format_comments_for_inline = format.format_comments_for_inline
+M.parse_markdown_line = format.parse_markdown_line
+M.build_highlighted_chunks = format.build_highlighted_chunks
+M.apply_markdown_highlight_to_line = format.apply_markdown_highlight_to_line
 
 -- Re-export extmark functions (facade)
 M.flash_line = extmarks.flash_line

@@ -641,6 +641,152 @@ function M.format_comment_browser_thread(entry, all_comments, all_issue_comments
 	return M.format_reply_comments_for_display(thread, format_date_fn)
 end
 
+--- Parse a single line for Markdown inline elements using tree-sitter.
+--- Returns segments describing highlighted regions.
+--- @param line string input line
+--- @return table[] segments { { start_col, end_col, hl_type } } or nil if parser unavailable
+function M.parse_markdown_line(line)
+	if not line or line == "" then
+		return nil
+	end
+
+	-- Try to get the markdown_inline parser
+	local ok, parser = pcall(vim.treesitter.get_string_parser, line, "markdown_inline")
+	if not ok or not parser then
+		return nil
+	end
+
+	local segments = {}
+	local tree = parser:parse()[1]
+	if not tree then
+		return nil
+	end
+
+	local root = tree:root()
+
+	--- Recursively collect highlight segments from tree-sitter nodes
+	--- @param node TSNode
+	local function collect_segments(node)
+		local node_type = node:type()
+		local start_row, start_col, end_row, end_col = node:range()
+
+		-- Only process single-line matches (start_row == end_row == 0 for string parser)
+		if start_row ~= 0 or end_row ~= 0 then
+			-- For multiline, just use end of line
+			if start_row == 0 then
+				end_col = #line
+			else
+				return
+			end
+		end
+
+		-- Map tree-sitter node types to highlight types
+		local hl_type = nil
+		if node_type == "strong_emphasis" then
+			hl_type = "bold"
+		elseif node_type == "emphasis" then
+			hl_type = "italic"
+		elseif node_type == "code_span" then
+			hl_type = "code"
+		elseif node_type == "inline_link" or node_type == "shortcut_link" then
+			hl_type = "link"
+		elseif node_type == "link_destination" then
+			hl_type = "link_url"
+		end
+
+		if hl_type then
+			table.insert(segments, { start_col = start_col, end_col = end_col, hl_type = hl_type })
+		end
+
+		-- Recurse into children
+		for child in node:iter_children() do
+			collect_segments(child)
+		end
+	end
+
+	collect_segments(root)
+
+	-- Sort by start_col for proper ordering
+	table.sort(segments, function(a, b)
+		return a.start_col < b.start_col
+	end)
+
+	return #segments > 0 and segments or nil
+end
+
+--- Build virt_text chunks from line and markdown segments.
+--- @param line string input line
+--- @param segments table[]|nil markdown segments from parse_markdown_line
+--- @param base_hl string base highlight group for non-markdown text
+--- @param md_hl table markdown highlight options { bold, italic, code, link, link_url }
+--- @return table[] chunks { { text, hl } } for virt_text
+function M.build_highlighted_chunks(line, segments, base_hl, md_hl)
+	if not segments or #segments == 0 then
+		return { { line, base_hl } }
+	end
+
+	local chunks = {}
+	local pos = 0
+
+	for _, seg in ipairs(segments) do
+		-- Add text before this segment with base highlight
+		if seg.start_col > pos then
+			local text = line:sub(pos + 1, seg.start_col)
+			if text ~= "" then
+				table.insert(chunks, { text, base_hl })
+			end
+		end
+
+		-- Add the highlighted segment
+		local seg_text = line:sub(seg.start_col + 1, seg.end_col)
+		local hl = md_hl[seg.hl_type] or base_hl
+		if seg_text ~= "" then
+			table.insert(chunks, { seg_text, hl })
+		end
+
+		pos = seg.end_col
+	end
+
+	-- Add remaining text after last segment
+	if pos < #line then
+		local text = line:sub(pos + 1)
+		if text ~= "" then
+			table.insert(chunks, { text, base_hl })
+		end
+	end
+
+	return chunks
+end
+
+--- Apply markdown highlighting to a line, handling code block state.
+--- @param line string input line
+--- @param in_code_block boolean whether currently inside a code block
+--- @param base_hl string base highlight group
+--- @param md_hl table markdown highlight options
+--- @param md_enabled boolean whether markdown highlighting is enabled
+--- @return table[] chunks for virt_text
+--- @return boolean new in_code_block state
+function M.apply_markdown_highlight_to_line(line, in_code_block, base_hl, md_hl, md_enabled)
+	-- Check for code block fence
+	local is_fence = line:match("^%s*```")
+
+	if is_fence then
+		-- Toggle code block state
+		return { { line, base_hl } }, not in_code_block
+	end
+
+	if in_code_block or not md_enabled then
+		-- Inside code block or markdown disabled: use base highlight
+		return { { line, base_hl } }, in_code_block
+	end
+
+	-- Parse and build highlighted chunks
+	local segments = M.parse_markdown_line(line)
+	local chunks = M.build_highlighted_chunks(line, segments, base_hl, md_hl)
+
+	return chunks, in_code_block
+end
+
 --- Wrap a line to fit within max_width (display cells).
 --- @param line string input line
 --- @param max_width number maximum display width
@@ -676,7 +822,7 @@ end
 --- Format comments for inline display (virt_lines below code line).
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
---- @param opts table|nil options: show_author, show_timestamp, hl_group, author_hl, timestamp_hl, border_hl
+--- @param opts table|nil inline display options (see config.defaults.inline)
 --- @return table { virt_lines: table[][] } virt_line chunks for nvim_buf_set_extmark
 function M.format_comments_for_inline(comments, format_date_fn, opts)
 	opts = opts or {}
@@ -686,6 +832,8 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 	local author_hl = opts.author_hl or "Title"
 	local timestamp_hl = opts.timestamp_hl or "NonText"
 	local border_hl = opts.border_hl or "DiagnosticInfo"
+	local md_enabled = opts.markdown_highlight ~= false
+	local md_hl = opts.markdown_hl or {}
 
 	local virt_lines = {}
 	local indent = "    " -- Left margin (4 chars)
@@ -739,15 +887,25 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 			table.insert(virt_lines, header_chunks)
 		end
 
-		-- Comment body with wrapping (no truncation)
+		-- Comment body with wrapping and optional markdown highlighting
 		local body = normalize_newlines(comment.body)
 		local body_lines = vim.split(body, "\n")
+		local in_code_block = false
 
 		for _, body_line in ipairs(body_lines) do
 			-- Wrap long lines
 			local wrapped = wrap_line(body_line, body_max_width)
 			for _, wrapped_line in ipairs(wrapped) do
-				table.insert(virt_lines, { { indent .. "  ", "" }, { wrapped_line, hl_group } })
+				local chunks, new_in_code_block =
+					M.apply_markdown_highlight_to_line(wrapped_line, in_code_block, hl_group, md_hl, md_enabled)
+				in_code_block = new_in_code_block
+
+				-- Build virt_line with indent + highlighted chunks
+				local virt_line = { { indent .. "  ", "" } }
+				for _, chunk in ipairs(chunks) do
+					table.insert(virt_line, chunk)
+				end
+				table.insert(virt_lines, virt_line)
 			end
 		end
 

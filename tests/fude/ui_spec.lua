@@ -1593,6 +1593,188 @@ describe("format_comment_browser_thread", function()
 	end)
 end)
 
+describe("parse_markdown_line", function()
+	-- Note: These tests require markdown_inline parser to be available
+	-- If parser is not available, parse_markdown_line returns nil
+
+	it("returns nil for empty string", function()
+		local result = ui.parse_markdown_line("")
+		assert.is_nil(result)
+	end)
+
+	it("returns nil for nil input", function()
+		local result = ui.parse_markdown_line(nil)
+		assert.is_nil(result)
+	end)
+
+	it("returns nil for plain text without markdown", function()
+		local result = ui.parse_markdown_line("just plain text")
+		-- With parser: returns nil (no segments)
+		-- Without parser: returns nil
+		-- Either way, nil is expected
+		assert.is_nil(result)
+	end)
+
+	-- The following tests are conditional on parser availability
+	it("parses bold text when parser available", function()
+		local result = ui.parse_markdown_line("**bold** text")
+		if result then
+			assert.is_true(#result >= 1)
+			local found_bold = false
+			for _, seg in ipairs(result) do
+				if seg.hl_type == "bold" then
+					found_bold = true
+				end
+			end
+			assert.is_true(found_bold)
+		end
+	end)
+
+	it("parses italic text when parser available", function()
+		local result = ui.parse_markdown_line("*italic* text")
+		if result then
+			assert.is_true(#result >= 1)
+			local found_italic = false
+			for _, seg in ipairs(result) do
+				if seg.hl_type == "italic" then
+					found_italic = true
+				end
+			end
+			assert.is_true(found_italic)
+		end
+	end)
+
+	it("parses code span when parser available", function()
+		local result = ui.parse_markdown_line("`code` text")
+		if result then
+			assert.is_true(#result >= 1)
+			local found_code = false
+			for _, seg in ipairs(result) do
+				if seg.hl_type == "code" then
+					found_code = true
+				end
+			end
+			assert.is_true(found_code)
+		end
+	end)
+
+	it("parses inline link when parser available", function()
+		local result = ui.parse_markdown_line("[text](url)")
+		if result then
+			assert.is_true(#result >= 1)
+			local found_link = false
+			for _, seg in ipairs(result) do
+				if seg.hl_type == "link" or seg.hl_type == "link_url" then
+					found_link = true
+				end
+			end
+			assert.is_true(found_link)
+		end
+	end)
+end)
+
+describe("build_highlighted_chunks", function()
+	it("returns single chunk with base_hl when no segments", function()
+		local chunks = ui.build_highlighted_chunks("plain text", nil, "Comment", {})
+		assert.are.equal(1, #chunks)
+		assert.are.equal("plain text", chunks[1][1])
+		assert.are.equal("Comment", chunks[1][2])
+	end)
+
+	it("returns single chunk for empty segments", function()
+		local chunks = ui.build_highlighted_chunks("plain text", {}, "Comment", {})
+		assert.are.equal(1, #chunks)
+		assert.are.equal("plain text", chunks[1][1])
+	end)
+
+	it("splits line at segment boundaries", function()
+		local segments = {
+			{ start_col = 0, end_col = 4, hl_type = "bold" },
+		}
+		local md_hl = { bold = "@markup.strong" }
+		local chunks = ui.build_highlighted_chunks("**ab** cd", segments, "Comment", md_hl)
+		-- First chunk should be the bold segment
+		assert.are.equal("**ab", chunks[1][1])
+		assert.are.equal("@markup.strong", chunks[1][2])
+	end)
+
+	it("handles multiple segments", function()
+		local segments = {
+			{ start_col = 0, end_col = 4, hl_type = "bold" },
+			{ start_col = 5, end_col = 11, hl_type = "italic" },
+		}
+		local md_hl = { bold = "@markup.strong", italic = "@markup.italic" }
+		local chunks = ui.build_highlighted_chunks("bold *text*", segments, "Comment", md_hl)
+		assert.is_true(#chunks >= 2)
+	end)
+
+	it("handles segment in middle of line", function()
+		local segments = {
+			{ start_col = 5, end_col = 9, hl_type = "code" },
+		}
+		local md_hl = { code = "@markup.raw" }
+		local chunks = ui.build_highlighted_chunks("text `cd` end", segments, "Comment", md_hl)
+		-- Should have: "text " (base), "`cd`" (code), " end" (base)
+		assert.are.equal(3, #chunks)
+		assert.are.equal("text ", chunks[1][1])
+		assert.are.equal("Comment", chunks[1][2])
+		assert.are.equal("`cd`", chunks[2][1])
+		assert.are.equal("@markup.raw", chunks[2][2])
+		assert.are.equal(" end", chunks[3][1])
+		assert.are.equal("Comment", chunks[3][2])
+	end)
+
+	it("uses base_hl when hl_type not in md_hl", function()
+		local segments = {
+			{ start_col = 0, end_col = 4, hl_type = "unknown" },
+		}
+		local md_hl = {}
+		local chunks = ui.build_highlighted_chunks("text", segments, "Comment", md_hl)
+		assert.are.equal("Comment", chunks[1][2])
+	end)
+end)
+
+describe("apply_markdown_highlight_to_line", function()
+	it("returns single chunk when md_enabled is false", function()
+		local chunks, in_block = ui.apply_markdown_highlight_to_line("**bold**", false, "Comment", {}, false)
+		assert.are.equal(1, #chunks)
+		assert.are.equal("**bold**", chunks[1][1])
+		assert.are.equal("Comment", chunks[1][2])
+		assert.is_false(in_block)
+	end)
+
+	it("returns single chunk when in_code_block is true", function()
+		local chunks, in_block = ui.apply_markdown_highlight_to_line("**bold**", true, "Comment", {}, true)
+		assert.are.equal(1, #chunks)
+		assert.are.equal("**bold**", chunks[1][1])
+		assert.is_true(in_block)
+	end)
+
+	it("toggles code block state on fence", function()
+		local _, in_block = ui.apply_markdown_highlight_to_line("```", false, "Comment", {}, true)
+		assert.is_true(in_block)
+
+		_, in_block = ui.apply_markdown_highlight_to_line("```", true, "Comment", {}, true)
+		assert.is_false(in_block)
+	end)
+
+	it("returns fence line with base_hl", function()
+		local chunks, _ = ui.apply_markdown_highlight_to_line("```python", false, "Comment", {}, true)
+		assert.are.equal("```python", chunks[1][1])
+		assert.are.equal("Comment", chunks[1][2])
+	end)
+
+	it("processes markdown when enabled and not in code block", function()
+		local md_hl = { bold = "@markup.strong" }
+		-- Without parser, returns single chunk
+		-- With parser, may return multiple chunks
+		local chunks, in_block = ui.apply_markdown_highlight_to_line("**bold** text", false, "Comment", md_hl, true)
+		assert.is_table(chunks)
+		assert.is_true(#chunks >= 1)
+		assert.is_false(in_block)
+	end)
+end)
+
 describe("format_comments_for_inline", function()
 	local identity = function(s)
 		return s or ""
@@ -1800,5 +1982,71 @@ describe("format_comments_for_inline", function()
 	it("returns empty virt_lines for empty comments", function()
 		local result = ui.format_comments_for_inline({}, identity)
 		assert.are.equal(0, #result.virt_lines)
+	end)
+
+	it("accepts markdown_highlight option", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "**bold** text" },
+		}
+		-- Should not error with markdown_highlight = true
+		local result = ui.format_comments_for_inline(comments, identity, { markdown_highlight = true })
+		assert.is_table(result.virt_lines)
+	end)
+
+	it("accepts markdown_highlight = false option", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "**bold** text" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, { markdown_highlight = false })
+		assert.is_table(result.virt_lines)
+		-- Body line should have single chunk (no markdown highlighting)
+		-- Body is 3rd line: top border (1), header (2), body (3)
+		local body_vline = result.virt_lines[3]
+		-- body_vline has: { indent, "" }, { body_text, hl }
+		assert.are.equal(2, #body_vline)
+	end)
+
+	it("accepts custom markdown_hl options", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "**bold**" },
+		}
+		local md_hl = {
+			bold = "CustomBold",
+			italic = "CustomItalic",
+			code = "CustomCode",
+		}
+		local result = ui.format_comments_for_inline(comments, identity, {
+			markdown_highlight = true,
+			markdown_hl = md_hl,
+		})
+		assert.is_table(result.virt_lines)
+	end)
+
+	it("does not highlight inside code block", function()
+		local comments = {
+			{
+				user = { login = "alice" },
+				created_at = "2024-01-01",
+				body = "```\n**bold**\n```",
+			},
+		}
+		local md_hl = { bold = "CustomBold" }
+		local result = ui.format_comments_for_inline(comments, identity, {
+			markdown_highlight = true,
+			markdown_hl = md_hl,
+		})
+		assert.is_table(result.virt_lines)
+		-- Inside code block, **bold** should not get CustomBold highlight
+		-- The middle line (```\n**bold**\n```) should be: fence, body, fence
+		-- Verify no CustomBold in the body line
+		local found_custom_bold = false
+		for _, vline in ipairs(result.virt_lines) do
+			for _, chunk in ipairs(vline) do
+				if chunk[2] == "CustomBold" then
+					found_custom_bold = true
+				end
+			end
+		end
+		assert.is_false(found_custom_bold)
 	end)
 end)
