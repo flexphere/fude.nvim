@@ -208,6 +208,21 @@ function M.clear_inline_hint()
 	current_hint.extmark_id = nil
 end
 
+--- Convert internal keymap lhs to human-readable format.
+--- Replaces the resolved leader key with <leader> for display.
+--- @param lhs string raw lhs from nvim_get_keymap
+--- @return string human-readable keymap
+local function format_keymap_for_display(lhs)
+	local leader = vim.g.mapleader or "\\"
+	-- Use keytrans to get proper representation of special keys
+	local display = vim.fn.keytrans(lhs)
+	-- If starts with the leader character, replace with <leader>
+	if display:sub(1, #leader) == leader then
+		display = "<leader>" .. display:sub(#leader + 1)
+	end
+	return display
+end
+
 --- Find keybinding for FudeReviewViewComment command.
 --- @return string|nil keymap string if found, nil otherwise
 local function find_view_comment_keymap()
@@ -217,11 +232,11 @@ local function find_view_comment_keymap()
 		local callback = km.callback
 		-- Check if rhs contains FudeReviewViewComment
 		if rhs:find("FudeReviewViewComment") then
-			return km.lhs
+			return format_keymap_for_display(km.lhs)
 		end
 		-- Check callback-based keymaps by checking desc
 		if callback and km.desc and km.desc:find("View") and km.desc:find("comment") then
-			return km.lhs
+			return format_keymap_for_display(km.lhs)
 		end
 	end
 	-- Also check buffer-local keymaps
@@ -229,10 +244,10 @@ local function find_view_comment_keymap()
 	for _, km in ipairs(buf_keymaps) do
 		local rhs = km.rhs or ""
 		if rhs:find("FudeReviewViewComment") then
-			return km.lhs
+			return format_keymap_for_display(km.lhs)
 		end
 		if km.callback and km.desc and km.desc:find("View") and km.desc:find("comment") then
-			return km.lhs
+			return format_keymap_for_display(km.lhs)
 		end
 	end
 	return nil
