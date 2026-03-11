@@ -657,17 +657,14 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 	local border_hl = opts.border_hl or "DiagnosticInfo"
 
 	local virt_lines = {}
-	local box_width = 50
 	local indent = "    " -- Left margin
 
 	for i, comment in ipairs(comments) do
 		local is_pending = comment.is_pending
 
 		-- Top border with label
-		local label = is_pending and " Comment [pending] " or " Comment "
-		local top_left = "╭─"
-		local top_right_len = math.max(0, box_width - #top_left - #label - 1) -- -1 for ╮
-		local top_border = indent .. top_left .. label .. string.rep("─", top_right_len) .. "╮"
+		local label = is_pending and "── Comment [pending] " or "── Comment "
+		local top_border = indent .. label .. string.rep("─", 30)
 		table.insert(virt_lines, { { top_border, border_hl } })
 
 		-- Author/timestamp line
@@ -676,7 +673,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 			local created = format_date_fn(comment.created_at)
 
 			local header_chunks = {}
-			table.insert(header_chunks, { indent .. "│ ", border_hl })
+			table.insert(header_chunks, { indent, "" })
 			if show_author then
 				table.insert(header_chunks, { "@" .. author, author_hl })
 			end
@@ -696,15 +693,15 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 		for _, body_line in ipairs(body_lines) do
 			if line_count >= max_lines then
-				table.insert(virt_lines, { { indent .. "│ ", border_hl }, { "...", hl_group } })
+				table.insert(virt_lines, { { indent, "" }, { "...", hl_group } })
 				break
 			end
-			table.insert(virt_lines, { { indent .. "│ ", border_hl }, { body_line, hl_group } })
+			table.insert(virt_lines, { { indent, "" }, { body_line, hl_group } })
 			line_count = line_count + 1
 		end
 
 		-- Bottom border
-		local bottom_border = indent .. "╰" .. string.rep("─", box_width - 2) .. "╯"
+		local bottom_border = indent .. string.rep("─", 50)
 		table.insert(virt_lines, { { bottom_border, border_hl } })
 
 		-- Add spacing between multiple comments

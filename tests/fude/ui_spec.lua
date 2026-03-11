@@ -1687,25 +1687,21 @@ describe("format_comments_for_inline", function()
 		assert.is_true(found_ellipsis)
 	end)
 
-	it("has box borders with lines", function()
+	it("has horizontal border lines", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
 			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		-- Check for top border (╭) and bottom border (╰)
-		local found_top = false
-		local found_bottom = false
+		-- Check for border lines (─)
+		local border_count = 0
 		for _, vline in ipairs(result.virt_lines) do
-			if vline[1] and vline[1][1]:find("╭") then
-				found_top = true
-			end
-			if vline[1] and vline[1][1]:find("╰") then
-				found_bottom = true
+			if vline[1] and vline[1][1]:find("─") then
+				border_count = border_count + 1
 			end
 		end
-		assert.is_true(found_top)
-		assert.is_true(found_bottom)
+		-- Each comment has top and bottom border, so at least 4 for 2 comments
+		assert.is_true(border_count >= 4)
 	end)
 
 	it("uses custom highlight groups", function()
