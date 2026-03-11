@@ -719,18 +719,10 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 	for i, comment in ipairs(comments) do
 		local is_pending = comment.is_pending
-		local is_outdated = comment.is_outdated
 
 		-- Top border: ╭─ Comment ─────────────────────╮
 		-- Use strdisplaywidth for correct UTF-8 width calculation
-		local label
-		if is_pending then
-			label = " Comment [pending] "
-		elseif is_outdated then
-			label = " Comment [outdated] "
-		else
-			label = " Comment "
-		end
+		local label = is_pending and " Comment [pending] " or " Comment "
 		local corner_width = 2 -- ╭ and ╮ are 1 cell each
 		local left_dash_width = 1 -- ─ after ╭
 		local label_display_width = vim.fn.strdisplaywidth(label)
