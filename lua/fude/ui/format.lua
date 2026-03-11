@@ -602,9 +602,10 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 					{ line = line_idx, col_start = pending_start, col_end = pending_end, hl = "DiagnosticHint" }
 				)
 			elseif entry.is_outdated and outdated_show then
-				-- Outdated comments may have nil line or path
-				if entry.line and entry.path then
-					text = string.format("%s  %s  %s:%d", date, outdated_label, entry.path, entry.line)
+				-- Outdated comments may have nil/vim.NIL line or path
+				local line_num = type(entry.line) == "number" and entry.line or nil
+				if line_num and entry.path then
+					text = string.format("%s  %s  %s:%d", date, outdated_label, entry.path, line_num)
 				else
 					text = string.format("%s  %s  %s", date, outdated_label, entry.path or "(unknown)")
 				end
@@ -616,8 +617,9 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 				)
 			elseif entry.is_outdated then
 				-- outdated_show = false: show as normal entry without label
-				if entry.line and entry.path then
-					text = string.format("%s  @%s  %s:%d", date, entry.author or "unknown", entry.path, entry.line)
+				local line_num = type(entry.line) == "number" and entry.line or nil
+				if line_num and entry.path then
+					text = string.format("%s  @%s  %s:%d", date, entry.author or "unknown", entry.path, line_num)
 				else
 					text = string.format("%s  @%s  %s", date, entry.author or "unknown", entry.path or "(unknown)")
 				end
