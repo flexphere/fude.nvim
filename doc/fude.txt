@@ -262,12 +262,13 @@ Using lazy.nvim: >lua
     without opening the floating comment viewer (since comments are
     already visible inline). The flash highlight still applies.
 
-    When the cursor is on a comment line in inline mode, a hint is
-    displayed at the end of the line (e.g., `<leader>ev: reply/edit/delete
-    comments`). If a keybinding for |:FudeReviewViewComment| is detected,
-    the hint shows that keybinding with `<leader>` notation. Otherwise,
-    it shows the command name. The hint disappears when the cursor moves
-    to a non-comment line.
+    When the cursor is on a comment line (in either virtualText or inline
+    mode), a hint is displayed at the end of the line showing available
+    actions (e.g., `<leader>ev: view/reply/edit/delete | <leader>eT: toggle
+    comment style`). If keybindings for |:FudeReviewViewComment| or
+    |:FudeReviewToggleCommentStyle| are detected, the hint shows those
+    keybindings with `<leader>` notation. Otherwise, it shows the command
+    names. The hint disappears when the cursor moves to a non-comment line.
     Requires an active review session.
 
 ==============================================================================

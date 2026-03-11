@@ -189,7 +189,7 @@ function M.start()
 		-- Set keymaps on the current buffer immediately
 		M.setup_buf_keymaps()
 
-		-- Setup inline hint autocmd for inline mode
+		-- Setup hint autocmd for comment lines (shows available actions)
 		require("fude.ui").setup_inline_hint_autocmd()
 	end)
 end
