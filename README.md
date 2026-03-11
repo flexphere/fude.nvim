@@ -162,6 +162,7 @@ require("fude").setup({
     hl_group = "Comment",
     author_hl = "Title",
     timestamp_hl = "NonText",
+    border_hl = "DiagnosticInfo",
   },
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",

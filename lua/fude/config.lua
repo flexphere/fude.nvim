@@ -45,6 +45,7 @@ M.defaults = {
 		hl_group = "Comment",
 		author_hl = "Title",
 		timestamp_hl = "NonText",
+		border_hl = "DiagnosticInfo", -- Highlight for comment box border
 	},
 	-- strftime format for timestamps (applied in system timezone)
 	date_format = "%Y/%m/%d %H:%M",

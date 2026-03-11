@@ -654,23 +654,28 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 	local hl_group = opts.hl_group or "Comment"
 	local author_hl = opts.author_hl or "Title"
 	local timestamp_hl = opts.timestamp_hl or "NonText"
+	local border_hl = opts.border_hl or "DiagnosticInfo"
 
 	local virt_lines = {}
+	local box_width = 50
 
 	for i, comment in ipairs(comments) do
-		-- Add separator between comments
-		if i > 1 then
-			table.insert(virt_lines, { { string.rep("─", 30), hl_group } })
-		end
+		local is_pending = comment.is_pending
+
+		-- Top border with label
+		local label = is_pending and " Comment [pending] " or " Comment "
+		local top_left = "╭─"
+		local top_right_len = math.max(0, box_width - #top_left - #label)
+		local top_border = top_left .. label .. string.rep("─", top_right_len)
+		table.insert(virt_lines, { { top_border, border_hl } })
 
 		-- Author/timestamp line
 		if show_author or show_timestamp then
 			local author = comment.user and comment.user.login or "unknown"
 			local created = format_date_fn(comment.created_at)
-			local is_pending = comment.is_pending
 
 			local header_chunks = {}
-			table.insert(header_chunks, { "  ", hl_group }) -- indent
+			table.insert(header_chunks, { "│ ", border_hl })
 			if show_author then
 				table.insert(header_chunks, { "@" .. author, author_hl })
 			end
@@ -679,10 +684,6 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 					table.insert(header_chunks, { " ", hl_group })
 				end
 				table.insert(header_chunks, { "(" .. created .. ")", timestamp_hl })
-			end
-			if is_pending then
-				table.insert(header_chunks, { " ", hl_group })
-				table.insert(header_chunks, { "[pending]", "DiagnosticHint" })
 			end
 			table.insert(virt_lines, header_chunks)
 		end
@@ -694,11 +695,20 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 		for _, body_line in ipairs(body_lines) do
 			if line_count >= max_lines then
-				table.insert(virt_lines, { { "  ...", hl_group } })
+				table.insert(virt_lines, { { "│ ", border_hl }, { "...", hl_group } })
 				break
 			end
-			table.insert(virt_lines, { { "  " .. body_line, hl_group } })
+			table.insert(virt_lines, { { "│ ", border_hl }, { body_line, hl_group } })
 			line_count = line_count + 1
+		end
+
+		-- Bottom border
+		local bottom_border = "╰" .. string.rep("─", box_width - 1)
+		table.insert(virt_lines, { { bottom_border, border_hl } })
+
+		-- Add spacing between multiple comments
+		if i < #comments then
+			table.insert(virt_lines, { { "", hl_group } })
 		end
 	end
 

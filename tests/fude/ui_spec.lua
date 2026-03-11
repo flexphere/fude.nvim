@@ -1604,7 +1604,8 @@ describe("format_comments_for_inline", function()
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
 		assert.is_table(result.virt_lines)
-		assert.is_true(#result.virt_lines >= 2) -- header + body
+		-- top border + header + body + bottom border
+		assert.is_true(#result.virt_lines >= 4)
 	end)
 
 	it("includes author in header line", function()
@@ -1612,7 +1613,8 @@ describe("format_comments_for_inline", function()
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		local header = result.virt_lines[1]
+		-- Header is 2nd line (after top border)
+		local header = result.virt_lines[2]
 		local found_author = false
 		for _, chunk in ipairs(header) do
 			if chunk[1]:find("@alice") then
@@ -1628,7 +1630,8 @@ describe("format_comments_for_inline", function()
 			{ user = { login = "bob" }, created_at = "2024-01-01", body = "x" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		local header = result.virt_lines[1]
+		-- Header is 2nd line (after top border)
+		local header = result.virt_lines[2]
 		local found_ts = false
 		for _, chunk in ipairs(header) do
 			if chunk[1]:find("2024%-01%-01") then
@@ -1639,14 +1642,15 @@ describe("format_comments_for_inline", function()
 		assert.is_true(found_ts)
 	end)
 
-	it("includes pending label for pending comments", function()
+	it("includes pending label in top border for pending comments", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "pending", is_pending = true },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		local header = result.virt_lines[1]
+		-- Top border is 1st line and should contain [pending]
+		local top_border = result.virt_lines[1]
 		local found_pending = false
-		for _, chunk in ipairs(header) do
+		for _, chunk in ipairs(top_border) do
 			if chunk[1]:find("%[pending%]") then
 				found_pending = true
 				break
@@ -1660,8 +1664,8 @@ describe("format_comments_for_inline", function()
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\nline2\nline3" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		-- header + 3 body lines
-		assert.are.equal(4, #result.virt_lines)
+		-- top border + header + 3 body lines + bottom border
+		assert.are.equal(6, #result.virt_lines)
 	end)
 
 	it("truncates body at max_lines", function()
@@ -1669,28 +1673,39 @@ describe("format_comments_for_inline", function()
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "1\n2\n3\n4\n5\n6\n7" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity, { max_lines = 3 })
-		-- header + 3 body lines + "..." line
-		assert.are.equal(5, #result.virt_lines)
-		-- Last line should contain "..."
-		local last_line = result.virt_lines[5]
-		assert.is_truthy(last_line[1][1]:find("%.%.%."))
+		-- top border + header + 3 body lines + "..." line + bottom border
+		assert.are.equal(7, #result.virt_lines)
+		-- 2nd to last line should contain "..."
+		local truncation_line = result.virt_lines[6]
+		local found_ellipsis = false
+		for _, chunk in ipairs(truncation_line) do
+			if chunk[1]:find("%.%.%.") then
+				found_ellipsis = true
+				break
+			end
+		end
+		assert.is_true(found_ellipsis)
 	end)
 
-	it("adds separator between multiple comments", function()
+	it("has box borders with lines", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
 			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		-- first header + body + separator + second header + body
-		local found_separator = false
+		-- Check for top border (╭) and bottom border (╰)
+		local found_top = false
+		local found_bottom = false
 		for _, vline in ipairs(result.virt_lines) do
-			if vline[1] and vline[1][1]:find("─") then
-				found_separator = true
-				break
+			if vline[1] and vline[1][1]:find("╭") then
+				found_top = true
+			end
+			if vline[1] and vline[1][1]:find("╰") then
+				found_bottom = true
 			end
 		end
-		assert.is_true(found_separator)
+		assert.is_true(found_top)
+		assert.is_true(found_bottom)
 	end)
 
 	it("uses custom highlight groups", function()
@@ -1702,7 +1717,8 @@ describe("format_comments_for_inline", function()
 			author_hl = "CustomAuthor",
 			timestamp_hl = "CustomTimestamp",
 		})
-		local header = result.virt_lines[1]
+		-- Header is 2nd line (after top border)
+		local header = result.virt_lines[2]
 		local found_custom_author = false
 		local found_custom_ts = false
 		for _, chunk in ipairs(header) do
@@ -1722,12 +1738,14 @@ describe("format_comments_for_inline", function()
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity, { show_author = false })
-		local header = result.virt_lines[1]
+		-- Check all lines for author
 		local found_author = false
-		for _, chunk in ipairs(header) do
-			if chunk[1]:find("@alice") then
-				found_author = true
-				break
+		for _, vline in ipairs(result.virt_lines) do
+			for _, chunk in ipairs(vline) do
+				if chunk[1]:find("@alice") then
+					found_author = true
+					break
+				end
 			end
 		end
 		assert.is_false(found_author)
@@ -1738,12 +1756,14 @@ describe("format_comments_for_inline", function()
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity, { show_timestamp = false })
-		local header = result.virt_lines[1]
+		-- Check all lines for timestamp
 		local found_ts = false
-		for _, chunk in ipairs(header) do
-			if chunk[1]:find("2024%-01%-01") then
-				found_ts = true
-				break
+		for _, vline in ipairs(result.virt_lines) do
+			for _, chunk in ipairs(vline) do
+				if chunk[1]:find("2024%-01%-01") then
+					found_ts = true
+					break
+				end
 			end
 		end
 		assert.is_false(found_ts)
@@ -1755,7 +1775,8 @@ describe("format_comments_for_inline", function()
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
 		assert.is_table(result.virt_lines)
-		assert.is_true(#result.virt_lines >= 1)
+		-- top border + header + bottom border
+		assert.is_true(#result.virt_lines >= 3)
 	end)
 
 	it("handles CRLF in body", function()
@@ -1763,8 +1784,8 @@ describe("format_comments_for_inline", function()
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\r\nline2" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		-- header + 2 body lines
-		assert.are.equal(3, #result.virt_lines)
+		-- top border + header + 2 body lines + bottom border
+		assert.are.equal(5, #result.virt_lines)
 		-- No CR should remain
 		for _, vline in ipairs(result.virt_lines) do
 			for _, chunk in ipairs(vline) do
@@ -1778,7 +1799,8 @@ describe("format_comments_for_inline", function()
 			{ user = nil, created_at = "2024-01-01", body = "test" },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		local header = result.virt_lines[1]
+		-- Header is 2nd line (after top border)
+		local header = result.virt_lines[2]
 		local found_unknown = false
 		for _, chunk in ipairs(header) do
 			if chunk[1]:find("@unknown") then

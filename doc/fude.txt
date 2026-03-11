@@ -254,9 +254,13 @@ Using lazy.nvim: >lua
     - "virtualText": Shows `#N` and `pending` indicators at the end of
       comment lines (original behavior).
     - "inline": Shows full comment content (author, timestamp, body)
-      below the code line using virtual lines.
+      below the code line using virtual lines with a box border.
     The current style is stored in the session state and persists until
     review mode is stopped or explicitly toggled again.
+
+    In inline mode, `]c` / `[c` navigation moves between comments
+    without opening the floating comment viewer (since comments are
+    already visible inline). The flash highlight still applies.
     Requires an active review session.
 
 ==============================================================================
@@ -349,6 +353,7 @@ Default configuration: >lua
       hl_group = "Comment",
       author_hl = "Title",
       timestamp_hl = "NonText",
+      border_hl = "DiagnosticInfo",
     },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
@@ -440,6 +445,9 @@ Options:
 `inline.timestamp_hl`
                   Highlight group for timestamp in inline mode
                   (default: "NonText").
+
+`inline.border_hl`  Highlight group for comment box border in inline mode
+                  (default: "DiagnosticInfo").
 
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system

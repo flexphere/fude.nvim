@@ -397,7 +397,12 @@ function M.next_comment()
 	local target = data.find_next_comment_line(current_line, comment_lines)
 	if target then
 		vim.api.nvim_win_set_cursor(0, { target, 0 })
-		if config.opts.auto_view_comment then
+		-- In inline mode, comments are already visible below the line, so just flash
+		-- In virtualText mode, open the comment viewer if auto_view_comment is enabled
+		local style = config.get_comment_style()
+		if style == "inline" then
+			ui.flash_line(target)
+		elseif config.opts.auto_view_comment then
 			M.view_comments()
 		else
 			ui.flash_line(target)
@@ -496,7 +501,12 @@ function M.prev_comment()
 	local target = data.find_prev_comment_line(current_line, comment_lines)
 	if target then
 		vim.api.nvim_win_set_cursor(0, { target, 0 })
-		if config.opts.auto_view_comment then
+		-- In inline mode, comments are already visible below the line, so just flash
+		-- In virtualText mode, open the comment viewer if auto_view_comment is enabled
+		local style = config.get_comment_style()
+		if style == "inline" then
+			ui.flash_line(target)
+		elseif config.opts.auto_view_comment then
 			M.view_comments()
 		else
 			ui.flash_line(target)
