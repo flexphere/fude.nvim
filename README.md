@@ -10,7 +10,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Follow code jumps** - Preview updates when navigating to other files via LSP
 - **PR comments** - Create, view, reply, edit, and delete review comments on specific lines
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
-- **Virtual text** - Comment and pending indicators on lines with existing comments
+- **Virtual text** - Comment, pending, and outdated indicators on lines with existing comments
 - **Pending review** - Comments are saved as GitHub pending review (visible on PR page)
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
@@ -165,6 +165,12 @@ require("fude").setup({
   },
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
+  -- Outdated comment display options
+  outdated = {
+    show = true,           -- Show outdated comments
+    label = "[outdated]",  -- Label string for outdated comments
+    hl_group = "Comment",  -- Highlight group for virtualText indicator
+  },
   -- Callback after review start completes (all data fetched)
   -- Receives: { pr_number, base_ref, head_ref, pr_url }
   on_review_start = nil,

@@ -3,10 +3,27 @@ local config = require("fude.config")
 local gh = require("fude.gh")
 local data = require("fude.comments.data")
 
+--- Apply outdated info from outdated_map to comments.
+--- @param comments table[] array of comment objects
+--- @param outdated_map table<number, table> { [databaseId] = { is_outdated, original_line } }
+local function apply_outdated_info(comments, outdated_map)
+	for _, c in ipairs(comments) do
+		local info = outdated_map[c.id]
+		if info and info.is_outdated then
+			c.is_outdated = true
+			-- If the comment has no line, use original_line from outdated_map
+			if not c.line and info.original_line then
+				c.original_line = info.original_line
+			end
+		end
+	end
+end
+
 --- Fetch all PR review comments and build the lookup map.
 --- GET /pulls/{pr}/comments does not include pending review comments,
 --- so when a pending review exists, also fetches from the review-specific endpoint
 --- and builds pending_comments from the same data.
+--- Also fetches outdated info via GraphQL and merges it into comments.
 --- @param callback fun()|nil optional callback invoked after comments are applied
 local function fetch_comments(callback)
 	local state = config.state
@@ -25,6 +42,23 @@ local function fetch_comments(callback)
 		if callback then
 			callback()
 		end
+	end
+
+	local function fetch_outdated_and_apply(comments)
+		-- Fetch outdated info via GraphQL
+		gh.get_review_threads(state.pr_number, function(outdated_err, outdated_map)
+			if not outdated_err and outdated_map then
+				state.outdated_map = outdated_map
+				apply_outdated_info(comments, outdated_map)
+			else
+				state.outdated_map = {}
+				-- Continue without outdated info on error (fallback)
+				if outdated_err then
+					vim.notify("fude.nvim: Failed to fetch outdated info: " .. outdated_err, vim.log.levels.DEBUG)
+				end
+			end
+			apply(comments)
+		end)
 	end
 
 	gh.get_pr_comments(state.pr_number, function(err, comments)
@@ -54,11 +88,11 @@ local function fetch_comments(callback)
 				else
 					state.pending_comments = {}
 				end
-				apply(comments)
+				fetch_outdated_and_apply(comments)
 			end)
 		else
 			state.pending_comments = {}
-			apply(comments)
+			fetch_outdated_and_apply(comments)
 		end
 	end)
 end

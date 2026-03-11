@@ -129,11 +129,15 @@ function M.refresh_extmarks()
 			-- Only compute counts, avoid building arrays
 			local submitted_count = 0
 			local has_pending = false
+			local has_outdated = false
 			for _, c in ipairs(comments) do
 				if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
 					has_pending = true
 				else
 					submitted_count = submitted_count + 1
+				end
+				if c.is_outdated then
+					has_outdated = true
 				end
 			end
 
@@ -153,6 +157,19 @@ function M.refresh_extmarks()
 					},
 					virt_text_pos = "eol",
 					priority = 45,
+				})
+			end
+			-- Show outdated indicator
+			local outdated_opts = config.opts.outdated or {}
+			if has_outdated and outdated_opts.show ~= false then
+				local label = outdated_opts.label or "[outdated]"
+				local hl_group = outdated_opts.hl_group or "Comment"
+				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+					virt_text = {
+						{ " " .. label, hl_group },
+					},
+					virt_text_pos = "eol",
+					priority = 40,
 				})
 			end
 		end

@@ -8,6 +8,13 @@ describe("sync integration", function()
 		helpers.mock_head_sha("abc123def456")
 		-- Mock diff to prevent refresh_extmarks from failing
 		helpers.mock_diff({})
+		-- Mock get_review_threads to return empty outdated map (avoid repo owner lookup)
+		local gh = require("fude.gh")
+		helpers.mock(gh, "get_review_threads", function(_, callback)
+			vim.schedule(function()
+				callback(nil, {})
+			end)
+		end)
 	end)
 
 	after_each(function()

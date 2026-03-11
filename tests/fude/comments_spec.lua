@@ -883,4 +883,78 @@ describe("build_comment_browser_entries", function()
 		local entries = data.build_comment_browser_entries({}, issue_comments, "/repo", id_fn, 42, nil)
 		assert.is_false(entries[1].is_pending)
 	end)
+
+	it("marks is_outdated when any comment in thread is outdated", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "outdated comment",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_outdated = true,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
+	it("marks is_outdated false when no comment is outdated", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "normal comment",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						-- no is_outdated field
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_false(entries[1].is_outdated)
+	end)
+
+	it("marks is_outdated true if any comment in thread has is_outdated", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "first",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_outdated = false,
+					},
+					{
+						id = 2,
+						body = "second outdated",
+						user = { login = "bob" },
+						created_at = "2024-01-02T00:00:00Z",
+						is_outdated = true,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
+	it("issue comments do not have is_outdated flag", function()
+		local issue_comments = {
+			{ id = 1, body = "issue comment", user = { login = "a" }, created_at = "2024-01-01T00:00:00Z" },
+		}
+		local entries = data.build_comment_browser_entries({}, issue_comments, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		-- issue comments don't have is_outdated, should be nil or false
+		assert.is_falsy(entries[1].is_outdated)
+	end)
 end)

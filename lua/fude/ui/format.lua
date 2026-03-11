@@ -595,6 +595,11 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn)
 					hl_ranges,
 					{ line = line_idx, col_start = pending_start, col_end = pending_end, hl = "DiagnosticHint" }
 				)
+			elseif entry.is_outdated then
+				text = string.format("%s  [outdated]  %s:%d", date, entry.path, entry.line)
+				local outdated_start = #date + 2
+				local outdated_end = outdated_start + #"[outdated]"
+				table.insert(hl_ranges, { line = line_idx, col_start = outdated_start, col_end = outdated_end, hl = "Comment" })
 			else
 				text = string.format("%s  @%s  %s:%d", date, entry.author, entry.path, entry.line)
 				local author_start = #date + 2
@@ -709,10 +714,18 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 	for i, comment in ipairs(comments) do
 		local is_pending = comment.is_pending
+		local is_outdated = comment.is_outdated
 
 		-- Top border: ╭─ Comment ─────────────────────╮
 		-- Use strdisplaywidth for correct UTF-8 width calculation
-		local label = is_pending and " Comment [pending] " or " Comment "
+		local label
+		if is_pending then
+			label = " Comment [pending] "
+		elseif is_outdated then
+			label = " Comment [outdated] "
+		else
+			label = " Comment "
+		end
 		local corner_width = 2 -- ╭ and ╮ are 1 cell each
 		local left_dash_width = 1 -- ─ after ╭
 		local label_display_width = vim.fn.strdisplaywidth(label)

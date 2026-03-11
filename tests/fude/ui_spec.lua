@@ -1532,6 +1532,43 @@ describe("format_comment_browser_list", function()
 		assert.are.equal("DiagnosticHint", result.hl_ranges[1].hl)
 	end)
 
+	it("formats outdated entry with [outdated] label", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "a", path = "f.lua", line = 1, is_outdated = true },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_true(result.lines[1]:find("%[outdated%]") ~= nil)
+		assert.is_true(#result.hl_ranges > 0)
+		assert.are.equal("Comment", result.hl_ranges[1].hl)
+	end)
+
+	it("shows pending over outdated when both are true", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "a",
+				path = "f.lua",
+				line = 1,
+				is_pending = true,
+				is_outdated = true,
+			},
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		-- Pending takes precedence
+		assert.is_true(result.lines[1]:find("%[pending%]") ~= nil)
+		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
+	end)
+
+	it("does not show [outdated] for normal entries", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1 },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
+		assert.is_true(result.lines[1]:find("@alice") ~= nil)
+	end)
+
 	it("returns empty lines for empty entries", function()
 		local result = ui.format_comment_browser_list({}, 120, id_fn)
 		assert.are.equal(0, #result.lines)
@@ -1800,5 +1837,60 @@ describe("format_comments_for_inline", function()
 	it("returns empty virt_lines for empty comments", function()
 		local result = ui.format_comments_for_inline({}, identity)
 		assert.are.equal(0, #result.virt_lines)
+	end)
+
+	it("shows [outdated] label for outdated comments", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "old comment", is_outdated = true },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		-- First line should be the top border with [outdated] label
+		local first_line = result.virt_lines[1]
+		local found_outdated = false
+		for _, chunk in ipairs(first_line) do
+			if chunk[1]:find("%[outdated%]") then
+				found_outdated = true
+				break
+			end
+		end
+		assert.is_true(found_outdated)
+	end)
+
+	it("shows [pending] label over [outdated] for pending comments", function()
+		local comments = {
+			{
+				user = { login = "alice" },
+				created_at = "2024-01-01",
+				body = "pending outdated",
+				is_pending = true,
+				is_outdated = true,
+			},
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		local first_line = result.virt_lines[1]
+		local has_pending = false
+		local has_outdated = false
+		for _, chunk in ipairs(first_line) do
+			if chunk[1]:find("%[pending%]") then
+				has_pending = true
+			end
+			if chunk[1]:find("%[outdated%]") then
+				has_outdated = true
+			end
+		end
+		-- Pending takes precedence
+		assert.is_true(has_pending)
+		assert.is_false(has_outdated)
+	end)
+
+	it("does not show [outdated] label for normal comments", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "normal comment" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		local first_line = result.virt_lines[1]
+		for _, chunk in ipairs(first_line) do
+			assert.is_falsy(chunk[1]:find("%[outdated%]"))
+		end
 	end)
 end)

@@ -48,6 +48,12 @@ M.defaults = {
 	},
 	-- strftime format for timestamps (applied in system timezone)
 	date_format = "%Y/%m/%d %H:%M",
+	-- Outdated comment display options
+	outdated = {
+		show = true, -- Whether to show outdated comments
+		label = "[outdated]", -- Label string for outdated comments
+		hl_group = "Comment", -- Highlight group for virtualText indicator
+	},
 	keymaps = {
 		create_comment = "<leader>Rc",
 		view_comments = "<leader>Rv",
@@ -90,6 +96,7 @@ M.state = {
 	github_user = nil, -- Authenticated GitHub username (for ownership check)
 	comment_browser = nil, -- 3-pane comment browser window state
 	current_comment_style = nil, -- Runtime override for comment_style (nil = use opts.comment_style)
+	outdated_map = {}, -- { [comment_id] = { is_outdated = true, original_line = N } }
 }
 
 M.opts = {}
@@ -131,6 +138,7 @@ function M.reset_state()
 		github_user = nil,
 		comment_browser = nil,
 		current_comment_style = nil,
+		outdated_map = {},
 	}
 end
 

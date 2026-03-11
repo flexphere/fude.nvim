@@ -254,3 +254,171 @@ describe("parse_pr_from_commit_api", function()
 		assert.are.equal("", result.headRefName)
 	end)
 end)
+
+describe("build_review_threads_query", function()
+	it("builds query without cursor", function()
+		local query = gh.build_review_threads_query("owner", "repo", 42, nil)
+		assert.truthy(query:find('"owner"'))
+		assert.truthy(query:find('"repo"'))
+		assert.truthy(query:find("number: 42"))
+		assert.truthy(query:find("after: null"))
+		assert.truthy(query:find("isOutdated"))
+		assert.truthy(query:find("databaseId"))
+		assert.truthy(query:find("originalLine"))
+	end)
+
+	it("builds query with cursor", function()
+		local query = gh.build_review_threads_query("owner", "repo", 10, "cursor123")
+		assert.truthy(query:find('"cursor123"'))
+		assert.falsy(query:find("after: null"))
+	end)
+end)
+
+describe("parse_review_threads_response", function()
+	it("parses valid response with outdated threads", function()
+		local data = {
+			data = {
+				repository = {
+					pullRequest = {
+						reviewThreads = {
+							pageInfo = { hasNextPage = false, endCursor = nil },
+							nodes = {
+								{
+									isOutdated = true,
+									comments = {
+										nodes = {
+											{ databaseId = 100, path = "a.lua", originalLine = 10 },
+											{ databaseId = 101, path = "a.lua", originalLine = 10 },
+										},
+									},
+								},
+								{
+									isOutdated = false,
+									comments = {
+										nodes = {
+											{ databaseId = 200, path = "b.lua", originalLine = 20 },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		local outdated_map, has_next, end_cursor = gh.parse_review_threads_response(data)
+		assert.is_true(outdated_map[100].is_outdated)
+		assert.are.equal(10, outdated_map[100].original_line)
+		assert.is_true(outdated_map[101].is_outdated)
+		assert.is_false(outdated_map[200].is_outdated)
+		assert.are.equal(20, outdated_map[200].original_line)
+		assert.is_false(has_next)
+		assert.is_nil(end_cursor)
+	end)
+
+	it("parses response with pagination", function()
+		local data = {
+			data = {
+				repository = {
+					pullRequest = {
+						reviewThreads = {
+							pageInfo = { hasNextPage = true, endCursor = "cursor456" },
+							nodes = {
+								{
+									isOutdated = true,
+									comments = {
+										nodes = {
+											{ databaseId = 300, path = "c.lua", originalLine = 5 },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		local outdated_map, has_next, end_cursor = gh.parse_review_threads_response(data)
+		assert.is_true(outdated_map[300].is_outdated)
+		assert.is_true(has_next)
+		assert.are.equal("cursor456", end_cursor)
+	end)
+
+	it("returns empty map for missing pullRequest", function()
+		local data = { data = { repository = {} } }
+		local outdated_map, has_next, _ = gh.parse_review_threads_response(data)
+		assert.are.same({}, outdated_map)
+		assert.is_false(has_next)
+	end)
+
+	it("returns empty map for nil data", function()
+		local outdated_map, has_next, _ = gh.parse_review_threads_response({})
+		assert.are.same({}, outdated_map)
+		assert.is_false(has_next)
+	end)
+
+	it("handles empty nodes list", function()
+		local data = {
+			data = {
+				repository = {
+					pullRequest = {
+						reviewThreads = {
+							pageInfo = { hasNextPage = false },
+							nodes = {},
+						},
+					},
+				},
+			},
+		}
+		local outdated_map, _, _ = gh.parse_review_threads_response(data)
+		assert.are.same({}, outdated_map)
+	end)
+
+	it("handles thread with no comments", function()
+		local data = {
+			data = {
+				repository = {
+					pullRequest = {
+						reviewThreads = {
+							pageInfo = { hasNextPage = false },
+							nodes = {
+								{
+									isOutdated = true,
+									comments = { nodes = {} },
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		local outdated_map, _, _ = gh.parse_review_threads_response(data)
+		assert.are.same({}, outdated_map)
+	end)
+
+	it("handles nil isOutdated as false", function()
+		local data = {
+			data = {
+				repository = {
+					pullRequest = {
+						reviewThreads = {
+							pageInfo = { hasNextPage = false },
+							nodes = {
+								{
+									-- isOutdated is nil
+									comments = {
+										nodes = {
+											{ databaseId = 400, path = "d.lua", originalLine = 1 },
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		local outdated_map, _, _ = gh.parse_review_threads_response(data)
+		assert.is_false(outdated_map[400].is_outdated)
+	end)
+end)

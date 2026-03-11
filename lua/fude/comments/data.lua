@@ -357,12 +357,20 @@ function M.build_comment_browser_entries(
 			local first = comments[1]
 			local last = comments[#comments]
 			local is_pending = false
+			local is_outdated = false
 			if pending_review_id then
 				for _, c in ipairs(comments) do
 					if c.pull_request_review_id == pending_review_id then
 						is_pending = true
 						break
 					end
+				end
+			end
+			-- Check if any comment in thread is outdated
+			for _, c in ipairs(comments) do
+				if c.is_outdated then
+					is_outdated = true
+					break
 				end
 			end
 			local author = first.user and first.user.login or "unknown"
@@ -381,6 +389,7 @@ function M.build_comment_browser_entries(
 				comments = comments,
 				is_pending = is_pending,
 				is_own = is_own,
+				is_outdated = is_outdated,
 			})
 		end
 	end

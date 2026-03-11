@@ -22,7 +22,7 @@ fude.nvim is a Neovim plugin that enables GitHub PR code review directly
 in the editor. It provides:
 
 - Base branch diff preview in a side pane
-- Virtual text indicators for existing PR comments
+- Virtual text indicators for existing PR comments (including outdated)
 - Create, view, reply, edit, and delete PR review comments
 - Suggest code changes with GitHub's suggestion blocks
 - Navigate between comments
@@ -364,6 +364,12 @@ Default configuration: >lua
     },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
+    -- Outdated comment display options
+    outdated = {
+      show = true,           -- Show outdated comments
+      label = "[outdated]",  -- Label string
+      hl_group = "Comment",  -- Highlight group for virtualText indicator
+    },
   })
 <
 
@@ -456,6 +462,16 @@ Options:
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system
                   timezone before formatting.
+
+`outdated.show`     Show outdated comments (default: true).
+                  Outdated comments are those whose position in the code
+                  can no longer be tracked due to subsequent changes.
+
+`outdated.label`    Label text shown for outdated comments
+                  (default: "[outdated]").
+
+`outdated.hl_group` Highlight group for outdated indicator in virtualText mode
+                  (default: "Comment").
 
 `on_review_start`   Callback function invoked after |:FudeReviewStart|
                   completes all data fetching (changed files, commits,
