@@ -602,8 +602,8 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 					{ line = line_idx, col_start = pending_start, col_end = pending_end, hl = "DiagnosticHint" }
 				)
 			elseif entry.is_outdated and outdated_show then
-				-- Outdated comments may have nil line
-				if entry.line then
+				-- Outdated comments may have nil line or path
+				if entry.line and entry.path then
 					text = string.format("%s  %s  %s:%d", date, outdated_label, entry.path, entry.line)
 				else
 					text = string.format("%s  %s  %s", date, outdated_label, entry.path or "(unknown)")
@@ -616,7 +616,7 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 				)
 			elseif entry.is_outdated then
 				-- outdated_show = false: show as normal entry without label
-				if entry.line then
+				if entry.line and entry.path then
 					text = string.format("%s  @%s  %s:%d", date, entry.author or "unknown", entry.path, entry.line)
 				else
 					text = string.format("%s  @%s  %s", date, entry.author or "unknown", entry.path or "(unknown)")
