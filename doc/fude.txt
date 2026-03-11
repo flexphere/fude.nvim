@@ -361,6 +361,14 @@ Default configuration: >lua
       author_hl = "Title",
       timestamp_hl = "NonText",
       border_hl = "DiagnosticInfo",
+      markdown_highlight = true,
+      markdown_hl = {
+        bold = "@markup.strong",
+        italic = "@markup.italic",
+        code = "@markup.raw",
+        link_text = "@markup.link",
+        link_url = "@markup.link.url",
+      },
     },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
@@ -452,6 +460,24 @@ Options:
 
 `inline.border_hl`  Highlight group for comment box border in inline mode
                   (default: "DiagnosticInfo").
+
+`inline.markdown_highlight`
+                  Enable markdown syntax highlighting in comment body
+                  (default: true). Supported elements: **bold**, *italic*,
+                  `inline code`, [links](url). Markdown inside code blocks
+                  (```) is not parsed.
+
+`inline.markdown_hl`
+                  Table mapping markdown elements to highlight groups
+                  (default: see below). >lua
+                    markdown_hl = {
+                      bold = "@markup.strong",
+                      italic = "@markup.italic",
+                      code = "@markup.raw",
+                      link_text = "@markup.link",
+                      link_url = "@markup.link.url",
+                    }
+<
 
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system

@@ -1593,6 +1593,153 @@ describe("format_comment_browser_thread", function()
 	end)
 end)
 
+describe("parse_markdown_line", function()
+	it("returns single chunk for plain text", function()
+		local result = ui.parse_markdown_line("hello world", "Comment")
+		assert.are.equal(1, #result)
+		assert.are.equal("hello world", result[1][1])
+		assert.are.equal("Comment", result[1][2])
+	end)
+
+	it("returns single chunk for empty string", function()
+		local result = ui.parse_markdown_line("", "Comment")
+		assert.are.equal(1, #result)
+		assert.are.equal("", result[1][1])
+		assert.are.equal("Comment", result[1][2])
+	end)
+
+	it("parses bold text with **", function()
+		local result = ui.parse_markdown_line("hello **bold** world", "Comment")
+		assert.are.equal(3, #result)
+		assert.are.equal("hello ", result[1][1])
+		assert.are.equal("Comment", result[1][2])
+		assert.are.equal("bold", result[2][1])
+		assert.are.equal("@markup.strong", result[2][2])
+		assert.are.equal(" world", result[3][1])
+		assert.are.equal("Comment", result[3][2])
+	end)
+
+	it("parses bold text with __", function()
+		local result = ui.parse_markdown_line("hello __bold__ world", "Comment")
+		assert.are.equal(3, #result)
+		assert.are.equal("bold", result[2][1])
+		assert.are.equal("@markup.strong", result[2][2])
+	end)
+
+	it("parses italic text with *", function()
+		local result = ui.parse_markdown_line("hello *italic* world", "Comment")
+		assert.are.equal(3, #result)
+		assert.are.equal("italic", result[2][1])
+		assert.are.equal("@markup.italic", result[2][2])
+	end)
+
+	it("parses italic text with _", function()
+		local result = ui.parse_markdown_line("hello _italic_ world", "Comment")
+		assert.are.equal(3, #result)
+		assert.are.equal("italic", result[2][1])
+		assert.are.equal("@markup.italic", result[2][2])
+	end)
+
+	it("parses inline code", function()
+		local result = ui.parse_markdown_line("use `code` here", "Comment")
+		assert.are.equal(3, #result)
+		assert.are.equal("use ", result[1][1])
+		assert.are.equal("`code`", result[2][1])
+		assert.are.equal("@markup.raw", result[2][2])
+		assert.are.equal(" here", result[3][1])
+	end)
+
+	it("does not parse markdown inside code", function()
+		local result = ui.parse_markdown_line("`**not bold**`", "Comment")
+		assert.are.equal(1, #result)
+		assert.are.equal("`**not bold**`", result[1][1])
+		assert.are.equal("@markup.raw", result[1][2])
+	end)
+
+	it("parses links", function()
+		local result = ui.parse_markdown_line("see [link](https://example.com) here", "Comment")
+		assert.are.equal(6, #result)
+		assert.are.equal("see ", result[1][1])
+		assert.are.equal("link", result[2][1])
+		assert.are.equal("@markup.link", result[2][2])
+		assert.are.equal("(", result[3][1])
+		assert.are.equal("https://example.com", result[4][1])
+		assert.are.equal("@markup.link.url", result[4][2])
+		assert.are.equal(")", result[5][1])
+		assert.are.equal(" here", result[6][1])
+	end)
+
+	it("handles multiple markdown elements", function()
+		local result = ui.parse_markdown_line("**bold** and *italic*", "Comment")
+		assert.are.equal(3, #result)
+		assert.are.equal("bold", result[1][1])
+		assert.are.equal("@markup.strong", result[1][2])
+		assert.are.equal(" and ", result[2][1])
+		assert.are.equal("italic", result[3][1])
+		assert.are.equal("@markup.italic", result[3][2])
+	end)
+
+	it("handles unclosed markers as plain text", function()
+		local result = ui.parse_markdown_line("hello **unclosed", "Comment")
+		assert.are.equal(1, #result)
+		assert.are.equal("hello **unclosed", result[1][1])
+		assert.are.equal("Comment", result[1][2])
+	end)
+
+	it("handles empty markers as plain text", function()
+		local result = ui.parse_markdown_line("hello **** world", "Comment")
+		-- Since ** is not a valid bold (empty content), it should be parsed differently
+		-- The pattern **([^*]+)** requires at least one non-* character
+		assert.are.equal(1, #result)
+	end)
+
+	it("uses custom highlight map", function()
+		local hl_map = {
+			bold = "CustomBold",
+			italic = "CustomItalic",
+			code = "CustomCode",
+		}
+		local result = ui.parse_markdown_line("**bold** `code`", "Comment", hl_map)
+		assert.are.equal(3, #result)
+		assert.are.equal("CustomBold", result[1][2])
+		assert.are.equal("`code`", result[3][1])
+		assert.are.equal("CustomCode", result[3][2])
+	end)
+
+	it("handles UTF-8 text in bold", function()
+		local result = ui.parse_markdown_line("**日本語**", "Comment")
+		assert.are.equal(1, #result)
+		assert.are.equal("日本語", result[1][1])
+		assert.are.equal("@markup.strong", result[1][2])
+	end)
+
+	it("handles code followed by bold", function()
+		local result = ui.parse_markdown_line("`code` and **bold**", "Comment")
+		assert.are.equal(3, #result)
+		assert.are.equal("`code`", result[1][1])
+		assert.are.equal("@markup.raw", result[1][2])
+		assert.are.equal(" and ", result[2][1])
+		assert.are.equal("bold", result[3][1])
+		assert.are.equal("@markup.strong", result[3][2])
+	end)
+
+	it("handles bold at the start of line", function()
+		local result = ui.parse_markdown_line("**bold** text", "Comment")
+		assert.are.equal(2, #result)
+		assert.are.equal("bold", result[1][1])
+		assert.are.equal("@markup.strong", result[1][2])
+		assert.are.equal(" text", result[2][1])
+	end)
+
+	it("handles bold at the end of line", function()
+		local result = ui.parse_markdown_line("text **bold**", "Comment")
+		assert.are.equal(2, #result)
+		assert.are.equal("text ", result[1][1])
+		assert.are.equal("bold", result[2][1])
+		assert.are.equal("@markup.strong", result[2][2])
+	end)
+end)
+
 describe("format_comments_for_inline", function()
 	local identity = function(s)
 		return s or ""
@@ -1800,5 +1947,86 @@ describe("format_comments_for_inline", function()
 	it("returns empty virt_lines for empty comments", function()
 		local result = ui.format_comments_for_inline({}, identity)
 		assert.are.equal(0, #result.virt_lines)
+	end)
+
+	it("applies markdown highlighting to bold text by default", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "**bold** text" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		-- Body line is 3rd line (after top border and header)
+		local body_line = result.virt_lines[3]
+		-- Should have indent chunk + bold chunk + text chunk
+		assert.is_true(#body_line >= 2)
+		-- Find bold chunk
+		local found_bold = false
+		for _, chunk in ipairs(body_line) do
+			if chunk[2] == "@markup.strong" then
+				found_bold = true
+				assert.are.equal("bold", chunk[1])
+			end
+		end
+		assert.is_true(found_bold)
+	end)
+
+	it("applies markdown highlighting to inline code", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "use `code` here" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		local body_line = result.virt_lines[3]
+		local found_code = false
+		for _, chunk in ipairs(body_line) do
+			if chunk[2] == "@markup.raw" then
+				found_code = true
+				assert.are.equal("`code`", chunk[1])
+			end
+		end
+		assert.is_true(found_code)
+	end)
+
+	it("disables markdown highlighting when markdown_highlight is false", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "**bold** text" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, { markdown_highlight = false })
+		local body_line = result.virt_lines[3]
+		-- Should have only 2 chunks: indent and body text (no markdown parsing)
+		assert.are.equal(2, #body_line)
+		assert.are.equal("**bold** text", body_line[2][1])
+	end)
+
+	it("does not parse markdown inside code blocks", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "```\n**not bold**\n```" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		-- Line with **not bold** should not have bold highlighting
+		-- It's line 4 (top border, header, ```, **not bold**)
+		local code_line = result.virt_lines[4]
+		local found_bold = false
+		for _, chunk in ipairs(code_line) do
+			if chunk[2] == "@markup.strong" then
+				found_bold = true
+			end
+		end
+		assert.is_false(found_bold)
+	end)
+
+	it("uses custom markdown_hl options", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "**bold**" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, {
+			markdown_hl = { bold = "CustomBold" },
+		})
+		local body_line = result.virt_lines[3]
+		local found_custom = false
+		for _, chunk in ipairs(body_line) do
+			if chunk[2] == "CustomBold" then
+				found_custom = true
+			end
+		end
+		assert.is_true(found_custom)
 	end)
 end)

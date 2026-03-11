@@ -641,6 +641,137 @@ function M.format_comment_browser_thread(entry, all_comments, all_issue_comments
 	return M.format_reply_comments_for_display(thread, format_date_fn)
 end
 
+--- Parse a markdown line into chunks with highlight groups.
+--- Supports: **bold**, *italic*, `code`, [text](url)
+--- @param line string input line
+--- @param default_hl string default highlight group for plain text
+--- @param hl_map table|nil custom highlight mapping { bold, italic, code, link_text, link_url }
+--- @return table[] chunks { {text, hl}, ... }
+function M.parse_markdown_line(line, default_hl, hl_map)
+	hl_map = hl_map or {}
+	local bold_hl = hl_map.bold or "@markup.strong"
+	local italic_hl = hl_map.italic or "@markup.italic"
+	local code_hl = hl_map.code or "@markup.raw"
+	local link_text_hl = hl_map.link_text or "@markup.link"
+	local link_url_hl = hl_map.link_url or "@markup.link.url"
+
+	local chunks = {}
+	local pos = 1
+	local len = #line
+
+	local function add_chunk(text, hl)
+		if text and #text > 0 then
+			table.insert(chunks, { text, hl })
+		end
+	end
+
+	while pos <= len do
+		-- Check for inline code (highest priority - markdown inside is not parsed)
+		local code_start, code_end, code_content = line:find("`([^`]+)`", pos)
+		-- Check for link [text](url)
+		local link_start, link_end, link_text, link_url = line:find("%[([^%]]+)%]%(([^%)]+)%)", pos)
+		-- Check for bold **text** or __text__
+		local bold_start1, bold_end1, bold_content1 = line:find("%*%*([^%*]+)%*%*", pos)
+		local bold_start2, bold_end2, bold_content2 = line:find("__([^_]+)__", pos)
+		local bold_start, bold_end, bold_content
+		if bold_start1 and (not bold_start2 or bold_start1 <= bold_start2) then
+			bold_start, bold_end, bold_content = bold_start1, bold_end1, bold_content1
+		else
+			bold_start, bold_end, bold_content = bold_start2, bold_end2, bold_content2
+		end
+		-- Check for italic *text* or _text_ (but not ** or __)
+		local italic_start1, italic_end1, italic_content1 = line:find("%*([^%*]+)%*", pos)
+		-- Skip if this is part of ** (bold)
+		if italic_start1 and line:sub(italic_start1 - 1, italic_start1 - 1) == "*" then
+			italic_start1 = nil
+		end
+		if italic_start1 and line:sub(italic_end1 + 1, italic_end1 + 1) == "*" then
+			italic_start1 = nil
+		end
+		local italic_start2, italic_end2, italic_content2 = line:find("_([^_]+)_", pos)
+		-- Skip if this is part of __ (bold)
+		if italic_start2 and line:sub(italic_start2 - 1, italic_start2 - 1) == "_" then
+			italic_start2 = nil
+		end
+		if italic_start2 and line:sub(italic_end2 + 1, italic_end2 + 1) == "_" then
+			italic_start2 = nil
+		end
+		local italic_start, italic_end, italic_content
+		if italic_start1 and (not italic_start2 or italic_start1 <= italic_start2) then
+			italic_start, italic_end, italic_content = italic_start1, italic_end1, italic_content1
+		else
+			italic_start, italic_end, italic_content = italic_start2, italic_end2, italic_content2
+		end
+
+		-- Find the earliest match
+		local earliest_start = nil
+		local earliest_type = nil
+		local earliest_end = nil
+		local earliest_content = nil
+		local earliest_extra = nil -- for link_url
+
+		if code_start and (not earliest_start or code_start < earliest_start) then
+			earliest_start = code_start
+			earliest_type = "code"
+			earliest_end = code_end
+			earliest_content = code_content
+		end
+		if link_start and (not earliest_start or link_start < earliest_start) then
+			earliest_start = link_start
+			earliest_type = "link"
+			earliest_end = link_end
+			earliest_content = link_text
+			earliest_extra = link_url
+		end
+		if bold_start and (not earliest_start or bold_start < earliest_start) then
+			earliest_start = bold_start
+			earliest_type = "bold"
+			earliest_end = bold_end
+			earliest_content = bold_content
+		end
+		if italic_start and (not earliest_start or italic_start < earliest_start) then
+			earliest_start = italic_start
+			earliest_type = "italic"
+			earliest_end = italic_end
+			earliest_content = italic_content
+		end
+
+		if earliest_start then
+			-- Add plain text before the match
+			if earliest_start > pos then
+				add_chunk(line:sub(pos, earliest_start - 1), default_hl)
+			end
+
+			-- Add the matched content with appropriate highlight
+			if earliest_type == "code" then
+				add_chunk("`" .. earliest_content .. "`", code_hl)
+			elseif earliest_type == "link" then
+				add_chunk(earliest_content, link_text_hl)
+				add_chunk("(", default_hl)
+				add_chunk(earliest_extra, link_url_hl)
+				add_chunk(")", default_hl)
+			elseif earliest_type == "bold" then
+				add_chunk(earliest_content, bold_hl)
+			elseif earliest_type == "italic" then
+				add_chunk(earliest_content, italic_hl)
+			end
+
+			pos = earliest_end + 1
+		else
+			-- No more matches, add remaining text
+			add_chunk(line:sub(pos), default_hl)
+			break
+		end
+	end
+
+	-- If no chunks were added, return a single chunk with the original line
+	if #chunks == 0 then
+		return { { line, default_hl } }
+	end
+
+	return chunks
+end
+
 --- Wrap a line to fit within max_width (display cells).
 --- @param line string input line
 --- @param max_width number maximum display width
@@ -743,11 +874,35 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 		local body = normalize_newlines(comment.body)
 		local body_lines = vim.split(body, "\n")
 
+		local markdown_highlight = opts.markdown_highlight ~= false
+		local markdown_hl = opts.markdown_hl
+		local in_code_block = false
+
 		for _, body_line in ipairs(body_lines) do
+			-- Track code block state (```)
+			if body_line:match("^```") then
+				in_code_block = not in_code_block
+			end
+
 			-- Wrap long lines
 			local wrapped = wrap_line(body_line, body_max_width)
 			for _, wrapped_line in ipairs(wrapped) do
-				table.insert(virt_lines, { { indent .. "  ", "" }, { wrapped_line, hl_group } })
+				local line_chunks = { { indent .. "  ", "" } }
+
+				-- Apply markdown highlighting only when:
+				-- 1. markdown_highlight is enabled
+				-- 2. Not inside a code block
+				-- 3. Line is not empty
+				if markdown_highlight and not in_code_block and #wrapped_line > 0 then
+					local parsed_chunks = M.parse_markdown_line(wrapped_line, hl_group, markdown_hl)
+					for _, chunk in ipairs(parsed_chunks) do
+						table.insert(line_chunks, chunk)
+					end
+				else
+					table.insert(line_chunks, { wrapped_line, hl_group })
+				end
+
+				table.insert(virt_lines, line_chunks)
 			end
 		end
 
