@@ -658,13 +658,17 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 	local virt_lines = {}
 	local indent = "    " -- Left margin
+	local box_width = 50 -- Fixed width for borders
 
 	for i, comment in ipairs(comments) do
 		local is_pending = comment.is_pending
 
-		-- Top border with label
-		local label = is_pending and "── Comment [pending] " or "── Comment "
-		local top_border = indent .. label .. string.rep("─", 30)
+		-- Top border: ╭─ Comment ─────────────────────╮
+		local label = is_pending and " Comment [pending] " or " Comment "
+		local top_content_width = box_width - 2 -- -2 for ╭ and ╮
+		local label_len = #label
+		local right_padding = math.max(0, top_content_width - 1 - label_len) -- -1 for left ─
+		local top_border = indent .. "╭─" .. label .. string.rep("─", right_padding) .. "╮"
 		table.insert(virt_lines, { { top_border, border_hl } })
 
 		-- Author/timestamp line
@@ -673,7 +677,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 			local created = format_date_fn(comment.created_at)
 
 			local header_chunks = {}
-			table.insert(header_chunks, { indent, "" })
+			table.insert(header_chunks, { indent .. " ", "" })
 			if show_author then
 				table.insert(header_chunks, { "@" .. author, author_hl })
 			end
@@ -693,15 +697,15 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 		for _, body_line in ipairs(body_lines) do
 			if line_count >= max_lines then
-				table.insert(virt_lines, { { indent, "" }, { "...", hl_group } })
+				table.insert(virt_lines, { { indent .. " ", "" }, { "...", hl_group } })
 				break
 			end
-			table.insert(virt_lines, { { indent, "" }, { body_line, hl_group } })
+			table.insert(virt_lines, { { indent .. " ", "" }, { body_line, hl_group } })
 			line_count = line_count + 1
 		end
 
-		-- Bottom border
-		local bottom_border = indent .. string.rep("─", 50)
+		-- Bottom border: ╰─────────────────────────────╯
+		local bottom_border = indent .. "╰" .. string.rep("─", box_width - 2) .. "╯"
 		table.insert(virt_lines, { { bottom_border, border_hl } })
 
 		-- Add spacing between multiple comments
