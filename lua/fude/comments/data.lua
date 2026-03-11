@@ -339,6 +339,7 @@ end
 --- @param format_date_fn fun(s: string): string
 --- @param pending_review_id number|nil pending review ID for labeling
 --- @param github_user string|nil authenticated user for ownership marking
+--- @param all_comments table[]|nil all review comments (for including outdated comments not in comment_map)
 --- @return table[] entries sorted by last_ts descending (newest first)
 function M.build_comment_browser_entries(
 	comment_map,
@@ -346,7 +347,8 @@ function M.build_comment_browser_entries(
 	repo_root,
 	format_date_fn,
 	pending_review_id,
-	github_user
+	github_user,
+	all_comments
 )
 	local entries = {}
 
@@ -391,6 +393,43 @@ function M.build_comment_browser_entries(
 				is_own = is_own,
 				is_outdated = is_outdated,
 			})
+		end
+	end
+
+	-- Outdated comment entries (not in comment_map because line is nil)
+	-- Build a set of comment IDs already in entries to avoid duplicates
+	local seen_ids = {}
+	for _, entry in ipairs(entries) do
+		for _, c in ipairs(entry.comments) do
+			if c.id then
+				seen_ids[c.id] = true
+			end
+		end
+	end
+
+	-- Add outdated comments not in comment_map
+	if all_comments then
+		for _, c in ipairs(all_comments) do
+			if c.is_outdated and c.id and not seen_ids[c.id] then
+				local author = c.user and c.user.login or "unknown"
+				local is_pending = pending_review_id and c.pull_request_review_id == pending_review_id
+				local is_own = github_user ~= nil and author == github_user
+				table.insert(entries, {
+					type = "review",
+					path = c.path,
+					line = nil, -- outdated: no valid line number
+					filename = c.path and (repo_root .. "/" .. c.path) or nil,
+					lnum = nil,
+					author = author,
+					last_ts = c.created_at or "",
+					last_date = format_date_fn(c.created_at or ""),
+					comments = { c },
+					is_pending = is_pending or false,
+					is_own = is_own,
+					is_outdated = true,
+				})
+				seen_ids[c.id] = true
+			end
 		end
 	end
 

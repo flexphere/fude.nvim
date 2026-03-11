@@ -302,7 +302,8 @@ local function create_browser(entries, issue_comments)
 				repo_root,
 				config.format_date,
 				state.pending_review_id,
-				state.github_user
+				state.github_user,
+				state.comments
 			)
 			if #new_entries == 0 then
 				close_browser()
@@ -751,7 +752,8 @@ function M.open()
 			repo_root,
 			config.format_date,
 			state.pending_review_id,
-			state.github_user
+			state.github_user,
+			state.comments
 		)
 
 		if #entries == 0 then

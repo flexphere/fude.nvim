@@ -596,7 +596,12 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn)
 					{ line = line_idx, col_start = pending_start, col_end = pending_end, hl = "DiagnosticHint" }
 				)
 			elseif entry.is_outdated then
-				text = string.format("%s  [outdated]  %s:%d", date, entry.path, entry.line)
+				-- Outdated comments may have nil line
+				if entry.line then
+					text = string.format("%s  [outdated]  %s:%d", date, entry.path, entry.line)
+				else
+					text = string.format("%s  [outdated]  %s", date, entry.path or "(unknown)")
+				end
 				local outdated_start = #date + 2
 				local outdated_end = outdated_start + #"[outdated]"
 				table.insert(hl_ranges, { line = line_idx, col_start = outdated_start, col_end = outdated_end, hl = "Comment" })

@@ -4,6 +4,9 @@ local gh = require("fude.gh")
 local data = require("fude.comments.data")
 
 --- Apply outdated info from outdated_map to comments.
+--- Note: We intentionally do NOT set original_line here to prevent outdated comments
+--- from appearing in comment_map (and thus being displayed at wrong positions in the editor).
+--- Outdated comments are displayed only in FudeReviewListComments.
 --- @param comments table[] array of comment objects
 --- @param outdated_map table<number, table> { [databaseId] = { is_outdated, original_line } }
 local function apply_outdated_info(comments, outdated_map)
@@ -11,10 +14,6 @@ local function apply_outdated_info(comments, outdated_map)
 		local info = outdated_map[c.id]
 		if info and info.is_outdated then
 			c.is_outdated = true
-			-- If the comment has no line, use original_line from outdated_map
-			if not c.line and info.original_line then
-				c.original_line = info.original_line
-			end
 		end
 	end
 end

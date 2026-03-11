@@ -957,4 +957,79 @@ describe("build_comment_browser_entries", function()
 		-- issue comments don't have is_outdated, should be nil or false
 		assert.is_falsy(entries[1].is_outdated)
 	end)
+
+	it("includes outdated comments from all_comments that are not in comment_map", function()
+		-- comment_map has no entries (outdated comments have nil line so they're not in comment_map)
+		local map = {}
+		-- all_comments has an outdated comment
+		local all_comments = {
+			{
+				id = 100,
+				path = "src/old.lua",
+				line = nil, -- outdated: no line
+				body = "outdated comment",
+				user = { login = "alice" },
+				created_at = "2024-01-01T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil, all_comments)
+		assert.are.equal(1, #entries)
+		assert.are.equal("review", entries[1].type)
+		assert.are.equal("src/old.lua", entries[1].path)
+		assert.is_nil(entries[1].line)
+		assert.is_true(entries[1].is_outdated)
+		assert.are.equal(100, entries[1].comments[1].id)
+	end)
+
+	it("does not duplicate outdated comments already in comment_map", function()
+		-- An outdated comment that has a line (from comment_map)
+		local map = {
+			["src/a.lua"] = {
+				[10] = {
+					{
+						id = 200,
+						body = "outdated but has line",
+						user = { login = "bob" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_outdated = true,
+					},
+				},
+			},
+		}
+		local all_comments = {
+			{
+				id = 200,
+				path = "src/a.lua",
+				line = 10,
+				body = "outdated but has line",
+				user = { login = "bob" },
+				created_at = "2024-01-01T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil, all_comments)
+		-- Should have only 1 entry, not duplicated
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
+	it("outdated comment entry has nil line and lnum", function()
+		local all_comments = {
+			{
+				id = 300,
+				path = "src/file.lua",
+				line = nil,
+				body = "no line",
+				user = { login = "charlie" },
+				created_at = "2024-01-01T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries({}, {}, "/repo", id_fn, nil, nil, all_comments)
+		assert.are.equal(1, #entries)
+		assert.is_nil(entries[1].line)
+		assert.is_nil(entries[1].lnum)
+		assert.are.equal("/repo/src/file.lua", entries[1].filename)
+	end)
 end)
