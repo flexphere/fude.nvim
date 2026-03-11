@@ -27,14 +27,19 @@ end
 --- Build comment count display string.
 --- @param submitted number submitted comment count
 --- @param pending number pending comment count
---- @return string display text (empty if no comments, "💬N" otherwise)
+--- @param outdated number|nil outdated comment count
+--- @return string display text (empty if no comments, "💬N" or "💬N(outdated:M)" otherwise)
 --- @return string hl highlight group name
-function M.comment_count_display(submitted, pending)
+function M.comment_count_display(submitted, pending, outdated)
 	local total = (submitted or 0) + (pending or 0)
+	outdated = outdated or 0
 	if total == 0 then
 		return "", "Comment"
 	end
 	local hl = pending > 0 and "DiagnosticHint" or "DiagnosticInfo"
+	if outdated > 0 then
+		return string.format("💬%d(outdated:%d)", total, outdated), hl
+	end
 	return "💬" .. total, hl
 end
 
@@ -44,7 +49,7 @@ end
 --- @param icons table status-to-icon map
 --- @param viewed_files table<string, string>|nil path-to-viewed-state map
 --- @param viewed_sign string|nil character for viewed indicator
---- @param comment_counts table<string, { submitted: number, pending: number }>|nil comment counts per path
+--- @param comment_counts table<string, { submitted: number, pending: number, outdated: number }>|nil counts
 --- @return table[] entries
 function M.build_file_entries(changed_files, repo_root, icons, viewed_files, viewed_sign, comment_counts)
 	viewed_files = viewed_files or {}
@@ -53,8 +58,8 @@ function M.build_file_entries(changed_files, repo_root, icons, viewed_files, vie
 	local entries = {}
 	for _, file in ipairs(changed_files) do
 		local v_icon, v_hl = M.viewed_icon(viewed_files[file.path], viewed_sign)
-		local counts = comment_counts[file.path] or { submitted = 0, pending = 0 }
-		local c_display, c_hl = M.comment_count_display(counts.submitted, counts.pending)
+		local counts = comment_counts[file.path] or { submitted = 0, pending = 0, outdated = 0 }
+		local c_display, c_hl = M.comment_count_display(counts.submitted, counts.pending, counts.outdated)
 		table.insert(entries, {
 			path = file.path,
 			filename = repo_root .. "/" .. file.path,
@@ -118,7 +123,7 @@ function M.show_telescope()
 	end
 
 	local viewed_sign = config.opts.signs.viewed or "✓"
-	local comment_counts = comments_data.build_file_comment_counts(state.comment_map, state.pending_comments)
+	local comment_counts = comments_data.build_file_comment_counts(state.comments, state.pending_comments)
 
 	local displayer = entry_display.create({
 		separator = " ",
@@ -277,7 +282,7 @@ function M.show_quickfix()
 	end
 
 	local viewed_sign = config.opts.signs.viewed or "✓"
-	local comment_counts = comments_data.build_file_comment_counts(state.comment_map, state.pending_comments)
+	local comment_counts = comments_data.build_file_comment_counts(state.comments, state.pending_comments)
 	local raw_entries = M.build_file_entries(
 		state.changed_files,
 		repo_root,

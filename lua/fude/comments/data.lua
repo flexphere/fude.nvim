@@ -415,23 +415,32 @@ function M.build_comment_browser_entries(
 	return entries
 end
 
---- Build comment counts per file from comment_map and pending_comments.
---- @param comment_map table<string, table<number, table[]>>|nil submitted comments map
+--- Check if a comment is outdated (line is nil but original_line exists).
+--- @param comment table comment object from GitHub API
+--- @return boolean
+function M.is_outdated_comment(comment)
+	return comment.line == nil and comment.original_line ~= nil
+end
+
+--- Build comment counts per file from comments array and pending_comments.
+--- @param comments table[]|nil flat array of comment objects
 --- @param pending_comments table<string, table>|nil pending comments (key = "path:start:end")
---- @return table<string, { submitted: number, pending: number }> path -> counts
-function M.build_file_comment_counts(comment_map, pending_comments)
+--- @return table<string, { submitted: number, pending: number, outdated: number }> path -> counts
+function M.build_file_comment_counts(comments, pending_comments)
 	local counts = {}
 
-	-- Count submitted comments from comment_map
-	for path, file_lines in pairs(comment_map or {}) do
-		local submitted = 0
-		for _, comments in pairs(file_lines) do
-			submitted = submitted + #comments
+	-- Count submitted comments and outdated comments
+	for _, c in ipairs(comments or {}) do
+		local path = c.path
+		if path then
+			if not counts[path] then
+				counts[path] = { submitted = 0, pending = 0, outdated = 0 }
+			end
+			counts[path].submitted = counts[path].submitted + 1
+			if M.is_outdated_comment(c) then
+				counts[path].outdated = counts[path].outdated + 1
+			end
 		end
-		if not counts[path] then
-			counts[path] = { submitted = 0, pending = 0 }
-		end
-		counts[path].submitted = submitted
 	end
 
 	-- Count pending comments (key format: "path:start_line:end_line")
@@ -440,7 +449,7 @@ function M.build_file_comment_counts(comment_map, pending_comments)
 		local path = key:match("^(.+):%d+:%d+$")
 		if path then
 			if not counts[path] then
-				counts[path] = { submitted = 0, pending = 0 }
+				counts[path] = { submitted = 0, pending = 0, outdated = 0 }
 			end
 			counts[path].pending = counts[path].pending + 1
 		end

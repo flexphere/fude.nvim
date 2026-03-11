@@ -100,10 +100,12 @@ Using lazy.nvim: >lua
     - Viewed indicator (✓ when marked as viewed on GitHub)
     - File status (+/-/~/R/C)
     - Additions/deletions count
-    - Comment count (💬N if comments exist)
+    - Comment count (💬N if comments exist, 💬N(outdated:M) if outdated)
     - File path
 
     Comment counts include both submitted and pending comments.
+    Outdated comments (where the code has changed since the comment)
+    are shown separately as `(outdated:N)`.
     If pending comments exist, the count is highlighted with
     `DiagnosticHint`; otherwise `DiagnosticInfo` is used.
 
