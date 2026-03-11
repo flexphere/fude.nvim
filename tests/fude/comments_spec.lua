@@ -1012,4 +1012,23 @@ describe("build_file_comment_counts", function()
 		assert.are.equal(1, result["src/a.lua"].submitted)
 		assert.is_nil(result[nil])
 	end)
+
+	it("excludes pending comments from submitted count to avoid double-counting", function()
+		-- Simulate sync.lua behavior: pending review comments are in both
+		-- state.comments and state.pending_comments
+		local cmt_list = {
+			{ id = 1, path = "src/a.lua", line = 10 }, -- submitted
+			{ id = 2, path = "src/a.lua", line = 20 }, -- pending (also in pending_comments)
+			{ id = 3, path = "src/a.lua", line = 30 }, -- pending (also in pending_comments)
+		}
+		local pending = {
+			["src/a.lua:20:20"] = { id = 2, path = "src/a.lua", line = 20, body = "pending1" },
+			["src/a.lua:30:30"] = { id = 3, path = "src/a.lua", line = 30, body = "pending2" },
+		}
+		local result = data.build_file_comment_counts(cmt_list, pending)
+		-- Should count: 1 submitted (id=1), 2 pending (id=2,3)
+		-- Without fix, would incorrectly count: 3 submitted, 2 pending = 5 total
+		assert.are.equal(1, result["src/a.lua"].submitted)
+		assert.are.equal(2, result["src/a.lua"].pending)
+	end)
 end)

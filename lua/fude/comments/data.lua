@@ -426,22 +426,35 @@ function M.is_outdated_comment(comment)
 end
 
 --- Build comment counts per file from comments array and pending_comments.
+--- Pending comments are excluded from submitted count to avoid double-counting,
+--- since sync.lua merges pending review comments into state.comments.
 --- @param comments table[]|nil flat array of comment objects
 --- @param pending_comments table<string, table>|nil pending comments (key = "path:start:end")
 --- @return table<string, { submitted: number, pending: number, outdated: number }> path -> counts
 function M.build_file_comment_counts(comments, pending_comments)
 	local counts = {}
 
-	-- Count submitted comments and outdated comments
+	-- Build a set of pending comment IDs to exclude from submitted count
+	local pending_ids = {}
+	for _, v in pairs(pending_comments or {}) do
+		if type(v) == "table" and v.id then
+			pending_ids[v.id] = true
+		end
+	end
+
+	-- Count submitted comments and outdated comments (excluding pending)
 	for _, c in ipairs(comments or {}) do
-		local path = c.path
-		if path then
-			if not counts[path] then
-				counts[path] = { submitted = 0, pending = 0, outdated = 0 }
-			end
-			counts[path].submitted = counts[path].submitted + 1
-			if M.is_outdated_comment(c) then
-				counts[path].outdated = counts[path].outdated + 1
+		-- Skip comments that are tracked as pending to avoid double-counting
+		if not (c.id and pending_ids[c.id]) then
+			local path = c.path
+			if path then
+				if not counts[path] then
+					counts[path] = { submitted = 0, pending = 0, outdated = 0 }
+				end
+				counts[path].submitted = counts[path].submitted + 1
+				if M.is_outdated_comment(c) then
+					counts[path].outdated = counts[path].outdated + 1
+				end
 			end
 		end
 	end
