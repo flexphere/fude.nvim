@@ -113,6 +113,87 @@ describe("extmarks integration", function()
 				assert.is_not.equal(0, mark[2], "Line 1 (0-indexed 0) should have been cleared")
 			end
 		end)
+
+		it("sets virt_lines (not virt_text) when inline style is active", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+
+			config.state.active = true
+			config.state.current_comment_style = "inline"
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = {
+						{ id = 1, body = "inline comment", user = { login = "tester" }, created_at = "2024-01-01T00:00:00Z" },
+					},
+				},
+			}
+			config.state.pending_comments = {}
+
+			extmarks.refresh_extmarks()
+
+			local marks = vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })
+			assert.is_true(#marks > 0, "Should have extmarks")
+
+			local found_virt_lines = false
+			for _, mark in ipairs(marks) do
+				if mark[2] == 1 then -- 0-indexed line 1 = line 2
+					local details = mark[4]
+					if details.virt_lines and #details.virt_lines > 0 then
+						found_virt_lines = true
+						-- virt_text should NOT be set in inline mode
+						assert.is_nil(details.virt_text, "Should not have virt_text in inline mode")
+					end
+				end
+			end
+			assert.is_true(found_virt_lines, "Should have virt_lines on line 2 in inline mode")
+		end)
+
+		it("marks pending comments with is_pending flag in inline mode", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+
+			config.state.active = true
+			config.state.current_comment_style = "inline"
+			config.state.pending_review_id = 999
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = {
+						{
+							id = 1,
+							body = "pending inline comment",
+							user = { login = "tester" },
+							created_at = "2024-01-01T00:00:00Z",
+							pull_request_review_id = 999,
+						},
+					},
+				},
+			}
+			config.state.pending_comments = {}
+
+			extmarks.refresh_extmarks()
+
+			local marks = vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })
+			assert.is_true(#marks > 0, "Should have extmarks")
+
+			-- Check that virt_lines contain "[pending]" indicator
+			local found_pending_indicator = false
+			for _, mark in ipairs(marks) do
+				if mark[2] == 1 and mark[4].virt_lines then
+					for _, virt_line in ipairs(mark[4].virt_lines) do
+						for _, chunk in ipairs(virt_line) do
+							if type(chunk[1]) == "string" and chunk[1]:find("%[pending%]") then
+								found_pending_indicator = true
+								break
+							end
+						end
+						if found_pending_indicator then
+							break
+						end
+					end
+				end
+			end
+			assert.is_true(found_pending_indicator, "Should show [pending] indicator in inline mode for pending comment")
+		end)
 	end)
 
 	describe("flash_line", function()
