@@ -993,6 +993,27 @@ describe("build_comment_browser_entries", function()
 		assert.are.equal(100, entries[1].comments[1].id)
 	end)
 
+	it("uses original_line for outdated comments display", function()
+		local map = {}
+		local all_comments = {
+			{
+				id = 101,
+				path = "src/old.lua",
+				line = nil,
+				original_line = 42, -- original line number for display
+				body = "outdated with original_line",
+				user = { login = "bob" },
+				created_at = "2024-01-02T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil, all_comments)
+		assert.are.equal(1, #entries)
+		assert.are.equal(42, entries[1].line) -- original_line used for display
+		assert.are.equal(42, entries[1].lnum)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
 	it("does not duplicate outdated comments already in comment_map", function()
 		-- An outdated comment that has a line (from comment_map)
 		local map = {

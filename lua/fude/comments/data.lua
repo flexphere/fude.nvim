@@ -418,12 +418,14 @@ function M.build_comment_browser_entries(
 				local author = c.user and c.user.login or "unknown"
 				local is_pending = pending_review_id and c.pull_request_review_id == pending_review_id
 				local is_own = github_user ~= nil and author == github_user
+				-- Use original_line for display (like GitHub Web UI)
+				local display_line = c.line or c.original_line
 				table.insert(entries, {
 					type = "review",
 					path = c.path,
-					line = nil, -- outdated: no valid line number
+					line = display_line,
 					filename = c.path and (repo_root .. "/" .. c.path) or nil,
-					lnum = nil,
+					lnum = display_line, -- For jump functionality (may not work for outdated)
 					author = author,
 					last_ts = c.created_at or "",
 					last_date = format_date_fn(c.created_at or ""),
