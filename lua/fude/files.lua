@@ -25,14 +25,16 @@ function M.viewed_icon(viewed_state, viewed_sign)
 end
 
 --- Build comment count display string.
---- @param submitted number submitted comment count
---- @param pending number pending comment count
+--- @param submitted number|nil submitted comment count
+--- @param pending number|nil pending comment count
 --- @param outdated number|nil outdated comment count
 --- @return string display text (empty if no comments, "💬N" or "💬N(outdated:M)" otherwise)
 --- @return string hl highlight group name
 function M.comment_count_display(submitted, pending, outdated)
-	local total = (submitted or 0) + (pending or 0)
+	submitted = submitted or 0
+	pending = pending or 0
 	outdated = outdated or 0
+	local total = submitted + pending
 	if total == 0 then
 		return "", "Comment"
 	end
@@ -58,8 +60,11 @@ function M.build_file_entries(changed_files, repo_root, icons, viewed_files, vie
 	local entries = {}
 	for _, file in ipairs(changed_files) do
 		local v_icon, v_hl = M.viewed_icon(viewed_files[file.path], viewed_sign)
-		local counts = comment_counts[file.path] or { submitted = 0, pending = 0, outdated = 0 }
-		local c_display, c_hl = M.comment_count_display(counts.submitted, counts.pending, counts.outdated)
+		local counts = comment_counts[file.path] or {}
+		local submitted = tonumber(counts.submitted) or 0
+		local pending = tonumber(counts.pending) or 0
+		local outdated = tonumber(counts.outdated) or 0
+		local c_display, c_hl = M.comment_count_display(submitted, pending, outdated)
 		table.insert(entries, {
 			path = file.path,
 			filename = repo_root .. "/" .. file.path,
@@ -70,7 +75,7 @@ function M.build_file_entries(changed_files, repo_root, icons, viewed_files, vie
 			deletions = file.deletions or 0,
 			viewed_icon = v_icon,
 			viewed_hl = v_hl,
-			comment_count = counts.submitted + counts.pending,
+			comment_count = submitted + pending,
 			comment_display = c_display,
 			comment_hl = c_hl,
 		})
@@ -293,7 +298,7 @@ function M.show_quickfix()
 	)
 	local items = {}
 	for _, entry in ipairs(raw_entries) do
-		local comment_part = entry.comment_count > 0 and string.format(" 💬%d", entry.comment_count) or ""
+		local comment_part = entry.comment_display ~= "" and (" " .. entry.comment_display) or ""
 		table.insert(items, {
 			filename = entry.filename,
 			lnum = 1,
