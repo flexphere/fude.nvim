@@ -151,3 +151,88 @@ describe("status_icons", function()
 		assert.are.equal("C", files.status_icons.copied)
 	end)
 end)
+
+describe("comment_count_display", function()
+	it("returns empty string for zero comments", function()
+		local display, hl = files.comment_count_display(0, 0)
+		assert.are.equal("", display)
+		assert.are.equal("Comment", hl)
+	end)
+
+	it("returns display with DiagnosticInfo for submitted only", function()
+		local display, hl = files.comment_count_display(3, 0)
+		assert.are.equal("💬3", display)
+		assert.are.equal("DiagnosticInfo", hl)
+	end)
+
+	it("returns display with DiagnosticHint for pending comments", function()
+		local display, hl = files.comment_count_display(2, 1)
+		assert.are.equal("💬3", display)
+		assert.are.equal("DiagnosticHint", hl)
+	end)
+
+	it("handles pending only (no submitted)", function()
+		local display, hl = files.comment_count_display(0, 2)
+		assert.are.equal("💬2", display)
+		assert.are.equal("DiagnosticHint", hl)
+	end)
+
+	it("handles nil values", function()
+		local display, hl = files.comment_count_display(nil, nil)
+		assert.are.equal("", display)
+		assert.are.equal("Comment", hl)
+	end)
+
+	it("handles double digit counts", function()
+		local display, hl = files.comment_count_display(10, 5)
+		assert.are.equal("💬15", display)
+		assert.are.equal("DiagnosticHint", hl)
+	end)
+end)
+
+describe("build_file_entries with comment_counts", function()
+	local icons = files.status_icons
+
+	it("includes comment_count and display fields", function()
+		local changed = {
+			{ path = "a.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		local comment_counts = {
+			["a.lua"] = { submitted = 2, pending = 1 },
+		}
+		local entries = files.build_file_entries(changed, "/repo", icons, nil, "✓", comment_counts)
+		assert.are.equal(3, entries[1].comment_count)
+		assert.are.equal("💬3", entries[1].comment_display)
+		assert.are.equal("DiagnosticHint", entries[1].comment_hl)
+	end)
+
+	it("defaults to zero counts when comment_counts missing file", function()
+		local changed = {
+			{ path = "b.lua", status = "added", additions = 10, deletions = 0 },
+		}
+		local comment_counts = {
+			["a.lua"] = { submitted = 2, pending = 0 },
+		}
+		local entries = files.build_file_entries(changed, "/repo", icons, nil, "✓", comment_counts)
+		assert.are.equal(0, entries[1].comment_count)
+		assert.are.equal("", entries[1].comment_display)
+	end)
+
+	it("defaults to zero counts when comment_counts is nil", function()
+		local changed = {
+			{ path = "c.lua", status = "modified", additions = 1, deletions = 1 },
+		}
+		local entries = files.build_file_entries(changed, "/repo", icons, nil, "✓", nil)
+		assert.are.equal(0, entries[1].comment_count)
+		assert.are.equal("", entries[1].comment_display)
+	end)
+
+	it("backward compatible - works without comment_counts parameter", function()
+		local changed = {
+			{ path = "d.lua", status = "modified", additions = 5, deletions = 2 },
+		}
+		local entries = files.build_file_entries(changed, "/repo", icons)
+		assert.are.equal(0, entries[1].comment_count)
+		assert.are.equal("", entries[1].comment_display)
+	end)
+end)

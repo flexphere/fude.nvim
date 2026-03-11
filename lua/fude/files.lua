@@ -24,19 +24,37 @@ function M.viewed_icon(viewed_state, viewed_sign)
 	return " ", "Comment"
 end
 
+--- Build comment count display string.
+--- @param submitted number submitted comment count
+--- @param pending number pending comment count
+--- @return string display text (empty if no comments, "💬N" otherwise)
+--- @return string hl highlight group name
+function M.comment_count_display(submitted, pending)
+	local total = (submitted or 0) + (pending or 0)
+	if total == 0 then
+		return "", "Comment"
+	end
+	local hl = pending > 0 and "DiagnosticHint" or "DiagnosticInfo"
+	return "💬" .. total, hl
+end
+
 --- Build normalized file entries from changed files list.
 --- @param changed_files table[] list of { path, status, additions, deletions, patch }
 --- @param repo_root string repository root directory
 --- @param icons table status-to-icon map
 --- @param viewed_files table<string, string>|nil path-to-viewed-state map
 --- @param viewed_sign string|nil character for viewed indicator
+--- @param comment_counts table<string, { submitted: number, pending: number }>|nil comment counts per path
 --- @return table[] entries
-function M.build_file_entries(changed_files, repo_root, icons, viewed_files, viewed_sign)
+function M.build_file_entries(changed_files, repo_root, icons, viewed_files, viewed_sign, comment_counts)
 	viewed_files = viewed_files or {}
 	viewed_sign = viewed_sign or "✓"
+	comment_counts = comment_counts or {}
 	local entries = {}
 	for _, file in ipairs(changed_files) do
 		local v_icon, v_hl = M.viewed_icon(viewed_files[file.path], viewed_sign)
+		local counts = comment_counts[file.path] or { submitted = 0, pending = 0 }
+		local c_display, c_hl = M.comment_count_display(counts.submitted, counts.pending)
 		table.insert(entries, {
 			path = file.path,
 			filename = repo_root .. "/" .. file.path,
@@ -47,6 +65,9 @@ function M.build_file_entries(changed_files, repo_root, icons, viewed_files, vie
 			deletions = file.deletions or 0,
 			viewed_icon = v_icon,
 			viewed_hl = v_hl,
+			comment_count = counts.submitted + counts.pending,
+			comment_display = c_display,
+			comment_hl = c_hl,
 		})
 	end
 	return entries
@@ -89,6 +110,7 @@ function M.show_telescope()
 	local entry_display = require("telescope.pickers.entry_display")
 	local previewers = require("telescope.previewers")
 	local ui = require("fude.ui")
+	local comments_data = require("fude.comments.data")
 
 	local repo_root = diff.get_repo_root()
 	if not repo_root then
@@ -96,6 +118,7 @@ function M.show_telescope()
 	end
 
 	local viewed_sign = config.opts.signs.viewed or "✓"
+	local comment_counts = comments_data.build_file_comment_counts(state.comment_map, state.pending_comments)
 
 	local displayer = entry_display.create({
 		separator = " ",
@@ -104,6 +127,7 @@ function M.show_telescope()
 			{ width = 2 },
 			{ width = 5 },
 			{ width = 5 },
+			{ width = 4 },
 			{ remaining = true },
 		},
 	})
@@ -114,12 +138,19 @@ function M.show_telescope()
 			{ entry.status_icon, entry.status_hl },
 			{ "+" .. entry.additions, "DiffAdd" },
 			{ "-" .. entry.deletions, "DiffDelete" },
+			{ entry.comment_display, entry.comment_hl },
 			entry.value,
 		})
 	end
 
-	local raw_entries =
-		M.build_file_entries(state.changed_files, repo_root, M.status_icons, state.viewed_files, viewed_sign)
+	local raw_entries = M.build_file_entries(
+		state.changed_files,
+		repo_root,
+		M.status_icons,
+		state.viewed_files,
+		viewed_sign,
+		comment_counts
+	)
 	local entries = {}
 	for _, entry in ipairs(raw_entries) do
 		entry.value = entry.path
@@ -239,25 +270,35 @@ end
 --- Show changed files in the quickfix list.
 function M.show_quickfix()
 	local state = config.state
+	local comments_data = require("fude.comments.data")
 	local repo_root = diff.get_repo_root()
 	if not repo_root then
 		return
 	end
 
 	local viewed_sign = config.opts.signs.viewed or "✓"
-	local raw_entries =
-		M.build_file_entries(state.changed_files, repo_root, M.status_icons, state.viewed_files, viewed_sign)
+	local comment_counts = comments_data.build_file_comment_counts(state.comment_map, state.pending_comments)
+	local raw_entries = M.build_file_entries(
+		state.changed_files,
+		repo_root,
+		M.status_icons,
+		state.viewed_files,
+		viewed_sign,
+		comment_counts
+	)
 	local items = {}
 	for _, entry in ipairs(raw_entries) do
+		local comment_part = entry.comment_count > 0 and string.format(" 💬%d", entry.comment_count) or ""
 		table.insert(items, {
 			filename = entry.filename,
 			lnum = 1,
 			text = string.format(
-				"[%s] [%s] +%d -%d  %s",
+				"[%s] [%s] +%d -%d%s  %s",
 				entry.viewed_icon,
 				entry.status_icon,
 				entry.additions,
 				entry.deletions,
+				comment_part,
 				entry.path
 			),
 		})

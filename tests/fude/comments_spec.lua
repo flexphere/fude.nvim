@@ -884,3 +884,77 @@ describe("build_comment_browser_entries", function()
 		assert.is_false(entries[1].is_pending)
 	end)
 end)
+
+describe("build_file_comment_counts", function()
+	it("counts submitted comments from comment_map", function()
+		local comment_map = {
+			["src/a.lua"] = {
+				[10] = { { id = 1 }, { id = 2 } },
+				[20] = { { id = 3 } },
+			},
+			["src/b.lua"] = {
+				[5] = { { id = 4 } },
+			},
+		}
+		local result = data.build_file_comment_counts(comment_map, {})
+		assert.are.equal(3, result["src/a.lua"].submitted)
+		assert.are.equal(0, result["src/a.lua"].pending)
+		assert.are.equal(1, result["src/b.lua"].submitted)
+		assert.are.equal(0, result["src/b.lua"].pending)
+	end)
+
+	it("counts pending comments from pending_comments", function()
+		local pending = {
+			["src/a.lua:10:10"] = { path = "src/a.lua", line = 10, body = "fix" },
+			["src/a.lua:20:25"] = { path = "src/a.lua", line = 25, body = "another" },
+			["src/b.lua:1:1"] = { path = "src/b.lua", line = 1, body = "comment" },
+		}
+		local result = data.build_file_comment_counts({}, pending)
+		assert.are.equal(0, result["src/a.lua"].submitted)
+		assert.are.equal(2, result["src/a.lua"].pending)
+		assert.are.equal(0, result["src/b.lua"].submitted)
+		assert.are.equal(1, result["src/b.lua"].pending)
+	end)
+
+	it("combines submitted and pending counts", function()
+		local comment_map = {
+			["src/a.lua"] = {
+				[10] = { { id = 1 } },
+			},
+		}
+		local pending = {
+			["src/a.lua:20:20"] = { path = "src/a.lua", line = 20, body = "pending" },
+		}
+		local result = data.build_file_comment_counts(comment_map, pending)
+		assert.are.equal(1, result["src/a.lua"].submitted)
+		assert.are.equal(1, result["src/a.lua"].pending)
+	end)
+
+	it("returns empty table for empty inputs", function()
+		local result = data.build_file_comment_counts({}, {})
+		assert.are.same({}, result)
+	end)
+
+	it("handles nil inputs", function()
+		local result = data.build_file_comment_counts(nil, nil)
+		assert.are.same({}, result)
+	end)
+
+	it("handles file with pending only (no submitted)", function()
+		local pending = {
+			["new/file.lua:1:5"] = { path = "new/file.lua", line = 5, body = "comment" },
+		}
+		local result = data.build_file_comment_counts({}, pending)
+		assert.are.equal(0, result["new/file.lua"].submitted)
+		assert.are.equal(1, result["new/file.lua"].pending)
+	end)
+
+	it("handles path with colons in pending_comments key", function()
+		local pending = {
+			["a:b/c.lua:1:5"] = { path = "a:b/c.lua", line = 5, body = "comment" },
+		}
+		local result = data.build_file_comment_counts({}, pending)
+		assert.are.equal(0, result["a:b/c.lua"].submitted)
+		assert.are.equal(1, result["a:b/c.lua"].pending)
+	end)
+end)

@@ -96,6 +96,17 @@ Using lazy.nvim: >lua
     by default, falls back to quickfix if Telescope is not available.
     Configurable via `file_list_mode`.
 
+    Each file entry shows:
+    - Viewed indicator (✓ when marked as viewed on GitHub)
+    - File status (+/-/~/R/C)
+    - Additions/deletions count
+    - Comment count (💬N if comments exist)
+    - File path
+
+    Comment counts include both submitted and pending comments.
+    If pending comments exist, the count is highlighted with
+    `DiagnosticHint`; otherwise `DiagnosticInfo` is used.
+
 :FudeReviewScope                                    *:FudeReviewScope*
     Select the review scope. Opens a picker showing the PR's commit
     history and a "Full PR" option. By default, the scope is the full

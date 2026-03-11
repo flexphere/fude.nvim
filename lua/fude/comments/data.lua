@@ -415,4 +415,38 @@ function M.build_comment_browser_entries(
 	return entries
 end
 
+--- Build comment counts per file from comment_map and pending_comments.
+--- @param comment_map table<string, table<number, table[]>>|nil submitted comments map
+--- @param pending_comments table<string, table>|nil pending comments (key = "path:start:end")
+--- @return table<string, { submitted: number, pending: number }> path -> counts
+function M.build_file_comment_counts(comment_map, pending_comments)
+	local counts = {}
+
+	-- Count submitted comments from comment_map
+	for path, file_lines in pairs(comment_map or {}) do
+		local submitted = 0
+		for _, comments in pairs(file_lines) do
+			submitted = submitted + #comments
+		end
+		if not counts[path] then
+			counts[path] = { submitted = 0, pending = 0 }
+		end
+		counts[path].submitted = submitted
+	end
+
+	-- Count pending comments (key format: "path:start_line:end_line")
+	for key, _ in pairs(pending_comments or {}) do
+		-- Parse path from key using pattern matching for last two :number:number
+		local path = key:match("^(.+):%d+:%d+$")
+		if path then
+			if not counts[path] then
+				counts[path] = { submitted = 0, pending = 0 }
+			end
+			counts[path].pending = counts[path].pending + 1
+		end
+	end
+
+	return counts
+end
+
 return M
