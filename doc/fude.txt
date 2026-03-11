@@ -106,8 +106,10 @@ Using lazy.nvim: >lua
     Comment counts include both submitted and pending comments.
     Outdated comments (where the code has changed since the comment)
     are shown separately as `(outdated:N)`.
-    If pending comments exist, the count is highlighted with
-    `DiagnosticHint`; otherwise `DiagnosticInfo` is used.
+    When using Telescope, if pending comments exist, the count is
+    highlighted with `DiagnosticHint`; otherwise `DiagnosticInfo`
+    is used. In quickfix mode, comment counts are shown without
+    these highlights.
 
 :FudeReviewScope                                    *:FudeReviewScope*
     Select the review scope. Opens a picker showing the PR's commit
