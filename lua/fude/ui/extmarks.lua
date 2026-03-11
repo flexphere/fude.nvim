@@ -95,35 +95,67 @@ function M.refresh_extmarks()
 	local comments_mod = require("fude.comments")
 	local comment_lines = comments_mod.get_comment_lines(rel_path)
 
+	local style = config.get_comment_style()
+
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)
 		local submitted_count = 0
 		local has_pending = false
+		local submitted_comments = {}
+		local pending_comments = {}
+
 		for _, c in ipairs(comments) do
 			if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
 				has_pending = true
+				local pc = vim.tbl_extend("force", {}, c)
+				pc.is_pending = true
+				table.insert(pending_comments, pc)
 			else
 				submitted_count = submitted_count + 1
+				table.insert(submitted_comments, c)
 			end
 		end
 
-		if submitted_count > 0 then
-			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
-				virt_text = {
-					{ string.format(" %s%d", config.opts.signs.comment, submitted_count), config.opts.signs.comment_hl },
-				},
-				virt_text_pos = "eol",
-				priority = 50,
-			})
-		end
-		if has_pending then
-			pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
-				virt_text = {
-					{ " " .. config.opts.signs.pending, config.opts.signs.pending_hl },
-				},
-				virt_text_pos = "eol",
-				priority = 45,
-			})
+		if style == "inline" then
+			-- Inline mode: display full comment content below the line
+			local all_comments_for_display = {}
+			for _, c in ipairs(submitted_comments) do
+				table.insert(all_comments_for_display, c)
+			end
+			for _, c in ipairs(pending_comments) do
+				table.insert(all_comments_for_display, c)
+			end
+
+			if #all_comments_for_display > 0 then
+				local format = require("fude.ui.format")
+				local inline_opts = config.opts.inline or {}
+				local result = format.format_comments_for_inline(all_comments_for_display, config.format_date, inline_opts)
+				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+					virt_lines = result.virt_lines,
+					virt_lines_above = false,
+					priority = 50,
+				})
+			end
+		else
+			-- virtualText mode: display indicators at end of line (original behavior)
+			if submitted_count > 0 then
+				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+					virt_text = {
+						{ string.format(" %s%d", config.opts.signs.comment, submitted_count), config.opts.signs.comment_hl },
+					},
+					virt_text_pos = "eol",
+					priority = 50,
+				})
+			end
+			if has_pending then
+				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+					virt_text = {
+						{ " " .. config.opts.signs.pending, config.opts.signs.pending_hl },
+					},
+					virt_text_pos = "eol",
+					priority = 45,
+				})
+			end
 		end
 	end
 end

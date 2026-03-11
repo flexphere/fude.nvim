@@ -1592,3 +1592,205 @@ describe("format_comment_browser_thread", function()
 		assert.is_true(#result.lines > 0)
 	end)
 end)
+
+describe("format_comments_for_inline", function()
+	local identity = function(s)
+		return s or ""
+	end
+
+	it("returns virt_lines for a single comment", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "looks good" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_table(result.virt_lines)
+		assert.is_true(#result.virt_lines >= 2) -- header + body
+	end)
+
+	it("includes author in header line", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		local header = result.virt_lines[1]
+		local found_author = false
+		for _, chunk in ipairs(header) do
+			if chunk[1]:find("@alice") then
+				found_author = true
+				break
+			end
+		end
+		assert.is_true(found_author)
+	end)
+
+	it("includes timestamp in header line", function()
+		local comments = {
+			{ user = { login = "bob" }, created_at = "2024-01-01", body = "x" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		local header = result.virt_lines[1]
+		local found_ts = false
+		for _, chunk in ipairs(header) do
+			if chunk[1]:find("2024%-01%-01") then
+				found_ts = true
+				break
+			end
+		end
+		assert.is_true(found_ts)
+	end)
+
+	it("includes pending label for pending comments", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "pending", is_pending = true },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		local header = result.virt_lines[1]
+		local found_pending = false
+		for _, chunk in ipairs(header) do
+			if chunk[1]:find("%[pending%]") then
+				found_pending = true
+				break
+			end
+		end
+		assert.is_true(found_pending)
+	end)
+
+	it("splits multiline body", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\nline2\nline3" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		-- header + 3 body lines
+		assert.are.equal(4, #result.virt_lines)
+	end)
+
+	it("truncates body at max_lines", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "1\n2\n3\n4\n5\n6\n7" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, { max_lines = 3 })
+		-- header + 3 body lines + "..." line
+		assert.are.equal(5, #result.virt_lines)
+		-- Last line should contain "..."
+		local last_line = result.virt_lines[5]
+		assert.is_truthy(last_line[1][1]:find("%.%.%."))
+	end)
+
+	it("adds separator between multiple comments", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		-- first header + body + separator + second header + body
+		local found_separator = false
+		for _, vline in ipairs(result.virt_lines) do
+			if vline[1] and vline[1][1]:find("─") then
+				found_separator = true
+				break
+			end
+		end
+		assert.is_true(found_separator)
+	end)
+
+	it("uses custom highlight groups", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, {
+			hl_group = "CustomBody",
+			author_hl = "CustomAuthor",
+			timestamp_hl = "CustomTimestamp",
+		})
+		local header = result.virt_lines[1]
+		local found_custom_author = false
+		local found_custom_ts = false
+		for _, chunk in ipairs(header) do
+			if chunk[2] == "CustomAuthor" then
+				found_custom_author = true
+			end
+			if chunk[2] == "CustomTimestamp" then
+				found_custom_ts = true
+			end
+		end
+		assert.is_true(found_custom_author)
+		assert.is_true(found_custom_ts)
+	end)
+
+	it("hides author when show_author is false", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, { show_author = false })
+		local header = result.virt_lines[1]
+		local found_author = false
+		for _, chunk in ipairs(header) do
+			if chunk[1]:find("@alice") then
+				found_author = true
+				break
+			end
+		end
+		assert.is_false(found_author)
+	end)
+
+	it("hides timestamp when show_timestamp is false", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, { show_timestamp = false })
+		local header = result.virt_lines[1]
+		local found_ts = false
+		for _, chunk in ipairs(header) do
+			if chunk[1]:find("2024%-01%-01") then
+				found_ts = true
+				break
+			end
+		end
+		assert.is_false(found_ts)
+	end)
+
+	it("handles nil body", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = nil },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_table(result.virt_lines)
+		assert.is_true(#result.virt_lines >= 1)
+	end)
+
+	it("handles CRLF in body", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\r\nline2" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		-- header + 2 body lines
+		assert.are.equal(3, #result.virt_lines)
+		-- No CR should remain
+		for _, vline in ipairs(result.virt_lines) do
+			for _, chunk in ipairs(vline) do
+				assert.is_nil(chunk[1]:find("\r"))
+			end
+		end
+	end)
+
+	it("uses 'unknown' for missing user", function()
+		local comments = {
+			{ user = nil, created_at = "2024-01-01", body = "test" },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		local header = result.virt_lines[1]
+		local found_unknown = false
+		for _, chunk in ipairs(header) do
+			if chunk[1]:find("@unknown") then
+				found_unknown = true
+				break
+			end
+		end
+		assert.is_true(found_unknown)
+	end)
+
+	it("returns empty virt_lines for empty comments", function()
+		local result = ui.format_comments_for_inline({}, identity)
+		assert.are.equal(0, #result.virt_lines)
+	end)
+end)

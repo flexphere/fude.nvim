@@ -641,4 +641,68 @@ function M.format_comment_browser_thread(entry, all_comments, all_issue_comments
 	return M.format_reply_comments_for_display(thread, format_date_fn)
 end
 
+--- Format comments for inline display (virt_lines below code line).
+--- @param comments table[] list of comment objects
+--- @param format_date_fn fun(s: string): string
+--- @param opts table|nil options: max_lines, show_author, show_timestamp, hl_group, author_hl, timestamp_hl
+--- @return table { virt_lines: table[][] } virt_line chunks for nvim_buf_set_extmark
+function M.format_comments_for_inline(comments, format_date_fn, opts)
+	opts = opts or {}
+	local max_lines = opts.max_lines or 5
+	local show_author = opts.show_author ~= false
+	local show_timestamp = opts.show_timestamp ~= false
+	local hl_group = opts.hl_group or "Comment"
+	local author_hl = opts.author_hl or "Title"
+	local timestamp_hl = opts.timestamp_hl or "NonText"
+
+	local virt_lines = {}
+
+	for i, comment in ipairs(comments) do
+		-- Add separator between comments
+		if i > 1 then
+			table.insert(virt_lines, { { string.rep("─", 30), hl_group } })
+		end
+
+		-- Author/timestamp line
+		if show_author or show_timestamp then
+			local author = comment.user and comment.user.login or "unknown"
+			local created = format_date_fn(comment.created_at)
+			local is_pending = comment.is_pending
+
+			local header_chunks = {}
+			table.insert(header_chunks, { "  ", hl_group }) -- indent
+			if show_author then
+				table.insert(header_chunks, { "@" .. author, author_hl })
+			end
+			if show_timestamp then
+				if show_author then
+					table.insert(header_chunks, { " ", hl_group })
+				end
+				table.insert(header_chunks, { "(" .. created .. ")", timestamp_hl })
+			end
+			if is_pending then
+				table.insert(header_chunks, { " ", hl_group })
+				table.insert(header_chunks, { "[pending]", "DiagnosticHint" })
+			end
+			table.insert(virt_lines, header_chunks)
+		end
+
+		-- Comment body
+		local body = normalize_newlines(comment.body)
+		local body_lines = vim.split(body, "\n")
+		local line_count = 0
+
+		for _, body_line in ipairs(body_lines) do
+			if line_count >= max_lines then
+				table.insert(virt_lines, { { "  ...", hl_group } })
+				break
+			end
+			table.insert(virt_lines, { { "  " .. body_line, hl_group } })
+			line_count = line_count + 1
+		end
+	end
+
+	return { virt_lines = virt_lines }
+end
+
 return M

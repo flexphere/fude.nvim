@@ -249,6 +249,16 @@ Using lazy.nvim: >lua
     If there are no pending comments, you can still submit a review
     with just a body (useful for Approve or Request Changes).
 
+:FudeReviewToggleCommentStyle            *:FudeReviewToggleCommentStyle*
+    Toggle comment display style between "virtualText" and "inline".
+    - "virtualText": Shows `#N` and `pending` indicators at the end of
+      comment lines (original behavior).
+    - "inline": Shows full comment content (author, timestamp, body)
+      below the code line using virtual lines.
+    The current style is stored in the session state and persists until
+    review mode is stopped or explicitly toggled again.
+    Requires an active review session.
+
 ==============================================================================
 5. KEYMAPS                                                *fude-keymaps*
 
@@ -329,6 +339,17 @@ Default configuration: >lua
       duration = 200, -- ms
       hl_group = "Visual",
     },
+    -- Comment display style: "virtualText" or "inline"
+    comment_style = "virtualText",
+    -- Inline display options (used when comment_style = "inline")
+    inline = {
+      max_lines = 5,         -- Maximum lines per comment body
+      show_author = true,
+      show_timestamp = true,
+      hl_group = "Comment",
+      author_hl = "Title",
+      timestamp_hl = "NonText",
+    },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
   })
@@ -392,6 +413,33 @@ Options:
 `auto_view_comment` When true, automatically opens the comment viewer
                   float after navigating to a comment line via ]c, [c,
                   or FudeReviewListComments (default: true).
+
+`comment_style`     Comment display style: "virtualText" or "inline"
+                  (default: "virtualText").
+                  - "virtualText": Shows indicators (`#N`, `pending`)
+                    at the end of lines.
+                  - "inline": Shows full comment content below lines
+                    using virtual lines.
+                  Can be toggled at runtime with |:FudeReviewToggleCommentStyle|.
+
+`inline.max_lines`  Maximum lines to display per comment body in inline
+                  mode (default: 5). Longer comments show "..." truncation.
+
+`inline.show_author`
+                  Show author name in inline display (default: true).
+
+`inline.show_timestamp`
+                  Show timestamp in inline display (default: true).
+
+`inline.hl_group`   Highlight group for comment body text in inline mode
+                  (default: "Comment").
+
+`inline.author_hl`  Highlight group for author name in inline mode
+                  (default: "Title").
+
+`inline.timestamp_hl`
+                  Highlight group for timestamp in inline mode
+                  (default: "NonText").
 
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system
