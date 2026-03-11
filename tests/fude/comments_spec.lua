@@ -884,3 +884,151 @@ describe("build_comment_browser_entries", function()
 		assert.is_false(entries[1].is_pending)
 	end)
 end)
+
+describe("is_outdated_comment", function()
+	it("returns true when line is nil and original_line exists", function()
+		local comment = { path = "a.lua", line = nil, original_line = 10, body = "outdated" }
+		assert.is_true(data.is_outdated_comment(comment))
+	end)
+
+	it("returns true when line is vim.NIL and original_line exists", function()
+		local comment = { path = "a.lua", line = vim.NIL, original_line = 10, body = "outdated" }
+		assert.is_true(data.is_outdated_comment(comment))
+	end)
+
+	it("returns false when line exists", function()
+		local comment = { path = "a.lua", line = 10, original_line = 10, body = "current" }
+		assert.is_false(data.is_outdated_comment(comment))
+	end)
+
+	it("returns false when both line and original_line are nil", function()
+		local comment = { path = "a.lua", line = nil, original_line = nil, body = "no line" }
+		assert.is_false(data.is_outdated_comment(comment))
+	end)
+
+	it("returns false when both line and original_line are vim.NIL", function()
+		local comment = { path = "a.lua", line = vim.NIL, original_line = vim.NIL, body = "no line" }
+		assert.is_false(data.is_outdated_comment(comment))
+	end)
+
+	it("returns false when line exists but original_line is nil", function()
+		local comment = { path = "a.lua", line = 10, original_line = nil, body = "only line" }
+		assert.is_false(data.is_outdated_comment(comment))
+	end)
+end)
+
+describe("build_file_comment_counts", function()
+	it("counts submitted comments from comments array", function()
+		local cmt_list = {
+			{ id = 1, path = "src/a.lua", line = 10 },
+			{ id = 2, path = "src/a.lua", line = 10 },
+			{ id = 3, path = "src/a.lua", line = 20 },
+			{ id = 4, path = "src/b.lua", line = 5 },
+		}
+		local result = data.build_file_comment_counts(cmt_list, {})
+		assert.are.equal(3, result["src/a.lua"].submitted)
+		assert.are.equal(0, result["src/a.lua"].pending)
+		assert.are.equal(0, result["src/a.lua"].outdated)
+		assert.are.equal(1, result["src/b.lua"].submitted)
+		assert.are.equal(0, result["src/b.lua"].pending)
+	end)
+
+	it("counts outdated comments", function()
+		local cmt_list = {
+			{ id = 1, path = "src/a.lua", line = 10 },
+			{ id = 2, path = "src/a.lua", line = nil, original_line = 15 }, -- outdated
+			{ id = 3, path = "src/a.lua", line = nil, original_line = 20 }, -- outdated
+			{ id = 4, path = "src/b.lua", line = nil, original_line = 5 }, -- outdated
+		}
+		local result = data.build_file_comment_counts(cmt_list, {})
+		assert.are.equal(3, result["src/a.lua"].submitted)
+		assert.are.equal(2, result["src/a.lua"].outdated)
+		assert.are.equal(1, result["src/b.lua"].submitted)
+		assert.are.equal(1, result["src/b.lua"].outdated)
+	end)
+
+	it("counts pending comments from pending_comments", function()
+		local pending = {
+			["src/a.lua:10:10"] = { path = "src/a.lua", line = 10, body = "fix" },
+			["src/a.lua:20:25"] = { path = "src/a.lua", line = 25, body = "another" },
+			["src/b.lua:1:1"] = { path = "src/b.lua", line = 1, body = "comment" },
+		}
+		local result = data.build_file_comment_counts({}, pending)
+		assert.are.equal(0, result["src/a.lua"].submitted)
+		assert.are.equal(2, result["src/a.lua"].pending)
+		assert.are.equal(0, result["src/b.lua"].submitted)
+		assert.are.equal(1, result["src/b.lua"].pending)
+	end)
+
+	it("combines submitted, pending, and outdated counts", function()
+		local cmt_list = {
+			{ id = 1, path = "src/a.lua", line = 10 },
+			{ id = 2, path = "src/a.lua", line = nil, original_line = 15 }, -- outdated
+		}
+		local pending = {
+			["src/a.lua:20:20"] = { path = "src/a.lua", line = 20, body = "pending" },
+		}
+		local result = data.build_file_comment_counts(cmt_list, pending)
+		assert.are.equal(2, result["src/a.lua"].submitted)
+		assert.are.equal(1, result["src/a.lua"].pending)
+		assert.are.equal(1, result["src/a.lua"].outdated)
+	end)
+
+	it("returns empty table for empty inputs", function()
+		local result = data.build_file_comment_counts({}, {})
+		assert.are.same({}, result)
+	end)
+
+	it("handles nil inputs", function()
+		local result = data.build_file_comment_counts(nil, nil)
+		assert.are.same({}, result)
+	end)
+
+	it("handles file with pending only (no submitted)", function()
+		local pending = {
+			["new/file.lua:1:5"] = { path = "new/file.lua", line = 5, body = "comment" },
+		}
+		local result = data.build_file_comment_counts({}, pending)
+		assert.are.equal(0, result["new/file.lua"].submitted)
+		assert.are.equal(1, result["new/file.lua"].pending)
+		assert.are.equal(0, result["new/file.lua"].outdated)
+	end)
+
+	it("handles path with colons in pending_comments key", function()
+		local pending = {
+			["a:b/c.lua:1:5"] = { path = "a:b/c.lua", line = 5, body = "comment" },
+		}
+		local result = data.build_file_comment_counts({}, pending)
+		assert.are.equal(0, result["a:b/c.lua"].submitted)
+		assert.are.equal(1, result["a:b/c.lua"].pending)
+	end)
+
+	it("skips comments without path", function()
+		local cmt_list = {
+			{ id = 1, path = nil, line = 10 },
+			{ id = 2, path = "src/a.lua", line = 10 },
+		}
+		local result = data.build_file_comment_counts(cmt_list, {})
+		assert.are.equal(1, result["src/a.lua"].submitted)
+		assert.is_nil(result[nil])
+	end)
+
+	it("excludes pending comments from submitted count to avoid double-counting", function()
+		-- Simulate sync.lua behavior: pending review comments are in both
+		-- state.comments and state.pending_comments
+		local cmt_list = {
+			{ id = 1, path = "src/a.lua", line = 10 }, -- submitted
+			{ id = 2, path = "src/a.lua", line = 20 }, -- pending (also in pending_comments)
+			{ id = 3, path = "src/a.lua", line = 30 }, -- pending (also in pending_comments)
+		}
+		local pending = {
+			["src/a.lua:20:20"] = { id = 2, path = "src/a.lua", line = 20, body = "pending1" },
+			["src/a.lua:30:30"] = { id = 3, path = "src/a.lua", line = 30, body = "pending2" },
+		}
+		local result = data.build_file_comment_counts(cmt_list, pending)
+		-- Should count: 1 submitted (id=1), 2 pending (id=2,3)
+		-- Without fix, would incorrectly count: 3 submitted, 2 pending = 5 total
+		assert.are.equal(1, result["src/a.lua"].submitted)
+		assert.are.equal(2, result["src/a.lua"].pending)
+	end)
+end)
