@@ -35,6 +35,17 @@ M.defaults = {
 	},
 	-- Auto-open comment viewer when navigating to a comment line
 	auto_view_comment = true,
+	-- Comment display style: "virtualText" (eol indicators) or "inline" (full content below line)
+	comment_style = "virtualText",
+	-- Inline display options (used when comment_style = "inline")
+	inline = {
+		show_author = true,
+		show_timestamp = true,
+		hl_group = "Comment",
+		author_hl = "Title",
+		timestamp_hl = "NonText",
+		border_hl = "DiagnosticInfo", -- Highlight for comment box border
+	},
 	-- strftime format for timestamps (applied in system timezone)
 	date_format = "%Y/%m/%d %H:%M",
 	keymaps = {
@@ -78,6 +89,7 @@ M.state = {
 	reply_window = nil,
 	github_user = nil, -- Authenticated GitHub username (for ownership check)
 	comment_browser = nil, -- 3-pane comment browser window state
+	current_comment_style = nil, -- Runtime override for comment_style (nil = use opts.comment_style)
 }
 
 M.opts = {}
@@ -118,6 +130,7 @@ function M.reset_state()
 		reply_window = nil,
 		github_user = nil,
 		comment_browser = nil,
+		current_comment_style = nil,
 	}
 end
 
@@ -146,6 +159,22 @@ function M.format_date(iso_str)
 	d1.isdst = false
 	local offset = os.difftime(os.time(d1), os.time(d2))
 	return os.date(M.opts.date_format, t + offset)
+end
+
+--- Get the current comment display style.
+--- Returns state override if set, otherwise defaults to opts.comment_style.
+--- @return string "virtualText" | "inline"
+function M.get_comment_style()
+	return M.state.current_comment_style or M.opts.comment_style or "virtualText"
+end
+
+--- Toggle comment display style between "virtualText" and "inline".
+--- @return string the new style
+function M.toggle_comment_style()
+	local current = M.get_comment_style()
+	local new_style = current == "virtualText" and "inline" or "virtualText"
+	M.state.current_comment_style = new_style
+	return new_style
 end
 
 return M

@@ -111,6 +111,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewViewed` | Mark current file as viewed on GitHub |
 | `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
 | `:FudeReviewBrowse` | Open PR in browser |
+| `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
 | `:FudeCreatePR` | Create draft PR from template |
 
 ## Configuration
@@ -151,6 +152,17 @@ require("fude").setup({
   },
   -- Auto-open comment viewer when navigating to a comment line (]c/[c/FudeReviewListComments)
   auto_view_comment = true,
+  -- Comment display style: "virtualText" or "inline"
+  comment_style = "virtualText",
+  -- Inline display options (used when comment_style = "inline")
+  inline = {
+    show_author = true,
+    show_timestamp = true,
+    hl_group = "Comment",
+    author_hl = "Title",
+    timestamp_hl = "NonText",
+    border_hl = "DiagnosticInfo",
+  },
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
   -- Callback after review start completes (all data fetched)

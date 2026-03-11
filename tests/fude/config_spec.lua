@@ -73,4 +73,59 @@ describe("config", function()
 			assert.are.equal("", config.format_date(""))
 		end)
 	end)
+
+	describe("get_comment_style", function()
+		it("returns default 'virtualText' when no state override", function()
+			config.setup({})
+			assert.are.equal("virtualText", config.get_comment_style())
+		end)
+
+		it("returns custom default from opts", function()
+			config.setup({ comment_style = "inline" })
+			assert.are.equal("inline", config.get_comment_style())
+		end)
+
+		it("returns state override when set", function()
+			config.setup({ comment_style = "virtualText" })
+			config.state.current_comment_style = "inline"
+			assert.are.equal("inline", config.get_comment_style())
+		end)
+	end)
+
+	describe("toggle_comment_style", function()
+		it("toggles from virtualText to inline", function()
+			config.setup({ comment_style = "virtualText" })
+			config.state.current_comment_style = nil -- reset runtime override
+			local new_style = config.toggle_comment_style()
+			assert.are.equal("inline", new_style)
+			assert.are.equal("inline", config.get_comment_style())
+		end)
+
+		it("toggles from inline to virtualText", function()
+			config.setup({ comment_style = "inline" })
+			config.state.current_comment_style = nil -- reset runtime override
+			local new_style = config.toggle_comment_style()
+			assert.are.equal("virtualText", new_style)
+			assert.are.equal("virtualText", config.get_comment_style())
+		end)
+
+		it("toggles multiple times correctly", function()
+			config.setup({})
+			config.state.current_comment_style = nil -- reset runtime override
+			assert.are.equal("virtualText", config.get_comment_style())
+			config.toggle_comment_style()
+			assert.are.equal("inline", config.get_comment_style())
+			config.toggle_comment_style()
+			assert.are.equal("virtualText", config.get_comment_style())
+		end)
+	end)
+
+	describe("reset_state clears current_comment_style", function()
+		it("clears current_comment_style on reset", function()
+			config.setup({})
+			config.state.current_comment_style = "inline"
+			config.reset_state()
+			assert.is_nil(config.state.current_comment_style)
+		end)
+	end)
 end)

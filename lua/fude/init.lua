@@ -176,8 +176,21 @@ function M.start()
 			desc = "fude.nvim: Update extmarks and keymaps",
 		})
 
+		vim.api.nvim_create_autocmd("WinResized", {
+			group = state.augroup,
+			callback = function()
+				vim.schedule(function()
+					require("fude.ui").refresh_extmarks()
+				end)
+			end,
+			desc = "fude.nvim: Update extmarks on window resize",
+		})
+
 		-- Set keymaps on the current buffer immediately
 		M.setup_buf_keymaps()
+
+		-- Setup hint autocmd for comment lines (shows available actions)
+		require("fude.ui").setup_inline_hint_autocmd()
 	end)
 end
 
@@ -243,6 +256,7 @@ function M.stop()
 
 	require("fude.preview").close_preview()
 	require("fude.ui").clear_all_extmarks()
+	require("fude.ui").teardown_inline_hint_autocmd()
 	M.clear_buf_keymaps()
 
 	-- Restore original HEAD if in commit scope
