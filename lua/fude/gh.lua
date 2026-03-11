@@ -661,7 +661,7 @@ query {
         pageInfo { hasNextPage endCursor }
         nodes {
           isOutdated
-          comments(first: 100) {
+          comments(first: 1) {
             nodes { databaseId path originalLine }
           }
         }
