@@ -132,7 +132,7 @@ function M.show_telescope()
 			{ width = 2 },
 			{ width = 5 },
 			{ width = 5 },
-			{ width = 4 },
+			{ width = 18 },
 			{ remaining = true },
 		},
 	})
