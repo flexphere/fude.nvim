@@ -44,6 +44,13 @@ local function fetch_comments(callback)
 	end
 
 	local function fetch_outdated_and_apply(comments)
+		-- Skip GraphQL call if outdated.show is disabled
+		if config.opts.outdated and config.opts.outdated.show == false then
+			state.outdated_map = {}
+			apply(comments)
+			return
+		end
+
 		-- Fetch outdated info via GraphQL
 		gh.get_review_threads(state.pr_number, function(outdated_err, outdated_map)
 			if not outdated_err and outdated_map then
