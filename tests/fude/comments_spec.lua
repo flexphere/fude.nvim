@@ -86,6 +86,17 @@ describe("build_comment_map", function()
 		assert.are.same({}, map)
 	end)
 
+	it("skips outdated comments even if they have original_line", function()
+		local input = {
+			{ path = "a.lua", line = nil, original_line = 10, body = "outdated", is_outdated = true },
+			{ path = "a.lua", line = 20, body = "normal" },
+		}
+		local map = comments.build_comment_map(input)
+		-- Only the normal comment should be in the map
+		assert.is_nil(map["a.lua"][10])
+		assert.are.equal(1, #map["a.lua"][20])
+	end)
+
 	it("returns empty table for empty input", function()
 		local map = comments.build_comment_map({})
 		assert.are.same({}, map)
@@ -959,14 +970,14 @@ describe("build_comment_browser_entries", function()
 	end)
 
 	it("includes outdated comments from all_comments that are not in comment_map", function()
-		-- comment_map has no entries (outdated comments have nil line so they're not in comment_map)
+		-- comment_map has no entries (outdated comments are excluded from comment_map)
 		local map = {}
-		-- all_comments has an outdated comment
+		-- all_comments has an outdated comment with no line/original_line
 		local all_comments = {
 			{
 				id = 100,
 				path = "src/old.lua",
-				line = nil, -- outdated: no line
+				line = nil, -- outdated: no line (original_line is also nil/unset)
 				body = "outdated comment",
 				user = { login = "alice" },
 				created_at = "2024-01-01T00:00:00Z",

@@ -32,11 +32,16 @@ function M.line_from_diff_hunk(diff_hunk, position)
 end
 
 --- Build a nested lookup map from a flat array of comments.
+--- Outdated comments are excluded since they cannot be displayed at correct positions.
 --- @param comments table[] flat array of comment objects
 --- @return table<string, table<number, table[]>> map[path][line] = {comments}
 function M.build_comment_map(comments)
 	local map = {}
 	for _, c in ipairs(comments) do
+		-- Skip outdated comments (they have no valid line position)
+		if c.is_outdated then
+			goto continue
+		end
 		local path = c.path
 		local line = c.line or c.original_line
 		if path and line then
@@ -48,6 +53,7 @@ function M.build_comment_map(comments)
 			end
 			table.insert(map[path][line], c)
 		end
+		::continue::
 	end
 	return map
 end
