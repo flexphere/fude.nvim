@@ -86,6 +86,17 @@ describe("build_comment_map", function()
 		assert.are.same({}, map)
 	end)
 
+	it("skips outdated comments even if they have original_line", function()
+		local input = {
+			{ path = "a.lua", line = nil, original_line = 10, body = "outdated", is_outdated = true },
+			{ path = "a.lua", line = 20, body = "normal" },
+		}
+		local map = comments.build_comment_map(input)
+		-- Only the normal comment should be in the map
+		assert.is_nil(map["a.lua"][10])
+		assert.are.equal(1, #map["a.lua"][20])
+	end)
+
 	it("returns empty table for empty input", function()
 		local map = comments.build_comment_map({})
 		assert.are.same({}, map)
@@ -882,6 +893,176 @@ describe("build_comment_browser_entries", function()
 		}
 		local entries = data.build_comment_browser_entries({}, issue_comments, "/repo", id_fn, 42, nil)
 		assert.is_false(entries[1].is_pending)
+	end)
+
+	it("marks is_outdated when any comment in thread is outdated", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "outdated comment",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_outdated = true,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
+	it("marks is_outdated false when no comment is outdated", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "normal comment",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						-- no is_outdated field
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_false(entries[1].is_outdated)
+	end)
+
+	it("marks is_outdated true if any comment in thread has is_outdated", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "first",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_outdated = false,
+					},
+					{
+						id = 2,
+						body = "second outdated",
+						user = { login = "bob" },
+						created_at = "2024-01-02T00:00:00Z",
+						is_outdated = true,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
+	it("issue comments do not have is_outdated flag", function()
+		local issue_comments = {
+			{ id = 1, body = "issue comment", user = { login = "a" }, created_at = "2024-01-01T00:00:00Z" },
+		}
+		local entries = data.build_comment_browser_entries({}, issue_comments, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		-- issue comments don't have is_outdated, should be nil or false
+		assert.is_falsy(entries[1].is_outdated)
+	end)
+
+	it("includes outdated comments from all_comments that are not in comment_map", function()
+		-- comment_map has no entries (outdated comments are excluded from comment_map)
+		local map = {}
+		-- all_comments has an outdated comment with no line/original_line
+		local all_comments = {
+			{
+				id = 100,
+				path = "src/old.lua",
+				line = nil, -- outdated: no line (original_line is also nil/unset)
+				body = "outdated comment",
+				user = { login = "alice" },
+				created_at = "2024-01-01T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil, all_comments)
+		assert.are.equal(1, #entries)
+		assert.are.equal("review", entries[1].type)
+		assert.are.equal("src/old.lua", entries[1].path)
+		assert.is_nil(entries[1].line)
+		assert.is_true(entries[1].is_outdated)
+		assert.are.equal(100, entries[1].comments[1].id)
+	end)
+
+	it("uses original_line for outdated comments display", function()
+		local map = {}
+		local all_comments = {
+			{
+				id = 101,
+				path = "src/old.lua",
+				line = nil,
+				original_line = 42, -- original line number for display
+				body = "outdated with original_line",
+				user = { login = "bob" },
+				created_at = "2024-01-02T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil, all_comments)
+		assert.are.equal(1, #entries)
+		assert.are.equal(42, entries[1].line) -- original_line used for display
+		assert.are.equal(42, entries[1].lnum)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
+	it("does not duplicate outdated comments already in comment_map", function()
+		-- An outdated comment that has a line (from comment_map)
+		local map = {
+			["src/a.lua"] = {
+				[10] = {
+					{
+						id = 200,
+						body = "outdated but has line",
+						user = { login = "bob" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_outdated = true,
+					},
+				},
+			},
+		}
+		local all_comments = {
+			{
+				id = 200,
+				path = "src/a.lua",
+				line = 10,
+				body = "outdated but has line",
+				user = { login = "bob" },
+				created_at = "2024-01-01T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil, all_comments)
+		-- Should have only 1 entry, not duplicated
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_outdated)
+	end)
+
+	it("outdated comment entry has nil line and lnum", function()
+		local all_comments = {
+			{
+				id = 300,
+				path = "src/file.lua",
+				line = nil,
+				body = "no line",
+				user = { login = "charlie" },
+				created_at = "2024-01-01T00:00:00Z",
+				is_outdated = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries({}, {}, "/repo", id_fn, nil, nil, all_comments)
+		assert.are.equal(1, #entries)
+		assert.is_nil(entries[1].line)
+		assert.is_nil(entries[1].lnum)
+		assert.are.equal("/repo/src/file.lua", entries[1].filename)
 	end)
 end)
 

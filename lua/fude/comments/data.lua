@@ -32,21 +32,25 @@ function M.line_from_diff_hunk(diff_hunk, position)
 end
 
 --- Build a nested lookup map from a flat array of comments.
+--- Outdated comments are excluded since they cannot be displayed at correct positions.
 --- @param comments table[] flat array of comment objects
 --- @return table<string, table<number, table[]>> map[path][line] = {comments}
 function M.build_comment_map(comments)
 	local map = {}
 	for _, c in ipairs(comments) do
-		local path = c.path
-		local line = c.line or c.original_line
-		if path and line then
-			if not map[path] then
-				map[path] = {}
+		-- Skip outdated comments (they have no valid line position)
+		if not c.is_outdated then
+			local path = c.path
+			local line = c.line or c.original_line
+			if path and line then
+				if not map[path] then
+					map[path] = {}
+				end
+				if not map[path][line] then
+					map[path][line] = {}
+				end
+				table.insert(map[path][line], c)
 			end
-			if not map[path][line] then
-				map[path][line] = {}
-			end
-			table.insert(map[path][line], c)
 		end
 	end
 	return map
@@ -339,6 +343,7 @@ end
 --- @param format_date_fn fun(s: string): string
 --- @param pending_review_id number|nil pending review ID for labeling
 --- @param github_user string|nil authenticated user for ownership marking
+--- @param all_comments table[]|nil all review comments (for including outdated comments not in comment_map)
 --- @return table[] entries sorted by last_ts descending (newest first)
 function M.build_comment_browser_entries(
 	comment_map,
@@ -346,7 +351,8 @@ function M.build_comment_browser_entries(
 	repo_root,
 	format_date_fn,
 	pending_review_id,
-	github_user
+	github_user,
+	all_comments
 )
 	local entries = {}
 
@@ -357,12 +363,20 @@ function M.build_comment_browser_entries(
 			local first = comments[1]
 			local last = comments[#comments]
 			local is_pending = false
+			local is_outdated = false
 			if pending_review_id then
 				for _, c in ipairs(comments) do
 					if c.pull_request_review_id == pending_review_id then
 						is_pending = true
 						break
 					end
+				end
+			end
+			-- Check if any comment in thread is outdated
+			for _, c in ipairs(comments) do
+				if c.is_outdated then
+					is_outdated = true
+					break
 				end
 			end
 			local author = first.user and first.user.login or "unknown"
@@ -381,7 +395,50 @@ function M.build_comment_browser_entries(
 				comments = comments,
 				is_pending = is_pending,
 				is_own = is_own,
+				is_outdated = is_outdated,
 			})
+		end
+	end
+
+	-- Outdated comment entries (not in comment_map because line is nil)
+	-- Build a set of comment IDs already in entries to avoid duplicates
+	local seen_ids = {}
+	for _, entry in ipairs(entries) do
+		for _, c in ipairs(entry.comments) do
+			if c.id then
+				seen_ids[c.id] = true
+			end
+		end
+	end
+
+	-- Add outdated comments not in comment_map
+	if all_comments then
+		for _, c in ipairs(all_comments) do
+			if c.is_outdated and c.id and not seen_ids[c.id] then
+				local author = c.user and c.user.login or "unknown"
+				local is_pending = pending_review_id and c.pull_request_review_id == pending_review_id
+				local is_own = github_user ~= nil and author == github_user
+				-- Use original_line for display (like GitHub Web UI)
+				-- Note: c.line may be vim.NIL (JSON null) which is truthy, so check type
+				local line = type(c.line) == "number" and c.line or nil
+				local original_line = type(c.original_line) == "number" and c.original_line or nil
+				local display_line = line or original_line
+				table.insert(entries, {
+					type = "review",
+					path = c.path,
+					line = display_line,
+					filename = c.path and (repo_root .. "/" .. c.path) or nil,
+					lnum = display_line, -- For jump functionality (may not work for outdated)
+					author = author,
+					last_ts = c.created_at or "",
+					last_date = format_date_fn(c.created_at or ""),
+					comments = { c },
+					is_pending = is_pending or false,
+					is_own = is_own,
+					is_outdated = true,
+				})
+				seen_ids[c.id] = true
+			end
 		end
 	end
 

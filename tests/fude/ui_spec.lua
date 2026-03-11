@@ -1532,9 +1532,73 @@ describe("format_comment_browser_list", function()
 		assert.are.equal("DiagnosticHint", result.hl_ranges[1].hl)
 	end)
 
+	it("formats outdated entry with [outdated] label", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "a", path = "f.lua", line = 1, is_outdated = true },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_true(result.lines[1]:find("%[outdated%]") ~= nil)
+		assert.is_true(#result.hl_ranges > 0)
+		assert.are.equal("Comment", result.hl_ranges[1].hl)
+	end)
+
+	it("shows pending over outdated when both are true", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "a",
+				path = "f.lua",
+				line = 1,
+				is_pending = true,
+				is_outdated = true,
+			},
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		-- Pending takes precedence
+		assert.is_true(result.lines[1]:find("%[pending%]") ~= nil)
+		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
+	end)
+
+	it("does not show [outdated] for normal entries", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1 },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
+		assert.is_true(result.lines[1]:find("@alice") ~= nil)
+	end)
+
 	it("returns empty lines for empty entries", function()
 		local result = ui.format_comment_browser_list({}, 120, id_fn)
 		assert.are.equal(0, #result.lines)
+	end)
+
+	it("hides [outdated] label when outdated_opts.show = false", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1, is_outdated = true },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, { show = false })
+		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
+		-- Should show as normal entry with author
+		assert.is_true(result.lines[1]:find("@alice") ~= nil)
+	end)
+
+	it("uses custom label from outdated_opts.label", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1, is_outdated = true },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, { label = "[OLD]" })
+		assert.is_true(result.lines[1]:find("%[OLD%]") ~= nil)
+		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
+	end)
+
+	it("uses custom hl_group from outdated_opts.hl_group", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1, is_outdated = true },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, { hl_group = "Error" })
+		assert.are.equal("Error", result.hl_ranges[1].hl)
 	end)
 end)
 

@@ -123,7 +123,8 @@ local function create_browser(entries, issue_comments)
 	local layout = format.calculate_comment_browser_layout(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80)
 
 	-- Format left pane
-	local list_result = format.format_comment_browser_list(entries, layout.left.width, config.format_date)
+	local list_result =
+		format.format_comment_browser_list(entries, layout.left.width, config.format_date, config.opts.outdated)
 
 	-- Create left buffer (readonly list)
 	local left_buf = vim.api.nvim_create_buf(false, true)
@@ -302,7 +303,8 @@ local function create_browser(entries, issue_comments)
 				repo_root,
 				config.format_date,
 				state.pending_review_id,
-				state.github_user
+				state.github_user,
+				state.comments
 			)
 			if #new_entries == 0 then
 				close_browser()
@@ -316,7 +318,8 @@ local function create_browser(entries, issue_comments)
 			entries = new_entries
 			issue_comments = new_issue_comments
 
-			local new_list = format.format_comment_browser_list(new_entries, layout.left.width, config.format_date)
+			local new_list =
+				format.format_comment_browser_list(new_entries, layout.left.width, config.format_date, config.opts.outdated)
 			if vim.api.nvim_buf_is_valid(left_buf) then
 				vim.bo[left_buf].modifiable = true
 				vim.api.nvim_buf_set_lines(left_buf, 0, -1, false, new_list.lines)
@@ -751,7 +754,8 @@ function M.open()
 			repo_root,
 			config.format_date,
 			state.pending_review_id,
-			state.github_user
+			state.github_user,
+			state.comments
 		)
 
 		if #entries == 0 then

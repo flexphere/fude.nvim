@@ -570,10 +570,16 @@ end
 --- @param entries table[] from build_comment_browser_entries
 --- @param max_width number available character width
 --- @param format_date_fn fun(s: string): string
+--- @param outdated_opts table|nil { show: boolean, label: string, hl_group: string }
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_comment_browser_list(entries, max_width, format_date_fn)
+function M.format_comment_browser_list(entries, max_width, format_date_fn, outdated_opts)
 	local lines = {}
 	local hl_ranges = {}
+
+	-- Default outdated options (show by default when outdated_opts is nil)
+	local outdated_show = outdated_opts == nil or outdated_opts.show ~= false
+	local outdated_label = (outdated_opts and outdated_opts.label) or "[outdated]"
+	local outdated_hl = (outdated_opts and outdated_opts.hl_group) or "Comment"
 
 	for i, entry in ipairs(entries) do
 		local line_idx = i - 1 -- 0-indexed for highlights
@@ -595,6 +601,31 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn)
 					hl_ranges,
 					{ line = line_idx, col_start = pending_start, col_end = pending_end, hl = "DiagnosticHint" }
 				)
+			elseif entry.is_outdated and outdated_show then
+				-- Outdated comments may have nil/vim.NIL line or path
+				local line_num = type(entry.line) == "number" and entry.line or nil
+				if line_num and entry.path then
+					text = string.format("%s  %s  %s:%d", date, outdated_label, entry.path, line_num)
+				else
+					text = string.format("%s  %s  %s", date, outdated_label, entry.path or "(unknown)")
+				end
+				local outdated_start = #date + 2
+				local outdated_end = outdated_start + #outdated_label
+				table.insert(
+					hl_ranges,
+					{ line = line_idx, col_start = outdated_start, col_end = outdated_end, hl = outdated_hl }
+				)
+			elseif entry.is_outdated then
+				-- outdated_show = false: show as normal entry without label
+				local line_num = type(entry.line) == "number" and entry.line or nil
+				if line_num and entry.path then
+					text = string.format("%s  @%s  %s:%d", date, entry.author or "unknown", entry.path, line_num)
+				else
+					text = string.format("%s  @%s  %s", date, entry.author or "unknown", entry.path or "(unknown)")
+				end
+				local author_start = #date + 2
+				local author_end = author_start + 1 + #(entry.author or "unknown")
+				table.insert(hl_ranges, { line = line_idx, col_start = author_start, col_end = author_end, hl = "Title" })
 			else
 				text = string.format("%s  @%s  %s:%d", date, entry.author, entry.path, entry.line)
 				local author_start = #date + 2

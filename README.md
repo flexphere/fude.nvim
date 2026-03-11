@@ -174,6 +174,12 @@ require("fude").setup({
   },
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
+  -- Outdated comment display options
+  outdated = {
+    show = true,           -- Show outdated comments
+    label = "[outdated]",  -- Label string for outdated comments
+    hl_group = "Comment",  -- Highlight group for outdated label in comment browser
+  },
   -- Callback after review start completes (all data fetched)
   -- Receives: { pr_number, base_ref, head_ref, pr_url }
   on_review_start = nil,

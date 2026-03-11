@@ -379,6 +379,12 @@ Default configuration: >lua
     },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
+    -- Outdated comment display options
+    outdated = {
+      show = true,           -- Show outdated comments
+      label = "[outdated]",  -- Label string
+      hl_group = "Comment",  -- Highlight group for outdated label in comment browser
+    },
   })
 <
 
@@ -492,6 +498,16 @@ Options:
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system
                   timezone before formatting.
+
+`outdated.show`     Show outdated comments (default: true).
+                  Outdated comments are those whose position in the code
+                  can no longer be tracked due to subsequent changes.
+
+`outdated.label`    Label text shown for outdated comments
+                  (default: "[outdated]").
+
+`outdated.hl_group` Highlight group for outdated indicator in virtualText mode
+                  (default: "Comment").
 
 `on_review_start`   Callback function invoked after |:FudeReviewStart|
                   completes all data fetching (changed files, commits,

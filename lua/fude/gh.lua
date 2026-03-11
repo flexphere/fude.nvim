@@ -644,4 +644,102 @@ function M.delete_comment(comment_id, callback)
 	end)
 end
 
+--- Build the GraphQL query string for fetching PR review threads.
+--- @param owner string
+--- @param repo string
+--- @param pr_number number
+--- @param cursor string|nil pagination cursor
+--- @return string query
+function M.build_review_threads_query(owner, repo, pr_number, cursor)
+	local after = cursor and ('"' .. cursor .. '"') or "null"
+	return string.format(
+		[[
+query {
+  repository(owner: "%s", name: "%s") {
+    pullRequest(number: %d) {
+      reviewThreads(first: 100, after: %s) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          isOutdated
+          comments(first: 1) {
+            nodes { databaseId path originalLine }
+          }
+        }
+      }
+    }
+  }
+}]],
+		owner,
+		repo,
+		pr_number,
+		after
+	)
+end
+
+--- Parse review threads from GraphQL response into an outdated_map.
+--- @param data table GraphQL response data
+--- @return table<number, table> outdated_map { [id] = { is_outdated, original_line } }
+--- @return boolean has_next
+--- @return string|nil end_cursor
+function M.parse_review_threads_response(data)
+	local pr = data.data and data.data.repository and data.data.repository.pullRequest
+	if not pr then
+		return {}, false, nil
+	end
+	local outdated_map = {}
+	local threads = pr.reviewThreads
+	if threads and threads.nodes then
+		for _, thread in ipairs(threads.nodes) do
+			local is_outdated = thread.isOutdated or false
+			local comments = thread.comments and thread.comments.nodes
+			if comments then
+				for _, c in ipairs(comments) do
+					if c.databaseId then
+						outdated_map[c.databaseId] = {
+							is_outdated = is_outdated,
+							original_line = c.originalLine,
+						}
+					end
+				end
+			end
+		end
+	end
+	local page_info = threads and threads.pageInfo or {}
+	return outdated_map, page_info.hasNextPage or false, page_info.endCursor
+end
+
+--- Fetch review threads for a PR (with pagination).
+--- Returns a map of comment IDs to their outdated status and original line.
+--- @param pr_number number
+--- @param callback fun(err: string|nil, outdated_map: table<number, table>|nil)
+function M.get_review_threads(pr_number, callback)
+	M.get_repo_owner(function(owner_err, owner, repo)
+		if owner_err then
+			return callback(owner_err, nil)
+		end
+
+		local all_outdated = {}
+
+		local function fetch_page(cursor)
+			local query = M.build_review_threads_query(owner, repo, pr_number, cursor)
+			M.run_json({ "api", "graphql", "-f", "query=" .. query }, function(err, response_data)
+				if err then
+					return callback(err, nil)
+				end
+				local outdated_map, has_next, end_cursor = M.parse_review_threads_response(response_data)
+				for id, info in pairs(outdated_map) do
+					all_outdated[id] = info
+				end
+				if has_next and end_cursor then
+					fetch_page(end_cursor)
+				else
+					callback(nil, all_outdated)
+				end
+			end)
+		end
+
+		fetch_page(nil)
+	end)
+end
+
 return M
