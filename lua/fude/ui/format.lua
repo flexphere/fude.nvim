@@ -705,7 +705,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 	-- Use smaller of max width or available window width
 	local available_width = text_width - indent_width - right_margin
 	local box_width = math.min(max_box_width, math.max(50, available_width))
-	local body_max_width = box_width - 4
+	local body_max_width = box_width - 6
 
 	for i, comment in ipairs(comments) do
 		local is_pending = comment.is_pending
@@ -726,7 +726,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 			local created = format_date_fn(comment.created_at)
 
 			local header_chunks = {}
-			table.insert(header_chunks, { indent .. " ", "" })
+			table.insert(header_chunks, { indent .. "  ", "" })
 			if show_author then
 				table.insert(header_chunks, { "@" .. author, author_hl })
 			end
@@ -747,7 +747,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 			-- Wrap long lines
 			local wrapped = wrap_line(body_line, body_max_width)
 			for _, wrapped_line in ipairs(wrapped) do
-				table.insert(virt_lines, { { indent .. " ", "" }, { wrapped_line, hl_group } })
+				table.insert(virt_lines, { { indent .. "  ", "" }, { wrapped_line, hl_group } })
 			end
 		end
 
