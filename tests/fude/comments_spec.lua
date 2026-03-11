@@ -891,6 +891,11 @@ describe("is_outdated_comment", function()
 		assert.is_true(data.is_outdated_comment(comment))
 	end)
 
+	it("returns true when line is vim.NIL and original_line exists", function()
+		local comment = { path = "a.lua", line = vim.NIL, original_line = 10, body = "outdated" }
+		assert.is_true(data.is_outdated_comment(comment))
+	end)
+
 	it("returns false when line exists", function()
 		local comment = { path = "a.lua", line = 10, original_line = 10, body = "current" }
 		assert.is_false(data.is_outdated_comment(comment))
@@ -898,6 +903,11 @@ describe("is_outdated_comment", function()
 
 	it("returns false when both line and original_line are nil", function()
 		local comment = { path = "a.lua", line = nil, original_line = nil, body = "no line" }
+		assert.is_false(data.is_outdated_comment(comment))
+	end)
+
+	it("returns false when both line and original_line are vim.NIL", function()
+		local comment = { path = "a.lua", line = vim.NIL, original_line = vim.NIL, body = "no line" }
 		assert.is_false(data.is_outdated_comment(comment))
 	end)
 

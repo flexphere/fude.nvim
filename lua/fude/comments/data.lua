@@ -415,11 +415,14 @@ function M.build_comment_browser_entries(
 	return entries
 end
 
---- Check if a comment is outdated (line is nil but original_line exists).
+--- Check if a comment is outdated (line is nil/vim.NIL but original_line exists).
 --- @param comment table comment object from GitHub API
 --- @return boolean
 function M.is_outdated_comment(comment)
-	return comment.line == nil and comment.original_line ~= nil
+	-- JSON null becomes vim.NIL, which is not equal to nil
+	local line_is_null = comment.line == nil or comment.line == vim.NIL
+	local original_line_exists = comment.original_line ~= nil and comment.original_line ~= vim.NIL
+	return line_is_null and original_line_exists
 end
 
 --- Build comment counts per file from comments array and pending_comments.
