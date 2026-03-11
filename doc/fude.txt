@@ -263,9 +263,11 @@ Using lazy.nvim: >lua
     already visible inline). The flash highlight still applies.
 
     When the cursor is on a comment line in inline mode, a hint is
-    displayed at the end of the line:
-    "💡 :FudeReviewViewComment to reply/edit/delete"
-    The hint disappears when the cursor moves to a non-comment line.
+    displayed at the end of the line showing how to reply/edit/delete.
+    If a keybinding for |:FudeReviewViewComment| is detected (e.g.,
+    `<leader>ev`), the hint shows that keybinding. Otherwise, it shows
+    the command name. The hint disappears when the cursor moves to a
+    non-comment line.
     Requires an active review session.
 
 ==============================================================================

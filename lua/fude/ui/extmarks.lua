@@ -208,6 +208,36 @@ function M.clear_inline_hint()
 	current_hint.extmark_id = nil
 end
 
+--- Find keybinding for FudeReviewViewComment command.
+--- @return string|nil keymap string if found, nil otherwise
+local function find_view_comment_keymap()
+	local keymaps = vim.api.nvim_get_keymap("n")
+	for _, km in ipairs(keymaps) do
+		local rhs = km.rhs or ""
+		local callback = km.callback
+		-- Check if rhs contains FudeReviewViewComment
+		if rhs:find("FudeReviewViewComment") then
+			return km.lhs
+		end
+		-- Check callback-based keymaps by checking desc
+		if callback and km.desc and km.desc:find("View") and km.desc:find("comment") then
+			return km.lhs
+		end
+	end
+	-- Also check buffer-local keymaps
+	local buf_keymaps = vim.api.nvim_buf_get_keymap(0, "n")
+	for _, km in ipairs(buf_keymaps) do
+		local rhs = km.rhs or ""
+		if rhs:find("FudeReviewViewComment") then
+			return km.lhs
+		end
+		if km.callback and km.desc and km.desc:find("View") and km.desc:find("comment") then
+			return km.lhs
+		end
+	end
+	return nil
+end
+
 --- Update inline hint based on cursor position.
 --- Shows a tip when cursor is on a comment line in inline mode.
 function M.update_inline_hint()
@@ -251,9 +281,15 @@ function M.update_inline_hint()
 	-- Clear previous hint
 	M.clear_inline_hint()
 
-	-- Show new hint
+	-- Show new hint with keymap if available
 	local ns = get_hint_ns()
-	local hint_text = "💡 :FudeReviewViewComment to reply/edit/delete"
+	local keymap = find_view_comment_keymap()
+	local hint_text
+	if keymap then
+		hint_text = "💡 " .. keymap .. " to reply/edit/delete"
+	else
+		hint_text = "💡 :FudeReviewViewComment to reply/edit/delete"
+	end
 	local extmark_id = vim.api.nvim_buf_set_extmark(buf, ns, cursor_line - 1, 0, {
 		virt_text = { { hint_text, "DiagnosticHint" } },
 		virt_text_pos = "eol",
