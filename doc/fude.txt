@@ -22,7 +22,7 @@ fude.nvim is a Neovim plugin that enables GitHub PR code review directly
 in the editor. It provides:
 
 - Base branch diff preview in a side pane
-- Virtual text indicators for existing PR comments (including outdated)
+- Virtual text indicators for existing PR comments
 - Create, view, reply, edit, and delete PR review comments
 - Suggest code changes with GitHub's suggestion blocks
 - Navigate between comments
