@@ -368,7 +368,7 @@ Default configuration: >lua
     outdated = {
       show = true,           -- Show outdated comments
       label = "[outdated]",  -- Label string
-      hl_group = "Comment",  -- Highlight group for virtualText indicator
+      hl_group = "Comment",  -- Highlight group for outdated label in comment browser
     },
   })
 <

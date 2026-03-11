@@ -39,21 +39,19 @@ function M.build_comment_map(comments)
 	local map = {}
 	for _, c in ipairs(comments) do
 		-- Skip outdated comments (they have no valid line position)
-		if c.is_outdated then
-			goto continue
-		end
-		local path = c.path
-		local line = c.line or c.original_line
-		if path and line then
-			if not map[path] then
-				map[path] = {}
+		if not c.is_outdated then
+			local path = c.path
+			local line = c.line or c.original_line
+			if path and line then
+				if not map[path] then
+					map[path] = {}
+				end
+				if not map[path][line] then
+					map[path][line] = {}
+				end
+				table.insert(map[path][line], c)
 			end
-			if not map[path][line] then
-				map[path][line] = {}
-			end
-			table.insert(map[path][line], c)
 		end
-		::continue::
 	end
 	return map
 end

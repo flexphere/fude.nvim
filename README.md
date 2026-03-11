@@ -169,7 +169,7 @@ require("fude").setup({
   outdated = {
     show = true,           -- Show outdated comments
     label = "[outdated]",  -- Label string for outdated comments
-    hl_group = "Comment",  -- Highlight group for virtualText indicator
+    hl_group = "Comment",  -- Highlight group for outdated label in comment browser
   },
   -- Callback after review start completes (all data fetched)
   -- Receives: { pr_number, base_ref, head_ref, pr_url }
