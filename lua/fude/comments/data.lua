@@ -419,7 +419,10 @@ function M.build_comment_browser_entries(
 				local is_pending = pending_review_id and c.pull_request_review_id == pending_review_id
 				local is_own = github_user ~= nil and author == github_user
 				-- Use original_line for display (like GitHub Web UI)
-				local display_line = c.line or c.original_line
+				-- Note: c.line may be vim.NIL (JSON null) which is truthy, so check type
+				local line = type(c.line) == "number" and c.line or nil
+				local original_line = type(c.original_line) == "number" and c.original_line or nil
+				local display_line = line or original_line
 				table.insert(entries, {
 					type = "review",
 					path = c.path,
