@@ -214,13 +214,12 @@ end
 --- @return string human-readable keymap
 local function format_keymap_for_display(lhs)
 	local leader = vim.g.mapleader or "\\"
-	-- Use keytrans to get proper representation of special keys
-	local display = vim.fn.keytrans(lhs)
 	-- If starts with the leader character, replace with <leader>
-	if display:sub(1, #leader) == leader then
-		display = "<leader>" .. display:sub(#leader + 1)
+	if lhs:sub(1, #leader) == leader then
+		return "<leader>" .. lhs:sub(#leader + 1)
 	end
-	return display
+	-- Use keytrans for other special keys
+	return vim.fn.keytrans(lhs)
 end
 
 --- Find keybinding for FudeReviewViewComment command.
@@ -301,9 +300,9 @@ function M.update_inline_hint()
 	local keymap = find_view_comment_keymap()
 	local hint_text
 	if keymap then
-		hint_text = "💡 " .. keymap .. " to reply/edit/delete"
+		hint_text = "💡 " .. keymap .. ": reply/edit/delete comments"
 	else
-		hint_text = "💡 :FudeReviewViewComment to reply/edit/delete"
+		hint_text = "💡 :FudeReviewViewComment: reply/edit/delete comments"
 	end
 	local extmark_id = vim.api.nvim_buf_set_extmark(buf, ns, cursor_line - 1, 0, {
 		virt_text = { { hint_text, "DiagnosticHint" } },
