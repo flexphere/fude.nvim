@@ -63,8 +63,8 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `head_ref` | init | scope |
 | `pr_url` | init | ui |
 | `changed_files` | init, scope | files, scope |
-| `comments` | comments/sync | comments, comments/sync, ui/extmarks |
-| `comment_map` | comments/sync | comments, comments/sync, files, ui/extmarks |
+| `comments` | comments/sync | comments, comments/sync, files, ui/extmarks |
+| `comment_map` | comments/sync | comments, comments/sync, ui/extmarks |
 | `pending_comments` | comments, comments/sync | comments, comments/sync, files, ui/extmarks |
 | `pending_review_id` | comments/sync | comments, comments/sync, comments/pickers, ui/extmarks |
 | `pr_node_id` | init | init, files |
