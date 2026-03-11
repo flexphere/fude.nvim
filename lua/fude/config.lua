@@ -45,6 +45,15 @@ M.defaults = {
 		author_hl = "Title",
 		timestamp_hl = "NonText",
 		border_hl = "DiagnosticInfo", -- Highlight for comment box border
+		-- Markdown syntax highlighting in inline comments
+		markdown_highlight = true,
+		markdown_hl = {
+			bold = "@markup.strong",
+			italic = "@markup.italic",
+			code = "@markup.raw",
+			link = "@markup.link",
+			link_url = "@markup.link.url",
+		},
 	},
 	-- strftime format for timestamps (applied in system timezone)
 	date_format = "%Y/%m/%d %H:%M",

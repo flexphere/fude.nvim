@@ -453,6 +453,27 @@ Options:
 `inline.border_hl`  Highlight group for comment box border in inline mode
                   (default: "DiagnosticInfo").
 
+`inline.markdown_highlight`
+                  Enable Markdown syntax highlighting in inline comments
+                  using tree-sitter markdown_inline parser. Highlights
+                  **bold**, *italic*, `code`, and [link](url) syntax
+                  (default: true). Requires tree-sitter markdown_inline
+                  parser. Falls back to plain highlighting if unavailable.
+                  Code blocks (```) are not highlighted.
+
+`inline.markdown_hl`
+                  Table of highlight groups for Markdown elements:
+                  - `bold`: Highlight for **bold** text
+                    (default: "@markup.strong")
+                  - `italic`: Highlight for *italic* text
+                    (default: "@markup.italic")
+                  - `code`: Highlight for `inline code`
+                    (default: "@markup.raw")
+                  - `link`: Highlight for [link text]
+                    (default: "@markup.link")
+                  - `link_url`: Highlight for (url)
+                    (default: "@markup.link.url")
+
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system
                   timezone before formatting.
