@@ -76,6 +76,10 @@ function M.start()
 			if remaining > 0 then
 				return
 			end
+			-- Guard: session may have been stopped while fetches were in flight
+			if not config.state.active then
+				return
+			end
 			-- Set commit scope if started in detached HEAD
 			if started_detached and state.original_head_sha then
 				state.scope = "commit"
@@ -390,6 +394,9 @@ function M.reload(silent)
 	end
 	config.state.reloading = true
 
+	-- Capture session identity to detect stop→start across callbacks
+	local session_pr = config.state.pr_number
+
 	local gh_mod = require("fude.gh")
 
 	-- 4 async fetches: comments, files, viewed, commits
@@ -397,6 +404,10 @@ function M.reload(silent)
 	local function on_done()
 		remaining = remaining - 1
 		if remaining > 0 then
+			return
+		end
+		-- Session boundary check: abort if session changed during reload
+		if config.state.pr_number ~= session_pr then
 			return
 		end
 		config.state.reloading = false
@@ -419,7 +430,7 @@ function M.reload(silent)
 	-- Reload changed files
 	if config.state.scope == "commit" and config.state.scope_commit_sha then
 		gh_mod.get_commit_files(config.state.scope_commit_sha, function(err, files)
-			if not err and files and config.state.active then
+			if not err and files and config.state.active and config.state.pr_number == session_pr then
 				config.state.changed_files = {}
 				for _, f in ipairs(files) do
 					table.insert(config.state.changed_files, {
@@ -435,7 +446,7 @@ function M.reload(silent)
 		end)
 	else
 		gh_mod.get_pr_files(config.state.pr_number, function(err, files)
-			if not err and files and config.state.active then
+			if not err and files and config.state.active and config.state.pr_number == session_pr then
 				config.state.changed_files = {}
 				for _, f in ipairs(files) do
 					table.insert(config.state.changed_files, {
@@ -453,7 +464,7 @@ function M.reload(silent)
 
 	-- Reload viewed file states
 	gh_mod.get_pr_viewed_files(config.state.pr_number, function(err, viewed_map, pr_node_id)
-		if not err and viewed_map and config.state.active then
+		if not err and viewed_map and config.state.active and config.state.pr_number == session_pr then
 			config.state.viewed_files = viewed_map
 			config.state.pr_node_id = pr_node_id
 		end
@@ -462,7 +473,7 @@ function M.reload(silent)
 
 	-- Reload PR commits
 	gh_mod.get_pr_commits(config.state.pr_number, function(err, commits)
-		if not err and commits and config.state.active then
+		if not err and commits and config.state.active and config.state.pr_number == session_pr then
 			config.state.pr_commits = commits
 		end
 		on_done()
@@ -475,6 +486,8 @@ start_reload_timer = function()
 	if not auto_reload or not auto_reload.enabled then
 		return
 	end
+	-- Stop any existing timer to prevent double-start leaks
+	stop_reload_timer()
 	local interval = math.max(10, auto_reload.interval or 30) * 1000
 	local timer = vim.uv.new_timer()
 	timer:start(
