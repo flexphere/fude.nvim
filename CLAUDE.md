@@ -25,7 +25,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 ### Module Responsibilities
 
-- **`init.lua`** — Plugin lifecycle (`start`/`stop`/`toggle`). On start: detects PR via `gh`, fetches changed files, comments, PR commits (for scope selection), and authenticated user (for edit/delete ownership), saves original HEAD SHA, sets up `BufEnter`/`WinClosed` autocmds, integrates with gitsigns, applies diffopt settings, and sets buffer-local keymaps (`]c`/`[c`) for comment navigation. On stop: restores original HEAD if in commit scope, tears everything down, removes buffer-local keymaps, and restores original state.
+- **`init.lua`** — Plugin lifecycle (`start`/`stop`/`toggle`/`reload`). On start: detects PR via `gh`, fetches changed files, comments, PR commits (for scope selection), and authenticated user (for edit/delete ownership), saves original HEAD SHA, sets up `BufEnter`/`WinClosed` autocmds, integrates with gitsigns, applies diffopt settings, sets buffer-local keymaps (`]c`/`[c`) for comment navigation, and starts auto-reload timer if configured. `reload` re-fetches comments, changed files, viewed states, and PR commits in parallel with a completion barrier. On stop: stops auto-reload timer, restores original HEAD if in commit scope, tears everything down, removes buffer-local keymaps, and restores original state.
 - **`config.lua`** — Holds `defaults`, merged `opts`, and mutable `state` (active flag, PR metadata, window/buffer handles, comments, pending_comments, pending_review_id, pr_node_id, viewed_files, github_user, namespace ID). `reset_state()` preserves the namespace ID.
 - **`gh.lua`** — Async wrapper around `gh` CLI using `vim.system()`. All GitHub API calls go through `run()`/`run_json()` with callback-based async pattern. Uses `repos/{owner}/{repo}` path templates for REST API (resolved by `gh` automatically) and `gh api graphql` for GraphQL API (used by viewed file management). Supports stdin for JSON payloads (used by `create_review()`). `get_pr_info` detects detached HEAD synchronously via `git symbolic-ref` and uses `get_pr_by_commit` (via `commits/{sha}/pulls` API) directly, avoiding `gh pr view` which may hang without a branch. `parse_pr_from_commit_api` converts the commits API response to the standard PR info format.
 - **`diff.lua`** — Local git operations (sync). Gets repo root, converts paths to repo-relative, retrieves base branch file content via `git show`, and generates file diffs. Falls back to `origin/<ref>` when local ref isn't available.
@@ -62,20 +62,20 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `base_ref` | init | preview, scope |
 | `head_ref` | init | scope |
 | `pr_url` | init | ui |
-| `changed_files` | init, scope | files, scope |
+| `changed_files` | init, init(reload), scope | files, scope |
 | `comments` | comments/sync | comments, comments/sync, files, ui/extmarks |
 | `comment_map` | comments/sync | comments, comments/sync, ui/extmarks |
 | `pending_comments` | comments, comments/sync | comments, comments/sync, files, ui/extmarks |
 | `pending_review_id` | comments/sync | comments, comments/sync, comments/pickers, ui/extmarks |
 | `pr_node_id` | init | init, files |
-| `viewed_files` | init, files | files, scope |
+| `viewed_files` | init, init(reload), files | files, scope |
 | `preview_win` | preview | init, preview |
 | `preview_buf` | preview | preview |
 | `source_win` | preview | preview, scope |
 | `scope` | scope | scope, preview, init |
 | `scope_commit_sha` | scope | scope, preview, init |
 | `scope_commit_index` | scope | scope |
-| `pr_commits` | init | scope |
+| `pr_commits` | init, init(reload) | scope |
 | `original_head_sha` | init, scope | init, scope |
 | `original_head_ref` | init | init, scope |
 | `reviewed_commits` | scope | scope |
@@ -85,6 +85,8 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `github_user` | init | comments, ui/comment_browser |
 | `current_comment_style` | config | ui/extmarks, comments |
 | `outdated_map` | comments/sync | comments/sync |
+| `reload_timer` | init | init |
+| `reloading` | init | init |
 
 **高リスクフィールド**（多数のモジュールから参照）:
 - `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認

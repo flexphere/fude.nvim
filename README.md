@@ -45,7 +45,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeReviewBrowse",
-    "FudeReviewViewed", "FudeReviewUnviewed", "FudeCreatePR",
+    "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeCreatePR",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
@@ -69,6 +69,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
       function() require("fude.comments").reply_to_comment() end,
       desc = "Review: Reply",
     },
+    { "<leader>eR", "<cmd>FudeReviewReload<cr>", desc = "Review: Reload data" },
     { "<leader>em", "<cmd>FudeReviewViewed<cr>", desc = "Review: Mark viewed" },
     { "<leader>eM", "<cmd>FudeReviewUnviewed<cr>", desc = "Review: Unmark viewed" },
     -- ]c / [c are set automatically as buffer-local keymaps during review mode
@@ -111,6 +112,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewViewed` | Mark current file as viewed on GitHub |
 | `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
 | `:FudeReviewBrowse` | Open PR in browser |
+| `:FudeReviewReload` | Reload review data from GitHub |
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
 | `:FudeCreatePR` | Create draft PR from template |
 
@@ -174,6 +176,12 @@ require("fude").setup({
   },
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
+  -- Auto-reload review data from GitHub
+  auto_reload = {
+    enabled = false,       -- Disabled by default
+    interval = 30,         -- Seconds (minimum 10)
+    notify = false,        -- Notify after auto-reload (true to show)
+  },
   -- Outdated comment display options
   outdated = {
     show = true,           -- Show outdated comments

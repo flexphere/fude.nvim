@@ -109,6 +109,10 @@ vim.api.nvim_create_user_command("FudeCreatePR", function()
 	require("fude.pr").create()
 end, { desc = "Create draft PR from template" })
 
+vim.api.nvim_create_user_command("FudeReviewReload", function()
+	require("fude").reload()
+end, { desc = "Reload review data from GitHub" })
+
 vim.api.nvim_create_user_command("FudeReviewToggleCommentStyle", function()
 	local config = require("fude.config")
 	if not config.state.active then

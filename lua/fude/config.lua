@@ -70,6 +70,12 @@ M.defaults = {
 		next_comment = "]c",
 		prev_comment = "[c",
 	},
+	-- Auto-reload review data from GitHub at regular intervals
+	auto_reload = {
+		enabled = false, -- Disabled by default
+		interval = 30, -- Seconds (minimum 10)
+		notify = false, -- Notify after auto-reload (true to show)
+	},
 	-- Callback invoked after review start completes (all data fetched).
 	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }
 	on_review_start = nil,
@@ -106,6 +112,8 @@ M.state = {
 	comment_browser = nil, -- 3-pane comment browser window state
 	current_comment_style = nil, -- Runtime override for comment_style (nil = use opts.comment_style)
 	outdated_map = {}, -- { [comment_id] = { is_outdated = true, original_line = N } }
+	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
+	reloading = false, -- Guard flag to prevent concurrent reloads
 }
 
 M.opts = {}
@@ -117,6 +125,12 @@ end
 
 function M.reset_state()
 	local ns = M.state.ns_id
+	-- Stop reload timer to prevent leaks (e.g. when called directly from tests)
+	local timer = M.state.reload_timer
+	if timer then
+		timer:stop()
+		timer:close()
+	end
 	M.state = {
 		active = false,
 		pr_number = nil,
@@ -148,6 +162,8 @@ function M.reset_state()
 		comment_browser = nil,
 		current_comment_style = nil,
 		outdated_map = {},
+		reload_timer = nil,
+		reloading = false,
 	}
 end
 

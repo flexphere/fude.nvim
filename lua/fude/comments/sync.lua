@@ -24,7 +24,8 @@ end
 --- and builds pending_comments from the same data.
 --- Also fetches outdated info via GraphQL and merges it into comments.
 --- @param callback fun()|nil optional callback invoked after comments are applied
-local function fetch_comments(callback)
+--- @param opts table|nil { silent = boolean } suppress notifications when true
+local function fetch_comments(callback, opts)
 	local state = config.state
 	if not state.pr_number then
 		if callback then
@@ -32,12 +33,15 @@ local function fetch_comments(callback)
 		end
 		return
 	end
+	local silent = opts and opts.silent
 
 	local function apply(comments)
 		state.comments = comments
 		state.comment_map = data.build_comment_map(comments)
 		require("fude.ui").refresh_extmarks()
-		vim.notify(string.format("fude.nvim: Loaded %d comments", #comments), vim.log.levels.INFO)
+		if not silent then
+			vim.notify(string.format("fude.nvim: Loaded %d comments", #comments), vim.log.levels.INFO)
+		end
 		if callback then
 			callback()
 		end
@@ -167,7 +171,8 @@ end
 --- This is the main entry point for initializing comment state on start.
 --- For refreshing after mutations (submit, reply, sync), use fetch_comments directly.
 --- @param callback fun()|nil optional callback invoked after comments are loaded
-function M.load_comments(callback)
+--- @param opts table|nil { silent = boolean } suppress notifications when true
+function M.load_comments(callback, opts)
 	local state = config.state
 	if not state.pr_number then
 		if callback then
@@ -180,7 +185,7 @@ function M.load_comments(callback)
 		if err then
 			vim.notify("fude.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
 			-- Still fetch comments even if reviews fail
-			fetch_comments(callback)
+			fetch_comments(callback, opts)
 			return
 		end
 
@@ -200,7 +205,7 @@ function M.load_comments(callback)
 			state.pending_comments = {}
 		end
 
-		fetch_comments(callback)
+		fetch_comments(callback, opts)
 	end)
 end
 

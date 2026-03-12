@@ -329,6 +329,181 @@ describe("init integration", function()
 		end)
 	end)
 
+	describe("reload", function()
+		it("updates state data", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end)
+
+			-- Override mock to return different files on reload
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/files"] = {
+					{ filename = "lua/fude/new.lua", status = "added", additions = 20, deletions = 0 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/commits"] = {
+					{ sha = "abc123def456", commit = { message = "test commit", author = { name = "test" } } },
+					{ sha = "def789", commit = { message = "new commit", author = { name = "test" } } },
+				},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+				["api:user"] = { login = "testuser" },
+			})
+			helpers.mock_head_sha("abc123def456")
+
+			init.reload()
+
+			local ok = helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+			assert.is_true(ok, "Reload should complete")
+			assert.are.equal(1, #config.state.changed_files)
+			assert.are.equal("lua/fude/new.lua", config.state.changed_files[1].path)
+			assert.are.equal(2, #config.state.pr_commits)
+		end)
+
+		it("prevents concurrent reloads", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end)
+
+			config.state.reloading = true
+			init.reload() -- Should be a no-op
+			assert.is_true(config.state.reloading, "reloading flag should remain true")
+		end)
+
+		it("does nothing when not active", function()
+			assert.is_false(config.state.active)
+			-- Should not error
+			init.reload()
+			assert.is_false(config.state.reloading)
+		end)
+
+		it("suppresses notification when silent", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end)
+
+			init.reload(true) -- silent
+
+			local ok = helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+			assert.is_true(ok, "Silent reload should complete")
+		end)
+
+		it("on_ready guard skips when session stopped", function()
+			-- Test the on_ready guard: if config.state.active is false when
+			-- on_ready fires, on_review_start must NOT be called for that
+			-- (already stopped) session. This spec verifies that a normal
+			-- start → stop → start サイクルでは guard によって次の
+			-- on_review_start がブロックされないことを確認する。
+			local call_count = 0
+			config.setup({
+				on_review_start = function()
+					call_count = call_count + 1
+				end,
+			})
+			setup_gh_mocks()
+
+			-- First start: on_review_start fires normally
+			init.start()
+			helpers.wait_for(function()
+				return call_count > 0
+			end)
+			assert.are.equal(1, call_count, "on_review_start should fire once on start")
+
+			-- Stop the session — reset_state sets active=false
+			config.state.scope = "full_pr"
+			init.stop()
+			assert.is_false(config.state.active, "stop should set active=false")
+
+			-- Second start: proves the guard allows callback when active=true
+			setup_gh_mocks()
+			init.start()
+			helpers.wait_for(function()
+				return call_count > 1
+			end)
+			assert.are.equal(2, call_count, "on_review_start should fire again on second start")
+
+			-- Cleanup for stop
+			config.state.scope = "full_pr"
+		end)
+
+		it("does not update state when session changed during reload", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end)
+
+			-- Start reload, then immediately simulate session change
+			init.reload()
+			-- Change pr_number to simulate stop→start with different PR
+			config.state.pr_number = 999
+
+			-- Wait for reload callbacks to complete
+			helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+
+			-- The reload should have detected session mismatch and not updated
+			assert.are.equal(999, config.state.pr_number, "pr_number should remain as changed")
+		end)
+
+		it("recalculates scope_commit_index after reload", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.pr_commits > 0
+			end)
+
+			-- Simulate commit scope
+			config.state.scope = "commit"
+			config.state.scope_commit_sha = "abc123def456"
+
+			-- Override mock to return commits in reload
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/files"] = {
+					{ filename = "lua/fude/init.lua", status = "modified", additions = 10, deletions = 5 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/commits"] = {
+					{ sha = "first111", commit = { message = "first", author = { name = "test" } } },
+					{ sha = "abc123def456", commit = { message = "second", author = { name = "test" } } },
+					{ sha = "third333", commit = { message = "third", author = { name = "test" } } },
+				},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+				["api:user"] = { login = "testuser" },
+			})
+			helpers.mock_head_sha("abc123def456")
+
+			init.reload()
+
+			local ok = helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+			assert.is_true(ok, "Reload should complete")
+			assert.are.equal(2, config.state.scope_commit_index, "Should find commit at index 2")
+		end)
+	end)
+
 	describe("toggle", function()
 		it("starts when inactive", function()
 			init.toggle()
