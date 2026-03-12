@@ -125,6 +125,12 @@ end
 
 function M.reset_state()
 	local ns = M.state.ns_id
+	-- Stop reload timer to prevent leaks (e.g. when called directly from tests)
+	local timer = M.state.reload_timer
+	if timer then
+		timer:stop()
+		timer:close()
+	end
 	M.state = {
 		active = false,
 		pr_number = nil,
