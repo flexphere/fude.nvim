@@ -180,7 +180,7 @@ require("fude").setup({
   auto_reload = {
     enabled = false,       -- Disabled by default
     interval = 30,         -- Seconds (minimum 10)
-    notify = false,        -- Show notification after auto-reload
+    notify = false,        -- Notify after auto-reload (true to show)
   },
   -- Outdated comment display options
   outdated = {
