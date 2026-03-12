@@ -74,6 +74,7 @@ M.defaults = {
 	auto_reload = {
 		enabled = false, -- Disabled by default
 		interval = 30, -- Seconds (minimum 10)
+		notify = false, -- Show notification after auto-reload completes
 	},
 	-- Callback invoked after review start completes (all data fetched).
 	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }

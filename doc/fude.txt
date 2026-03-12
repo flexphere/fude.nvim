@@ -392,6 +392,7 @@ Default configuration: >lua
     auto_reload = {
       enabled = false,   -- Disabled by default
       interval = 30,     -- Seconds (minimum 10)
+      notify = false,    -- Show notification after auto-reload
     },
     -- Outdated comment display options
     outdated = {
@@ -532,6 +533,11 @@ Options:
 `auto_reload.interval`
                   Interval in seconds between auto-reloads (default: 30).
                   Minimum value is 10 seconds (values below 10 are clamped).
+
+`auto_reload.notify`
+                  Show a notification message after each auto-reload
+                  completes (default: false). Manual `:FudeReviewReload`
+                  always shows a notification regardless of this setting.
 
 `on_review_start`   Callback function invoked after |:FudeReviewStart|
                   completes all data fetching (changed files, commits,

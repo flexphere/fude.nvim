@@ -93,6 +93,8 @@ function M.start()
 					vim.notify("fude.nvim: on_review_start error: " .. tostring(cb_err), vim.log.levels.ERROR)
 				end
 			end
+			-- Start auto-reload timer after all initial data is loaded
+			start_reload_timer()
 		end
 
 		-- Fetch changed files: commit-specific when detached, PR-wide otherwise
@@ -204,9 +206,6 @@ function M.start()
 
 		-- Setup hint autocmd for comment lines (shows available actions)
 		require("fude.ui").setup_inline_hint_autocmd()
-
-		-- Start auto-reload timer if configured
-		start_reload_timer()
 	end)
 end
 
@@ -378,16 +377,18 @@ function M.unmark_viewed()
 end
 
 --- Reload review data from GitHub (comments, files, viewed state, commits).
-function M.reload()
-	local state = config.state
-	if not state.active then
-		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+--- @param silent boolean|nil suppress completion notification when true
+function M.reload(silent)
+	if not config.state.active then
+		if not silent then
+			vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		end
 		return
 	end
-	if state.reloading then
+	if config.state.reloading then
 		return
 	end
-	state.reloading = true
+	config.state.reloading = true
 
 	local gh_mod = require("fude.gh")
 
@@ -398,23 +399,30 @@ function M.reload()
 		if remaining > 0 then
 			return
 		end
-		state.reloading = false
-		if not state.active then
+		config.state.reloading = false
+		if not config.state.active then
 			return
 		end
-		vim.notify("fude.nvim: Reloaded review data", vim.log.levels.INFO)
+		-- Recalculate scope_commit_index when in commit scope (commits list may have changed)
+		if config.state.scope == "commit" and config.state.scope_commit_sha then
+			config.state.scope_commit_index =
+				require("fude.scope").find_commit_index(config.state.pr_commits, config.state.scope_commit_sha)
+		end
+		if not silent then
+			vim.notify("fude.nvim: Reloaded review data", vim.log.levels.INFO)
+		end
 	end
 
 	-- Reload comments (includes pending review detection)
 	require("fude.comments").load_comments(on_done)
 
 	-- Reload changed files
-	if state.scope == "commit" and state.scope_commit_sha then
-		gh_mod.get_commit_files(state.scope_commit_sha, function(err, files)
-			if not err and files and state.active then
-				state.changed_files = {}
+	if config.state.scope == "commit" and config.state.scope_commit_sha then
+		gh_mod.get_commit_files(config.state.scope_commit_sha, function(err, files)
+			if not err and files and config.state.active then
+				config.state.changed_files = {}
 				for _, f in ipairs(files) do
-					table.insert(state.changed_files, {
+					table.insert(config.state.changed_files, {
 						path = f.filename,
 						status = f.status,
 						additions = f.additions,
@@ -426,11 +434,11 @@ function M.reload()
 			on_done()
 		end)
 	else
-		gh_mod.get_pr_files(state.pr_number, function(err, files)
-			if not err and files and state.active then
-				state.changed_files = {}
+		gh_mod.get_pr_files(config.state.pr_number, function(err, files)
+			if not err and files and config.state.active then
+				config.state.changed_files = {}
 				for _, f in ipairs(files) do
-					table.insert(state.changed_files, {
+					table.insert(config.state.changed_files, {
 						path = f.filename,
 						status = f.status,
 						additions = f.additions,
@@ -444,18 +452,18 @@ function M.reload()
 	end
 
 	-- Reload viewed file states
-	gh_mod.get_pr_viewed_files(state.pr_number, function(err, viewed_map, pr_node_id)
-		if not err and viewed_map and state.active then
-			state.viewed_files = viewed_map
-			state.pr_node_id = pr_node_id
+	gh_mod.get_pr_viewed_files(config.state.pr_number, function(err, viewed_map, pr_node_id)
+		if not err and viewed_map and config.state.active then
+			config.state.viewed_files = viewed_map
+			config.state.pr_node_id = pr_node_id
 		end
 		on_done()
 	end)
 
 	-- Reload PR commits
-	gh_mod.get_pr_commits(state.pr_number, function(err, commits)
-		if not err and commits and state.active then
-			state.pr_commits = commits
+	gh_mod.get_pr_commits(config.state.pr_number, function(err, commits)
+		if not err and commits and config.state.active then
+			config.state.pr_commits = commits
 		end
 		on_done()
 	end)
@@ -474,7 +482,7 @@ start_reload_timer = function()
 		interval,
 		vim.schedule_wrap(function()
 			if config.state.active then
-				M.reload()
+				M.reload(not auto_reload.notify)
 			end
 		end)
 	)
