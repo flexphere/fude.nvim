@@ -205,6 +205,53 @@ describe("init integration", function()
 			end)
 			assert.is_true(ok, "Should activate even if on_review_start errors")
 		end)
+
+		it("notifies when PR is merged", function()
+			local notifications = {}
+			helpers.mock(vim, "notify", function(msg, level)
+				table.insert(notifications, { msg = msg, level = level })
+			end)
+
+			-- Override mock to return merged state
+			helpers.mock_gh({
+				["pr:view"] = {
+					number = 42,
+					baseRefName = "main",
+					headRefName = "feature-branch",
+					url = "https://github.com/owner/repo/pull/42",
+					state = "MERGED",
+				},
+				["api:repos/{owner}/{repo}/pulls/42/files"] = {
+					{ filename = "lua/fude/init.lua", status = "modified", additions = 10, deletions = 5 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+			})
+			helpers.mock_head_sha("abc123def456")
+
+			init.start()
+
+			helpers.wait_for(function()
+				return config.state.active
+			end)
+
+			local found = false
+			for _, n in ipairs(notifications) do
+				if n.msg == "fude.nvim: This PR has already been merged" and n.level == vim.log.levels.WARN then
+					found = true
+					break
+				end
+			end
+			assert.is_true(found, "Should notify that PR is merged")
+		end)
 	end)
 
 	describe("stop", function()
@@ -338,6 +385,7 @@ describe("init integration", function()
 
 			-- Override mock to return different files on reload
 			helpers.mock_gh({
+				["pr:view"] = { state = "OPEN" },
 				["api:repos/{owner}/{repo}/pulls/42/files"] = {
 					{ filename = "lua/fude/new.lua", status = "added", additions = 20, deletions = 0 },
 				},
@@ -472,6 +520,7 @@ describe("init integration", function()
 
 			-- Override mock to return commits in reload
 			helpers.mock_gh({
+				["pr:view"] = { state = "OPEN" },
 				["api:repos/{owner}/{repo}/pulls/42/files"] = {
 					{ filename = "lua/fude/init.lua", status = "modified", additions = 10, deletions = 5 },
 				},
@@ -501,6 +550,100 @@ describe("init integration", function()
 			end)
 			assert.is_true(ok, "Reload should complete")
 			assert.are.equal(2, config.state.scope_commit_index, "Should find commit at index 2")
+		end)
+
+		it("notifies when PR is merged during reload", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end)
+
+			local notifications = {}
+			helpers.mock(vim, "notify", function(msg, level)
+				table.insert(notifications, { msg = msg, level = level })
+			end)
+
+			helpers.mock_gh({
+				["pr:view"] = { state = "MERGED" },
+				["api:repos/{owner}/{repo}/pulls/42/files"] = {
+					{ filename = "lua/fude/init.lua", status = "modified", additions = 10, deletions = 5 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/commits"] = {
+					{ sha = "abc123def456", commit = { message = "test commit", author = { name = "test" } } },
+				},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+			})
+
+			init.reload()
+
+			helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+
+			local found = false
+			for _, n in ipairs(notifications) do
+				if n.msg == "fude.nvim: This PR has already been merged" and n.level == vim.log.levels.WARN then
+					found = true
+					break
+				end
+			end
+			assert.is_true(found, "Should notify that PR is merged on reload")
+		end)
+
+		it("suppresses merged notification when silent", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end)
+
+			local notifications = {}
+			helpers.mock(vim, "notify", function(msg, level)
+				table.insert(notifications, { msg = msg, level = level })
+			end)
+
+			helpers.mock_gh({
+				["pr:view"] = { state = "MERGED" },
+				["api:repos/{owner}/{repo}/pulls/42/files"] = {
+					{ filename = "lua/fude/init.lua", status = "modified", additions = 10, deletions = 5 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/commits"] = {
+					{ sha = "abc123def456", commit = { message = "test commit", author = { name = "test" } } },
+				},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+			})
+
+			init.reload(true) -- silent
+
+			helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+
+			local found = false
+			for _, n in ipairs(notifications) do
+				if n.msg == "fude.nvim: This PR has already been merged" then
+					found = true
+					break
+				end
+			end
+			assert.is_false(found, "Should not notify merged PR when silent")
 		end)
 	end)
 
