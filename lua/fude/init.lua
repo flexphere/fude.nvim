@@ -489,7 +489,7 @@ start_reload_timer = function()
 	end
 	-- Stop any existing timer to prevent double-start leaks
 	stop_reload_timer()
-	local interval = math.max(10, auto_reload.interval or 30) * 1000
+	local interval = math.max(10, tonumber(auto_reload.interval) or 30) * 1000
 	local timer = vim.uv.new_timer()
 	timer:start(
 		interval,
