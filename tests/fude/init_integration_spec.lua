@@ -403,12 +403,11 @@ describe("init integration", function()
 		end)
 
 		it("on_ready guard skips when session stopped", function()
-			-- Directly test the on_ready guard: if config.state.active is false
-			-- when on_ready fires, on_review_start must NOT be called.
-			-- We achieve this by setting active=false inside the on_review_start
-			-- callback on first call (simulating stop during completion), then
-			-- verifying that a second start still calls the callback (proving
-			-- the guard only blocks when active is actually false).
+			-- Test the on_ready guard: if config.state.active is false when
+			-- on_ready fires, on_review_start must NOT be called for that
+			-- (already stopped) session. This spec verifies that a normal
+			-- start → stop → start サイクルでは guard によって次の
+			-- on_review_start がブロックされないことを確認する。
 			local call_count = 0
 			config.setup({
 				on_review_start = function()
