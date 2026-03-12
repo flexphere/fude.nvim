@@ -50,6 +50,10 @@ function M.start()
 		state.head_ref = pr_info.headRefName
 		state.pr_url = pr_info.url
 
+		if pr_info.state and pr_info.state:upper() == "MERGED" then
+			vim.notify("fude.nvim: This PR has already been merged", vim.log.levels.WARN)
+		end
+
 		vim.notify(
 			string.format("fude.nvim: PR #%d (%s <- %s)", state.pr_number, state.base_ref, state.head_ref),
 			vim.log.levels.INFO
@@ -398,16 +402,21 @@ function M.reload(silent)
 	end
 	config.state.reloading = true
 
-	-- Capture session identity to detect stop→start across callbacks
-	local session_pr = config.state.pr_number
+	-- Capture state table identity to detect reset_state() across callbacks
+	local captured_state = config.state
+	local session_pr = captured_state.pr_number
 
 	local gh_mod = require("fude.gh")
 
-	-- 4 async fetches: comments, files, viewed, commits
-	local remaining = 4
+	-- 5 async fetches: comments, files, viewed, commits, pr_state
+	local remaining = 5
 	local function on_done()
 		remaining = remaining - 1
 		if remaining > 0 then
+			return
+		end
+		-- State table replaced by reset_state(): do not touch new session
+		if config.state ~= captured_state then
 			return
 		end
 		-- Always clear reloading flag before any early return
@@ -429,13 +438,35 @@ function M.reload(silent)
 		end
 	end
 
+	-- Check if PR has been merged
+	gh_mod.run_json({
+		"pr",
+		"view",
+		tostring(config.state.pr_number),
+		"--json",
+		"state",
+	}, function(err, data)
+		if
+			not silent
+			and not err
+			and data
+			and data.state
+			and data.state:upper() == "MERGED"
+			and config.state == captured_state
+			and config.state.active
+		then
+			vim.notify("fude.nvim: This PR has already been merged", vim.log.levels.WARN)
+		end
+		on_done()
+	end)
+
 	-- Reload comments (includes pending review detection)
 	require("fude.comments").load_comments(on_done, { silent = true })
 
 	-- Reload changed files
 	if config.state.scope == "commit" and config.state.scope_commit_sha then
 		gh_mod.get_commit_files(config.state.scope_commit_sha, function(err, files)
-			if not err and files and config.state.active and config.state.pr_number == session_pr then
+			if not err and files and config.state == captured_state and config.state.active then
 				config.state.changed_files = {}
 				for _, f in ipairs(files) do
 					table.insert(config.state.changed_files, {
@@ -451,7 +482,7 @@ function M.reload(silent)
 		end)
 	else
 		gh_mod.get_pr_files(config.state.pr_number, function(err, files)
-			if not err and files and config.state.active and config.state.pr_number == session_pr then
+			if not err and files and config.state == captured_state and config.state.active then
 				config.state.changed_files = {}
 				for _, f in ipairs(files) do
 					table.insert(config.state.changed_files, {
@@ -469,7 +500,7 @@ function M.reload(silent)
 
 	-- Reload viewed file states
 	gh_mod.get_pr_viewed_files(config.state.pr_number, function(err, viewed_map, pr_node_id)
-		if not err and viewed_map and config.state.active and config.state.pr_number == session_pr then
+		if not err and viewed_map and config.state == captured_state and config.state.active then
 			config.state.viewed_files = viewed_map
 			config.state.pr_node_id = pr_node_id
 		end
@@ -478,7 +509,7 @@ function M.reload(silent)
 
 	-- Reload PR commits
 	gh_mod.get_pr_commits(config.state.pr_number, function(err, commits)
-		if not err and commits and config.state.active and config.state.pr_number == session_pr then
+		if not err and commits and config.state == captured_state and config.state.active then
 			config.state.pr_commits = commits
 		end
 		on_done()
