@@ -76,8 +76,12 @@ function M.start()
 			if remaining > 0 then
 				return
 			end
-			-- Guard: session may have been stopped while fetches were in flight
-			if not config.state.active then
+			-- Guard: session may have been stopped or replaced while fetches were in flight
+			-- NOTE: `state` is the table captured at M.start() time. If `config.reset_state()`
+			-- has been called (e.g. via M.stop()), `config.state` will point to a different
+			-- table, so we must ensure both "active" and "same state table" to treat this as
+			-- the same session.
+			if not (config.state.active and config.state == state) then
 				return
 			end
 			-- Set commit scope if started in detached HEAD
