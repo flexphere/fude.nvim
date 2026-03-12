@@ -264,6 +264,14 @@ Using lazy.nvim: >lua
     If there are no pending comments, you can still submit a review
     with just a body (useful for Approve or Request Changes).
 
+:FudeReviewReload                                  *:FudeReviewReload*
+    Reload review data from GitHub. Fetches the latest comments,
+    changed files, viewed file states, and PR commits in parallel.
+    Useful when other reviewers have added comments or the PR has
+    been updated. Can also be triggered automatically using the
+    `auto_reload` configuration option.
+    Requires an active review session.
+
 :FudeReviewToggleCommentStyle            *:FudeReviewToggleCommentStyle*
     Toggle comment display style between "virtualText" and "inline".
     - "virtualText": Shows `#N` and `pending` indicators at the end of
@@ -309,6 +317,7 @@ Suggested mappings:
   `<leader>e]`  Next review scope
   `<leader>e[`  Previous review scope
   `<leader>el`  List all review comments
+  `<leader>eR`  Reload review data
   `<leader>em`  Mark current file as viewed
   `<leader>eM`  Unmark current file as viewed
   `]c`          Next comment
@@ -379,6 +388,11 @@ Default configuration: >lua
     },
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
+    -- Auto-reload review data from GitHub
+    auto_reload = {
+      enabled = false,   -- Disabled by default
+      interval = 30,     -- Seconds (minimum 10)
+    },
     -- Outdated comment display options
     outdated = {
       show = true,           -- Show outdated comments
@@ -508,6 +522,16 @@ Options:
 
 `outdated.hl_group` Highlight group for outdated indicator in virtualText mode
                   (default: "Comment").
+
+`auto_reload.enabled`
+                  Enable automatic periodic reload of review data
+                  (default: false). When enabled, comments, changed files,
+                  viewed states, and PR commits are re-fetched at regular
+                  intervals.
+
+`auto_reload.interval`
+                  Interval in seconds between auto-reloads (default: 30).
+                  Minimum value is 10 seconds (values below 10 are clamped).
 
 `on_review_start`   Callback function invoked after |:FudeReviewStart|
                   completes all data fetching (changed files, commits,
