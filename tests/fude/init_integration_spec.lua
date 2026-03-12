@@ -329,6 +329,123 @@ describe("init integration", function()
 		end)
 	end)
 
+	describe("reload", function()
+		it("updates state data", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active
+			end)
+
+			-- Override mock to return different files on reload
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/files"] = {
+					{ filename = "lua/fude/new.lua", status = "added", additions = 20, deletions = 0 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/commits"] = {
+					{ sha = "abc123def456", commit = { message = "test commit", author = { name = "test" } } },
+					{ sha = "def789", commit = { message = "new commit", author = { name = "test" } } },
+				},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+				["api:user"] = { login = "testuser" },
+			})
+			helpers.mock_head_sha("abc123def456")
+
+			init.reload()
+
+			local ok = helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+			assert.is_true(ok, "Reload should complete")
+			assert.are.equal(1, #config.state.changed_files)
+			assert.are.equal("lua/fude/new.lua", config.state.changed_files[1].path)
+			assert.are.equal(2, #config.state.pr_commits)
+		end)
+
+		it("prevents concurrent reloads", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active
+			end)
+
+			config.state.reloading = true
+			init.reload() -- Should be a no-op
+			assert.is_true(config.state.reloading, "reloading flag should remain true")
+		end)
+
+		it("does nothing when not active", function()
+			assert.is_false(config.state.active)
+			-- Should not error
+			init.reload()
+			assert.is_false(config.state.reloading)
+		end)
+
+		it("suppresses notification when silent", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active
+			end)
+
+			init.reload(true) -- silent
+
+			local ok = helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+			assert.is_true(ok, "Silent reload should complete")
+		end)
+
+		it("recalculates scope_commit_index after reload", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active
+			end)
+
+			-- Simulate commit scope
+			config.state.scope = "commit"
+			config.state.scope_commit_sha = "abc123def456"
+
+			-- Override mock to return commits in reload
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/files"] = {
+					{ filename = "lua/fude/init.lua", status = "modified", additions = 10, deletions = 5 },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/commits"] = {
+					{ sha = "first111", commit = { message = "first", author = { name = "test" } } },
+					{ sha = "abc123def456", commit = { message = "second", author = { name = "test" } } },
+					{ sha = "third333", commit = { message = "third", author = { name = "test" } } },
+				},
+				["repo:view"] = { owner = { login = "testowner" }, name = "testrepo" },
+				["api:graphql"] = {
+					data = {
+						repository = {
+							pullRequest = { files = { nodes = {}, pageInfo = { hasNextPage = false } } },
+						},
+					},
+				},
+				["api:user"] = { login = "testuser" },
+			})
+			helpers.mock_head_sha("abc123def456")
+
+			init.reload()
+
+			local ok = helpers.wait_for(function()
+				return not config.state.reloading
+			end)
+			assert.is_true(ok, "Reload should complete")
+			assert.are.equal(2, config.state.scope_commit_index, "Should find commit at index 2")
+		end)
+	end)
+
 	describe("toggle", function()
 		it("starts when inactive", function()
 			init.toggle()
