@@ -333,7 +333,7 @@ describe("init integration", function()
 		it("updates state data", function()
 			init.start()
 			helpers.wait_for(function()
-				return config.state.active
+				return config.state.active and #config.state.changed_files > 0
 			end)
 
 			-- Override mock to return different files on reload
@@ -373,7 +373,7 @@ describe("init integration", function()
 		it("prevents concurrent reloads", function()
 			init.start()
 			helpers.wait_for(function()
-				return config.state.active
+				return config.state.active and #config.state.changed_files > 0
 			end)
 
 			config.state.reloading = true
@@ -391,7 +391,7 @@ describe("init integration", function()
 		it("suppresses notification when silent", function()
 			init.start()
 			helpers.wait_for(function()
-				return config.state.active
+				return config.state.active and #config.state.changed_files > 0
 			end)
 
 			init.reload(true) -- silent
@@ -405,7 +405,7 @@ describe("init integration", function()
 		it("recalculates scope_commit_index after reload", function()
 			init.start()
 			helpers.wait_for(function()
-				return config.state.active
+				return config.state.active and #config.state.pr_commits > 0
 			end)
 
 			-- Simulate commit scope
