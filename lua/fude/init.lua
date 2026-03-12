@@ -50,6 +50,10 @@ function M.start()
 		state.head_ref = pr_info.headRefName
 		state.pr_url = pr_info.url
 
+		if pr_info.state and pr_info.state:upper() == "MERGED" then
+			vim.notify("fude.nvim: This PR has already been merged", vim.log.levels.WARN)
+		end
+
 		vim.notify(
 			string.format("fude.nvim: PR #%d (%s <- %s)", state.pr_number, state.base_ref, state.head_ref),
 			vim.log.levels.INFO
@@ -403,8 +407,8 @@ function M.reload(silent)
 
 	local gh_mod = require("fude.gh")
 
-	-- 4 async fetches: comments, files, viewed, commits
-	local remaining = 4
+	-- 5 async fetches: comments, files, viewed, commits, pr_state
+	local remaining = 5
 	local function on_done()
 		remaining = remaining - 1
 		if remaining > 0 then
@@ -428,6 +432,28 @@ function M.reload(silent)
 			vim.notify("fude.nvim: Reloaded review data", vim.log.levels.INFO)
 		end
 	end
+
+	-- Check if PR has been merged
+	gh_mod.run_json({
+		"pr",
+		"view",
+		tostring(config.state.pr_number),
+		"--json",
+		"state",
+	}, function(err, data)
+		if
+			not silent
+			and not err
+			and data
+			and data.state
+			and data.state:upper() == "MERGED"
+			and config.state.active
+			and config.state.pr_number == session_pr
+		then
+			vim.notify("fude.nvim: This PR has already been merged", vim.log.levels.WARN)
+		end
+		on_done()
+	end)
 
 	-- Reload comments (includes pending review detection)
 	require("fude.comments").load_comments(on_done, { silent = true })

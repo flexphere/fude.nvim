@@ -185,6 +185,22 @@ describe("parse_pr_from_commit_api", function()
 		assert.are.equal("main", result.baseRefName)
 		assert.are.equal("feature-branch", result.headRefName)
 		assert.are.equal("https://github.com/owner/repo/pull/42", result.url)
+		assert.are.equal("open", result.state)
+	end)
+
+	it("includes merged state", function()
+		local data = {
+			{
+				number = 50,
+				state = "merged",
+				html_url = "https://github.com/owner/repo/pull/50",
+				base = { ref = "main" },
+				head = { ref = "merged-branch" },
+			},
+		}
+		local result = gh.parse_pr_from_commit_api(data)
+		assert.are.equal(50, result.number)
+		assert.are.equal("merged", result.state)
 	end)
 
 	it("prefers open PR over closed", function()

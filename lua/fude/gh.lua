@@ -58,6 +58,7 @@ function M.parse_pr_from_commit_api(data)
 		baseRefName = (pr.base and pr.base.ref) or "",
 		headRefName = (pr.head and pr.head.ref) or "",
 		url = pr.html_url,
+		state = pr.state,
 	}
 end
 
@@ -94,7 +95,7 @@ function M.get_pr_info(callback)
 		end
 		return M.get_pr_by_commit(sha, callback)
 	end
-	M.run_json({ "pr", "view", "--json", "number,baseRefName,headRefName,url" }, callback)
+	M.run_json({ "pr", "view", "--json", "number,baseRefName,headRefName,url,state" }, callback)
 end
 
 --- Get the list of files changed in a PR.
