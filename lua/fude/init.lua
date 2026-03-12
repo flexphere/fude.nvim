@@ -406,11 +406,12 @@ function M.reload(silent)
 		if remaining > 0 then
 			return
 		end
+		-- Always clear reloading flag before any early return
+		config.state.reloading = false
 		-- Session boundary check: abort if session changed during reload
 		if config.state.pr_number ~= session_pr then
 			return
 		end
-		config.state.reloading = false
 		if not config.state.active then
 			return
 		end
