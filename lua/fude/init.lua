@@ -402,8 +402,9 @@ function M.reload(silent)
 	end
 	config.state.reloading = true
 
-	-- Capture session identity to detect stop→start across callbacks
-	local session_pr = config.state.pr_number
+	-- Capture state table identity to detect reset_state() across callbacks
+	local captured_state = config.state
+	local session_pr = captured_state.pr_number
 
 	local gh_mod = require("fude.gh")
 
@@ -412,6 +413,10 @@ function M.reload(silent)
 	local function on_done()
 		remaining = remaining - 1
 		if remaining > 0 then
+			return
+		end
+		-- State table replaced by reset_state(): do not touch new session
+		if config.state ~= captured_state then
 			return
 		end
 		-- Always clear reloading flag before any early return
@@ -447,8 +452,8 @@ function M.reload(silent)
 			and data
 			and data.state
 			and data.state:upper() == "MERGED"
+			and config.state == captured_state
 			and config.state.active
-			and config.state.pr_number == session_pr
 		then
 			vim.notify("fude.nvim: This PR has already been merged", vim.log.levels.WARN)
 		end
@@ -461,7 +466,7 @@ function M.reload(silent)
 	-- Reload changed files
 	if config.state.scope == "commit" and config.state.scope_commit_sha then
 		gh_mod.get_commit_files(config.state.scope_commit_sha, function(err, files)
-			if not err and files and config.state.active and config.state.pr_number == session_pr then
+			if not err and files and config.state == captured_state and config.state.active then
 				config.state.changed_files = {}
 				for _, f in ipairs(files) do
 					table.insert(config.state.changed_files, {
@@ -477,7 +482,7 @@ function M.reload(silent)
 		end)
 	else
 		gh_mod.get_pr_files(config.state.pr_number, function(err, files)
-			if not err and files and config.state.active and config.state.pr_number == session_pr then
+			if not err and files and config.state == captured_state and config.state.active then
 				config.state.changed_files = {}
 				for _, f in ipairs(files) do
 					table.insert(config.state.changed_files, {
@@ -495,7 +500,7 @@ function M.reload(silent)
 
 	-- Reload viewed file states
 	gh_mod.get_pr_viewed_files(config.state.pr_number, function(err, viewed_map, pr_node_id)
-		if not err and viewed_map and config.state.active and config.state.pr_number == session_pr then
+		if not err and viewed_map and config.state == captured_state and config.state.active then
 			config.state.viewed_files = viewed_map
 			config.state.pr_node_id = pr_node_id
 		end
@@ -504,7 +509,7 @@ function M.reload(silent)
 
 	-- Reload PR commits
 	gh_mod.get_pr_commits(config.state.pr_number, function(err, commits)
-		if not err and commits and config.state.active and config.state.pr_number == session_pr then
+		if not err and commits and config.state == captured_state and config.state.active then
 			config.state.pr_commits = commits
 		end
 		on_done()
