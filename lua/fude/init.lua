@@ -414,7 +414,7 @@ function M.reload(silent)
 	end
 
 	-- Reload comments (includes pending review detection)
-	require("fude.comments").load_comments(on_done)
+	require("fude.comments").load_comments(on_done, { silent = true })
 
 	-- Reload changed files
 	if config.state.scope == "commit" and config.state.scope_commit_sha then
