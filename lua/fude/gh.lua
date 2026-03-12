@@ -40,7 +40,7 @@ end
 --- Parse commits API response into PR info format.
 --- Prefers open PRs when multiple results exist.
 --- @param data table[]|nil array of PR objects from commits/{sha}/pulls API
---- @return table|nil pr_info {number, baseRefName, headRefName, url} or nil
+--- @return table|nil pr_info {number, baseRefName, headRefName, url, state} or nil
 function M.parse_pr_from_commit_api(data)
 	if not data or #data == 0 then
 		return nil
