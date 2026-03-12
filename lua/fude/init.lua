@@ -7,6 +7,19 @@ function M.setup(opts)
 	config.setup(opts)
 end
 
+-- Forward declaration for start_reload_timer (defined after M.reload)
+local start_reload_timer
+
+--- Stop the auto-reload timer if running.
+local function stop_reload_timer()
+	local timer = config.state.reload_timer
+	if timer then
+		timer:stop()
+		timer:close()
+		config.state.reload_timer = nil
+	end
+end
+
 --- Start review mode for the current branch's PR.
 function M.start()
 	local state = config.state
@@ -191,6 +204,9 @@ function M.start()
 
 		-- Setup hint autocmd for comment lines (shows available actions)
 		require("fude.ui").setup_inline_hint_autocmd()
+
+		-- Start auto-reload timer if configured
+		start_reload_timer()
 	end)
 end
 
@@ -249,6 +265,9 @@ function M.stop()
 		vim.notify("fude.nvim: Not active", vim.log.levels.INFO)
 		return
 	end
+
+	-- Stop auto-reload timer
+	stop_reload_timer()
 
 	if state.augroup then
 		vim.api.nvim_del_augroup_by_id(state.augroup)
@@ -356,6 +375,110 @@ function M.unmark_viewed()
 		state.viewed_files[rel_path] = "UNVIEWED"
 		vim.notify("fude.nvim: Unmarked as viewed: " .. rel_path, vim.log.levels.INFO)
 	end)
+end
+
+--- Reload review data from GitHub (comments, files, viewed state, commits).
+function M.reload()
+	local state = config.state
+	if not state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.reloading then
+		return
+	end
+	state.reloading = true
+
+	local gh_mod = require("fude.gh")
+
+	-- 4 async fetches: comments, files, viewed, commits
+	local remaining = 4
+	local function on_done()
+		remaining = remaining - 1
+		if remaining > 0 then
+			return
+		end
+		state.reloading = false
+		if not state.active then
+			return
+		end
+		vim.notify("fude.nvim: Reloaded review data", vim.log.levels.INFO)
+	end
+
+	-- Reload comments (includes pending review detection)
+	require("fude.comments").load_comments(on_done)
+
+	-- Reload changed files
+	if state.scope == "commit" and state.scope_commit_sha then
+		gh_mod.get_commit_files(state.scope_commit_sha, function(err, files)
+			if not err and files and state.active then
+				state.changed_files = {}
+				for _, f in ipairs(files) do
+					table.insert(state.changed_files, {
+						path = f.filename,
+						status = f.status,
+						additions = f.additions,
+						deletions = f.deletions,
+						patch = f.patch,
+					})
+				end
+			end
+			on_done()
+		end)
+	else
+		gh_mod.get_pr_files(state.pr_number, function(err, files)
+			if not err and files and state.active then
+				state.changed_files = {}
+				for _, f in ipairs(files) do
+					table.insert(state.changed_files, {
+						path = f.filename,
+						status = f.status,
+						additions = f.additions,
+						deletions = f.deletions,
+						patch = f.patch,
+					})
+				end
+			end
+			on_done()
+		end)
+	end
+
+	-- Reload viewed file states
+	gh_mod.get_pr_viewed_files(state.pr_number, function(err, viewed_map, pr_node_id)
+		if not err and viewed_map and state.active then
+			state.viewed_files = viewed_map
+			state.pr_node_id = pr_node_id
+		end
+		on_done()
+	end)
+
+	-- Reload PR commits
+	gh_mod.get_pr_commits(state.pr_number, function(err, commits)
+		if not err and commits and state.active then
+			state.pr_commits = commits
+		end
+		on_done()
+	end)
+end
+
+--- Start the auto-reload timer if configured.
+start_reload_timer = function()
+	local auto_reload = config.opts.auto_reload
+	if not auto_reload or not auto_reload.enabled then
+		return
+	end
+	local interval = math.max(10, auto_reload.interval or 30) * 1000
+	local timer = vim.uv.new_timer()
+	timer:start(
+		interval,
+		interval,
+		vim.schedule_wrap(function()
+			if config.state.active then
+				M.reload()
+			end
+		end)
+	)
+	config.state.reload_timer = timer
 end
 
 --- Check if review mode is active.
