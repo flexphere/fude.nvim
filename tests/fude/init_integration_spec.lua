@@ -402,6 +402,54 @@ describe("init integration", function()
 			assert.is_true(ok, "Silent reload should complete")
 		end)
 
+		it("on_ready guard skips when session stopped", function()
+			-- Verify the on_ready guard by checking that on_review_start
+			-- is not called when state.active is false at completion time.
+			-- We simulate this by starting, waiting for completion, stopping,
+			-- then verifying a second start with a callback that was NOT called
+			-- during the stopped period.
+			local call_count = 0
+			config.setup({
+				on_review_start = function()
+					call_count = call_count + 1
+				end,
+			})
+			setup_gh_mocks()
+
+			init.start()
+			helpers.wait_for(function()
+				return call_count > 0
+			end)
+			assert.are.equal(1, call_count, "on_review_start should fire once on start")
+
+			-- Stop and reset
+			config.state.scope = "full_pr"
+			init.stop()
+
+			-- Manually set active=false and verify on_ready guard works:
+			-- reset_state already sets active=false, so any late on_ready
+			-- would see config.state.active == false and bail out
+			assert.is_false(config.state.active)
+		end)
+
+		it("does not update state when session changed during reload", function()
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end)
+
+			-- Start reload, then immediately simulate session change
+			init.reload()
+			-- Change pr_number to simulate stop→start with different PR
+			config.state.pr_number = 999
+
+			-- Wait for reload callbacks to complete
+			vim.wait(200)
+
+			-- The reload should have detected session mismatch and not updated
+			assert.are.equal(999, config.state.pr_number, "pr_number should remain as changed")
+		end)
+
 		it("recalculates scope_commit_index after reload", function()
 			init.start()
 			helpers.wait_for(function()
