@@ -598,10 +598,21 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 			table.insert(hl_ranges, { line = line_idx, col_start = pr_start, col_end = pr_end, hl = "DiagnosticInfo" })
 		else
 			local date = format_date_fn(entry.last_ts)
-			local raw = format_path_fn(entry.path)
+			local raw
+			if type(entry.path) == "string" then
+				raw = format_path_fn(entry.path)
+			end
 			local display_path = (entry.path and type(raw) == "string") and raw or entry.path
 			if entry.is_pending then
-				text = string.format("%s  [pending]  %s:%d", date, display_path, entry.line)
+				-- pending かつ outdated なエントリでは path/line が nil になり得るためガードする
+				local line_num = type(entry.line) == "number" and entry.line or nil
+				if line_num and display_path then
+					text = string.format("%s  [pending]  %s:%d", date, display_path, line_num)
+				elseif display_path then
+					text = string.format("%s  [pending]  %s", date, display_path)
+				else
+					text = string.format("%s  [pending]  (unknown)", date)
+				end
 				local pending_start = #date + 2
 				local pending_end = pending_start + #"[pending]"
 				table.insert(
