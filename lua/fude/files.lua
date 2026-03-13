@@ -252,10 +252,14 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 			local v_icon, v_hl = M.viewed_icon("UNVIEWED", viewed_sign)
 			selection.viewed_icon = v_icon
 			selection.viewed_hl = v_hl
-			-- Refresh the picker
+			-- Refresh the picker preserving cursor position
 			local picker = action_state.get_current_picker(prompt_bufnr)
 			if picker then
+				local row = picker:get_selection_row()
 				picker:refresh(nil, { reset_prompt = false })
+				vim.schedule(function()
+					picker:set_selection(row)
+				end)
 			end
 		end)
 	else
@@ -269,10 +273,14 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 			local v_icon, v_hl = M.viewed_icon("VIEWED", viewed_sign)
 			selection.viewed_icon = v_icon
 			selection.viewed_hl = v_hl
-			-- Refresh the picker
+			-- Refresh the picker preserving cursor position
 			local picker = action_state.get_current_picker(prompt_bufnr)
 			if picker then
+				local row = picker:get_selection_row()
 				picker:refresh(nil, { reset_prompt = false })
+				vim.schedule(function()
+					picker:set_selection(row)
+				end)
 			end
 		end)
 	end
