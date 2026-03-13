@@ -2,7 +2,7 @@
 name: pr
 description: コミット分割、コミット実行、draft PR 作成を行う。
 disable-model-invocation: true
-argument-hint: (引数不要 — カレントブランチの変更をPRにする)
+argument-hint: ["(引数不要 — カレントブランチの変更をPRにする)"]
 ---
 
 # コミットとPR作成
