@@ -246,6 +246,7 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 		if picker then
 			local row = picker:get_selection_row()
 			picker:refresh(nil, { reset_prompt = false })
+			-- Delay to ensure picker:refresh() internal rendering completes before restoring selection
 			vim.defer_fn(function()
 				pcall(picker.set_selection, picker, row)
 			end, 10)
