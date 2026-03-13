@@ -76,6 +76,10 @@ M.defaults = {
 		interval = 30, -- Seconds (minimum 10)
 		notify = false, -- Notify after auto-reload (true to show)
 	},
+	-- Format file paths for display in UI (comment browser, file list, scope preview).
+	-- Function receives repo-relative path (e.g. "lua/fude/init.lua") and returns formatted string.
+	-- nil = display repo-relative path as-is (default).
+	format_path = nil,
 	-- Callback invoked after review start completes (all data fetched).
 	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }
 	on_review_start = nil,
@@ -165,6 +169,16 @@ function M.reset_state()
 		reload_timer = nil,
 		reloading = false,
 	}
+end
+
+--- Format a repo-relative file path for display using format_path option.
+--- @param path string repo-relative file path (e.g. "lua/fude/init.lua")
+--- @return string formatted path
+function M.format_path(path)
+	if M.opts.format_path then
+		return M.opts.format_path(path)
+	end
+	return path
 end
 
 --- Format a UTC ISO 8601 timestamp to local timezone using date_format.

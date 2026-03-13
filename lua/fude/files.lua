@@ -161,9 +161,10 @@ function M.show_telescope()
 		viewed_sign,
 		comment_counts
 	)
+	local format_path = config.format_path
 	local entries = {}
 	for _, entry in ipairs(raw_entries) do
-		entry.value = entry.path
+		entry.value = format_path(entry.path)
 		entry.ordinal = entry.path
 		entry.display = make_display
 		table.insert(entries, entry)
@@ -296,6 +297,7 @@ function M.show_quickfix()
 		viewed_sign,
 		comment_counts
 	)
+	local format_path = config.format_path
 	local items = {}
 	for _, entry in ipairs(raw_entries) do
 		local comment_part = entry.comment_display ~= "" and (" " .. entry.comment_display) or ""
@@ -309,7 +311,7 @@ function M.show_quickfix()
 				entry.additions,
 				entry.deletions,
 				comment_part,
-				entry.path
+				format_path(entry.path)
 			),
 		})
 	end

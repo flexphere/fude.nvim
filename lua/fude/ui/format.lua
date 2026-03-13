@@ -571,10 +571,15 @@ end
 --- @param max_width number available character width
 --- @param format_date_fn fun(s: string): string
 --- @param outdated_opts table|nil { show: boolean, label: string, hl_group: string }
+--- @param format_path_fn fun(s: string): string|nil formats repo-relative path for display (nil = identity)
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_comment_browser_list(entries, max_width, format_date_fn, outdated_opts)
+function M.format_comment_browser_list(entries, max_width, format_date_fn, outdated_opts, format_path_fn)
 	local lines = {}
 	local hl_ranges = {}
+
+	format_path_fn = format_path_fn or function(p)
+		return p
+	end
 
 	-- Default outdated options (show by default when outdated_opts is nil)
 	local outdated_show = outdated_opts == nil or outdated_opts.show ~= false
@@ -593,8 +598,9 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 			table.insert(hl_ranges, { line = line_idx, col_start = pr_start, col_end = pr_end, hl = "DiagnosticInfo" })
 		else
 			local date = format_date_fn(entry.last_ts)
+			local display_path = entry.path and format_path_fn(entry.path) or nil
 			if entry.is_pending then
-				text = string.format("%s  [pending]  %s:%d", date, entry.path, entry.line)
+				text = string.format("%s  [pending]  %s:%d", date, display_path, entry.line)
 				local pending_start = #date + 2
 				local pending_end = pending_start + #"[pending]"
 				table.insert(
@@ -604,10 +610,10 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 			elseif entry.is_outdated and outdated_show then
 				-- Outdated comments may have nil/vim.NIL line or path
 				local line_num = type(entry.line) == "number" and entry.line or nil
-				if line_num and entry.path then
-					text = string.format("%s  %s  %s:%d", date, outdated_label, entry.path, line_num)
+				if line_num and display_path then
+					text = string.format("%s  %s  %s:%d", date, outdated_label, display_path, line_num)
 				else
-					text = string.format("%s  %s  %s", date, outdated_label, entry.path or "(unknown)")
+					text = string.format("%s  %s  %s", date, outdated_label, display_path or "(unknown)")
 				end
 				local outdated_start = #date + 2
 				local outdated_end = outdated_start + #outdated_label
@@ -618,16 +624,16 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 			elseif entry.is_outdated then
 				-- outdated_show = false: show as normal entry without label
 				local line_num = type(entry.line) == "number" and entry.line or nil
-				if line_num and entry.path then
-					text = string.format("%s  @%s  %s:%d", date, entry.author or "unknown", entry.path, line_num)
+				if line_num and display_path then
+					text = string.format("%s  @%s  %s:%d", date, entry.author or "unknown", display_path, line_num)
 				else
-					text = string.format("%s  @%s  %s", date, entry.author or "unknown", entry.path or "(unknown)")
+					text = string.format("%s  @%s  %s", date, entry.author or "unknown", display_path or "(unknown)")
 				end
 				local author_start = #date + 2
 				local author_end = author_start + 1 + #(entry.author or "unknown")
 				table.insert(hl_ranges, { line = line_idx, col_start = author_start, col_end = author_end, hl = "Title" })
 			else
-				text = string.format("%s  @%s  %s:%d", date, entry.author, entry.path, entry.line)
+				text = string.format("%s  @%s  %s:%d", date, entry.author, display_path, entry.line)
 				local author_start = #date + 2
 				local author_end = author_start + 1 + #entry.author -- "@" + name
 				table.insert(hl_ranges, { line = line_idx, col_start = author_start, col_end = author_end, hl = "Title" })
