@@ -104,3 +104,9 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 3. **Test coverage check**: After writing code, review whether the changed/added functions have test coverage. If not, write tests before committing.
 4. **Formatting**: Run `stylua lua/ plugin/ tests/` after editing any Lua file to ensure consistent formatting.
 5. **Documentation**: When adding or changing features, commands, keymaps, or configuration options, update the corresponding documentation (`README.md`, `doc/fude.txt`, `CLAUDE.md` Architecture section) before committing.
+
+## PR/Commit Conventions
+
+- PRタイトル・本文は日本語で記述する（コード例・変数名・ファイルパスは英語のまま）
+- コミットメッセージは英語の Conventional Commits 形式 (`feat:`, `fix:`, `refactor:`, `test:`, `docs:`)
+- レビュー返信は日本語で記述する
