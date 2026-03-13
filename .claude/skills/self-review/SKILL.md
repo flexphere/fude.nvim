@@ -1,7 +1,6 @@
 ---
 name: self-review
 description: 3ラウンドのセルフレビュー。プロジェクト固有チェックリスト（2ラウンド）と /review 汎用レビュー（1ラウンド）で変更品質を検証する。
-disable-model-invocation: true
 ---
 
 # セルフレビュー

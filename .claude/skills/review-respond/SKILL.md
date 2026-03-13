@@ -1,7 +1,6 @@
 ---
 name: review-respond
 description: PR レビューコメントへの対応ワークフロー。レビュー指摘の分析、コード修正、セルフレビュー、動作確認後の返信・push までを一貫して行う。
-disable-model-invocation: true
 argument-hint: [PR番号（省略時はカレントブランチのPR）]
 ---
 

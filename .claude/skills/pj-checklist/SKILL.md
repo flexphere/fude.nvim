@@ -1,7 +1,6 @@
 ---
 name: pj-checklist
 description: fude.nvim プロジェクト固有の実装・レビューチェックリスト。Lua/Neovim パターン、非同期処理、state 管理の注意点。
-disable-model-invocation: true
 ---
 
 # fude.nvim プロジェクトチェックリスト
