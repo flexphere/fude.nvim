@@ -519,7 +519,7 @@ Options:
                   as-is (e.g. "lua/fude/init.lua"). Applied to:
                   - Comment browser left pane (path:line)
                   - Telescope/quickfix file list
-                  - Telescope comment picker
+                  - Comment picker
                   - Scope preview changed files
                   The function receives a repo-relative path and should
                   return a formatted string. Searching/filtering still
