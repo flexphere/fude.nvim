@@ -375,4 +375,15 @@ describe("format_scope_preview_lines", function()
 		local lines = scope.format_scope_preview_lines(files, icons, nil)
 		assert.is_truthy(lines[3]:find("lua/fude/scope.lua"))
 	end)
+
+	it("falls back to original path when format_path_fn returns nil", function()
+		local files = {
+			{ filename = "lua/fude/scope.lua", status = "modified", additions = 10, deletions = 5 },
+		}
+		local nil_fn = function()
+			return nil
+		end
+		local lines = scope.format_scope_preview_lines(files, icons, nil_fn)
+		assert.is_truthy(lines[3]:find("lua/fude/scope.lua"))
+	end)
 end)

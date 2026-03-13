@@ -152,5 +152,32 @@ describe("config", function()
 			})
 			assert.are.equal("prefix/a.lua", config.format_path("a.lua"))
 		end)
+
+		it("falls back to original path when format_path returns nil", function()
+			config.setup({
+				format_path = function()
+					return nil
+				end,
+			})
+			assert.are.equal("lua/fude/init.lua", config.format_path("lua/fude/init.lua"))
+		end)
+
+		it("falls back to original path when format_path returns non-string", function()
+			config.setup({
+				format_path = function()
+					return 42
+				end,
+			})
+			assert.are.equal("a.lua", config.format_path("a.lua"))
+		end)
+
+		it("falls back to original path when format_path throws error", function()
+			config.setup({
+				format_path = function()
+					error("boom")
+				end,
+			})
+			assert.are.equal("a.lua", config.format_path("a.lua"))
+		end)
 	end)
 end)

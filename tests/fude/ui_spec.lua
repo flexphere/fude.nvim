@@ -1658,6 +1658,17 @@ describe("format_comment_browser_list", function()
 		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, nil)
 		assert.is_truthy(result.lines[1]:find("lua/fude/init.lua:42"))
 	end)
+
+	it("falls back to original path when format_path_fn returns nil", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "lua/fude/init.lua", line = 42 },
+		}
+		local nil_fn = function()
+			return nil
+		end
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, nil_fn)
+		assert.is_truthy(result.lines[1]:find("lua/fude/init.lua:42"))
+	end)
 end)
 
 describe("format_comment_browser_thread", function()

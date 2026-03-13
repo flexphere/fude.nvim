@@ -794,6 +794,21 @@ describe("data.build_comment_entries", function()
 		local entries = data.build_comment_entries(map, "/repo", id_fn, nil, nil)
 		assert.is_truthy(entries[1].detail:find("lua/fude/init.lua:10"))
 	end)
+
+	it("falls back to original path when format_path_fn returns nil", function()
+		local map = {
+			["lua/fude/init.lua"] = {
+				[10] = {
+					{ id = 1, body = "hello", user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z" },
+				},
+			},
+		}
+		local nil_fn = function()
+			return nil
+		end
+		local entries = data.build_comment_entries(map, "/repo", id_fn, nil, nil_fn)
+		assert.is_truthy(entries[1].detail:find("lua/fude/init.lua:10"))
+	end)
 end)
 
 describe("build_comment_browser_entries", function()
