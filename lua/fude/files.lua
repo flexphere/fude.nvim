@@ -241,6 +241,18 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 	local gh_mod = require("fude.gh")
 	local viewed_sign = config.opts.signs.viewed or "✓"
 
+	local function refresh_picker_preserving_selection()
+		local picker = action_state.get_current_picker(prompt_bufnr)
+		if picker then
+			local row = picker:get_selection_row()
+			picker:refresh(nil, { reset_prompt = false })
+			-- Delay to ensure picker:refresh() internal rendering completes before restoring selection
+			vim.defer_fn(function()
+				pcall(picker.set_selection, picker, row)
+			end, 10)
+		end
+	end
+
 	if current_state == "VIEWED" then
 		gh_mod.unmark_file_viewed(state.pr_node_id, path, function(err)
 			if err then
@@ -248,15 +260,10 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 				return
 			end
 			state.viewed_files[path] = "UNVIEWED"
-			-- Update the entry display
 			local v_icon, v_hl = M.viewed_icon("UNVIEWED", viewed_sign)
 			selection.viewed_icon = v_icon
 			selection.viewed_hl = v_hl
-			-- Refresh the picker
-			local picker = action_state.get_current_picker(prompt_bufnr)
-			if picker then
-				picker:refresh(nil, { reset_prompt = false })
-			end
+			refresh_picker_preserving_selection()
 		end)
 	else
 		gh_mod.mark_file_viewed(state.pr_node_id, path, function(err)
@@ -265,15 +272,10 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 				return
 			end
 			state.viewed_files[path] = "VIEWED"
-			-- Update the entry display
 			local v_icon, v_hl = M.viewed_icon("VIEWED", viewed_sign)
 			selection.viewed_icon = v_icon
 			selection.viewed_hl = v_hl
-			-- Refresh the picker
-			local picker = action_state.get_current_picker(prompt_bufnr)
-			if picker then
-				picker:refresh(nil, { reset_prompt = false })
-			end
+			refresh_picker_preserving_selection()
 		end)
 	end
 end
