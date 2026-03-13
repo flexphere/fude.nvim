@@ -174,6 +174,10 @@ require("fude").setup({
       link_url = "@markup.link.url",
     },
   },
+  -- Format file paths for display in UI (comment browser, file list, etc.)
+  -- Function receives repo-relative path, returns formatted string.
+  -- nil = display repo-relative path as-is (default).
+  format_path = nil,
   -- strftime format for timestamps (system timezone)
   date_format = "%Y/%m/%d %H:%M",
   -- Auto-reload review data from GitHub
