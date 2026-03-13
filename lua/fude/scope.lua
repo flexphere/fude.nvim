@@ -164,7 +164,7 @@ function M.show_telescope(scope_entries)
 						if not vim.api.nvim_buf_is_valid(bufnr) then
 							return
 						end
-						local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons)
+						local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons, config.format_path)
 						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
 						vim.api.nvim_buf_clear_namespace(bufnr, preview_ns, 0, -1)
 						for _, hl in ipairs(hls) do
@@ -578,9 +578,13 @@ end
 --- Format preview lines for a scope entry's changed files.
 --- @param files table[] array of { filename, status, additions, deletions }
 --- @param status_icons table<string, string> status-to-icon map
+--- @param format_path_fn fun(s: string): string|nil formats file path for display (nil = identity)
 --- @return string[] lines formatted lines for the previewer
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
-function M.format_scope_preview_lines(files, status_icons)
+function M.format_scope_preview_lines(files, status_icons, format_path_fn)
+	format_path_fn = format_path_fn or function(p)
+		return p
+	end
 	if #files == 0 then
 		return { "No changed files" }, {}
 	end
@@ -592,7 +596,9 @@ function M.format_scope_preview_lines(files, status_icons)
 		local dels = f.deletions or 0
 		local add_part = string.format("+%-4d", adds)
 		local del_part = string.format("-%-4d", dels)
-		local line = "  " .. icon .. " " .. add_part .. " " .. del_part .. " " .. f.filename
+		local raw = format_path_fn(f.filename)
+		local display_name = type(raw) == "string" and raw or f.filename
+		local line = "  " .. icon .. " " .. add_part .. " " .. del_part .. " " .. display_name
 		local line_idx = #lines -- 0-indexed
 
 		local status_hl = f.status == "added" and "DiffAdd" or f.status == "removed" and "DiffDelete" or "DiffChange"

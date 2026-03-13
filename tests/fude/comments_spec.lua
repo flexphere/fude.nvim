@@ -750,6 +750,65 @@ describe("data.build_comment_entries", function()
 		assert.is_false(entries[1].is_pending)
 		assert.is_truthy(entries[1].detail:find("@alice"))
 	end)
+
+	it("applies format_path_fn to detail display", function()
+		local map = {
+			["lua/fude/init.lua"] = {
+				[42] = {
+					{ id = 1, body = "hello", user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z" },
+				},
+			},
+		}
+		local tail_fn = function(p)
+			return p:match("[^/]+$")
+		end
+		local entries = data.build_comment_entries(map, "/repo", id_fn, nil, tail_fn)
+		assert.are.equal(1, #entries)
+		assert.is_truthy(entries[1].detail:find("init.lua:42"))
+		assert.is_falsy(entries[1].detail:find("lua/fude/init.lua"))
+	end)
+
+	it("keeps full path in ordinal when format_path_fn is set", function()
+		local map = {
+			["lua/fude/init.lua"] = {
+				[42] = {
+					{ id = 1, body = "hello", user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z" },
+				},
+			},
+		}
+		local tail_fn = function(p)
+			return p:match("[^/]+$")
+		end
+		local entries = data.build_comment_entries(map, "/repo", id_fn, nil, tail_fn)
+		assert.is_truthy(entries[1].ordinal:find("lua/fude/init.lua"))
+	end)
+
+	it("uses identity when format_path_fn is nil", function()
+		local map = {
+			["lua/fude/init.lua"] = {
+				[10] = {
+					{ id = 1, body = "hello", user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z" },
+				},
+			},
+		}
+		local entries = data.build_comment_entries(map, "/repo", id_fn, nil, nil)
+		assert.is_truthy(entries[1].detail:find("lua/fude/init.lua:10"))
+	end)
+
+	it("falls back to original path when format_path_fn returns nil", function()
+		local map = {
+			["lua/fude/init.lua"] = {
+				[10] = {
+					{ id = 1, body = "hello", user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z" },
+				},
+			},
+		}
+		local nil_fn = function()
+			return nil
+		end
+		local entries = data.build_comment_entries(map, "/repo", id_fn, nil, nil_fn)
+		assert.is_truthy(entries[1].detail:find("lua/fude/init.lua:10"))
+	end)
 end)
 
 describe("build_comment_browser_entries", function()

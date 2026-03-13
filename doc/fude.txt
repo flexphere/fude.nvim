@@ -386,6 +386,10 @@ Default configuration: >lua
       timestamp_hl = "NonText",
       border_hl = "DiagnosticInfo",
     },
+    -- Format file paths for display in UI (comment browser, file list, etc.)
+    -- Function receives repo-relative path, returns formatted string.
+    -- nil = display repo-relative path as-is (default).
+    format_path = nil,
     -- strftime format for timestamps (system timezone)
     date_format = "%Y/%m/%d %H:%M",
     -- Auto-reload review data from GitHub
@@ -509,6 +513,24 @@ Options:
                     (default: "@markup.link")
                   - `link_url`: Highlight for (url)
                     (default: "@markup.link.url")
+
+`format_path`       Function to format file paths for display in the UI
+                  (default: nil). When nil, repo-relative paths are shown
+                  as-is (e.g. "lua/fude/init.lua"). Applied to:
+                  - Comment browser left pane (path:line)
+                  - Telescope/quickfix file list
+                  - Comment picker
+                  - Scope preview changed files
+                  The function receives a repo-relative path and should
+                  return a formatted string. Searching/filtering still
+                  uses the full path. >lua
+                    require("fude").setup({
+                      format_path = function(path)
+                        -- Show only filename
+                        return vim.fn.fnamemodify(path, ":t")
+                      end,
+                    })
+<
 
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system

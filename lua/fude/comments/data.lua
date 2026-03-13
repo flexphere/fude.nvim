@@ -291,8 +291,12 @@ end
 --- @param repo_root string
 --- @param format_date_fn fun(s: string): string
 --- @param pending_review_id number|nil pending review ID for labeling
+--- @param format_path_fn fun(s: string): string|nil formats repo-relative path for display (nil = identity)
 --- @return table[] entries sorted by last_ts descending
-function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending_review_id)
+function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending_review_id, format_path_fn)
+	format_path_fn = format_path_fn or function(p)
+		return p
+	end
 	local entries = {}
 	for path, file_lines in pairs(comment_map) do
 		for line_key, comments in pairs(file_lines) do
@@ -315,8 +319,10 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending
 			if #body_preview > 60 then
 				body_preview = body_preview:sub(1, 57) .. "..."
 			end
+			local raw = format_path_fn(path)
+			local display_path = type(raw) == "string" and raw or path
 			local label = is_pending and "[pending]" or ("@" .. author)
-			local detail = string.format("%s:%d  %s  %s", path, line, label, body_preview)
+			local detail = string.format("%s:%d  %s  %s", display_path, line, label, body_preview)
 			table.insert(entries, {
 				value = detail,
 				ordinal = string.format("%s:%d %s", path, line, first.body or ""),
