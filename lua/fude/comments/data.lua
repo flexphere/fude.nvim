@@ -319,7 +319,8 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending
 			if #body_preview > 60 then
 				body_preview = body_preview:sub(1, 57) .. "..."
 			end
-			local display_path = format_path_fn(path)
+			local raw = format_path_fn(path)
+			local display_path = type(raw) == "string" and raw or path
 			local label = is_pending and "[pending]" or ("@" .. author)
 			local detail = string.format("%s:%d  %s  %s", display_path, line, label, body_preview)
 			table.insert(entries, {

@@ -176,7 +176,11 @@ end
 --- @return string formatted path
 function M.format_path(path)
 	if M.opts.format_path then
-		return M.opts.format_path(path)
+		local ok, result = pcall(M.opts.format_path, path)
+		if ok and type(result) == "string" then
+			return result
+		end
+		vim.notify("[fude] format_path returned invalid value, using original path", vim.log.levels.WARN)
 	end
 	return path
 end

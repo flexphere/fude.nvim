@@ -598,7 +598,8 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 			table.insert(hl_ranges, { line = line_idx, col_start = pr_start, col_end = pr_end, hl = "DiagnosticInfo" })
 		else
 			local date = format_date_fn(entry.last_ts)
-			local display_path = entry.path and format_path_fn(entry.path) or nil
+			local raw = format_path_fn(entry.path)
+			local display_path = (entry.path and type(raw) == "string") and raw or entry.path
 			if entry.is_pending then
 				text = string.format("%s  [pending]  %s:%d", date, display_path, entry.line)
 				local pending_start = #date + 2

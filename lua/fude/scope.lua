@@ -596,7 +596,9 @@ function M.format_scope_preview_lines(files, status_icons, format_path_fn)
 		local dels = f.deletions or 0
 		local add_part = string.format("+%-4d", adds)
 		local del_part = string.format("-%-4d", dels)
-		local line = "  " .. icon .. " " .. add_part .. " " .. del_part .. " " .. format_path_fn(f.filename)
+		local raw = format_path_fn(f.filename)
+		local display_name = type(raw) == "string" and raw or f.filename
+		local line = "  " .. icon .. " " .. add_part .. " " .. del_part .. " " .. display_name
 		local line_idx = #lines -- 0-indexed
 
 		local status_hl = f.status == "added" and "DiffAdd" or f.status == "removed" and "DiffDelete" or "DiffChange"
