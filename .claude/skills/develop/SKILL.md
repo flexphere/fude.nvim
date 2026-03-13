@@ -1,7 +1,6 @@
 ---
 name: develop
 description: 開発ワークフロー。計画から実装、テスト、ドキュメント、セルフレビュー、PR作成までを一貫して行う。
-disable-model-invocation: true
 argument-hint: [やりたいことの概要]
 ---
 
