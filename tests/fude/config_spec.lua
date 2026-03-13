@@ -128,4 +128,29 @@ describe("config", function()
 			assert.is_nil(config.state.current_comment_style)
 		end)
 	end)
+
+	describe("format_path", function()
+		it("returns path as-is when format_path option is nil", function()
+			config.setup({})
+			assert.are.equal("lua/fude/init.lua", config.format_path("lua/fude/init.lua"))
+		end)
+
+		it("applies format_path function when set", function()
+			config.setup({
+				format_path = function(p)
+					return p:match("[^/]+$")
+				end,
+			})
+			assert.are.equal("init.lua", config.format_path("lua/fude/init.lua"))
+		end)
+
+		it("passes path through custom function", function()
+			config.setup({
+				format_path = function(p)
+					return "prefix/" .. p
+				end,
+			})
+			assert.are.equal("prefix/a.lua", config.format_path("a.lua"))
+		end)
+	end)
 end)

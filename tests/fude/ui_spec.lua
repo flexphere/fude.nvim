@@ -1600,6 +1600,64 @@ describe("format_comment_browser_list", function()
 		local result = ui.format_comment_browser_list(entries, 120, id_fn, { hl_group = "Error" })
 		assert.are.equal("Error", result.hl_ranges[1].hl)
 	end)
+
+	it("applies format_path_fn to review entry path", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "lua/fude/init.lua", line = 42 },
+		}
+		local tail_fn = function(p)
+			return p:match("[^/]+$")
+		end
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, tail_fn)
+		assert.is_truthy(result.lines[1]:find("init.lua:42"))
+		assert.is_falsy(result.lines[1]:find("lua/fude/init.lua"))
+	end)
+
+	it("applies format_path_fn to pending entry path", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "a",
+				path = "lua/fude/config.lua",
+				line = 5,
+				is_pending = true,
+			},
+		}
+		local tail_fn = function(p)
+			return p:match("[^/]+$")
+		end
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, tail_fn)
+		assert.is_truthy(result.lines[1]:find("config.lua:5"))
+		assert.is_falsy(result.lines[1]:find("lua/fude/config.lua"))
+	end)
+
+	it("applies format_path_fn to outdated entry path", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "a",
+				path = "lua/fude/ui.lua",
+				line = 10,
+				is_outdated = true,
+			},
+		}
+		local tail_fn = function(p)
+			return p:match("[^/]+$")
+		end
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, tail_fn)
+		assert.is_truthy(result.lines[1]:find("ui.lua:10"))
+		assert.is_falsy(result.lines[1]:find("lua/fude/ui.lua"))
+	end)
+
+	it("uses identity when format_path_fn is nil", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "lua/fude/init.lua", line = 42 },
+		}
+		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, nil)
+		assert.is_truthy(result.lines[1]:find("lua/fude/init.lua:42"))
+	end)
 end)
 
 describe("format_comment_browser_thread", function()

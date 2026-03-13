@@ -355,4 +355,24 @@ describe("format_scope_preview_lines", function()
 		local _, hls = scope.format_scope_preview_lines(files, icons)
 		assert.are.equal(9, #hls)
 	end)
+
+	it("applies format_path_fn to file paths", function()
+		local files = {
+			{ filename = "lua/fude/scope.lua", status = "modified", additions = 10, deletions = 5 },
+		}
+		local tail_fn = function(p)
+			return p:match("[^/]+$")
+		end
+		local lines = scope.format_scope_preview_lines(files, icons, tail_fn)
+		assert.is_truthy(lines[3]:find("scope.lua"))
+		assert.is_falsy(lines[3]:find("lua/fude/scope.lua"))
+	end)
+
+	it("uses identity when format_path_fn is nil", function()
+		local files = {
+			{ filename = "lua/fude/scope.lua", status = "modified", additions = 10, deletions = 5 },
+		}
+		local lines = scope.format_scope_preview_lines(files, icons, nil)
+		assert.is_truthy(lines[3]:find("lua/fude/scope.lua"))
+	end)
 end)
