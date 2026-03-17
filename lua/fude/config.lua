@@ -86,6 +86,7 @@ M.state = {
 	pr_number = nil,
 	base_ref = nil,
 	head_ref = nil,
+	merge_base_sha = nil, -- Merge-base SHA for gitsigns (avoids merge commit noise)
 	pr_url = nil,
 	changed_files = {},
 	comments = {},
@@ -136,6 +137,7 @@ function M.reset_state()
 		pr_number = nil,
 		base_ref = nil,
 		head_ref = nil,
+		merge_base_sha = nil,
 		pr_url = nil,
 		changed_files = {},
 		comments = {},

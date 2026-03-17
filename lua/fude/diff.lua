@@ -97,6 +97,22 @@ function M.parse_log_first_subject(output)
 	return subject
 end
 
+--- Get the merge-base between a ref and HEAD.
+--- @param ref string branch name or commit SHA
+--- @return string|nil merge-base SHA
+function M.get_merge_base(ref)
+	local result = vim.system({ "git", "merge-base", ref, "HEAD" }, { text = true }):wait()
+	if result.code == 0 then
+		return vim.trim(result.stdout)
+	end
+	-- Fallback to origin/<ref>
+	local result2 = vim.system({ "git", "merge-base", "origin/" .. ref, "HEAD" }, { text = true }):wait()
+	if result2.code == 0 then
+		return vim.trim(result2.stdout)
+	end
+	return nil
+end
+
 --- Get the repository's default branch name.
 --- @return string|nil branch name (e.g., "main", "master")
 function M.get_default_branch()

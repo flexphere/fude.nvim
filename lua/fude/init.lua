@@ -165,13 +165,21 @@ function M.start()
 			end
 		end
 
-		-- Switch gitsigns base: commit parent when detached, PR base branch otherwise
+		-- Switch gitsigns base: commit parent when detached, merge-base otherwise
+		-- Using merge-base avoids showing noise from merge commits in the diff
 		local has_gitsigns, gitsigns = pcall(require, "gitsigns")
 		if has_gitsigns then
 			if started_detached and state.original_head_sha then
 				gitsigns.change_base(state.original_head_sha .. "^", true)
 			else
-				gitsigns.change_base(state.base_ref, true)
+				local merge_base = diff_mod.get_merge_base(state.base_ref)
+				if merge_base then
+					state.merge_base_sha = merge_base
+					gitsigns.change_base(merge_base, true)
+				else
+					-- Fallback: if merge-base fails, use base_ref directly
+					gitsigns.change_base(state.base_ref, true)
+				end
 			end
 		end
 

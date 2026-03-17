@@ -357,10 +357,22 @@ function M.apply_full_pr_scope()
 			})
 		end
 
-		-- Update gitsigns base
+		-- Update gitsigns base (use merge-base to avoid merge commit noise)
 		local has_gitsigns, gitsigns = pcall(require, "gitsigns")
 		if has_gitsigns then
-			gitsigns.change_base(state.base_ref, true)
+			if state.merge_base_sha then
+				gitsigns.change_base(state.merge_base_sha, true)
+			else
+				-- Fallback: if merge_base_sha is not set, compute it or use base_ref
+				local diff_mod = require("fude.diff")
+				local merge_base = diff_mod.get_merge_base(state.base_ref)
+				if merge_base then
+					state.merge_base_sha = merge_base
+					gitsigns.change_base(merge_base, true)
+				else
+					gitsigns.change_base(state.base_ref, true)
+				end
+			end
 		end
 
 		-- Refresh preview if open
