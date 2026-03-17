@@ -357,11 +357,8 @@ function M.apply_full_pr_scope()
 			})
 		end
 
-		-- Update gitsigns base
-		local has_gitsigns, gitsigns = pcall(require, "gitsigns")
-		if has_gitsigns then
-			gitsigns.change_base(state.base_ref, true)
-		end
+		-- Update gitsigns base (use merge-base to avoid merge commit noise)
+		require("fude.init").update_gitsigns_base(state.base_ref)
 
 		-- Refresh preview if open
 		M.refresh_preview()

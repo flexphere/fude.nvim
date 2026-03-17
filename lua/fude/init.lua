@@ -20,6 +20,34 @@ local function stop_reload_timer()
 	end
 end
 
+--- Update gitsigns base to merge-base of the given ref.
+--- Computes merge-base if not already cached in state.merge_base_sha.
+--- Falls back to base_ref if merge-base computation fails.
+--- @param base_ref string base branch name
+function M.update_gitsigns_base(base_ref)
+	local has_gitsigns, gitsigns = pcall(require, "gitsigns")
+	if not has_gitsigns then
+		return
+	end
+
+	local state = config.state
+	if state.merge_base_sha then
+		gitsigns.change_base(state.merge_base_sha, true)
+		return
+	end
+
+	-- Compute merge-base if not cached
+	local diff_mod = require("fude.diff")
+	local merge_base = diff_mod.get_merge_base(base_ref)
+	if merge_base then
+		state.merge_base_sha = merge_base
+		gitsigns.change_base(merge_base, true)
+	else
+		-- Fallback: if merge-base fails, use base_ref directly
+		gitsigns.change_base(base_ref, true)
+	end
+end
+
 --- Start review mode for the current branch's PR.
 function M.start()
 	local state = config.state
@@ -169,14 +197,15 @@ function M.start()
 			end
 		end
 
-		-- Switch gitsigns base: commit parent when detached, PR base branch otherwise
-		local has_gitsigns, gitsigns = pcall(require, "gitsigns")
-		if has_gitsigns then
-			if started_detached and state.original_head_sha then
+		-- Switch gitsigns base: commit parent when detached, merge-base otherwise
+		-- Using merge-base avoids showing noise from merge commits in the diff
+		if started_detached and state.original_head_sha then
+			local has_gitsigns, gitsigns = pcall(require, "gitsigns")
+			if has_gitsigns then
 				gitsigns.change_base(state.original_head_sha .. "^", true)
-			else
-				gitsigns.change_base(state.base_ref, true)
 			end
+		else
+			M.update_gitsigns_base(state.base_ref)
 		end
 
 		-- Fetch authenticated user for ownership checks
