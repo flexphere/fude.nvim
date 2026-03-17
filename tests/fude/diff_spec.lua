@@ -75,3 +75,67 @@ describe("make_relative", function()
 		assert.are.equal("init.lua", diff.make_relative("/repo/init.lua", "/repo"))
 	end)
 end)
+
+describe("get_merge_base", function()
+	local original_system
+
+	before_each(function()
+		original_system = vim.system
+	end)
+
+	after_each(function()
+		vim.system = original_system
+	end)
+
+	it("returns merge-base SHA when ref succeeds", function()
+		vim.system = function(cmd, _opts)
+			return {
+				wait = function()
+					if cmd[3] == "main" then
+						return { code = 0, stdout = "abc123def456\n" }
+					end
+					return { code = 1 }
+				end,
+			}
+		end
+		assert.are.equal("abc123def456", diff.get_merge_base("main"))
+	end)
+
+	it("falls back to origin/<ref> when ref fails", function()
+		vim.system = function(cmd, _opts)
+			return {
+				wait = function()
+					if cmd[3] == "main" then
+						return { code = 1 }
+					elseif cmd[3] == "origin/main" then
+						return { code = 0, stdout = "fallback789\n" }
+					end
+					return { code = 1 }
+				end,
+			}
+		end
+		assert.are.equal("fallback789", diff.get_merge_base("main"))
+	end)
+
+	it("returns nil when both ref and origin/<ref> fail", function()
+		vim.system = function(_cmd, _opts)
+			return {
+				wait = function()
+					return { code = 1 }
+				end,
+			}
+		end
+		assert.is_nil(diff.get_merge_base("nonexistent"))
+	end)
+
+	it("trims whitespace from output", function()
+		vim.system = function(_cmd, _opts)
+			return {
+				wait = function()
+					return { code = 0, stdout = "  sha_with_spaces  \n" }
+				end,
+			}
+		end
+		assert.are.equal("sha_with_spaces", diff.get_merge_base("main"))
+	end)
+end)
