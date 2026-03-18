@@ -666,4 +666,47 @@ describe("init integration", function()
 			assert.is_false(config.state.active)
 		end)
 	end)
+
+	describe("is_new_file", function()
+		it("returns true for added file", function()
+			local changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+			assert.is_true(init.is_new_file("lua/fude/new.lua", changed_files))
+		end)
+
+		it("returns false for modified file", function()
+			local changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/init.lua", changed_files))
+		end)
+
+		it("returns false for file not in changed_files", function()
+			local changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/other.lua", changed_files))
+		end)
+
+		it("returns false for empty changed_files", function()
+			assert.is_false(init.is_new_file("lua/fude/any.lua", {}))
+		end)
+
+		it("returns false for removed file", function()
+			local changed_files = {
+				{ path = "lua/fude/deleted.lua", status = "removed" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/deleted.lua", changed_files))
+		end)
+
+		it("returns false for renamed file", function()
+			local changed_files = {
+				{ path = "lua/fude/renamed.lua", status = "renamed" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/renamed.lua", changed_files))
+		end)
+	end)
 end)

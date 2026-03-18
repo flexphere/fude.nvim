@@ -20,6 +20,53 @@ local function stop_reload_timer()
 	end
 end
 
+--- Check if a file is new (added in the PR/commit).
+--- @param rel_path string repo-relative file path
+--- @param changed_files table[] changed files list
+--- @return boolean
+function M.is_new_file(rel_path, changed_files)
+	for _, f in ipairs(changed_files) do
+		if f.path == rel_path and f.status == "added" then
+			return true
+		end
+	end
+	return false
+end
+
+--- Update gitsigns base for the current buffer based on file status.
+--- New files use base_ref, existing files use merge_base_sha.
+function M.update_gitsigns_for_buffer()
+	local state = config.state
+	if not state.active then
+		return
+	end
+
+	local has_gitsigns, gitsigns = pcall(require, "gitsigns")
+	if not has_gitsigns then
+		return
+	end
+
+	local diff_mod = require("fude.diff")
+	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
+	if not rel_path then
+		return
+	end
+
+	-- Commit scope: all files use commit^ as base
+	if state.scope == "commit" and state.scope_commit_sha then
+		gitsigns.change_base(state.scope_commit_sha .. "^", false)
+		return
+	end
+
+	-- Full PR scope: new files use base_ref, existing files use merge_base_sha
+	local is_new = M.is_new_file(rel_path, state.changed_files or {})
+	if is_new then
+		gitsigns.change_base(state.base_ref, false)
+	else
+		gitsigns.change_base(state.merge_base_sha or state.base_ref, false)
+	end
+end
+
 --- Update gitsigns base to merge-base of the given ref.
 --- Computes merge-base if not already cached in state.merge_base_sha.
 --- Falls back to base_ref if merge-base computation fails.
@@ -227,6 +274,7 @@ function M.start()
 				vim.schedule(function()
 					require("fude.ui").refresh_extmarks()
 					M.setup_buf_keymaps()
+					M.update_gitsigns_for_buffer()
 				end)
 			end,
 			desc = "fude.nvim: Update extmarks and keymaps",
