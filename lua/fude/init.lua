@@ -33,9 +33,10 @@ function M.is_new_file(rel_path, changed_files)
 	return false
 end
 
---- Apply gitsigns base for the current buffer.
+--- Apply gitsigns base for a specific buffer.
 --- New files use base_ref, existing files use merge_base_sha.
-function M.apply_gitsigns_base_for_buffer()
+--- @param bufnr number|nil buffer number (defaults to current buffer)
+function M.apply_gitsigns_base_for_buffer(bufnr)
 	local state = config.state
 	if not state.active then
 		return
@@ -46,27 +47,43 @@ function M.apply_gitsigns_base_for_buffer()
 		return
 	end
 
+	bufnr = bufnr or vim.api.nvim_get_current_buf()
+	if not vim.api.nvim_buf_is_valid(bufnr) then
+		return
+	end
+
 	local diff_mod = require("fude.diff")
-	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
+	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(bufnr))
 	if not rel_path then
 		return
 	end
 
-	-- Commit scope: all files use commit^ as base
+	-- Determine the base ref to use
+	local base_ref
 	if state.scope == "commit" and state.scope_commit_sha then
-		gitsigns.change_base(state.scope_commit_sha .. "^", false)
+		-- Commit scope: all files use commit^ as base
+		base_ref = state.scope_commit_sha .. "^"
+	else
+		-- Full PR scope: new files use base_ref, existing files use merge_base_sha
+		local is_new = M.is_new_file(rel_path, state.changed_files or {})
+		if is_new or not state.merge_base_sha then
+			-- New file, or merge-base not available: use base_ref
+			base_ref = state.base_ref
+		else
+			-- Existing file with merge-base available: use merge_base_sha (excludes merge commit noise)
+			base_ref = state.merge_base_sha
+		end
+	end
+
+	if not base_ref then
 		return
 	end
 
-	-- Full PR scope: new files use base_ref, existing files use merge_base_sha
-	local is_new = M.is_new_file(rel_path, state.changed_files or {})
-	if is_new then
-		-- New file: use base_ref (file doesn't exist there, so gitsigns shows all lines as added)
-		gitsigns.change_base(state.base_ref, false)
-	elseif state.merge_base_sha then
-		-- Existing file: use merge_base_sha (excludes merge commit noise)
-		gitsigns.change_base(state.merge_base_sha, false)
-	end
+	-- gitsigns.change_base(base, false) only works on current buffer
+	-- Use nvim_buf_call to run in the context of the target buffer
+	vim.api.nvim_buf_call(bufnr, function()
+		gitsigns.change_base(base_ref, false)
+	end)
 end
 
 --- Compute and cache merge-base for the given ref.
@@ -304,13 +321,19 @@ function M.start()
 		vim.api.nvim_create_autocmd("User", {
 			group = state.augroup,
 			pattern = "GitSignsUpdate",
-			callback = function()
+			callback = function(ev)
+				local bufnr = ev.buf
 				vim.schedule(function()
-					M.apply_gitsigns_base_for_buffer()
+					M.apply_gitsigns_base_for_buffer(bufnr)
 				end)
 			end,
 			desc = "fude.nvim: Apply gitsigns base per-buffer",
 		})
+
+		-- Apply gitsigns base to current buffer immediately (in case gitsigns already attached)
+		vim.schedule(function()
+			M.apply_gitsigns_base_for_buffer()
+		end)
 
 		vim.api.nvim_create_autocmd("WinResized", {
 			group = state.augroup,
