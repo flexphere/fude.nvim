@@ -357,8 +357,22 @@ function M.apply_full_pr_scope()
 			})
 		end
 
-		-- Update gitsigns base (use merge-base to avoid merge commit noise)
-		require("fude.init").update_gitsigns_base(state.base_ref)
+		-- Reset global gitsigns base (clearing commit scope base)
+		-- Then compute merge_base_sha and apply per-buffer base
+		local has_gitsigns, gitsigns = pcall(require, "gitsigns")
+		if has_gitsigns then
+			gitsigns.reset_base(true)
+		end
+
+		local init_mod = require("fude.init")
+		init_mod.compute_merge_base(state.base_ref)
+
+		-- Apply per-buffer base to all loaded buffers
+		for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].buftype == "" then
+				init_mod.apply_gitsigns_base_for_buffer(bufnr)
+			end
+		end
 
 		-- Refresh preview if open
 		M.refresh_preview()

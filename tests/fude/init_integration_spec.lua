@@ -666,4 +666,192 @@ describe("init integration", function()
 			assert.is_false(config.state.active)
 		end)
 	end)
+
+	describe("is_new_file", function()
+		it("returns true for added file", function()
+			local changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+			assert.is_true(init.is_new_file("lua/fude/new.lua", changed_files))
+		end)
+
+		it("returns false for modified file", function()
+			local changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/init.lua", changed_files))
+		end)
+
+		it("returns false for file not in changed_files", function()
+			local changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/other.lua", changed_files))
+		end)
+
+		it("returns false for empty changed_files", function()
+			assert.is_false(init.is_new_file("lua/fude/any.lua", {}))
+		end)
+
+		it("returns false for removed file", function()
+			local changed_files = {
+				{ path = "lua/fude/deleted.lua", status = "removed" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/deleted.lua", changed_files))
+		end)
+
+		it("returns false for renamed file", function()
+			local changed_files = {
+				{ path = "lua/fude/renamed.lua", status = "renamed" },
+			}
+			assert.is_false(init.is_new_file("lua/fude/renamed.lua", changed_files))
+		end)
+	end)
+
+	describe("apply_gitsigns_base_for_buffer", function()
+		local gitsigns_mock
+		local change_base_calls
+		local diff_mock
+		local original_diff
+
+		before_each(function()
+			change_base_calls = {}
+			gitsigns_mock = {
+				change_base = function(base, global)
+					table.insert(change_base_calls, { base = base, global = global })
+				end,
+				reset_base = function() end,
+			}
+			package.loaded["gitsigns"] = gitsigns_mock
+
+			-- Mock diff module
+			original_diff = require("fude.diff")
+			diff_mock = {
+				to_repo_relative = function(path)
+					-- Extract the relative path from the full path
+					if path and path:match("test_file_(.+)%.lua$") then
+						return "lua/fude/" .. path:match("test_file_(.+)%.lua$") .. ".lua"
+					end
+					return nil
+				end,
+			}
+			package.loaded["fude.diff"] = diff_mock
+		end)
+
+		after_each(function()
+			package.loaded["gitsigns"] = nil
+			package.loaded["fude.diff"] = original_diff
+			helpers.cleanup()
+		end)
+
+		it("calls change_base with base_ref for new file", function()
+			config.state.active = true
+			config.state.base_ref = "main"
+			config.state.merge_base_sha = "abc123"
+			config.state.changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+			}
+
+			-- Mock to_repo_relative to return the expected path
+			diff_mock.to_repo_relative = function()
+				return "lua/fude/new.lua"
+			end
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(1, #change_base_calls)
+			assert.equals("main", change_base_calls[1].base)
+			assert.equals(false, change_base_calls[1].global)
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+		end)
+
+		it("calls change_base with merge_base_sha for existing file", function()
+			config.state.active = true
+			config.state.base_ref = "main"
+			config.state.merge_base_sha = "abc123"
+			config.state.changed_files = {
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+
+			diff_mock.to_repo_relative = function()
+				return "lua/fude/init.lua"
+			end
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(1, #change_base_calls)
+			assert.equals("abc123", change_base_calls[1].base)
+			assert.equals(false, change_base_calls[1].global)
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+		end)
+
+		it("falls back to base_ref when merge_base_sha is nil", function()
+			config.state.active = true
+			config.state.base_ref = "main"
+			config.state.merge_base_sha = nil
+			config.state.changed_files = {
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+
+			diff_mock.to_repo_relative = function()
+				return "lua/fude/init.lua"
+			end
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(1, #change_base_calls)
+			assert.equals("main", change_base_calls[1].base)
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+		end)
+
+		it("uses commit parent for commit scope", function()
+			config.state.active = true
+			config.state.scope = "commit"
+			config.state.scope_commit_sha = "def456"
+			config.state.base_ref = "main"
+			config.state.changed_files = {
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+
+			diff_mock.to_repo_relative = function()
+				return "lua/fude/init.lua"
+			end
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(1, #change_base_calls)
+			assert.equals("def456^", change_base_calls[1].base)
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+		end)
+
+		it("does nothing when not active", function()
+			config.state.active = false
+
+			diff_mock.to_repo_relative = function()
+				return "lua/fude/init.lua"
+			end
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(0, #change_base_calls)
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+		end)
+	end)
 end)

@@ -25,7 +25,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 ### Module Responsibilities
 
-- **`init.lua`** — Plugin lifecycle (`start`/`stop`/`toggle`/`reload`). On start: detects PR via `gh`, fetches changed files, comments, PR commits (for scope selection), and authenticated user (for edit/delete ownership), saves original HEAD SHA, sets up `BufEnter`/`WinClosed` autocmds, integrates with gitsigns, applies diffopt settings, sets buffer-local keymaps (`]c`/`[c`) for comment navigation, and starts auto-reload timer if configured. `reload` re-fetches comments, changed files, viewed states, and PR commits in parallel with a completion barrier. On stop: stops auto-reload timer, restores original HEAD if in commit scope, tears everything down, removes buffer-local keymaps, and restores original state. Exports `update_gitsigns_base(base_ref)` helper for setting gitsigns base to merge-base (used by both init and scope modules).
+- **`init.lua`** — Plugin lifecycle (`start`/`stop`/`toggle`/`reload`). On start: detects PR via `gh`, fetches changed files, comments, PR commits (for scope selection), and authenticated user (for edit/delete ownership), saves original HEAD SHA, sets up `BufEnter`/`WinClosed`/`GitSignsUpdate` autocmds, integrates with gitsigns (per-buffer base selection), applies diffopt settings, sets buffer-local keymaps (`]c`/`[c`) for comment navigation, and starts auto-reload timer if configured. `reload` re-fetches comments, changed files, viewed states, and PR commits in parallel with a completion barrier. On stop: stops auto-reload timer, restores original HEAD if in commit scope, tears everything down, removes buffer-local keymaps, and restores original state. Exports helpers: `is_new_file(rel_path, changed_files)` checks if a file is newly added in the PR; `apply_gitsigns_base_for_buffer()` sets per-buffer gitsigns base (new files use `base_ref`, existing files use `merge_base_sha` to exclude merge commit noise); `compute_merge_base(base_ref)` computes and caches the merge-base SHA; `update_gitsigns_base(base_ref)` sets global gitsigns base (used for commit scope).
 - **`config.lua`** — Holds `defaults`, merged `opts`, and mutable `state` (active flag, PR metadata, window/buffer handles, comments, pending_comments, pending_review_id, pr_node_id, viewed_files, github_user, namespace ID). `reset_state()` preserves the namespace ID.
 - **`gh.lua`** — Async wrapper around `gh` CLI using `vim.system()`. All GitHub API calls go through `run()`/`run_json()` with callback-based async pattern. Uses `repos/{owner}/{repo}` path templates for REST API (resolved by `gh` automatically) and `gh api graphql` for GraphQL API (used by viewed file management). Supports stdin for JSON payloads (used by `create_review()`). `get_pr_info` detects detached HEAD synchronously via `git symbolic-ref` and uses `get_pr_by_commit` (via `commits/{sha}/pulls` API) directly, avoiding `gh pr view` which may hang without a branch. `parse_pr_from_commit_api` converts the commits API response to the standard PR info format.
 - **`diff.lua`** — Local git operations (sync). Gets repo root, converts paths to repo-relative, retrieves base branch file content via `git show`, generates file diffs, and computes merge-base for gitsigns (avoids merge commit noise). Falls back to `origin/<ref>` when local ref isn't available.
@@ -39,7 +39,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
   - **`ui/comment_browser.lua`** — 3-pane floating comment browser for `FudeReviewListComments`. Left pane: comment list (review + PR-level, time-descending). Right upper: thread display. Right lower: reply/edit/new comment input. Supports reply, edit, delete, new PR comment, jump to file, and refresh. Does not depend on Telescope.
   - **`ui/extmarks.lua`** — Extmark management: `flash_line`, `highlight_comment_lines`, `clear_comment_line_highlight`, `refresh_extmarks`, `clear_extmarks`, `clear_all_extmarks`. Uses lazy `require("fude.comments")` to avoid circular dependencies.
 - **`files.lua`** — Changed files display via Telescope picker (with diff preview and viewed state toggle via `<Tab>`) or quickfix list fallback. Shows GitHub viewed status for each file.
-- **`scope.lua`** — Review scope selection and navigation. Provides a Telescope picker (or `vim.ui.select` fallback) for choosing between full PR scope and individual commit scope, with commit index display (`[1/10]`) and current scope marker (`▶`). Supports next/prev scope navigation (`next_scope`/`prev_scope`), marking commits as reviewed via `<Tab>` in the Telescope picker (tracked locally in `state.reviewed_commits`), and statusline integration (`statusline()`). On commit scope: checks out the commit, fetches commit-specific changed files, updates gitsigns base to `sha^`, and refreshes the diff preview. On full PR scope: restores the original HEAD and re-fetches PR-wide changed files.
+- **`scope.lua`** — Review scope selection and navigation. Provides a Telescope picker (or `vim.ui.select` fallback) for choosing between full PR scope and individual commit scope, with commit index display (`[1/10]`) and current scope marker (`▶`). Supports next/prev scope navigation (`next_scope`/`prev_scope`), marking commits as reviewed via `<Tab>` in the Telescope picker (tracked locally in `state.reviewed_commits`), and statusline integration (`statusline()`). On commit scope: checks out the commit, fetches commit-specific changed files, updates gitsigns base to `sha^` (global), and refreshes the diff preview. On full PR scope: restores the original HEAD, re-fetches PR-wide changed files, and computes merge-base (per-buffer gitsigns base is applied via `GitSignsUpdate` autocmd in init.lua).
 - **`overview.lua`** — PR overview display: fetches extended PR info and issue-level comments, renders in a centered float with keymaps for commenting and refreshing.
 - **`pr.lua`** — Draft PR creation from templates. Searches for `PULL_REQUEST_TEMPLATE` files in standard GitHub locations, shows Telescope picker when multiple templates exist, and opens a two-pane float (title + body) for composing the PR. Submits via `gh pr create --draft`. Independent of review mode (`state.active`).
 
@@ -59,11 +59,11 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 |-------|-----------|----------|
 | `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview |
 | `pr_number` | init | comments, comments/sync, ui, files, scope, overview |
-| `base_ref` | init | preview, scope |
+| `base_ref` | init | init, preview, scope |
 | `head_ref` | init | scope |
-| `merge_base_sha` | init, scope | scope |
+| `merge_base_sha` | init, scope | init, scope |
 | `pr_url` | init | ui |
-| `changed_files` | init, init(reload), scope | files, scope |
+| `changed_files` | init, init(reload), scope | init, files, scope |
 | `comments` | comments/sync | comments, comments/sync, files, ui/extmarks |
 | `comment_map` | comments/sync | comments, comments/sync, ui/extmarks |
 | `pending_comments` | comments, comments/sync | comments, comments/sync, files, ui/extmarks |
@@ -92,7 +92,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 **高リスクフィールド**（多数のモジュールから参照）:
 - `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認
 - `pr_number` — 5モジュールが参照。PR切替時の整合性に注意
-- `changed_files` — scope変更時に上書きされる。files表示との同期に注意
+- `changed_files` — scope変更時に上書きされる。files表示およびgitsignsのper-buffer base判定との同期に注意
 
 ## Quality Rules (MUST follow)
 
