@@ -357,8 +357,9 @@ function M.apply_full_pr_scope()
 			})
 		end
 
-		-- Update gitsigns base (use merge-base to avoid merge commit noise)
-		require("fude.init").update_gitsigns_base(state.base_ref)
+		-- Compute merge_base_sha but don't set global base
+		-- Per-buffer base will be applied via GitSignsUpdate autocmd
+		require("fude.init").compute_merge_base(state.base_ref)
 
 		-- Refresh preview if open
 		M.refresh_preview()

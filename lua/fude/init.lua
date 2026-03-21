@@ -33,9 +33,9 @@ function M.is_new_file(rel_path, changed_files)
 	return false
 end
 
---- Update gitsigns base for the current buffer based on file status.
+--- Apply gitsigns base for the current buffer.
 --- New files use base_ref, existing files use merge_base_sha.
-function M.update_gitsigns_for_buffer()
+function M.apply_gitsigns_base_for_buffer()
 	local state = config.state
 	if not state.active then
 		return
@@ -61,9 +61,26 @@ function M.update_gitsigns_for_buffer()
 	-- Full PR scope: new files use base_ref, existing files use merge_base_sha
 	local is_new = M.is_new_file(rel_path, state.changed_files or {})
 	if is_new then
+		-- New file: use base_ref (file doesn't exist there, so gitsigns shows all lines as added)
 		gitsigns.change_base(state.base_ref, false)
-	else
-		gitsigns.change_base(state.merge_base_sha or state.base_ref, false)
+	elseif state.merge_base_sha then
+		-- Existing file: use merge_base_sha (excludes merge commit noise)
+		gitsigns.change_base(state.merge_base_sha, false)
+	end
+end
+
+--- Compute and cache merge-base for the given ref.
+--- @param base_ref string base branch name
+function M.compute_merge_base(base_ref)
+	local state = config.state
+	if state.merge_base_sha then
+		return
+	end
+
+	local diff_mod = require("fude.diff")
+	local merge_base = diff_mod.get_merge_base(base_ref)
+	if merge_base then
+		state.merge_base_sha = merge_base
 	end
 end
 
@@ -244,15 +261,18 @@ function M.start()
 			end
 		end
 
-		-- Switch gitsigns base: commit parent when detached, merge-base otherwise
-		-- Using merge-base avoids showing noise from merge commits in the diff
+		-- Switch gitsigns base: commit parent when detached
+		-- For full PR scope, we DON'T set global base here.
+		-- Instead, we compute merge_base_sha and apply it per-buffer via GitSignsUpdate.
+		-- This allows new files (which don't exist at merge_base) to work with gitsigns.
 		if started_detached and state.original_head_sha then
 			local has_gitsigns, gitsigns = pcall(require, "gitsigns")
 			if has_gitsigns then
 				gitsigns.change_base(state.original_head_sha .. "^", true)
 			end
 		else
-			M.update_gitsigns_base(state.base_ref)
+			-- Only compute merge_base_sha, don't set global base
+			M.compute_merge_base(state.base_ref)
 		end
 
 		-- Fetch authenticated user for ownership checks
@@ -274,10 +294,22 @@ function M.start()
 				vim.schedule(function()
 					require("fude.ui").refresh_extmarks()
 					M.setup_buf_keymaps()
-					M.update_gitsigns_for_buffer()
 				end)
 			end,
 			desc = "fude.nvim: Update extmarks and keymaps",
+		})
+
+		-- Apply gitsigns base per-buffer after gitsigns attaches
+		-- New files use base_ref, existing files use merge_base_sha
+		vim.api.nvim_create_autocmd("User", {
+			group = state.augroup,
+			pattern = "GitSignsUpdate",
+			callback = function()
+				vim.schedule(function()
+					M.apply_gitsigns_base_for_buffer()
+				end)
+			end,
+			desc = "fude.nvim: Apply gitsigns base per-buffer",
 		})
 
 		vim.api.nvim_create_autocmd("WinResized", {
