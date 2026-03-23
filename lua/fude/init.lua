@@ -705,9 +705,9 @@ function M.restore_gitsigns_base()
 	end
 end
 
---- Toggle gitsigns between PR base and HEAD (working tree state).
---- When toggled to HEAD, gitsigns shows diff against the current working tree.
---- When toggled back, gitsigns shows diff against the PR base.
+--- Toggle gitsigns base between PR base and HEAD.
+--- When toggled to HEAD, gitsigns uses HEAD as the base to show changes in the working tree.
+--- When toggled back, gitsigns uses the PR base as the base to show changes in the working tree.
 function M.toggle_gitsigns()
 	local state = config.state
 	if not state.active then

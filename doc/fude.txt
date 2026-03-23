@@ -295,11 +295,11 @@ Using lazy.nvim: >lua
     Requires an active review session.
 
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
-    Toggle gitsigns between PR base and HEAD (working tree state).
-    By default during review mode, gitsigns shows diff against the
-    PR base (or commit parent when in commit scope). This command
-    temporarily switches gitsigns to show diff against HEAD, which
-    is the normal working tree state.
+    Toggle gitsigns base between PR base and HEAD.
+    By default during review mode, gitsigns uses the PR base (or commit
+    parent when in commit scope) to show changes in the working tree.
+    This command temporarily switches gitsigns to use HEAD as the base,
+    showing uncommitted changes in the working tree.
 
     Execute again to restore the PR base display. Useful for checking
     your local uncommitted changes while in review mode.
