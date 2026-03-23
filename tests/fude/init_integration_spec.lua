@@ -853,5 +853,145 @@ describe("init integration", function()
 
 			vim.api.nvim_buf_delete(bufnr, { force = true })
 		end)
+
+		it("skips when gitsigns_reset is true", function()
+			config.state.active = true
+			config.state.base_ref = "main"
+			config.state.merge_base_sha = "abc123"
+			config.state.gitsigns_reset = true
+			config.state.changed_files = {
+				{ path = "lua/fude/init.lua", status = "modified" },
+			}
+
+			diff_mock.to_repo_relative = function()
+				return "lua/fude/init.lua"
+			end
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(0, #change_base_calls, "Should not call change_base when gitsigns_reset is true")
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+		end)
+	end)
+
+	describe("toggle_gitsigns", function()
+		local gitsigns_mock
+		local reset_base_calls
+		local change_base_calls
+
+		before_each(function()
+			reset_base_calls = {}
+			change_base_calls = {}
+			gitsigns_mock = {
+				change_base = function(base, global)
+					table.insert(change_base_calls, { base = base, global = global })
+				end,
+				reset_base = function(global)
+					table.insert(reset_base_calls, { global = global })
+				end,
+			}
+			package.loaded["gitsigns"] = gitsigns_mock
+		end)
+
+		after_each(function()
+			package.loaded["gitsigns"] = nil
+		end)
+
+		it("does nothing when not active", function()
+			config.state.active = false
+
+			init.toggle_gitsigns()
+
+			assert.equals(0, #reset_base_calls)
+			assert.equals(0, #change_base_calls)
+		end)
+
+		it("toggles from PR base to HEAD", function()
+			config.state.active = true
+			config.state.gitsigns_reset = false
+			config.state.base_ref = "main"
+
+			init.toggle_gitsigns()
+
+			assert.is_true(config.state.gitsigns_reset)
+			assert.equals(1, #reset_base_calls)
+			assert.equals(true, reset_base_calls[1].global)
+		end)
+
+		it("toggles from HEAD back to PR base (full_pr scope)", function()
+			config.state.active = true
+			config.state.gitsigns_reset = true
+			config.state.scope = "full_pr"
+			config.state.base_ref = "main"
+
+			init.toggle_gitsigns()
+
+			assert.is_false(config.state.gitsigns_reset)
+			-- restore_gitsigns_base calls reset_base for full_pr scope
+			assert.equals(1, #reset_base_calls)
+		end)
+
+		it("toggles from HEAD back to PR base (commit scope)", function()
+			config.state.active = true
+			config.state.gitsigns_reset = true
+			config.state.scope = "commit"
+			config.state.scope_commit_sha = "abc123"
+
+			init.toggle_gitsigns()
+
+			assert.is_false(config.state.gitsigns_reset)
+			-- restore_gitsigns_base calls change_base(sha^, true) for commit scope
+			assert.equals(1, #change_base_calls)
+			assert.equals("abc123^", change_base_calls[1].base)
+			assert.equals(true, change_base_calls[1].global)
+		end)
+	end)
+
+	describe("restore_gitsigns_base", function()
+		local gitsigns_mock
+		local reset_base_calls
+		local change_base_calls
+
+		before_each(function()
+			reset_base_calls = {}
+			change_base_calls = {}
+			gitsigns_mock = {
+				change_base = function(base, global)
+					table.insert(change_base_calls, { base = base, global = global })
+				end,
+				reset_base = function(global)
+					table.insert(reset_base_calls, { global = global })
+				end,
+			}
+			package.loaded["gitsigns"] = gitsigns_mock
+		end)
+
+		after_each(function()
+			package.loaded["gitsigns"] = nil
+		end)
+
+		it("sets commit^ base for commit scope", function()
+			config.state.scope = "commit"
+			config.state.scope_commit_sha = "def456"
+
+			init.restore_gitsigns_base()
+
+			assert.equals(1, #change_base_calls)
+			assert.equals("def456^", change_base_calls[1].base)
+			assert.equals(true, change_base_calls[1].global)
+		end)
+
+		it("resets base for full_pr scope", function()
+			config.state.scope = "full_pr"
+			config.state.base_ref = "main"
+
+			init.restore_gitsigns_base()
+
+			assert.equals(1, #reset_base_calls)
+			assert.equals(true, reset_base_calls[1].global)
+		end)
 	end)
 end)

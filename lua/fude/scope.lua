@@ -346,6 +346,7 @@ function M.apply_full_pr_scope()
 		state.scope = "full_pr"
 		state.scope_commit_sha = nil
 		state.scope_commit_index = nil
+		state.gitsigns_reset = false
 		state.changed_files = {}
 		for _, f in ipairs(files) do
 			table.insert(state.changed_files, {
@@ -439,6 +440,7 @@ function M.apply_commit_scope(sha)
 		state.scope = "commit"
 		state.scope_commit_sha = sha
 		state.scope_commit_index = M.find_commit_index(state.pr_commits, sha)
+		state.gitsigns_reset = false
 		state.changed_files = {}
 		for _, f in ipairs(files) do
 			table.insert(state.changed_files, {

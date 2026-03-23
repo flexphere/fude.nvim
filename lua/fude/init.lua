@@ -42,6 +42,11 @@ function M.apply_gitsigns_base_for_buffer(bufnr)
 		return
 	end
 
+	-- Skip if gitsigns is temporarily reset to HEAD
+	if state.gitsigns_reset then
+		return
+	end
+
 	local has_gitsigns, gitsigns = pcall(require, "gitsigns")
 	if not has_gitsigns then
 		return
@@ -674,6 +679,59 @@ end
 --- @return boolean
 function M.is_active()
 	return config.state.active
+end
+
+--- Restore gitsigns base to PR base (undoing the reset to HEAD).
+--- For commit scope: sets base to commit^.
+--- For full PR scope: resets global base and applies per-buffer bases.
+function M.restore_gitsigns_base()
+	local state = config.state
+	local has_gitsigns, gitsigns = pcall(require, "gitsigns")
+	if not has_gitsigns then
+		return
+	end
+
+	if state.scope == "commit" and state.scope_commit_sha then
+		-- Commit scope: set global base to commit^
+		gitsigns.change_base(state.scope_commit_sha .. "^", true)
+	else
+		-- Full PR scope: reset global base and apply per-buffer bases
+		gitsigns.reset_base(true)
+		for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].buftype == "" then
+				M.apply_gitsigns_base_for_buffer(bufnr)
+			end
+		end
+	end
+end
+
+--- Toggle gitsigns between PR base and HEAD (working tree state).
+--- When toggled to HEAD, gitsigns shows diff against the current working tree.
+--- When toggled back, gitsigns shows diff against the PR base.
+function M.toggle_gitsigns()
+	local state = config.state
+	if not state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
+	local has_gitsigns, gitsigns = pcall(require, "gitsigns")
+	if not has_gitsigns then
+		vim.notify("fude.nvim: gitsigns not found", vim.log.levels.ERROR)
+		return
+	end
+
+	if state.gitsigns_reset then
+		-- Restore PR base
+		state.gitsigns_reset = false
+		M.restore_gitsigns_base()
+		vim.notify("fude.nvim: Gitsigns base → PR", vim.log.levels.INFO)
+	else
+		-- Reset to HEAD
+		state.gitsigns_reset = true
+		gitsigns.reset_base(true)
+		vim.notify("fude.nvim: Gitsigns base → HEAD", vim.log.levels.INFO)
+	end
 end
 
 return M
