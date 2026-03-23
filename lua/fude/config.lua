@@ -119,6 +119,7 @@ M.state = {
 	outdated_map = {}, -- { [comment_id] = { is_outdated = true, original_line = N } }
 	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
 	reloading = false, -- Guard flag to prevent concurrent reloads
+	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
 }
 
 M.opts = {}
@@ -170,6 +171,7 @@ function M.reset_state()
 		outdated_map = {},
 		reload_timer = nil,
 		reloading = false,
+		gitsigns_reset = false,
 	}
 end
 
