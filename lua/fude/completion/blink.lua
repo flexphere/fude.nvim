@@ -29,8 +29,10 @@ function source:get_completions(ctx, callback)
 		end)
 	elseif context == "commit" then
 		core.fetch_commits(function(items)
+			local total = #items
 			for idx, item in ipairs(items) do
-				item.score_offset = 1000 - idx
+				-- Higher score_offset = higher priority; newest commits are first in items
+				item.score_offset = total - idx + 1
 			end
 			callback({ items = items })
 		end)

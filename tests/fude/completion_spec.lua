@@ -47,7 +47,7 @@ describe("completion.get_context", function()
 end)
 
 describe("completion.build_commit_items", function()
-	it("builds items from commit entries", function()
+	it("builds items from commit entries in newest-first order", function()
 		local commits = {
 			{
 				sha = "abc1234567890abcdef1234567890abcdef123456",
@@ -67,14 +67,15 @@ describe("completion.build_commit_items", function()
 		local items = completion.build_commit_items(commits)
 		assert.are.equal(2, #items)
 
-		assert.are.equal("[1/2] abc1234 feat: add feature (Alice)", items[1].label)
-		assert.are.equal("abc1234", items[1].insertText)
-		assert.are.equal("_[1/2] abc1234 feat: add feature (Alice)", items[1].filterText)
+		-- Items are ordered newest-first: [2/2] comes before [1/2]
+		assert.are.equal("[2/2] def5678 fix: bug fix (Bob)", items[1].label)
+		assert.are.equal("def5678", items[1].insertText)
+		assert.are.equal("_", items[1].filterText)
 		assert.are.equal("00001", items[1].sortText)
 		assert.are.equal(15, items[1].kind)
 
-		assert.are.equal("[2/2] def5678 fix: bug fix (Bob)", items[2].label)
-		assert.are.equal("def5678", items[2].insertText)
+		assert.are.equal("[1/2] abc1234 feat: add feature (Alice)", items[2].label)
+		assert.are.equal("abc1234", items[2].insertText)
 		assert.are.equal("00002", items[2].sortText)
 	end)
 

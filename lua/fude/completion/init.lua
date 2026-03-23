@@ -112,18 +112,22 @@ function M.get_context(line_before_cursor)
 end
 
 --- Build completion items from PR commit entries.
+--- Items are ordered newest-first for display in completion menus.
 --- @param commit_entries table[] array of { sha, short_sha, message, author_name, date }
---- @return table[] items completion items
+--- @return table[] items completion items (newest first)
 function M.build_commit_items(commit_entries)
 	local items = {}
 	local total = #commit_entries
-	for i, c in ipairs(commit_entries) do
+	-- Build items in reverse order (newest first) for completion display
+	for i = total, 1, -1 do
+		local c = commit_entries[i]
+		local idx = #items + 1
 		local display = string.format("[%d/%d] %s %s (%s)", i, total, c.short_sha, c.message, c.author_name)
 		table.insert(items, {
 			label = display,
 			insertText = c.short_sha,
-			filterText = "_" .. display,
-			sortText = string.format("%05d", i),
+			filterText = "_",
+			sortText = string.format("%05d", idx),
 			kind = 15, -- Reference
 			documentation = {
 				kind = "markdown",
