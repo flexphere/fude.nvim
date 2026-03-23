@@ -252,3 +252,125 @@ describe("draft management", function()
 		assert.are.same({ "new body" }, d.body_lines)
 	end)
 end)
+
+describe("edit", function()
+	local gh = require("fude.gh")
+	local config = require("fude.config")
+	local captured_pr_number
+	local captured_title_lines
+	local captured_body_lines
+	local captured_opts
+
+	before_each(function()
+		captured_pr_number = nil
+		captured_title_lines = nil
+		captured_body_lines = nil
+		captured_opts = nil
+		config.reset_state()
+
+		-- Mock open_pr_float to capture arguments
+		helpers.mock(pr, "open_pr_float", function(title_lines, body_lines, opts)
+			captured_title_lines = title_lines
+			captured_body_lines = body_lines
+			captured_opts = opts
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("uses state.pr_number when review mode is active", function()
+		config.state.active = true
+		config.state.pr_number = 42
+
+		helpers.mock(gh, "get_pr_title_body", function(pr_num, callback)
+			captured_pr_number = pr_num
+			vim.schedule(function()
+				callback(nil, { title = "PR Title", body = "PR Body" })
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_pr_number ~= nil
+		end)
+
+		assert.are.equal(42, captured_pr_number)
+	end)
+
+	it("uses nil pr_number when review mode is inactive", function()
+		config.state.active = false
+		config.state.pr_number = nil
+
+		helpers.mock(gh, "get_pr_title_body", function(pr_num, callback)
+			captured_pr_number = pr_num
+			vim.schedule(function()
+				callback(nil, { title = "PR Title", body = "PR Body" })
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_title_lines ~= nil
+		end)
+
+		assert.is_nil(captured_pr_number)
+	end)
+
+	it("opens float with edit mode and correct content", function()
+		config.state.active = false
+
+		helpers.mock(gh, "get_pr_title_body", function(_, callback)
+			vim.schedule(function()
+				callback(nil, { title = "Existing Title", body = "Line 1\nLine 2" })
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		assert.are.same({ "Existing Title" }, captured_title_lines)
+		assert.are.same({ "Line 1", "Line 2" }, captured_body_lines)
+		assert.are.equal("edit", captured_opts.mode)
+		assert.are.equal(" <CR> update | q cancel ", captured_opts.footer)
+		assert.is_not_nil(captured_opts.on_submit)
+	end)
+
+	it("on_submit calls gh.edit_pr with correct arguments", function()
+		config.state.active = true
+		config.state.pr_number = 123
+
+		local edit_called_with = nil
+
+		helpers.mock(gh, "get_pr_title_body", function(_, callback)
+			vim.schedule(function()
+				callback(nil, { title = "Original", body = "Body" })
+			end)
+		end)
+
+		helpers.mock(gh, "edit_pr", function(pr_num, title, body, callback)
+			edit_called_with = { pr_number = pr_num, title = title, body = body }
+			vim.schedule(function()
+				callback(nil)
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil and captured_opts.on_submit ~= nil
+		end)
+
+		-- Simulate submit
+		captured_opts.on_submit("New Title", "New Body")
+		helpers.wait_for(function()
+			return edit_called_with ~= nil
+		end)
+
+		assert.are.equal(123, edit_called_with.pr_number)
+		assert.are.equal("New Title", edit_called_with.title)
+		assert.are.equal("New Body", edit_called_with.body)
+	end)
+end)

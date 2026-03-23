@@ -631,6 +631,37 @@ function M.update_comment(comment_id, body, callback)
 	}, callback)
 end
 
+--- Get PR title and body for editing.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.get_pr_title_body(pr_number, callback)
+	local args = { "pr", "view", "--json", "title,body" }
+	if pr_number then
+		table.insert(args, 3, tostring(pr_number))
+	end
+	M.run_json(args, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		callback(nil, { title = data.title or "", body = data.body or "" })
+	end)
+end
+
+--- Edit PR title and body.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param title string
+--- @param body string
+--- @param callback fun(err: string|nil)
+function M.edit_pr(pr_number, title, body, callback)
+	local args = { "pr", "edit", "--title", title, "--body", body }
+	if pr_number then
+		table.insert(args, 3, tostring(pr_number))
+	end
+	M.run(args, function(err, _)
+		callback(err)
+	end)
+end
+
 --- Delete a review comment.
 --- @param comment_id number
 --- @param callback fun(err: string|nil)

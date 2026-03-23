@@ -256,6 +256,21 @@ Using lazy.nvim: >lua
     Does not require an active review session. Works in any git
     repository with a branch that can create a PR.
 
+:FudeEditPR                                              *:FudeEditPR*
+    Edit the current PR's title and body. Opens a two-pane floating
+    window similar to |:FudeCreatePR|:
+    - Upper pane: PR title (editable)
+    - Lower pane: PR body (editable, Markdown)
+
+    Press `<Tab>` to switch between panes.
+    Press `<CR>` to update the PR.
+    Press `q` to cancel.
+
+    When review mode is active, uses the PR from the current session.
+    Otherwise, detects the PR from the current branch using `gh pr view`.
+
+    Does not require an active review session.
+
 :FudeReviewSubmit                                    *:FudeReviewSubmit*
     Submit all pending comments as a single GitHub review. This allows
     you to batch comments together instead of posting them individually.

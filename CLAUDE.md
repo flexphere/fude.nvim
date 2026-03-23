@@ -42,7 +42,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 - **`files.lua`** — Changed files display via Telescope picker (with diff preview and viewed state toggle via `<Tab>`) or quickfix list fallback. Shows GitHub viewed status for each file.
 - **`scope.lua`** — Review scope selection and navigation. Provides a Telescope picker (or `vim.ui.select` fallback) for choosing between full PR scope and individual commit scope, with commit index display (`[1/10]`) and current scope marker (`▶`). Supports next/prev scope navigation (`next_scope`/`prev_scope`), marking commits as reviewed via `<Tab>` in the Telescope picker (tracked locally in `state.reviewed_commits`), and statusline integration (`statusline()`). On commit scope: checks out the commit, fetches commit-specific changed files, updates gitsigns base to `sha^` (global), and refreshes the diff preview. On full PR scope: restores the original HEAD, re-fetches PR-wide changed files, and computes merge-base (per-buffer gitsigns base is applied via `GitSignsUpdate` autocmd in init.lua).
 - **`overview.lua`** — PR overview display: fetches extended PR info and issue-level comments, renders in a centered float with keymaps for commenting and refreshing.
-- **`pr.lua`** — Draft PR creation from templates. Searches for `PULL_REQUEST_TEMPLATE` files in standard GitHub locations, shows Telescope picker when multiple templates exist, and opens a two-pane float (title + body) for composing the PR. Submits via `gh pr create --draft`. Independent of review mode (`state.active`).
+- **`pr.lua`** — PR creation and editing. `M.create()` creates draft PRs from templates: searches for `PULL_REQUEST_TEMPLATE` files in standard GitHub locations, shows Telescope picker when multiple templates exist, and opens a two-pane float (title + body) for composing the PR. Submits via `gh pr create --draft`. `M.edit()` edits existing PR title/body: uses `state.pr_number` when review mode is active, otherwise detects via `gh pr view`. Both functions are independent of review mode (`state.active`).
 
 ### Key Patterns
 
@@ -59,7 +59,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
 | `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel |
-| `pr_number` | init | comments, comments/sync, ui, files, scope, overview |
+| `pr_number` | init | comments, comments/sync, ui, files, scope, overview, pr |
 | `base_ref` | init | init, preview, scope |
 | `head_ref` | init | scope |
 | `merge_base_sha` | init, scope | init, scope |
