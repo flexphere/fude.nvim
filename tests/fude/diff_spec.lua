@@ -76,6 +76,38 @@ describe("make_relative", function()
 	end)
 end)
 
+describe("to_repo_relative", function()
+	local original_system
+
+	before_each(function()
+		original_system = vim.system
+		vim.system = function(_cmd, _opts)
+			return {
+				wait = function()
+					return { code = 0, stdout = "/repo\n" }
+				end,
+			}
+		end
+	end)
+
+	after_each(function()
+		vim.system = original_system
+	end)
+
+	it("returns nil for empty string filepath", function()
+		assert.is_nil(diff.to_repo_relative(""))
+	end)
+
+	it("returns nil for nil filepath", function()
+		assert.is_nil(diff.to_repo_relative(nil))
+	end)
+
+	it("returns nil when make_relative yields empty string (repo root path)", function()
+		-- fnamemodify("/repo/", ":p") = "/repo/" → make_relative("/repo/", "/repo") = ""
+		assert.is_nil(diff.to_repo_relative("/repo/"))
+	end)
+end)
+
 describe("get_merge_base", function()
 	local original_system
 

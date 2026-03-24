@@ -22,15 +22,22 @@ function M.make_relative(filepath, root)
 end
 
 --- Convert an absolute file path to a repo-relative path.
---- @param filepath string absolute file path
+--- @param filepath string|nil absolute file path
 --- @return string|nil relative path
 function M.to_repo_relative(filepath)
+	if not filepath or filepath == "" then
+		return nil
+	end
 	local root = M.get_repo_root()
 	if not root then
 		return nil
 	end
 	filepath = vim.fn.fnamemodify(filepath, ":p")
-	return M.make_relative(filepath, root)
+	local rel = M.make_relative(filepath, root)
+	if not rel or rel == "" then
+		return nil
+	end
+	return rel
 end
 
 --- Get file content from a specific git ref.
