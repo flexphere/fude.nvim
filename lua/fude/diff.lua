@@ -22,7 +22,7 @@ function M.make_relative(filepath, root)
 end
 
 --- Convert an absolute file path to a repo-relative path.
---- @param filepath string absolute file path
+--- @param filepath string|nil absolute file path
 --- @return string|nil relative path
 function M.to_repo_relative(filepath)
 	if not filepath or filepath == "" then
