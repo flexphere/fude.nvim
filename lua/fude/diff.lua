@@ -25,6 +25,9 @@ end
 --- @param filepath string absolute file path
 --- @return string|nil relative path
 function M.to_repo_relative(filepath)
+	if not filepath or filepath == "" then
+		return nil
+	end
 	local root = M.get_repo_root()
 	if not root then
 		return nil
