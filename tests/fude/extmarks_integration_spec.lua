@@ -153,6 +153,14 @@ describe("extmarks integration", function()
 			-- The before_each mock always returns nil for unknown paths, masking the bug.
 			helpers.restore_all()
 
+			-- Mock get_repo_root to return cwd so the test is deterministic.
+			-- Without the fix: fnamemodify("",":p") = cwd+"/" → make_relative returns ""
+			-- (truthy) → namespace cleared. With the fix: "" guard returns nil → preserved.
+			local diff_mod = require("fude.diff")
+			helpers.mock(diff_mod, "get_repo_root", function()
+				return vim.fn.getcwd()
+			end)
+
 			-- Simulate overview floating window buffer (unnamed, buftype=nofile)
 			local scratch_buf = vim.api.nvim_create_buf(false, true)
 			vim.bo[scratch_buf].buftype = "nofile"
