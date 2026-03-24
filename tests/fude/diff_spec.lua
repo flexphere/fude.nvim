@@ -101,6 +101,11 @@ describe("to_repo_relative", function()
 	it("returns nil for nil filepath", function()
 		assert.is_nil(diff.to_repo_relative(nil))
 	end)
+
+	it("returns nil when make_relative yields empty string (repo root path)", function()
+		-- fnamemodify("/repo/", ":p") = "/repo/" → make_relative("/repo/", "/repo") = ""
+		assert.is_nil(diff.to_repo_relative("/repo/"))
+	end)
 end)
 
 describe("get_merge_base", function()

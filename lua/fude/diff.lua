@@ -33,7 +33,11 @@ function M.to_repo_relative(filepath)
 		return nil
 	end
 	filepath = vim.fn.fnamemodify(filepath, ":p")
-	return M.make_relative(filepath, root)
+	local rel = M.make_relative(filepath, root)
+	if not rel or rel == "" then
+		return nil
+	end
+	return rel
 end
 
 --- Get file content from a specific git ref.
