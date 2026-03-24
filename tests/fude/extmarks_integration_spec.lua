@@ -148,6 +148,35 @@ describe("extmarks integration", function()
 			assert.is_true(found_virt_lines, "Should have virt_lines on line 2 in inline mode")
 		end)
 
+		it("does not clear extmarks on unnamed scratch buffers", function()
+			-- Simulate overview floating window buffer (unnamed, buftype=nofile)
+			local scratch_buf = vim.api.nvim_create_buf(false, true)
+			vim.bo[scratch_buf].buftype = "nofile"
+
+			-- Add extmarks manually (like overview's CI check highlights)
+			local ns = config.state.ns_id
+			vim.api.nvim_buf_set_lines(scratch_buf, 0, -1, false, { "line1", "line2", "line3" })
+			vim.api.nvim_buf_set_extmark(scratch_buf, ns, 0, 0, {
+				line_hl_group = "DiagnosticOk",
+			})
+			vim.api.nvim_buf_set_extmark(scratch_buf, ns, 1, 0, {
+				line_hl_group = "DiagnosticError",
+			})
+
+			-- Switch to the scratch buffer (simulates Tab to right pane)
+			vim.api.nvim_set_current_buf(scratch_buf)
+			config.state.active = true
+
+			extmarks.refresh_extmarks()
+
+			-- Extmarks should still be present
+			local marks = vim.api.nvim_buf_get_extmarks(scratch_buf, ns, 0, -1, {})
+			assert.are.equal(2, #marks, "Extmarks on scratch buffer should not be cleared by refresh_extmarks")
+
+			-- Cleanup
+			pcall(vim.api.nvim_buf_delete, scratch_buf, { force = true })
+		end)
+
 		it("marks pending comments with is_pending flag in inline mode", function()
 			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
 			vim.api.nvim_set_current_buf(buf)
