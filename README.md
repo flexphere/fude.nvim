@@ -241,6 +241,10 @@ require("cmp").register_source("fude", require("fude.completion.cmp").new())
 
 Then add `{ name = "fude" }` to your nvim-cmp sources.
 
+## Known Issues
+
+- **nvim-cmp: `_commit` completion order** — nvim-cmp sorts candidates by its own algorithm, so `_commit` completion may not display in date-descending order as intended. blink.cmp preserves the intended order. ([#98](https://github.com/flexphere/fude.nvim/issues/98))
+
 ## License
 
 MIT
