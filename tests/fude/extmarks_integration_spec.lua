@@ -149,6 +149,10 @@ describe("extmarks integration", function()
 		end)
 
 		it("does not clear extmarks on unnamed scratch buffers", function()
+			-- Restore real to_repo_relative so the empty filepath guard is actually tested.
+			-- The before_each mock always returns nil for unknown paths, masking the bug.
+			helpers.restore_all()
+
 			-- Simulate overview floating window buffer (unnamed, buftype=nofile)
 			local scratch_buf = vim.api.nvim_create_buf(false, true)
 			vim.bo[scratch_buf].buftype = "nofile"
