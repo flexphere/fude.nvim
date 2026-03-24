@@ -63,14 +63,39 @@ vim.api.nvim_create_user_command("FudeReviewUnviewed", function()
 	require("fude").unmark_viewed()
 end, { desc = "Unmark current file as viewed" })
 
-vim.api.nvim_create_user_command("FudeReviewBrowse", function()
+--- Get PR URL, using cached state if available or fetching via gh CLI.
+--- @param callback fun(url: string)
+local function get_pr_url(callback)
 	local state = require("fude.config").state
-	if not state.active or not state.pr_url then
-		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+	if state.pr_url then
+		callback(state.pr_url)
 		return
 	end
-	vim.ui.open(state.pr_url)
+	require("fude.gh").get_pr_info(function(err, data)
+		if err then
+			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+			return
+		end
+		if not data or not data.url then
+			vim.notify("fude.nvim: No PR found for current branch", vim.log.levels.WARN)
+			return
+		end
+		callback(data.url)
+	end)
+end
+
+vim.api.nvim_create_user_command("FudeOpenPRURL", function()
+	get_pr_url(function(url)
+		vim.ui.open(url)
+	end)
 end, { desc = "Open PR in browser" })
+
+vim.api.nvim_create_user_command("FudeCopyPRURL", function()
+	get_pr_url(function(url)
+		vim.fn.setreg("+", url)
+		vim.notify("fude.nvim: Copied " .. url, vim.log.levels.INFO)
+	end)
+end, { desc = "Copy PR URL to clipboard" })
 
 vim.api.nvim_create_user_command("FudeReviewSubmit", function()
 	local state = require("fude.config").state

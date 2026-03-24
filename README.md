@@ -44,7 +44,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
-    "FudeReviewOverview", "FudeReviewSubmit", "FudeReviewBrowse",
+    "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeCreatePR",
   },
   keys = {
@@ -59,7 +59,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>ef", "<cmd>FudeReviewFiles<cr>", desc = "Review: Changed files" },
     { "<leader>eo", "<cmd>FudeReviewOverview<cr>", desc = "Review: PR Overview" },
     { "<leader>ed", "<cmd>FudeReviewDiff<cr>", desc = "Review: Toggle diff" },
-    { "<leader>eb", "<cmd>FudeReviewBrowse<cr>", desc = "Review: Open in browser" },
+    { "<leader>eb", "<cmd>FudeOpenPRURL<cr>", desc = "Open PR in browser" },
+    { "<leader>ey", "<cmd>FudeCopyPRURL<cr>", desc = "Copy PR URL" },
     { "<leader>eC", "<cmd>FudeReviewScope<cr>", desc = "Review: Select scope" },
     { "<leader>e]", "<cmd>FudeReviewScopeNext<cr>", desc = "Review: Next scope" },
     { "<leader>e[", "<cmd>FudeReviewScopePrev<cr>", desc = "Review: Prev scope" },
@@ -111,7 +112,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
 | `:FudeReviewViewed` | Mark current file as viewed on GitHub |
 | `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
-| `:FudeReviewBrowse` | Open PR in browser |
+| `:FudeOpenPRURL` | Open PR in browser |
+| `:FudeCopyPRURL` | Copy PR URL to clipboard |
 | `:FudeReviewReload` | Reload review data from GitHub |
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |

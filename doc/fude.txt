@@ -225,9 +225,15 @@ Using lazy.nvim: >lua
     viewed status for the current file.
     Requires an active review session.
 
-:FudeReviewBrowse                                    *:FudeReviewBrowse*
-    Open the PR in the browser using the cached PR URL.
-    Requires an active review session.
+:FudeOpenPRURL                                          *:FudeOpenPRURL*
+    Open the PR in the browser. Uses the cached PR URL when a review
+    session is active. Otherwise, detects the PR from the current
+    branch via `gh` CLI.
+
+:FudeCopyPRURL                                          *:FudeCopyPRURL*
+    Copy the PR URL to the system clipboard (`+` register). Uses the
+    cached PR URL when a review session is active. Otherwise, detects
+    the PR from the current branch via `gh` CLI.
 
 :FudeCreatePR                                            *:FudeCreatePR*
     Create a draft PR from a template. Searches for GitHub PR templates
@@ -329,6 +335,7 @@ Suggested mappings:
   `<leader>eo`  PR overview
   `<leader>ed`  Toggle diff preview
   `<leader>eb`  Open PR in browser
+  `<leader>ey`  Copy PR URL to clipboard
   `<leader>eC`  Select review scope (commit or full PR)
   `<leader>e]`  Next review scope
   `<leader>e[`  Previous review scope
