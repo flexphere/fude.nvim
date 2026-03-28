@@ -177,7 +177,10 @@ function M.close()
 	end
 
 	if panel.win and vim.api.nvim_win_is_valid(panel.win) then
-		vim.cmd("noautocmd call nvim_win_close(" .. panel.win .. ", v:true)")
+		local ok, err = pcall(vim.cmd, "noautocmd call nvim_win_close(" .. panel.win .. ", v:true)")
+		if not ok and type(err) == "string" and err:find("Cannot close last window") then
+			pcall(vim.cmd, "enew")
+		end
 	end
 
 	state.sidepanel = nil
