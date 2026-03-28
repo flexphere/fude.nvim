@@ -48,7 +48,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 - **Async flow**: GitHub API calls use `vim.system()` callbacks with `vim.schedule()` for safe UI updates.
 - **State management**: All mutable state lives in `config.state`. Modules read/write this shared table directly.
-- **Namespace**: A single Neovim namespace `"fude"` (created in `config.setup()`) is used for all extmarks across the plugin.
+- **Namespace**: The main Neovim namespace `"fude"` (created in `config.setup()`) is used for comment extmarks. Dedicated namespaces are used where isolation is needed: `"fude_sidepanel"` (sidepanel highlights, avoids `refresh_extmarks` clearing), `"fude_inline_hint"` (cursor-following hints), `"fude_refs"` (clickable references), `"fude_scope_preview"` (Telescope scope preview).
 - **Window management**: Preview uses `noautocmd` commands to avoid triggering the plugin's own `BufEnter` handler during window operations.
 - **Pure function extraction**: Each module exports testable pure functions separately from side-effect code. Naming convention: `build_*`, `find_*`, `parse_*`, `format_*`, `should_*`, `make_*`, `calculate_*`. These functions take all inputs as parameters and return data without reading `config.state` or calling vim API.
 
