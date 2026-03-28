@@ -80,6 +80,11 @@ M.defaults = {
 	-- Function receives repo-relative path (e.g. "lua/fude/init.lua") and returns formatted string.
 	-- nil = display repo-relative path as-is (default).
 	format_path = nil,
+	-- Side panel options
+	sidepanel = {
+		width = 40, -- Panel width in columns
+		position = "left", -- "left" or "right"
+	},
 	-- Callback invoked after review start completes (all data fetched).
 	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }
 	on_review_start = nil,
@@ -120,6 +125,7 @@ M.state = {
 	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
 	reloading = false, -- Guard flag to prevent concurrent reloads
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
+	sidepanel = nil, -- { win, buf, scope_entries, file_entries, section_map, augroup }
 }
 
 M.opts = {}
@@ -172,6 +178,7 @@ function M.reset_state()
 		reload_timer = nil,
 		reloading = false,
 		gitsigns_reset = false,
+		sidepanel = nil,
 	}
 end
 

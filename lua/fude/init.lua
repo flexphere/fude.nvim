@@ -421,6 +421,7 @@ function M.stop()
 		vim.api.nvim_del_augroup_by_id(state.augroup)
 	end
 
+	require("fude.ui.sidepanel").close()
 	require("fude.preview").close_preview()
 	require("fude.ui").clear_all_extmarks()
 	require("fude.ui").teardown_inline_hint_autocmd()
@@ -570,6 +571,8 @@ function M.reload(silent)
 			config.state.scope_commit_index =
 				require("fude.scope").find_commit_index(config.state.pr_commits, config.state.scope_commit_sha)
 		end
+		-- Refresh sidepanel if open
+		require("fude.ui.sidepanel").refresh()
 		if not silent then
 			vim.notify("fude.nvim: Reloaded review data", vim.log.levels.INFO)
 		end
