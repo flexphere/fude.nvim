@@ -31,6 +31,7 @@ in the editor. It provides:
 - Clickable GitHub references (#123) and URLs in floating windows
 - @user, #issue, and _commit completion in comment windows (blink.cmp / nvim-cmp)
 - Mark files as viewed/unviewed (synced with GitHub)
+- Toggleable side panel showing review scope and changed files
 - Gitsigns integration for diff base switching
 
 ==============================================================================
@@ -300,6 +301,31 @@ Using lazy.nvim: >lua
     names. The hint disappears when the cursor moves to a non-comment line.
     Requires an active review session.
 
+:FudeReviewPanel                                  *:FudeReviewPanel*
+    Toggle the review side panel. The panel is a sidebar split window
+    that shows two sections:
+
+    Review Scope:~
+      Lists the PR's commit history with a "Full PR" option at the top.
+      The currently active scope is marked with `▶`. Reviewed commits
+      show a checkmark indicator.
+
+    Files:~
+      Lists all changed files in the current scope with status icons,
+      additions/deletions counts, and viewed state.
+
+    Keymaps (panel):~
+      `<CR>`    Select scope entry or open file
+      `<Tab>`   Toggle reviewed (scope) / viewed (file)
+      `R`       Reload review data from GitHub
+      `q`       Close panel
+
+    When opening a file with `<CR>`, the cursor moves to a non-panel
+    window before opening the file. The panel stays open.
+    The panel auto-refreshes when the scope changes, data is reloaded,
+    or viewed/reviewed state is toggled.
+    Configurable via `sidepanel` options. Requires an active session.
+
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
     Toggle gitsigns base between PR base and HEAD.
     By default during review mode, gitsigns uses the PR base (or commit
@@ -339,6 +365,7 @@ Suggested mappings:
   `<leader>eC`  Select review scope (commit or full PR)
   `<leader>e]`  Next review scope
   `<leader>e[`  Previous review scope
+  `<leader>ep`  Toggle review side panel
   `<leader>el`  List all review comments
   `<leader>eR`  Reload review data
   `<leader>em`  Mark current file as viewed
@@ -420,6 +447,11 @@ Default configuration: >lua
       enabled = false,   -- Disabled by default
       interval = 30,     -- Seconds (minimum 10)
       notify = false,    -- Notify after auto-reload (true to show)
+    },
+    -- Side panel options
+    sidepanel = {
+      width = 40,       -- Panel width in columns (minimum 20)
+      position = "left", -- "left" or "right"
     },
     -- Outdated comment display options
     outdated = {
@@ -558,6 +590,13 @@ Options:
 `date_format`       strftime format for timestamps (default: "%Y/%m/%d %H:%M").
                   Timestamps from GitHub (UTC) are converted to the system
                   timezone before formatting.
+
+`sidepanel.width`   Width of the side panel in columns (default: 40).
+                  Minimum effective width is 20 columns.
+
+`sidepanel.position`
+                  Side of the editor to open the panel: "left" or "right"
+                  (default: "left").
 
 `outdated.show`     Show outdated comments (default: true).
                   Outdated comments are those whose position in the code

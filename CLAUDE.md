@@ -37,6 +37,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 - **`ui.lua`** — Facade module re-exporting `ui/format.lua` and `ui/extmarks.lua`. Contains floating window UI: comment input editor, comment viewer, PR overview window, reply window, edit window, and review event selector. `require("fude.ui")` is the public interface.
   - **`ui/format.lua`** — Pure format/calculation functions with no state or vim API side effects: `calculate_float_dimensions`, `format_comments_for_display`, `normalize_check`, `format_check_status`, `deduplicate_checks`, `sort_checks`, `build_checks_summary`, `format_review_status`, `build_reviewers_list`, `build_reviewers_summary`, `calculate_overview_layout`, `calculate_comments_height`, `calculate_reply_window_dimensions`, `format_reply_comments_for_display`, `build_overview_left_lines`, `build_overview_right_lines`, `calculate_comment_browser_layout`, `format_comment_browser_list`, `format_comment_browser_thread`, `parse_markdown_line`, `build_highlighted_chunks`, `apply_markdown_highlight_to_line`.
   - **`ui/comment_browser.lua`** — 3-pane floating comment browser for `FudeReviewListComments`. Left pane: comment list (review + PR-level, time-descending). Right upper: thread display. Right lower: reply/edit/new comment input. Supports reply, edit, delete, new PR comment, jump to file, and refresh. Does not depend on Telescope.
+  - **`ui/sidepanel.lua`** — Toggleable sidebar showing Review Scope and Changed Files. Pure functions: `format_scope_section`, `format_files_section`, `build_sidepanel_content`, `resolve_entry_at_cursor`, `truncate_to_width`. Side-effect functions: `open`, `close`, `toggle`, `refresh`. Uses `nvim_open_win` with `split` for sidebar creation. Uses dedicated `fude_sidepanel` namespace for highlights (avoids `refresh_extmarks` clearing them on BufEnter). Auto-refreshes on scope change and reload. Keymaps: `<CR>` select/open, `<Tab>` toggle reviewed/viewed, `R` reload, `q` close.
   - **`ui/extmarks.lua`** — Extmark management: `flash_line`, `highlight_comment_lines`, `clear_comment_line_highlight`, `refresh_extmarks`, `clear_extmarks`, `clear_all_extmarks`. Uses lazy `require("fude.comments")` to avoid circular dependencies.
 - **`files.lua`** — Changed files display via Telescope picker (with diff preview and viewed state toggle via `<Tab>`) or quickfix list fallback. Shows GitHub viewed status for each file.
 - **`scope.lua`** — Review scope selection and navigation. Provides a Telescope picker (or `vim.ui.select` fallback) for choosing between full PR scope and individual commit scope, with commit index display (`[1/10]`) and current scope marker (`▶`). Supports next/prev scope navigation (`next_scope`/`prev_scope`), marking commits as reviewed via `<Tab>` in the Telescope picker (tracked locally in `state.reviewed_commits`), and statusline integration (`statusline()`). On commit scope: checks out the commit, fetches commit-specific changed files, updates gitsigns base to `sha^` (global), and refreshes the diff preview. On full PR scope: restores the original HEAD, re-fetches PR-wide changed files, and computes merge-base (per-buffer gitsigns base is applied via `GitSignsUpdate` autocmd in init.lua).
@@ -57,29 +58,29 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
-| `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview |
+| `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel |
 | `pr_number` | init | comments, comments/sync, ui, files, scope, overview |
 | `base_ref` | init | init, preview, scope |
 | `head_ref` | init | scope |
 | `merge_base_sha` | init, scope | init, scope |
 | `pr_url` | init | ui |
-| `changed_files` | init, init(reload), scope | init, files, scope |
+| `changed_files` | init, init(reload), scope | init, files, scope, ui/sidepanel |
 | `comments` | comments/sync | comments, comments/sync, files, ui/extmarks |
 | `comment_map` | comments/sync | comments, comments/sync, ui/extmarks |
 | `pending_comments` | comments, comments/sync | comments, comments/sync, files, ui/extmarks |
 | `pending_review_id` | comments/sync | comments, comments/sync, comments/pickers, ui/extmarks |
 | `pr_node_id` | init | init, files |
-| `viewed_files` | init, init(reload), files | files, scope |
+| `viewed_files` | init, init(reload), files | files, scope, ui/sidepanel |
 | `preview_win` | preview | init, preview |
 | `preview_buf` | preview | preview |
 | `source_win` | preview | preview, scope |
 | `scope` | scope | scope, preview, init |
 | `scope_commit_sha` | scope | scope, preview, init |
 | `scope_commit_index` | scope | scope |
-| `pr_commits` | init, init(reload) | scope |
+| `pr_commits` | init, init(reload) | scope, ui/sidepanel |
 | `original_head_sha` | init, scope | init, scope |
 | `original_head_ref` | init | init, scope |
-| `reviewed_commits` | scope | scope |
+| `reviewed_commits` | scope | scope, ui/sidepanel |
 | `ns_id` | config | ui/extmarks, comments |
 | `reply_window` | ui | ui |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
@@ -89,6 +90,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `reload_timer` | init | init |
 | `reloading` | init | init |
 | `gitsigns_reset` | init, scope | init |
+| `sidepanel` | ui/sidepanel | ui/sidepanel |
 
 **高リスクフィールド**（多数のモジュールから参照）:
 - `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認
