@@ -55,7 +55,7 @@ end
 --- Format the files section lines for the sidepanel.
 --- @param file_entries table[] entries from files.build_file_entries
 --- @param width number available width in columns
---- @param format_path_fn fun(s: string): string formats file path for display
+--- @param format_path_fn (fun(s: string): string|nil)|nil formats file path for display (nil = identity)
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of file entries
@@ -209,18 +209,21 @@ local function render(panel)
 		state.scope_commit_sha
 	)
 
-	-- Build file entries
+	-- Build file entries (skip if repo root unavailable)
 	local repo_root = diff_mod.get_repo_root()
-	local viewed_sign = (config.opts.signs and config.opts.signs.viewed) or "✓"
-	local comment_counts = comments_data.build_file_comment_counts(state.comments, state.pending_comments)
-	local file_entries = files_mod.build_file_entries(
-		state.changed_files or {},
-		repo_root or "",
-		files_mod.status_icons,
-		state.viewed_files,
-		viewed_sign,
-		comment_counts
-	)
+	local file_entries = {}
+	if repo_root then
+		local viewed_sign = (config.opts.signs and config.opts.signs.viewed) or "✓"
+		local comment_counts = comments_data.build_file_comment_counts(state.comments, state.pending_comments)
+		file_entries = files_mod.build_file_entries(
+			state.changed_files or {},
+			repo_root,
+			files_mod.status_icons,
+			state.viewed_files,
+			viewed_sign,
+			comment_counts
+		)
+	end
 
 	-- Format sections
 	local scope_lines, scope_hls, scope_count = M.format_scope_section(scope_entries, width)
