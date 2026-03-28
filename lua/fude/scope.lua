@@ -375,8 +375,9 @@ function M.apply_full_pr_scope()
 			end
 		end
 
-		-- Refresh preview if open
+		-- Refresh preview and sidepanel if open
 		M.refresh_preview()
+		require("fude.ui.sidepanel").refresh()
 
 		vim.notify(
 			string.format("fude.nvim: Scope → PR全体 (%s...%s)", state.base_ref, state.head_ref),
@@ -458,8 +459,9 @@ function M.apply_commit_scope(sha)
 			gitsigns.change_base(sha .. "^", true)
 		end
 
-		-- Refresh preview if open
+		-- Refresh preview and sidepanel if open
 		M.refresh_preview()
+		require("fude.ui.sidepanel").refresh()
 
 		local short_sha = sha:sub(1, 7)
 		vim.notify(string.format("fude.nvim: Scope → commit %s", short_sha), vim.log.levels.INFO)

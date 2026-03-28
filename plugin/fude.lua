@@ -152,3 +152,7 @@ end, { desc = "Toggle comment display style (virtualText/inline)" })
 vim.api.nvim_create_user_command("FudeReviewToggleGitsigns", function()
 	require("fude").toggle_gitsigns()
 end, { desc = "Toggle gitsigns between PR base and HEAD" })
+
+vim.api.nvim_create_user_command("FudeReviewPanel", function()
+	require("fude.ui.sidepanel").toggle()
+end, { desc = "Toggle review side panel" })
