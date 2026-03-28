@@ -64,13 +64,6 @@ describe("format_scope_section", function()
 		assert.truthy(lines[5]:find("def5678"))
 	end)
 
-	it("truncates long text with ellipsis", function()
-		local lines = sidepanel.format_scope_section(scope_entries, 20)
-		for i = 3, 5 do
-			assert.truthy(vim.fn.strdisplaywidth(lines[i]) <= 20)
-		end
-	end)
-
 	it("returns highlights for header", function()
 		local _, hls = sidepanel.format_scope_section(scope_entries, 40)
 		-- First highlight is the header Title
@@ -178,13 +171,6 @@ describe("format_files_section", function()
 		end
 		local lines = sidepanel.format_files_section(file_entries, 80, fn)
 		assert.truthy(lines[3]:find("lua/fude/scope.lua"))
-	end)
-
-	it("truncates long text", function()
-		local lines = sidepanel.format_files_section(file_entries, 20)
-		for i = 3, 4 do
-			assert.truthy(vim.fn.strdisplaywidth(lines[i]) <= 20)
-		end
 	end)
 
 	it("returns highlights for each file entry", function()

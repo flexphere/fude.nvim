@@ -18,30 +18,6 @@ end
 -- Dedicated namespace for sidepanel highlights (avoids collision with refresh_extmarks)
 local sidepanel_ns = vim.api.nvim_create_namespace("fude_sidepanel")
 
---- Truncate a string to fit within a given display width.
---- Handles multi-byte and wide (CJK) characters correctly.
---- @param text string input text
---- @param max_width number maximum display width
---- @return string truncated text (with "…" suffix if truncated)
-function M.truncate_to_width(text, max_width)
-	if vim.fn.strdisplaywidth(text) <= max_width then
-		return text
-	end
-	-- Binary search for the right character count
-	local char_len = vim.fn.strchars(text)
-	local lo, hi = 0, char_len
-	while lo < hi do
-		local mid = math.floor((lo + hi + 1) / 2)
-		local sub = vim.fn.strcharpart(text, 0, mid)
-		if vim.fn.strdisplaywidth(sub) <= max_width - 1 then -- -1 for "…"
-			lo = mid
-		else
-			hi = mid - 1
-		end
-	end
-	return vim.fn.strcharpart(text, 0, lo) .. "…"
-end
-
 --- Format the scope section lines for the sidepanel.
 --- @param scope_entries table[] entries from scope.build_scope_entries
 --- @param width number available width in columns
@@ -58,7 +34,6 @@ function M.format_scope_section(scope_entries, width)
 		local current_icon = entry.is_current and "▶" or " "
 		local reviewed_icon = entry.reviewed_icon or " "
 		local text = current_icon .. " " .. reviewed_icon .. " " .. entry.display_text
-		text = M.truncate_to_width(text, width)
 		local line_idx = #lines
 		table.insert(lines, text)
 
@@ -101,7 +76,6 @@ function M.format_files_section(file_entries, width, format_path_fn)
 		local raw = format_path_fn(entry.path)
 		local display_name = type(raw) == "string" and raw or entry.path
 		local text = " " .. viewed .. " " .. status .. " " .. adds .. " " .. dels .. " " .. display_name
-		text = M.truncate_to_width(text, width)
 		local line_idx = #lines
 		table.insert(lines, text)
 
