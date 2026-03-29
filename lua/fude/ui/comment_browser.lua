@@ -614,7 +614,7 @@ local function create_browser(entries, issue_comments)
 
 		browser.mode = "edit"
 		browser.edit_target = target_comment
-		local body_lines = vim.split((target_comment.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n"), "\n")
+		local body_lines = vim.split(format.normalize_newlines(target_comment.body), "\n")
 		if vim.api.nvim_buf_is_valid(lower_buf) then
 			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, body_lines)
 		end

@@ -607,7 +607,7 @@ function M.open_edit_window(thread, comment, opts)
 
 	-- Create lower buffer (editable, pre-filled with comment body)
 	local lower_buf = vim.api.nvim_create_buf(false, true)
-	local initial_lines = vim.split((comment.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n"), "\n")
+	local initial_lines = vim.split(format.normalize_newlines(comment.body), "\n")
 	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, initial_lines)
 	vim.bo[lower_buf].buftype = "nofile"
 	vim.bo[lower_buf].bufhidden = "wipe"

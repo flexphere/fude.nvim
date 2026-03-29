@@ -1,6 +1,7 @@
 local M = {}
 local config = require("fude.config")
 local diff = require("fude.diff")
+local format = require("fude.ui.format")
 local ui = require("fude.ui")
 local data = require("fude.comments.data")
 local sync = require("fude.comments.sync")
@@ -71,7 +72,7 @@ function M.create_comment(is_visual)
 
 	local pending_key = rel_path .. ":" .. start_line .. ":" .. end_line
 	local existing = state.pending_comments[pending_key]
-	local initial_lines = existing and vim.split(existing.body:gsub("\r\n", "\n"):gsub("\r", "\n"), "\n") or nil
+	local initial_lines = existing and vim.split(format.normalize_newlines(existing.body), "\n") or nil
 
 	ui.open_comment_input(function(comment_body)
 		if comment_body then
@@ -444,8 +445,7 @@ function M.suggest_change(is_visual)
 	vim.list_extend(suggestion_lines, source_lines)
 	table.insert(suggestion_lines, "```")
 
-	local initial_lines = existing and vim.split(existing.body:gsub("\r\n", "\n"):gsub("\r", "\n"), "\n")
-		or suggestion_lines
+	local initial_lines = existing and vim.split(format.normalize_newlines(existing.body), "\n") or suggestion_lines
 	local cursor_pos = existing and nil or { 2, 0 }
 
 	ui.open_comment_input(function(comment_body)
