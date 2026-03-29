@@ -75,10 +75,16 @@ end
 --- Parse title and body from PR buffer contents.
 --- @param title_lines string[] lines from title buffer
 --- @param body_lines string[] lines from body buffer
+--- @param opts table|nil options: { trim_body: boolean (default true) }
 --- @return table { title: string, body: string }
-function M.parse_pr_buffer(title_lines, body_lines)
+function M.parse_pr_buffer(title_lines, body_lines, opts)
+	opts = opts or {}
+	local trim_body = opts.trim_body == nil or opts.trim_body
 	local title = vim.trim(table.concat(title_lines, " "))
-	local body = vim.trim(table.concat(body_lines, "\n"))
+	local body = table.concat(body_lines, "\n")
+	if trim_body then
+		body = vim.trim(body)
+	end
 	return { title = title, body = body }
 end
 
@@ -118,13 +124,16 @@ function M.find_templates()
 	return templates
 end
 
---- Open the PR creation float with explicit title and body content.
+--- Open the PR float with explicit title and body content.
 --- @param title_lines string[]|nil initial title lines (default: {""})
 --- @param body_lines string[]|nil initial body lines (default: {""})
---- @param from_draft boolean|nil true when restoring from a saved draft
-function M.open_pr_float(title_lines, body_lines, from_draft)
+--- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...) }
+function M.open_pr_float(title_lines, body_lines, opts)
 	title_lines = title_lines or { "" }
 	body_lines = body_lines or { "" }
+	opts = opts or {}
+	local mode = opts.mode or "create"
+	local is_edit = mode == "edit"
 
 	-- Create title buffer (editable, single line)
 	local title_buf = vim.api.nvim_create_buf(false, true)
@@ -155,6 +164,18 @@ function M.open_pr_float(title_lines, body_lines, from_draft)
 	local upper_border = { "╭", "─", "╮", "│", "", "", "", "│" }
 	local lower_border = { "├", "─", "┤", "│", "╯", "─", "╰", "│" }
 
+	-- Determine footer text
+	local footer_text = opts.footer
+	if not footer_text then
+		if is_edit then
+			footer_text = " <CR> update | q cancel "
+		elseif opts.from_draft then
+			footer_text = " <CR> create draft | q cancel (draft restored) "
+		else
+			footer_text = " <CR> create draft | q cancel "
+		end
+	end
+
 	-- Open title window (focused)
 	local title_win = vim.api.nvim_open_win(title_buf, true, {
 		relative = "editor",
@@ -179,7 +200,7 @@ function M.open_pr_float(title_lines, body_lines, from_draft)
 		border = lower_border,
 		title = " PR Body ",
 		title_pos = "center",
-		footer = from_draft and " <CR> create draft | q cancel (draft restored) " or " <CR> create draft | q cancel ",
+		footer = footer_text,
 		footer_pos = "center",
 	})
 	vim.wo[body_win].wrap = true
@@ -199,17 +220,32 @@ function M.open_pr_float(title_lines, body_lines, from_draft)
 	local function submit()
 		local t_lines = vim.api.nvim_buf_get_lines(title_buf, 0, -1, false)
 		local b_lines = vim.api.nvim_buf_get_lines(body_buf, 0, -1, false)
-		local parsed = M.parse_pr_buffer(t_lines, b_lines)
+		local parsed = M.parse_pr_buffer(t_lines, b_lines, { trim_body = not is_edit })
 
 		if parsed.title == "" then
 			vim.notify("fude.nvim: PR title is required", vim.log.levels.WARN)
 			return
 		end
 
+		-- Use custom submit handler if provided
+		if opts.on_submit then
+			if is_edit then
+				-- Edit mode: let the handler close the float on success.
+				-- On failure the float stays open so the user can retry.
+				opts.on_submit(parsed.title, parsed.body, close_all)
+			else
+				close_all()
+				opts.on_submit(parsed.title, parsed.body)
+			end
+			return
+		end
+
+		close_all()
+
+		-- Default: create draft PR
 		-- Save draft before attempting to create PR
 		M.save_draft(t_lines, b_lines)
 
-		close_all()
 		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 
 		gh.create_draft_pr(parsed.title, parsed.body, function(err, data)
@@ -241,8 +277,10 @@ function M.open_pr_float(title_lines, body_lines, from_draft)
 		end
 	end
 
+	local submit_desc = is_edit and "Update PR" or "Create draft PR"
+
 	-- Title buffer keymaps
-	vim.keymap.set("n", "<CR>", submit, { buffer = title_buf, desc = "Create draft PR" })
+	vim.keymap.set("n", "<CR>", submit, { buffer = title_buf, desc = submit_desc })
 	vim.keymap.set("n", "q", cancel, { buffer = title_buf, desc = "Cancel" })
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(body_win) then
@@ -263,7 +301,7 @@ function M.open_pr_float(title_lines, body_lines, from_draft)
 	)
 
 	-- Body buffer keymaps
-	vim.keymap.set("n", "<CR>", submit, { buffer = body_buf, desc = "Create draft PR" })
+	vim.keymap.set("n", "<CR>", submit, { buffer = body_buf, desc = submit_desc })
 	vim.keymap.set("n", "q", cancel, { buffer = body_buf, desc = "Cancel" })
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(title_win) then
@@ -272,7 +310,7 @@ function M.open_pr_float(title_lines, body_lines, from_draft)
 	end, { buffer = body_buf, desc = "Go to title" })
 
 	-- Autocmd: close both when one closes
-	local augroup = vim.api.nvim_create_augroup("fude_pr_create_" .. title_win, { clear = true })
+	local augroup = vim.api.nvim_create_augroup("fude_pr_float_" .. title_win, { clear = true })
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = augroup,
 		pattern = { tostring(title_win), tostring(body_win) },
@@ -294,7 +332,7 @@ end
 local function open_from_draft()
 	local d = M.get_draft()
 	if d then
-		M.open_pr_float(d.title_lines, d.body_lines, true)
+		M.open_pr_float(d.title_lines, d.body_lines, { from_draft = true })
 	end
 end
 
@@ -447,6 +485,60 @@ function M.select_template(entries, callback)
 			end,
 		})
 		:find()
+end
+
+--- Edit the current PR's title and body.
+--- Uses state.pr_number when review mode is active, otherwise detects via gh pr view.
+--- Resolves PR number upfront to avoid detached HEAD issues with both get/edit.
+function M.edit()
+	local pr_number = config.state.active and config.state.pr_number or nil
+
+	vim.notify("fude.nvim: Loading PR...", vim.log.levels.INFO)
+
+	local function do_edit(num)
+		gh.get_pr_title_body(num, function(err, data)
+			vim.schedule(function()
+				if err then
+					vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+					return
+				end
+
+				local body_lines = vim.split(data.body or "", "\n", { plain = true })
+				M.open_pr_float({ data.title }, body_lines, {
+					mode = "edit",
+					footer = " <CR> update | q cancel ",
+					on_submit = function(title, body, close_float)
+						vim.notify("fude.nvim: Updating PR...", vim.log.levels.INFO)
+						gh.edit_pr(num, title, body, function(edit_err)
+							vim.schedule(function()
+								if edit_err then
+									vim.notify("fude.nvim: " .. edit_err, vim.log.levels.ERROR)
+								else
+									close_float()
+									vim.notify("fude.nvim: PR updated", vim.log.levels.INFO)
+								end
+							end)
+						end)
+					end,
+				})
+			end)
+		end)
+	end
+
+	if pr_number then
+		do_edit(pr_number)
+	else
+		-- Resolve PR number first (handles detached HEAD via get_pr_info)
+		gh.get_pr_info(function(err, info)
+			if err then
+				vim.schedule(function()
+					vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+				end)
+				return
+			end
+			do_edit(info.number)
+		end)
+	end
 end
 
 return M
