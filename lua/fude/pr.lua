@@ -503,7 +503,7 @@ function M.edit()
 					return
 				end
 
-				local body_lines = vim.split(data.body or "", "\n", { plain = true })
+				local body_lines = vim.split((data.body or ""):gsub("\r\n", "\n"):gsub("\r", "\n"), "\n", { plain = true })
 				M.open_pr_float({ data.title }, body_lines, {
 					mode = "edit",
 					footer = " <CR> update | q cancel ",
