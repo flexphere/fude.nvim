@@ -1,4 +1,31 @@
 local ui = require("fude.ui")
+local format = require("fude.ui.format")
+
+describe("normalize_newlines", function()
+	it("converts CRLF to LF", function()
+		assert.are.equal("a\nb", format.normalize_newlines("a\r\nb"))
+	end)
+
+	it("converts standalone CR to LF", function()
+		assert.are.equal("a\nb", format.normalize_newlines("a\rb"))
+	end)
+
+	it("leaves LF-only strings unchanged", function()
+		assert.are.equal("a\nb\nc", format.normalize_newlines("a\nb\nc"))
+	end)
+
+	it("handles nil input", function()
+		assert.are.equal("", format.normalize_newlines(nil))
+	end)
+
+	it("handles empty string", function()
+		assert.are.equal("", format.normalize_newlines(""))
+	end)
+
+	it("handles mixed line endings", function()
+		assert.are.equal("a\nb\nc\nd", format.normalize_newlines("a\r\nb\rc\nd"))
+	end)
+end)
 
 describe("calculate_float_dimensions", function()
 	it("calculates centered dimensions at 50%", function()

@@ -3,7 +3,7 @@ local M = {}
 --- Normalize newlines by converting CRLF and CR to LF.
 --- @param s string|nil input string
 --- @return string normalized string
-local function normalize_newlines(s)
+function M.normalize_newlines(s)
 	return (s or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 end
 
@@ -36,7 +36,7 @@ function M.format_comments_for_display(comments, format_date_fn)
 		local header = string.format("@%s  %s", author, created)
 		table.insert(lines, header)
 		table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
-		local comment_body = normalize_newlines(comment.body)
+		local comment_body = M.normalize_newlines(comment.body)
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
@@ -346,7 +346,7 @@ function M.format_reply_comments_for_display(comments, format_date_fn)
 			{ line = header_line_idx, col_start = ts_start, col_end = ts_end, hl = "ReviewCommentTimestamp" }
 		)
 
-		local comment_body = normalize_newlines(comment.body)
+		local comment_body = M.normalize_newlines(comment.body)
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
@@ -386,7 +386,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(lines, "## DESCRIPTION")
 	sections.description = #lines -- 1-indexed
 
-	local body = normalize_newlines(pr_info.body)
+	local body = M.normalize_newlines(pr_info.body)
 	if body == "" then
 		table.insert(lines, "(no description)")
 	else
@@ -411,7 +411,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 			table.insert(lines, header)
 			table.insert(comment_positions, #lines) -- 1-indexed header line
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
-			local comment_body = normalize_newlines(comment.body)
+			local comment_body = M.normalize_newlines(comment.body)
 			for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 				table.insert(lines, body_line)
 			end
@@ -937,7 +937,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 		end
 
 		-- Comment body with wrapping and optional markdown highlighting
-		local body = normalize_newlines(comment.body)
+		local body = M.normalize_newlines(comment.body)
 		local body_lines = vim.split(body, "\n")
 		local in_code_block = false
 

@@ -1,6 +1,7 @@
 local M = {}
 local config = require("fude.config")
 local diff = require("fude.diff")
+local format = require("fude.ui.format")
 local gh = require("fude.gh")
 
 --- Template search directory names (for multiple templates).
@@ -503,7 +504,7 @@ function M.edit()
 					return
 				end
 
-				local body_lines = vim.split(data.body or "", "\n", { plain = true })
+				local body_lines = vim.split(format.normalize_newlines(data.body), "\n", { plain = true })
 				M.open_pr_float({ data.title }, body_lines, {
 					mode = "edit",
 					footer = " <CR> update | q cancel ",
