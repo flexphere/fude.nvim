@@ -632,19 +632,44 @@ function M.update_comment(comment_id, body, callback)
 end
 
 --- Get PR title and body for editing.
+--- When pr_number is nil, detects detached HEAD and resolves PR number first
+--- to avoid `gh pr view` hanging without a branch.
 --- @param pr_number number|nil PR number (nil to use current branch's PR)
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_title_body(pr_number, callback)
-	local args = { "pr", "view", "--json", "title,body" }
-	if pr_number then
-		table.insert(args, 3, tostring(pr_number))
-	end
-	M.run_json(args, function(err, data)
-		if err then
-			return callback(err, nil)
+	local function fetch(num)
+		local args = { "pr", "view", "--json", "title,body" }
+		if num then
+			table.insert(args, 3, tostring(num))
 		end
-		callback(nil, { title = data.title or "", body = data.body or "" })
-	end)
+		M.run_json(args, function(err, data)
+			if err then
+				return callback(err, nil)
+			end
+			callback(nil, { title = data.title or "", body = data.body or "" })
+		end)
+	end
+
+	if pr_number then
+		return fetch(pr_number)
+	end
+
+	-- Detect detached HEAD: resolve PR number via commit SHA first
+	local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "HEAD" }, { text = true }):wait()
+	if ref_result.code ~= 0 then
+		local sha, sha_err = M.get_head_sha()
+		if not sha then
+			return callback(sha_err or "Not in a git repository", nil)
+		end
+		return M.get_pr_by_commit(sha, function(err, pr_data)
+			if err then
+				return callback(err, nil)
+			end
+			fetch(pr_data.number)
+		end)
+	end
+
+	fetch(nil)
 end
 
 --- Edit PR title and body.

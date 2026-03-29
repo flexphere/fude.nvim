@@ -219,6 +219,21 @@ describe("parse_pr_buffer", function()
 		local result = pr.parse_pr_buffer({ "title" }, { "line1", "line2", "line3" })
 		assert.are.equal("line1\nline2\nline3", result.body)
 	end)
+
+	it("does not trim body when trim_body is false", function()
+		local result = pr.parse_pr_buffer({ "title" }, { "", "  body  ", "" }, { trim_body = false })
+		assert.are.equal("\n  body  \n", result.body)
+	end)
+
+	it("trims body by default (trim_body not specified)", function()
+		local result = pr.parse_pr_buffer({ "title" }, { "", "  body  ", "" })
+		assert.are.equal("body", result.body)
+	end)
+
+	it("trims body when trim_body is true", function()
+		local result = pr.parse_pr_buffer({ "title" }, { "", "  body  ", "" }, { trim_body = true })
+		assert.are.equal("body", result.body)
+	end)
 end)
 
 describe("draft management", function()
@@ -299,9 +314,15 @@ describe("edit", function()
 		assert.are.equal(42, captured_pr_number)
 	end)
 
-	it("uses nil pr_number when review mode is inactive", function()
+	it("resolves pr_number via get_pr_info when review mode is inactive", function()
 		config.state.active = false
 		config.state.pr_number = nil
+
+		helpers.mock(gh, "get_pr_info", function(callback)
+			vim.schedule(function()
+				callback(nil, { number = 99, baseRefName = "main", headRefName = "feature", url = "" })
+			end)
+		end)
 
 		helpers.mock(gh, "get_pr_title_body", function(pr_num, callback)
 			captured_pr_number = pr_num
@@ -315,11 +336,17 @@ describe("edit", function()
 			return captured_title_lines ~= nil
 		end)
 
-		assert.is_nil(captured_pr_number)
+		assert.are.equal(99, captured_pr_number)
 	end)
 
 	it("opens float with edit mode and correct content", function()
 		config.state.active = false
+
+		helpers.mock(gh, "get_pr_info", function(callback)
+			vim.schedule(function()
+				callback(nil, { number = 50, baseRefName = "main", headRefName = "feature", url = "" })
+			end)
+		end)
 
 		helpers.mock(gh, "get_pr_title_body", function(_, callback)
 			vim.schedule(function()
@@ -363,8 +390,11 @@ describe("edit", function()
 			return captured_opts ~= nil and captured_opts.on_submit ~= nil
 		end)
 
-		-- Simulate submit
-		captured_opts.on_submit("New Title", "New Body")
+		-- Simulate submit (pass close_float mock as third arg for edit mode)
+		local close_float_called = false
+		captured_opts.on_submit("New Title", "New Body", function()
+			close_float_called = true
+		end)
 		helpers.wait_for(function()
 			return edit_called_with ~= nil
 		end)
@@ -372,5 +402,11 @@ describe("edit", function()
 		assert.are.equal(123, edit_called_with.pr_number)
 		assert.are.equal("New Title", edit_called_with.title)
 		assert.are.equal("New Body", edit_called_with.body)
+
+		-- close_float should be called on success
+		helpers.wait_for(function()
+			return close_float_called
+		end)
+		assert.is_true(close_float_called)
 	end)
 end)
