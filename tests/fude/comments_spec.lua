@@ -86,6 +86,22 @@ describe("build_comment_map", function()
 		assert.are.same({}, map)
 	end)
 
+	it("falls back to original_line when line is vim.NIL", function()
+		local input = {
+			{ path = "a.lua", line = vim.NIL, original_line = 7, body = "vim.NIL line" },
+		}
+		local map = comments.build_comment_map(input)
+		assert.are.equal(1, #map["a.lua"][7])
+	end)
+
+	it("skips comments with vim.NIL line and vim.NIL original_line", function()
+		local input = {
+			{ path = "a.lua", line = vim.NIL, original_line = vim.NIL, body = "no line" },
+		}
+		local map = comments.build_comment_map(input)
+		assert.are.same({}, map)
+	end)
+
 	it("skips outdated comments even if they have original_line", function()
 		local input = {
 			{ path = "a.lua", line = nil, original_line = 10, body = "outdated", is_outdated = true },
@@ -201,6 +217,13 @@ describe("get_reply_target_id", function()
 		assert.are.equal(100, comments.get_reply_target_id(200, map))
 	end)
 
+	it("returns own id when in_reply_to_id is vim.NIL", function()
+		local map = {
+			["a.lua"] = { [10] = { { id = 100, body = "root", in_reply_to_id = vim.NIL } } },
+		}
+		assert.are.equal(100, comments.get_reply_target_id(100, map))
+	end)
+
 	it("returns original id when comment not found in map", function()
 		assert.are.equal(999, comments.get_reply_target_id(999, {}))
 	end)
@@ -267,6 +290,17 @@ describe("get_comment_thread", function()
 			{ id = 11, body = "reply2", created_at = "2024-01-02", in_reply_to_id = 10 },
 		}
 		local thread = comments.get_comment_thread(1, all)
+		assert.are.equal(2, #thread)
+		assert.are.equal(1, thread[1].id)
+		assert.are.equal(2, thread[2].id)
+	end)
+
+	it("treats vim.NIL in_reply_to_id as root comment", function()
+		local all = {
+			{ id = 1, body = "root", created_at = "2024-01-01", in_reply_to_id = vim.NIL },
+			{ id = 2, body = "reply", created_at = "2024-01-02", in_reply_to_id = 1 },
+		}
+		local thread = comments.get_comment_thread(2, all)
 		assert.are.equal(2, #thread)
 		assert.are.equal(1, thread[1].id)
 		assert.are.equal(2, thread[2].id)
@@ -431,6 +465,24 @@ describe("build_pending_comments_from_review", function()
 		local result = comments.build_pending_comments_from_review({})
 		assert.are.same({}, result)
 	end)
+
+	it("falls back to original_line when line is vim.NIL", function()
+		local review_comments = {
+			{ id = 1, path = "src/foo.lua", line = vim.NIL, original_line = 15, body = "review", side = "RIGHT" },
+		}
+		local result = comments.build_pending_comments_from_review(review_comments)
+		local key = "src/foo.lua:15:15"
+		assert.is_not_nil(result[key])
+		assert.are.equal(15, result[key].line)
+	end)
+
+	it("skips comments with vim.NIL line and vim.NIL original_line", function()
+		local review_comments = {
+			{ id = 1, path = "src/foo.lua", line = vim.NIL, original_line = vim.NIL, body = "no line", side = "RIGHT" },
+		}
+		local result = comments.build_pending_comments_from_review(review_comments)
+		assert.are.same({}, result)
+	end)
 end)
 
 describe("get_comment_line_range", function()
@@ -495,6 +547,11 @@ describe("data.line_from_diff_hunk", function()
 	it("returns nil for nil inputs", function()
 		assert.is_nil(data.line_from_diff_hunk(nil, 1))
 		assert.is_nil(data.line_from_diff_hunk("@@ -0,0 +1 @@\n+x", nil))
+	end)
+
+	it("returns nil for vim.NIL inputs", function()
+		assert.is_nil(data.line_from_diff_hunk(vim.NIL, 1))
+		assert.is_nil(data.line_from_diff_hunk("@@ -0,0 +1 @@\n+x", vim.NIL))
 	end)
 
 	it("returns nil when position exceeds hunk lines", function()

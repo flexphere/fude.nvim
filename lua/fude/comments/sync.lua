@@ -2,6 +2,7 @@ local M = {}
 local config = require("fude.config")
 local gh = require("fude.gh")
 local data = require("fude.comments.data")
+local is_null = require("fude.util").is_null
 
 --- Apply outdated info from outdated_map to comments.
 --- Note: We intentionally do NOT set original_line here to prevent outdated comments
@@ -88,7 +89,7 @@ local function fetch_comments(callback, opts)
 					-- Review-specific endpoint returns `position` instead of `line`.
 					-- Convert to `line` using diff_hunk so build_comment_map can index them.
 					for _, c in ipairs(rev_comments) do
-						if not c.line and not c.original_line then
+						if is_null(c.line) and is_null(c.original_line) then
 							c.line = data.line_from_diff_hunk(c.diff_hunk, c.position)
 						end
 					end

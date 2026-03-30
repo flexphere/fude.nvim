@@ -1,4 +1,6 @@
 local M = {}
+local util = require("fude.util")
+local is_null = util.is_null
 
 --- Compute the file line number (RIGHT side) from a diff_hunk and position.
 --- The review-specific endpoint (GET /reviews/{id}/comments) returns `position`
@@ -7,7 +9,7 @@ local M = {}
 --- @param position number 1-indexed position within the diff hunk
 --- @return number|nil line number in the new file
 function M.line_from_diff_hunk(diff_hunk, position)
-	if not diff_hunk or not position then
+	if is_null(diff_hunk) or is_null(position) then
 		return nil
 	end
 	local new_start = tonumber(diff_hunk:match("%+(%d+)"))
@@ -41,8 +43,8 @@ function M.build_comment_map(comments)
 		-- Skip outdated comments (they have no valid line position)
 		if not c.is_outdated then
 			local path = c.path
-			local line = c.line or c.original_line
-			if path and line then
+			local line = (not is_null(c.line)) and c.line or c.original_line
+			if path and not is_null(line) then
 				if not map[path] then
 					map[path] = {}
 				end
@@ -122,7 +124,7 @@ function M.get_comment_thread(comment_id, all_comments)
 		return {}
 	end
 
-	while current.in_reply_to_id and by_id[current.in_reply_to_id] do
+	while not is_null(current.in_reply_to_id) and by_id[current.in_reply_to_id] do
 		current = by_id[current.in_reply_to_id]
 	end
 	local root_id = current.id
@@ -133,7 +135,7 @@ function M.get_comment_thread(comment_id, all_comments)
 		if c.id ~= root_id then
 			-- Check if this comment's chain leads to root
 			local node = c
-			while node.in_reply_to_id and by_id[node.in_reply_to_id] do
+			while not is_null(node.in_reply_to_id) and by_id[node.in_reply_to_id] do
 				node = by_id[node.in_reply_to_id]
 			end
 			if node.id == root_id then
@@ -175,9 +177,9 @@ function M.build_pending_comments_from_review(comments)
 	local result = {}
 	for _, c in ipairs(comments) do
 		local path = c.path
-		local line = c.line or c.original_line
-		local start_line = c.start_line or line
-		if path and line then
+		local line = (not is_null(c.line)) and c.line or c.original_line
+		local start_line = (not is_null(c.start_line)) and c.start_line or line
+		if path and not is_null(line) then
 			local key = path .. ":" .. start_line .. ":" .. line
 			result[key] = {
 				id = c.id,
@@ -252,7 +254,7 @@ end
 --- @return number the ID to use for reply (either original or in_reply_to_id)
 function M.get_reply_target_id(comment_id, comment_map)
 	local found = M.find_comment_by_id(comment_id, comment_map)
-	if found and found.comment.in_reply_to_id then
+	if found and not is_null(found.comment.in_reply_to_id) then
 		return found.comment.in_reply_to_id
 	end
 	return comment_id
@@ -482,10 +484,7 @@ end
 --- @param comment table comment object from GitHub API
 --- @return boolean
 function M.is_outdated_comment(comment)
-	-- JSON null becomes vim.NIL, which is not equal to nil
-	local line_is_null = comment.line == nil or comment.line == vim.NIL
-	local original_line_exists = comment.original_line ~= nil and comment.original_line ~= vim.NIL
-	return line_is_null and original_line_exists
+	return is_null(comment.line) and not is_null(comment.original_line)
 end
 
 --- Build comment counts per file from comments array and pending_comments.
