@@ -1495,7 +1495,7 @@ describe("format_comment_browser_list", function()
 			},
 			{ type = "issue", last_ts = "2024-01-02T00:00:00Z", author = "bob", is_pending = false },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.are.equal(2, #result.lines)
 	end)
 
@@ -1503,7 +1503,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "src/a.lua", line = 10, is_pending = false },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.is_truthy(result.lines[1]:find("@alice"))
 		assert.is_truthy(result.lines[1]:find("src/a.lua:10"))
 	end)
@@ -1512,7 +1512,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.is_truthy(result.lines[1]:find("PR Comment"))
 		assert.is_falsy(result.lines[1]:find("@"))
 	end)
@@ -1521,31 +1521,15 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "src/a.lua", line = 5, is_pending = true },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.is_truthy(result.lines[1]:find("%[pending%]"))
-	end)
-
-	it("truncates long lines to max_width", function()
-		local entries = {
-			{
-				type = "review",
-				last_ts = "2024-01-01",
-				author = "alice",
-				path = "very/long/path/that/is/really/long/file.lua",
-				line = 10,
-				is_pending = false,
-			},
-		}
-		local result = ui.format_comment_browser_list(entries, 30, id_fn)
-		assert.is_true(#result.lines[1] <= 30)
-		assert.is_truthy(result.lines[1]:find("%.%.%."))
 	end)
 
 	it("includes highlight ranges for PR Comment", function()
 		local entries = {
 			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.is_true(#result.hl_ranges > 0)
 		assert.are.equal("DiagnosticInfo", result.hl_ranges[1].hl)
 	end)
@@ -1554,7 +1538,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "a", path = "f.lua", line = 1, is_pending = true },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.is_true(#result.hl_ranges > 0)
 		assert.are.equal("DiagnosticHint", result.hl_ranges[1].hl)
 	end)
@@ -1563,7 +1547,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "a", path = "f.lua", line = 1, is_outdated = true },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.is_true(result.lines[1]:find("%[outdated%]") ~= nil)
 		assert.is_true(#result.hl_ranges > 0)
 		assert.are.equal("Comment", result.hl_ranges[1].hl)
@@ -1581,7 +1565,7 @@ describe("format_comment_browser_list", function()
 				is_outdated = true,
 			},
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		-- Pending takes precedence
 		assert.is_true(result.lines[1]:find("%[pending%]") ~= nil)
 		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
@@ -1591,13 +1575,13 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1 },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn)
 		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
 		assert.is_true(result.lines[1]:find("@alice") ~= nil)
 	end)
 
 	it("returns empty lines for empty entries", function()
-		local result = ui.format_comment_browser_list({}, 120, id_fn)
+		local result = ui.format_comment_browser_list({}, id_fn)
 		assert.are.equal(0, #result.lines)
 	end)
 
@@ -1605,7 +1589,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1, is_outdated = true },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, { show = false })
+		local result = ui.format_comment_browser_list(entries, id_fn, { show = false })
 		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
 		-- Should show as normal entry with author
 		assert.is_true(result.lines[1]:find("@alice") ~= nil)
@@ -1615,7 +1599,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1, is_outdated = true },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, { label = "[OLD]" })
+		local result = ui.format_comment_browser_list(entries, id_fn, { label = "[OLD]" })
 		assert.is_true(result.lines[1]:find("%[OLD%]") ~= nil)
 		assert.is_falsy(result.lines[1]:find("%[outdated%]"))
 	end)
@@ -1624,7 +1608,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1, is_outdated = true },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, { hl_group = "Error" })
+		local result = ui.format_comment_browser_list(entries, id_fn, { hl_group = "Error" })
 		assert.are.equal("Error", result.hl_ranges[1].hl)
 	end)
 
@@ -1635,7 +1619,7 @@ describe("format_comment_browser_list", function()
 		local tail_fn = function(p)
 			return p:match("[^/]+$")
 		end
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, tail_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn, nil, tail_fn)
 		assert.is_truthy(result.lines[1]:find("init.lua:42"))
 		assert.is_falsy(result.lines[1]:find("lua/fude/init.lua"))
 	end)
@@ -1654,7 +1638,7 @@ describe("format_comment_browser_list", function()
 		local tail_fn = function(p)
 			return p:match("[^/]+$")
 		end
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, tail_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn, nil, tail_fn)
 		assert.is_truthy(result.lines[1]:find("config.lua:5"))
 		assert.is_falsy(result.lines[1]:find("lua/fude/config.lua"))
 	end)
@@ -1673,7 +1657,7 @@ describe("format_comment_browser_list", function()
 		local tail_fn = function(p)
 			return p:match("[^/]+$")
 		end
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, tail_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn, nil, tail_fn)
 		assert.is_truthy(result.lines[1]:find("ui.lua:10"))
 		assert.is_falsy(result.lines[1]:find("lua/fude/ui.lua"))
 	end)
@@ -1682,7 +1666,7 @@ describe("format_comment_browser_list", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "lua/fude/init.lua", line = 42 },
 		}
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, nil)
+		local result = ui.format_comment_browser_list(entries, id_fn, nil, nil)
 		assert.is_truthy(result.lines[1]:find("lua/fude/init.lua:42"))
 	end)
 
@@ -1693,7 +1677,7 @@ describe("format_comment_browser_list", function()
 		local nil_fn = function()
 			return nil
 		end
-		local result = ui.format_comment_browser_list(entries, 120, id_fn, nil, nil_fn)
+		local result = ui.format_comment_browser_list(entries, id_fn, nil, nil_fn)
 		assert.is_truthy(result.lines[1]:find("lua/fude/init.lua:42"))
 	end)
 end)

@@ -124,7 +124,7 @@ local function create_browser(entries, issue_comments)
 
 	-- Format left pane
 	local list_result =
-		format.format_comment_browser_list(entries, 0, config.format_date, config.opts.outdated, config.format_path)
+		format.format_comment_browser_list(entries, config.format_date, config.opts.outdated, config.format_path)
 
 	-- Create left buffer (readonly list)
 	local left_buf = vim.api.nvim_create_buf(false, true)
@@ -320,7 +320,7 @@ local function create_browser(entries, issue_comments)
 			issue_comments = new_issue_comments
 
 			local new_list =
-				format.format_comment_browser_list(new_entries, 0, config.format_date, config.opts.outdated, config.format_path)
+				format.format_comment_browser_list(new_entries, config.format_date, config.opts.outdated, config.format_path)
 			if vim.api.nvim_buf_is_valid(left_buf) then
 				vim.bo[left_buf].modifiable = true
 				vim.api.nvim_buf_set_lines(left_buf, 0, -1, false, new_list.lines)
