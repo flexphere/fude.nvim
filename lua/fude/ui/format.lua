@@ -568,7 +568,6 @@ end
 --- Format entries for the comment browser left pane.
 --- Each entry occupies exactly 1 line for direct cursor-to-entry mapping.
 --- @param entries table[] from build_comment_browser_entries
---- @param max_width number available character width
 --- @param format_date_fn fun(s: string): string
 --- @param outdated_opts table|nil { show: boolean, label: string, hl_group: string }
 --- @param format_path_fn fun(s: string): string|nil formats repo-relative path for display (nil = identity)

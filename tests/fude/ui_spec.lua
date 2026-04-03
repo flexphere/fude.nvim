@@ -1525,6 +1525,23 @@ describe("format_comment_browser_list", function()
 		assert.is_truthy(result.lines[1]:find("%[pending%]"))
 	end)
 
+	it("preserves full text without truncation for long paths", function()
+		local long_path = "very/long/path/that/is/really/long/file.lua"
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "alice",
+				path = long_path,
+				line = 10,
+				is_pending = false,
+			},
+		}
+		local result = ui.format_comment_browser_list(entries, id_fn)
+		assert.is_truthy(result.lines[1]:find(long_path, 1, true))
+		assert.is_falsy(result.lines[1]:find("%.%.%."))
+	end)
+
 	it("includes highlight ranges for PR Comment", function()
 		local entries = {
 			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
