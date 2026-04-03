@@ -91,6 +91,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `reload_timer` | init | init |
 | `reloading` | init | init |
 | `gitsigns_reset` | init, scope | init |
+| `iwhite` | init | init |
 | `sidepanel` | ui/sidepanel | ui/sidepanel |
 
 **高リスクフィールド**（多数のモジュールから参照）:

@@ -341,6 +341,13 @@ Using lazy.nvim: >lua
     or viewed/reviewed state is toggled.
     Configurable via `sidepanel` options. Requires an active session.
 
+:FudeReviewToggleWhitespace            *:FudeReviewToggleWhitespace*
+    Toggle whitespace diff ignore (iwhite) on and off.
+    When enabled, whitespace-only changes are hidden from the diff view.
+    Execute again to show whitespace changes.
+    The setting is automatically restored when review mode stops.
+    Requires an active review session.
+
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
     Toggle gitsigns base between PR base and HEAD.
     By default during review mode, gitsigns uses the PR base (or commit

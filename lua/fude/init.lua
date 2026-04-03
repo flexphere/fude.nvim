@@ -708,6 +708,26 @@ function M.restore_gitsigns_base()
 	end
 end
 
+--- Toggle whitespace diff ignore (iwhite).
+--- When enabled, whitespace-only changes are hidden from the diff view.
+function M.toggle_iwhite()
+	local state = config.state
+	if not state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
+	if state.iwhite then
+		state.iwhite = false
+		vim.opt.diffopt:remove("iwhite")
+		vim.notify("fude.nvim: Whitespace diff ON", vim.log.levels.INFO)
+	else
+		state.iwhite = true
+		vim.opt.diffopt:append("iwhite")
+		vim.notify("fude.nvim: Whitespace diff ignored", vim.log.levels.INFO)
+	end
+end
+
 --- Toggle gitsigns base between PR base and HEAD.
 --- When toggled to HEAD, gitsigns uses HEAD as the base to show changes in the working tree.
 --- When toggled back, gitsigns uses the PR base as the base to show changes in the working tree.

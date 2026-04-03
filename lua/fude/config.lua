@@ -125,6 +125,7 @@ M.state = {
 	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
 	reloading = false, -- Guard flag to prevent concurrent reloads
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
+	iwhite = false, -- true: diffopt に iwhite を追加して空白差分を無視
 	sidepanel = nil, -- { win, buf, scope_entries, file_entries, section_map, augroup }
 }
 
@@ -178,6 +179,7 @@ function M.reset_state()
 		reload_timer = nil,
 		reloading = false,
 		gitsigns_reset = false,
+		iwhite = false,
 		sidepanel = nil,
 	}
 end
