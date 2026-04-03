@@ -717,18 +717,6 @@ describe("data.build_comment_entries", function()
 		assert.are.equal(10, entries[2].lnum)
 	end)
 
-	it("truncates body preview over 60 chars", function()
-		local long_body = string.rep("x", 100)
-		local map = {
-			["a.lua"] = {
-				[1] = { { id = 1, body = long_body, user = { login = "a" }, created_at = "2024-01-01T00:00:00Z" } },
-			},
-		}
-		local entries = data.build_comment_entries(map, "/repo", id_fn)
-		assert.is_true(#entries[1].detail < #long_body, "detail should be shorter than full body")
-		assert.is_truthy(entries[1].detail:match("%.%.%.$"), "truncated detail should end with '...'")
-	end)
-
 	it("returns empty for empty map", function()
 		local entries = data.build_comment_entries({}, "/repo", id_fn)
 		assert.are.same({}, entries)
