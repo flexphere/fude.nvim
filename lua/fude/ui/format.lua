@@ -568,12 +568,11 @@ end
 --- Format entries for the comment browser left pane.
 --- Each entry occupies exactly 1 line for direct cursor-to-entry mapping.
 --- @param entries table[] from build_comment_browser_entries
---- @param max_width number available character width
 --- @param format_date_fn fun(s: string): string
 --- @param outdated_opts table|nil { show: boolean, label: string, hl_group: string }
 --- @param format_path_fn fun(s: string): string|nil formats repo-relative path for display (nil = identity)
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_comment_browser_list(entries, max_width, format_date_fn, outdated_opts, format_path_fn)
+function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, format_path_fn)
 	local lines = {}
 	local hl_ranges = {}
 
@@ -652,9 +651,6 @@ function M.format_comment_browser_list(entries, max_width, format_date_fn, outda
 			end
 		end
 
-		if max_width > 0 and #text > max_width then
-			text = text:sub(1, max_width - 3) .. "..."
-		end
 		table.insert(lines, text)
 	end
 
