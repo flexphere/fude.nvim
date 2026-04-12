@@ -16,6 +16,7 @@ M.get_comment_thread = data.get_comment_thread
 M.parse_draft_key = data.parse_draft_key
 M.build_pending_comments_from_review = data.build_pending_comments_from_review
 M.build_review_comment_object = data.build_review_comment_object
+M.merge_pending_into_comments = data.merge_pending_into_comments
 M.pending_comments_to_array = data.pending_comments_to_array
 M.get_comment_line_range = data.get_comment_line_range
 M.get_reply_target_id = data.get_reply_target_id

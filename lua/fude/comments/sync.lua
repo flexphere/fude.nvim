@@ -97,7 +97,16 @@ local function fetch_comments(callback, opts)
 					-- Also build pending_comments from the same data
 					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
 				else
-					state.pending_comments = {}
+					-- On error, preserve existing state.pending_comments
+					-- (they were synced to GitHub; we just can't fetch them back yet).
+					-- Merge local pending data into comments for display.
+					local merged = data.merge_pending_into_comments(
+						comments,
+						state.pending_comments,
+						state.pending_review_id,
+						state.github_user
+					)
+					comments = merged
 				end
 				fetch_outdated_and_apply(comments)
 			end)
@@ -251,10 +260,43 @@ function M.sync_pending_review(callback)
 			end
 			state.pending_review_id = review_data and review_data.id
 
-			callback(nil)
+			if not state.pending_review_id then
+				-- Review was created but ID is missing; skip comment fetch and let
+				-- fetch_comments handle it later.
+				callback(nil)
+				fetch_comments()
+				return
+			end
 
-			-- fetch_comments also fetches pending review comments when pending_review_id is set
-			fetch_comments()
+			-- Fetch actual comment IDs from GitHub before merging into comment_map.
+			-- This ensures synthetic comments have real IDs for edit/delete operations.
+			gh.get_review_comments(state.pr_number, state.pending_review_id, function(rev_err, rev_comments)
+				if not rev_err and rev_comments then
+					for _, c in ipairs(rev_comments) do
+						if is_null(c.line) and is_null(c.original_line) then
+							c.line = data.line_from_diff_hunk(c.diff_hunk, c.position)
+						end
+					end
+					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
+
+					-- Merge pending comments into comment_map for immediate display
+					local merged, merged_map = data.merge_pending_into_comments(
+						state.comments,
+						state.pending_comments,
+						state.pending_review_id,
+						state.github_user
+					)
+					state.comments = merged
+					state.comment_map = merged_map
+				end
+				-- On rev_err: skip merge (pending_comments may lack real IDs),
+				-- let fetch_comments handle display later.
+
+				callback(nil)
+
+				-- fetch_comments also fetches pending review comments when pending_review_id is set
+				fetch_comments()
+			end)
 		end)
 	end
 

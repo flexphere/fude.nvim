@@ -217,6 +217,59 @@ function M.build_review_comment_object(path, start_line, end_line, body)
 	return comment
 end
 
+--- Merge pending comments into existing comments for immediate display.
+--- Creates synthetic comment objects from pending_comments and combines with existing ones.
+--- Used to bridge the gap between sync_pending_review success and fetch_comments completion.
+--- @param existing_comments table[] current state.comments array
+--- @param pending_comments table<string, table> state.pending_comments map
+--- @param pending_review_id number|nil the current pending review ID
+--- @param github_user string|nil authenticated GitHub username
+--- @return table[] merged_comments
+--- @return table<string, table<number, table[]>> merged_comment_map
+function M.merge_pending_into_comments(existing_comments, pending_comments, pending_review_id, github_user)
+	existing_comments = existing_comments or {}
+	if not pending_review_id or not pending_comments or vim.tbl_isempty(pending_comments) then
+		return existing_comments, M.build_comment_map(existing_comments)
+	end
+
+	-- Filter out existing comments from the same pending review (avoid duplicates)
+	local filtered = {}
+	for _, c in ipairs(existing_comments) do
+		if c.pull_request_review_id ~= pending_review_id then
+			table.insert(filtered, c)
+		end
+	end
+
+	-- Build synthetic comment objects from pending_comments (sorted by key for stable ordering)
+	local user_obj = github_user and { login = github_user } or nil
+	local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
+	local keys = vim.tbl_keys(pending_comments)
+	table.sort(keys)
+	for _, key in ipairs(keys) do
+		local pc = pending_comments[key]
+		if pc.path and pc.line then
+			local synthetic = {
+				path = pc.path,
+				body = pc.body,
+				line = pc.line,
+				side = pc.side or "RIGHT",
+				pull_request_review_id = pending_review_id,
+				id = pc.id,
+				user = user_obj,
+				created_at = now,
+				updated_at = now,
+			}
+			if pc.start_line and pc.start_line ~= pc.line then
+				synthetic.start_line = pc.start_line
+				synthetic.start_side = pc.start_side or "RIGHT"
+			end
+			table.insert(filtered, synthetic)
+		end
+	end
+
+	return filtered, M.build_comment_map(filtered)
+end
+
 --- Convert pending_comments table to array of review comment objects.
 --- @param pending_comments table<string, table> map of key -> comment data
 --- @return table[] array of review comment objects
