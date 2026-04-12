@@ -275,9 +275,9 @@ function M.start()
 			on_ready()
 		end)
 
-		-- Apply diffopt settings
+		-- Save original diffopt (always, so toggle_iwhite changes are restored on stop)
+		state.original_diffopt = vim.o.diffopt
 		if config.opts.diffopt then
-			state.original_diffopt = vim.o.diffopt
 			for _, opt in ipairs(config.opts.diffopt) do
 				vim.opt.diffopt:append(opt)
 			end
@@ -716,6 +716,17 @@ function M.toggle_iwhite()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+
+	-- Sync state.iwhite with actual diffopt before toggling
+	local diffopt = vim.opt.diffopt:get()
+	local has_iwhite = false
+	for _, opt in ipairs(diffopt) do
+		if opt == "iwhite" then
+			has_iwhite = true
+			break
+		end
+	end
+	state.iwhite = has_iwhite
 
 	if state.iwhite then
 		state.iwhite = false
