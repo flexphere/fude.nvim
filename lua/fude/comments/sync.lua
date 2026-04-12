@@ -97,7 +97,16 @@ local function fetch_comments(callback, opts)
 					-- Also build pending_comments from the same data
 					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
 				else
-					state.pending_comments = {}
+					-- On error, preserve existing state.pending_comments
+					-- (they were synced to GitHub; we just can't fetch them back yet).
+					-- Merge local pending data into comments for display.
+					local merged = data.merge_pending_into_comments(
+						comments,
+						state.pending_comments,
+						state.pending_review_id,
+						state.github_user
+					)
+					comments = merged
 				end
 				fetch_outdated_and_apply(comments)
 			end)
@@ -250,6 +259,17 @@ function M.sync_pending_review(callback)
 				return
 			end
 			state.pending_review_id = review_data and review_data.id
+
+			-- Immediately merge pending comments into comment_map for display
+			-- so the caller's refresh_extmarks() sees them before fetch_comments completes
+			local merged, merged_map = data.merge_pending_into_comments(
+				state.comments,
+				state.pending_comments,
+				state.pending_review_id,
+				state.github_user
+			)
+			state.comments = merged
+			state.comment_map = merged_map
 
 			callback(nil)
 
