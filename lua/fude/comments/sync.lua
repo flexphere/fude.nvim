@@ -260,6 +260,14 @@ function M.sync_pending_review(callback)
 			end
 			state.pending_review_id = review_data and review_data.id
 
+			if not state.pending_review_id then
+				-- Review was created but ID is missing; skip comment fetch and let
+				-- fetch_comments handle it later.
+				callback(nil)
+				fetch_comments()
+				return
+			end
+
 			-- Fetch actual comment IDs from GitHub before merging into comment_map.
 			-- This ensures synthetic comments have real IDs for edit/delete operations.
 			gh.get_review_comments(state.pr_number, state.pending_review_id, function(rev_err, rev_comments)
@@ -270,16 +278,19 @@ function M.sync_pending_review(callback)
 						end
 					end
 					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
+
+					-- Merge pending comments into comment_map for immediate display
+					local merged, merged_map = data.merge_pending_into_comments(
+						state.comments,
+						state.pending_comments,
+						state.pending_review_id,
+						state.github_user
+					)
+					state.comments = merged
+					state.comment_map = merged_map
 				end
-				-- Merge pending comments into comment_map for immediate display
-				local merged, merged_map = data.merge_pending_into_comments(
-					state.comments,
-					state.pending_comments,
-					state.pending_review_id,
-					state.github_user
-				)
-				state.comments = merged
-				state.comment_map = merged_map
+				-- On rev_err: skip merge (pending_comments may lack real IDs),
+				-- let fetch_comments handle display later.
 
 				callback(nil)
 
