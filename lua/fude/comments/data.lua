@@ -371,9 +371,6 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending
 			local last_ts = last.created_at or ""
 			local last_date = format_date_fn(last_ts)
 			local body_preview = (first.body or ""):gsub("\r?\n", " ")
-			if #body_preview > 60 then
-				body_preview = body_preview:sub(1, 57) .. "..."
-			end
 			local raw = format_path_fn(path)
 			local display_path = type(raw) == "string" and raw or path
 			local label = is_pending and "[pending]" or ("@" .. author)
