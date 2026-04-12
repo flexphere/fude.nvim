@@ -22,7 +22,7 @@ function M.line_from_diff_hunk(diff_hunk, position)
 	for hunk_line in diff_hunk:gmatch("[^\n]+") do
 		if not hunk_line:match("^@@") then
 			pos = pos + 1
-			if hunk_line:sub(1, 1) ~= "-" then
+			if hunk_line:sub(1, 1) ~= "-" and hunk_line:sub(1, 1) ~= "\\" then
 				-- Context or addition: belongs to new file
 				if pos == position then
 					return new_line
@@ -36,7 +36,13 @@ function M.line_from_diff_hunk(diff_hunk, position)
 	-- but diff_hunk only contains the hunk where the comment is located.
 	-- GitHub truncates diff_hunk at the comment position, so the last
 	-- new-side line is the commented line.
-	return last_new_line
+	-- Only fall back when position exceeds the hunk (multi-hunk offset);
+	-- if position is within the hunk but didn't match (e.g. deletion line),
+	-- return nil to avoid mapping to the wrong line.
+	if position > pos then
+		return last_new_line
+	end
+	return nil
 end
 
 --- Build a nested lookup map from a flat array of comments.

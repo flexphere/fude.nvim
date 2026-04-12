@@ -572,6 +572,18 @@ describe("data.line_from_diff_hunk", function()
 		assert.are.equal(63, data.line_from_diff_hunk(hunk, 49))
 	end)
 
+	it("returns nil when position points to a deletion line within hunk", function()
+		-- position 2 is the deletion line "-deleted"; no RIGHT-side line exists for it.
+		local hunk = "@@ -10,3 +20,3 @@\n context\n-deleted\n+added\n context2"
+		assert.is_nil(data.line_from_diff_hunk(hunk, 2))
+	end)
+
+	it("skips backslash no-newline marker in line count", function()
+		local hunk = "@@ -1,1 +1,1 @@\n-old\n+new\n\\ No newline at end of file"
+		-- position 2 = "+new", new_start=1 → line 1
+		assert.are.equal(1, data.line_from_diff_hunk(hunk, 2))
+	end)
+
 	it("returns nil for invalid hunk header", function()
 		assert.is_nil(data.line_from_diff_hunk("no header here", 1))
 	end)
