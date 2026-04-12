@@ -240,10 +240,13 @@ function M.merge_pending_into_comments(existing_comments, pending_comments, pend
 		end
 	end
 
-	-- Build synthetic comment objects from pending_comments
+	-- Build synthetic comment objects from pending_comments (sorted by key for stable ordering)
 	local user_obj = github_user and { login = github_user } or nil
 	local now = os.date("!%Y-%m-%dT%H:%M:%SZ")
-	for _, pc in pairs(pending_comments) do
+	local keys = vim.tbl_keys(pending_comments)
+	table.sort(keys)
+	for _, key in ipairs(keys) do
+		local pc = pending_comments[key]
 		if pc.path and pc.line then
 			local synthetic = {
 				path = pc.path,

@@ -406,11 +406,26 @@ describe("sync integration", function()
 			assert.are.equal("Not active", cb_err)
 		end)
 
-		it("immediately updates comment_map after creating review", function()
+		it("immediately updates comment_map with real IDs after creating review", function()
 			local gh = require("fude.gh")
 			helpers.mock(gh, "create_pending_review", function(_, _, _, callback)
 				vim.schedule(function()
 					callback(nil, { id = 300 })
+				end)
+			end)
+			helpers.mock(gh, "get_review_comments", function(_, _, callback)
+				vim.schedule(function()
+					callback(nil, {
+						{
+							id = 501,
+							path = "new.lua",
+							line = 5,
+							body = "pending comment",
+							side = "RIGHT",
+							start_line = 5,
+							pull_request_review_id = 300,
+						},
+					})
 				end)
 			end)
 
@@ -434,6 +449,8 @@ describe("sync integration", function()
 				assert.is_not_nil(config.state.comment_map["new.lua"][5])
 				assert.are.equal("pending comment", config.state.comment_map["new.lua"][5][1].body)
 				assert.are.equal(300, config.state.comment_map["new.lua"][5][1].pull_request_review_id)
+				-- Pending comment should have real ID from get_review_comments
+				assert.are.equal(501, config.state.comment_map["new.lua"][5][1].id)
 				-- Existing submitted comment should still be present
 				assert.is_not_nil(config.state.comment_map["existing.lua"])
 				assert.is_not_nil(config.state.comment_map["existing.lua"][10])

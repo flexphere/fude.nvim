@@ -260,21 +260,32 @@ function M.sync_pending_review(callback)
 			end
 			state.pending_review_id = review_data and review_data.id
 
-			-- Immediately merge pending comments into comment_map for display
-			-- so the caller's refresh_extmarks() sees them before fetch_comments completes
-			local merged, merged_map = data.merge_pending_into_comments(
-				state.comments,
-				state.pending_comments,
-				state.pending_review_id,
-				state.github_user
-			)
-			state.comments = merged
-			state.comment_map = merged_map
+			-- Fetch actual comment IDs from GitHub before merging into comment_map.
+			-- This ensures synthetic comments have real IDs for edit/delete operations.
+			gh.get_review_comments(state.pr_number, state.pending_review_id, function(rev_err, rev_comments)
+				if not rev_err and rev_comments then
+					for _, c in ipairs(rev_comments) do
+						if is_null(c.line) and is_null(c.original_line) then
+							c.line = data.line_from_diff_hunk(c.diff_hunk, c.position)
+						end
+					end
+					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
+				end
+				-- Merge pending comments into comment_map for immediate display
+				local merged, merged_map = data.merge_pending_into_comments(
+					state.comments,
+					state.pending_comments,
+					state.pending_review_id,
+					state.github_user
+				)
+				state.comments = merged
+				state.comment_map = merged_map
 
-			callback(nil)
+				callback(nil)
 
-			-- fetch_comments also fetches pending review comments when pending_review_id is set
-			fetch_comments()
+				-- fetch_comments also fetches pending review comments when pending_review_id is set
+				fetch_comments()
+			end)
 		end)
 	end
 
