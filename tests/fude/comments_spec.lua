@@ -554,9 +554,22 @@ describe("data.line_from_diff_hunk", function()
 		assert.is_nil(data.line_from_diff_hunk("@@ -0,0 +1 @@\n+x", vim.NIL))
 	end)
 
-	it("returns nil when position exceeds hunk lines", function()
+	it("falls back to last new-side line when position exceeds hunk lines", function()
+		-- position is relative to the entire file diff (across all hunks),
+		-- but diff_hunk only contains the relevant hunk. GitHub truncates
+		-- diff_hunk at the comment position, so the last new-side line is correct.
 		local hunk = "@@ -0,0 +1,1 @@\n+only"
-		assert.is_nil(data.line_from_diff_hunk(hunk, 99))
+		assert.are.equal(1, data.line_from_diff_hunk(hunk, 99))
+	end)
+
+	it("falls back correctly for multi-hunk file diff", function()
+		-- Simulates a comment in the 3rd hunk of a file with position=49.
+		-- The diff_hunk only contains the 3rd hunk (truncated at comment position).
+		local hunk = "@@ -59,17 +60,39 @@\n context\n-deleted\n+added\n context2\n+last_line"
+		-- position 49 exceeds the 5 content lines in this hunk.
+		-- Fallback should return the line of the last new-side line.
+		-- new_start=60, non-deletion lines: context(60), added(61), context2(62), last_line(63)
+		assert.are.equal(63, data.line_from_diff_hunk(hunk, 49))
 	end)
 
 	it("returns nil for invalid hunk header", function()
