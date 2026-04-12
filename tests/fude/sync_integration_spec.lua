@@ -405,6 +405,45 @@ describe("sync integration", function()
 
 			assert.are.equal("Not active", cb_err)
 		end)
+
+		it("immediately updates comment_map after creating review", function()
+			local gh = require("fude.gh")
+			helpers.mock(gh, "create_pending_review", function(_, _, _, callback)
+				vim.schedule(function()
+					callback(nil, { id = 300 })
+				end)
+			end)
+
+			config.state.active = true
+			config.state.pr_number = 42
+			config.state.comments = {
+				{ id = 1, path = "existing.lua", line = 10, body = "submitted", pull_request_review_id = 50 },
+			}
+			config.state.comment_map = require("fude.comments.data").build_comment_map(config.state.comments)
+			config.state.pending_comments = {
+				["new.lua:5:5"] = { path = "new.lua", body = "pending comment", line = 5, side = "RIGHT" },
+			}
+			config.state.github_user = "testuser"
+
+			local cb_called = false
+			sync.sync_pending_review(function(err)
+				cb_called = true
+				assert.is_nil(err)
+				-- At callback time, comment_map should already contain the pending comment
+				assert.is_not_nil(config.state.comment_map["new.lua"])
+				assert.is_not_nil(config.state.comment_map["new.lua"][5])
+				assert.are.equal("pending comment", config.state.comment_map["new.lua"][5][1].body)
+				assert.are.equal(300, config.state.comment_map["new.lua"][5][1].pull_request_review_id)
+				-- Existing submitted comment should still be present
+				assert.is_not_nil(config.state.comment_map["existing.lua"])
+				assert.is_not_nil(config.state.comment_map["existing.lua"][10])
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok, "Callback should be called")
+		end)
 	end)
 
 	describe("edit_comment", function()

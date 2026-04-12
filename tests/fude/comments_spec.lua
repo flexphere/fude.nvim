@@ -1329,3 +1329,126 @@ describe("build_file_comment_counts", function()
 		assert.are.equal(2, result["src/a.lua"].pending)
 	end)
 end)
+
+describe("merge_pending_into_comments", function()
+	it("returns existing comments unchanged when pending_comments is empty", function()
+		local existing = {
+			{ id = 1, path = "foo.lua", line = 10, body = "submitted" },
+		}
+		local merged, map = data.merge_pending_into_comments(existing, {}, 100, "user1")
+		assert.are.equal(1, #merged)
+		assert.are.equal("submitted", merged[1].body)
+		assert.is_not_nil(map["foo.lua"])
+		assert.is_not_nil(map["foo.lua"][10])
+	end)
+
+	it("returns existing comments unchanged when pending_review_id is nil", function()
+		local existing = {
+			{ id = 1, path = "foo.lua", line = 10, body = "submitted" },
+		}
+		local pending = {
+			["bar.lua:5:5"] = { path = "bar.lua", body = "pending", line = 5, side = "RIGHT" },
+		}
+		local merged, map = data.merge_pending_into_comments(existing, pending, nil, "user1")
+		assert.are.equal(1, #merged)
+		assert.is_nil(map["bar.lua"])
+	end)
+
+	it("merges a single pending comment into existing comments", function()
+		local existing = {
+			{ id = 1, path = "foo.lua", line = 10, body = "submitted", pull_request_review_id = 50 },
+		}
+		local pending = {
+			["bar.lua:5:5"] = { path = "bar.lua", body = "pending comment", line = 5, side = "RIGHT" },
+		}
+		local merged, map = data.merge_pending_into_comments(existing, pending, 100, "user1")
+		assert.are.equal(2, #merged)
+		assert.is_not_nil(map["foo.lua"])
+		assert.is_not_nil(map["foo.lua"][10])
+		assert.is_not_nil(map["bar.lua"])
+		assert.is_not_nil(map["bar.lua"][5])
+		-- Verify the synthetic comment has pull_request_review_id
+		local pending_in_map = map["bar.lua"][5][1]
+		assert.are.equal(100, pending_in_map.pull_request_review_id)
+		assert.are.equal("pending comment", pending_in_map.body)
+	end)
+
+	it("merges multiple pending comments", function()
+		local existing = {}
+		local pending = {
+			["a.lua:1:1"] = { path = "a.lua", body = "first", line = 1, side = "RIGHT" },
+			["b.lua:2:2"] = { path = "b.lua", body = "second", line = 2, side = "RIGHT" },
+		}
+		local merged, map = data.merge_pending_into_comments(existing, pending, 100, "user1")
+		assert.are.equal(2, #merged)
+		assert.is_not_nil(map["a.lua"])
+		assert.is_not_nil(map["a.lua"][1])
+		assert.is_not_nil(map["b.lua"])
+		assert.is_not_nil(map["b.lua"][2])
+	end)
+
+	it("deduplicates by removing existing comments with same pending_review_id", function()
+		local existing = {
+			{ id = 1, path = "foo.lua", line = 10, body = "submitted", pull_request_review_id = 50 },
+			{ id = 2, path = "bar.lua", line = 5, body = "old pending", pull_request_review_id = 100 },
+		}
+		local pending = {
+			["bar.lua:5:5"] = { path = "bar.lua", body = "new pending", line = 5, side = "RIGHT" },
+		}
+		local merged, map = data.merge_pending_into_comments(existing, pending, 100, "user1")
+		-- Old pending (id=2) should be replaced by new synthetic
+		assert.are.equal(2, #merged)
+		assert.is_not_nil(map["foo.lua"])
+		assert.is_not_nil(map["bar.lua"])
+		assert.are.equal("new pending", map["bar.lua"][5][1].body)
+		assert.are.equal(100, map["bar.lua"][5][1].pull_request_review_id)
+	end)
+
+	it("handles multi-line pending comments", function()
+		local existing = {}
+		local pending = {
+			["foo.lua:10:15"] = {
+				path = "foo.lua",
+				body = "multi-line",
+				line = 15,
+				side = "RIGHT",
+				start_line = 10,
+				start_side = "RIGHT",
+			},
+		}
+		local merged, map = data.merge_pending_into_comments(existing, pending, 100, "user1")
+		assert.are.equal(1, #merged)
+		local c = merged[1]
+		assert.are.equal(15, c.line)
+		assert.are.equal(10, c.start_line)
+		assert.are.equal("RIGHT", c.start_side)
+		assert.are.equal(100, c.pull_request_review_id)
+		-- comment_map keys by end line
+		assert.is_not_nil(map["foo.lua"][15])
+	end)
+
+	it("sets user info on synthetic comments", function()
+		local pending = {
+			["foo.lua:5:5"] = { path = "foo.lua", body = "test", line = 5, side = "RIGHT" },
+		}
+		local merged, _ = data.merge_pending_into_comments({}, pending, 100, "testuser")
+		assert.is_not_nil(merged[1].user)
+		assert.are.equal("testuser", merged[1].user.login)
+	end)
+
+	it("handles nil github_user", function()
+		local pending = {
+			["foo.lua:5:5"] = { path = "foo.lua", body = "test", line = 5, side = "RIGHT" },
+		}
+		local merged, _ = data.merge_pending_into_comments({}, pending, 100, nil)
+		assert.is_nil(merged[1].user)
+	end)
+
+	it("preserves pending comment id when available", function()
+		local pending = {
+			["foo.lua:5:5"] = { id = 999, path = "foo.lua", body = "test", line = 5, side = "RIGHT" },
+		}
+		local merged, _ = data.merge_pending_into_comments({}, pending, 100, nil)
+		assert.are.equal(999, merged[1].id)
+	end)
+end)
