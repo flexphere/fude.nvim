@@ -6,7 +6,7 @@ local is_null = util.is_null
 --- The review-specific endpoint (GET /reviews/{id}/comments) returns `position`
 --- instead of `line` for pending review comments. This converts position to line.
 --- @param diff_hunk string the diff hunk text from the API
---- @param position number 1-indexed position within the diff hunk
+--- @param position number 1-indexed position within the file diff (may span multiple hunks)
 --- @return number|nil line number in the new file
 function M.line_from_diff_hunk(diff_hunk, position)
 	if is_null(diff_hunk) or is_null(position) then
@@ -17,18 +17,30 @@ function M.line_from_diff_hunk(diff_hunk, position)
 		return nil
 	end
 	local new_line = new_start
+	local last_new_line = nil
 	local pos = 0
 	for hunk_line in diff_hunk:gmatch("[^\n]+") do
 		if not hunk_line:match("^@@") then
 			pos = pos + 1
-			if hunk_line:sub(1, 1) ~= "-" then
+			if hunk_line:sub(1, 1) ~= "-" and hunk_line:sub(1, 1) ~= "\\" then
 				-- Context or addition: belongs to new file
 				if pos == position then
 					return new_line
 				end
+				last_new_line = new_line
 				new_line = new_line + 1
 			end
 		end
+	end
+	-- position is relative to the entire file diff (across all hunks),
+	-- but diff_hunk only contains the hunk where the comment is located.
+	-- GitHub truncates diff_hunk at the comment position, so the last
+	-- new-side line is the commented line.
+	-- Only fall back when position exceeds the hunk (multi-hunk offset);
+	-- if position is within the hunk but didn't match (e.g. deletion line),
+	-- return nil to avoid mapping to the wrong line.
+	if position > pos then
+		return last_new_line
 	end
 	return nil
 end
