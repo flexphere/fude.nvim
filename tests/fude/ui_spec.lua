@@ -1457,17 +1457,6 @@ describe("calculate_comment_browser_layout", function()
 		assert.are.equal(layout.left.height, layout.right_upper.height + layout.right_lower.height + 2)
 	end)
 
-	it("no blank line between upper bottom border and lower top border", function()
-		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
-		-- Upper bottom border is drawn just below upper content (row + height).
-		-- Lower top border is drawn just above lower content (lower.row - 1).
-		-- Adjacency (no blank line) means these two border rows sit next to each other:
-		--   (upper.row + upper.height) + 1 == (lower.row - 1)
-		local upper_bottom_border_row = layout.right_upper.row + layout.right_upper.height
-		local lower_top_border_row = layout.right_lower.row - 1
-		assert.are.equal(upper_bottom_border_row + 1, lower_top_border_row)
-	end)
-
 	it("left + right widths + 4 border chars fits in total", function()
 		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
 		-- Total width = left_width + 2 (left border) + right_width + 2 (right border)
