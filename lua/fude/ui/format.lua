@@ -544,8 +544,8 @@ function M.calculate_comment_browser_layout(columns, screen_lines, pct_w, pct_h,
 	-- Re-clamp left if right was clamped up
 	left_width = inner - right_width
 
-	-- Vertical split of right side (3 row gap between upper and lower)
-	local right_inner = total_height - 3 -- subtract gap between upper/lower
+	-- Vertical split of right side (2 row gap = upper bottom border + lower top border, no blank line)
+	local right_inner = total_height - 2 -- subtract border lines between upper/lower
 	local lower_height = math.max(math.floor(right_inner * lower_pct / 100), min_lower)
 	local upper_height = math.max(right_inner - lower_height, min_upper)
 	-- Re-clamp lower if upper was clamped up, but keep minimum
@@ -559,7 +559,7 @@ function M.calculate_comment_browser_layout(columns, screen_lines, pct_w, pct_h,
 		right_lower = {
 			width = right_width,
 			height = lower_height,
-			row = top_row + upper_height + 3, -- gap between upper and lower panes
+			row = top_row + upper_height + 2, -- upper bottom border + lower top border, no blank line
 			col = right_col,
 		},
 	}
