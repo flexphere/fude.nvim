@@ -1447,14 +1447,25 @@ describe("calculate_comment_browser_layout", function()
 		assert.are.equal(layout.right_upper.col, layout.right_lower.col)
 	end)
 
-	it("right_lower.row = right_upper.row + right_upper.height + 3 (gap)", function()
+	it("right_lower.row = right_upper.row + right_upper.height + 2 (borders only, no blank gap)", function()
 		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
-		assert.are.equal(layout.right_upper.row + layout.right_upper.height + 3, layout.right_lower.row)
+		assert.are.equal(layout.right_upper.row + layout.right_upper.height + 2, layout.right_lower.row)
 	end)
 
-	it("upper + lower height + 3 gap rows equals total height", function()
+	it("upper + lower height + 2 border rows equals total height", function()
 		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
-		assert.are.equal(layout.left.height, layout.right_upper.height + layout.right_lower.height + 3)
+		assert.are.equal(layout.left.height, layout.right_upper.height + layout.right_lower.height + 2)
+	end)
+
+	it("no blank line between upper bottom border and lower top border", function()
+		local layout = ui.calculate_comment_browser_layout(200, 50, 80, 80)
+		-- Upper bottom border is drawn just below upper content (row + height).
+		-- Lower top border is drawn just above lower content (lower.row - 1).
+		-- Adjacency (no blank line) means these two border rows sit next to each other:
+		--   (upper.row + upper.height) + 1 == (lower.row - 1)
+		local upper_bottom_border_row = layout.right_upper.row + layout.right_upper.height
+		local lower_top_border_row = layout.right_lower.row - 1
+		assert.are.equal(upper_bottom_border_row + 1, lower_top_border_row)
 	end)
 
 	it("left + right widths + 4 border chars fits in total", function()
