@@ -207,10 +207,10 @@ function M.show_telescope()
 				end)
 
 				map("i", "<Tab>", function()
-					M.toggle_viewed_in_picker(prompt_bufnr)
+					M.toggle_viewed_in_telescope(prompt_bufnr)
 				end)
 				map("n", "<Tab>", function()
-					M.toggle_viewed_in_picker(prompt_bufnr)
+					M.toggle_viewed_in_telescope(prompt_bufnr)
 				end)
 
 				return true
@@ -256,25 +256,17 @@ function M.apply_viewed_toggle(path, on_done)
 	end)
 end
 
---- Toggle viewed state for the selected file in the Telescope picker.
+--- Telescope adapter for the viewed-state toggle.
+--- Reads the current selection, delegates state mutation to apply_viewed_toggle,
+--- then applies the returned display fields to the entry and refreshes the
+--- picker while preserving the selected row.
 --- @param prompt_bufnr number
-function M.toggle_viewed_in_picker(prompt_bufnr)
+function M.toggle_viewed_in_telescope(prompt_bufnr)
 	local action_state = require("telescope.actions.state")
 	local selection = action_state.get_selected_entry()
 	if not selection then
 		return
 	end
-
-	local state = config.state
-	if not state.pr_node_id then
-		vim.notify("fude.nvim: PR node ID not available", vim.log.levels.WARN)
-		return
-	end
-
-	local path = selection.path
-	local current_state = state.viewed_files[path]
-	local gh_mod = require("fude.gh")
-	local viewed_sign = config.opts.signs.viewed or "✓"
 
 	local function refresh_picker_preserving_selection()
 		local picker = action_state.get_current_picker(prompt_bufnr)
@@ -288,31 +280,11 @@ function M.toggle_viewed_in_picker(prompt_bufnr)
 		end
 	end
 
-	if current_state == "VIEWED" then
-		gh_mod.unmark_file_viewed(state.pr_node_id, path, function(err)
-			if err then
-				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-				return
-			end
-			state.viewed_files[path] = "UNVIEWED"
-			local v_icon, v_hl = M.viewed_icon("UNVIEWED", viewed_sign)
-			selection.viewed_icon = v_icon
-			selection.viewed_hl = v_hl
-			refresh_picker_preserving_selection()
-		end)
-	else
-		gh_mod.mark_file_viewed(state.pr_node_id, path, function(err)
-			if err then
-				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-				return
-			end
-			state.viewed_files[path] = "VIEWED"
-			local v_icon, v_hl = M.viewed_icon("VIEWED", viewed_sign)
-			selection.viewed_icon = v_icon
-			selection.viewed_hl = v_hl
-			refresh_picker_preserving_selection()
-		end)
-	end
+	M.apply_viewed_toggle(selection.path, function(updated)
+		selection.viewed_icon = updated.viewed_icon
+		selection.viewed_hl = updated.viewed_hl
+		refresh_picker_preserving_selection()
+	end)
 end
 
 --- Show changed files in the quickfix list.
