@@ -253,6 +253,31 @@ function M.show_telescope(scope_entries)
 		:find()
 end
 
+--- Toggle the reviewed state for a commit in local state.
+--- Picker-agnostic core mutator. Updates state.reviewed_commits[sha] and
+--- returns the updated display fields. Returns nil for nil sha (e.g. when
+--- the caller didn't guard against is_full_pr entries).
+--- @param sha string|nil commit SHA
+--- @return { is_reviewed: boolean, reviewed_icon: string, reviewed_hl: string }|nil updated
+function M.apply_reviewed_toggle(sha)
+	if not sha then
+		return nil
+	end
+	local state = config.state
+	if state.reviewed_commits[sha] then
+		state.reviewed_commits[sha] = nil
+	else
+		state.reviewed_commits[sha] = true
+	end
+	local is_reviewed = state.reviewed_commits[sha] == true
+	local r_icon, r_hl = M.reviewed_icon(is_reviewed)
+	return {
+		is_reviewed = is_reviewed,
+		reviewed_icon = r_icon,
+		reviewed_hl = r_hl,
+	}
+end
+
 --- Toggle reviewed state for the selected commit in the Telescope picker.
 --- @param prompt_bufnr number
 function M.toggle_reviewed_in_picker(prompt_bufnr)
