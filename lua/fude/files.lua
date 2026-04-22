@@ -221,6 +221,41 @@ function M.show_telescope()
 	create_picker(entries):find()
 end
 
+--- Toggle the viewed state for a file via GitHub GraphQL API.
+--- Picker-agnostic core mutator. Updates state.viewed_files on success, then
+--- invokes on_done with the updated display fields. If gh returns an error,
+--- notifies and does NOT invoke on_done.
+--- @param path string repo-relative file path
+--- @param on_done fun(updated: { path: string, viewed_state: string, viewed_icon: string, viewed_hl: string })
+function M.apply_viewed_toggle(path, on_done)
+	local state = config.state
+	if not state.pr_node_id then
+		vim.notify("fude.nvim: PR node ID not available", vim.log.levels.WARN)
+		return
+	end
+
+	local gh_mod = require("fude.gh")
+	local viewed_sign = config.opts.signs.viewed or "✓"
+	local current_state = state.viewed_files[path]
+	local new_state = (current_state == "VIEWED") and "UNVIEWED" or "VIEWED"
+	local toggle_fn = (current_state == "VIEWED") and gh_mod.unmark_file_viewed or gh_mod.mark_file_viewed
+
+	toggle_fn(state.pr_node_id, path, function(err)
+		if err then
+			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+			return
+		end
+		state.viewed_files[path] = new_state
+		local v_icon, v_hl = M.viewed_icon(new_state, viewed_sign)
+		on_done({
+			path = path,
+			viewed_state = new_state,
+			viewed_icon = v_icon,
+			viewed_hl = v_hl,
+		})
+	end)
+end
+
 --- Toggle viewed state for the selected file in the Telescope picker.
 --- @param prompt_bufnr number
 function M.toggle_viewed_in_picker(prompt_bufnr)
