@@ -271,6 +271,7 @@ function M.show_snacks(scope_entries)
 	local preview_cache = {}
 	local inflight = {}
 	local preview_ns = vim.api.nvim_create_namespace("fude_scope_preview")
+	local current_preview_sha = nil
 
 	local items = {}
 	for _, entry in ipairs(scope_entries) do
@@ -314,6 +315,7 @@ function M.show_snacks(scope_entries)
 			end
 
 			if item.is_full_pr then
+				current_preview_sha = nil
 				local files = {}
 				for _, f in ipairs(state.changed_files) do
 					table.insert(files, {
@@ -332,6 +334,8 @@ function M.show_snacks(scope_entries)
 				return
 			end
 
+			current_preview_sha = sha
+
 			if preview_cache[sha] then
 				apply_preview(preview_cache[sha])
 				return
@@ -348,7 +352,7 @@ function M.show_snacks(scope_entries)
 			gh_mod.get_commit_files(sha, function(err, raw_files)
 				inflight[sha] = nil
 				if err then
-					if vim.api.nvim_buf_is_valid(buf) then
+					if vim.api.nvim_buf_is_valid(buf) and current_preview_sha == sha then
 						vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Error: " .. err })
 					end
 					return
@@ -363,7 +367,9 @@ function M.show_snacks(scope_entries)
 					})
 				end
 				preview_cache[sha] = files
-				apply_preview(files)
+				if current_preview_sha == sha then
+					apply_preview(files)
+				end
 			end)
 		end,
 		confirm = function(picker, item)
