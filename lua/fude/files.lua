@@ -275,6 +275,7 @@ function M.show_snacks()
 				return
 			end
 			ctx.preview:reset()
+			ctx.preview:minimal()
 			if item.patch == "" then
 				ctx.preview:set_lines({ "(no diff)" })
 				return
