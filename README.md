@@ -245,6 +245,10 @@ Then add `{ name = "fude" }` to your nvim-cmp sources.
 
 - **nvim-cmp: `_commit` completion order** — nvim-cmp sorts candidates by its own algorithm, so `_commit` completion may not display in date-descending order as intended. blink.cmp preserves the intended order. ([#98](https://github.com/flexphere/fude.nvim/issues/98))
 
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, testing, and the recommended workflow.
+
 ## License
 
 MIT
