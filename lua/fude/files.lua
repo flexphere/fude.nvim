@@ -266,7 +266,7 @@ function M.show_snacks()
 				{ "+" .. item.additions .. " ", "DiffAdd" },
 				{ "-" .. item.deletions .. " ", "DiffDelete" },
 				{ (item.comment_display ~= "" and (item.comment_display .. " ") or ""), item.comment_hl },
-				{ format_path(item.path) },
+				{ item.text },
 			}
 		end,
 		preview = function(ctx)
