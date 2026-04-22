@@ -267,3 +267,119 @@ describe("build_file_entries with comment_counts", function()
 		assert.are.equal("", entries[1].comment_display)
 	end)
 end)
+
+describe("apply_viewed_toggle", function()
+	local config = require("fude.config")
+	local helpers = require("tests.helpers")
+	local gh
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.pr_node_id = "PR_node_1"
+		config.state.viewed_files = {}
+		gh = require("fude.gh")
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("transitions UNVIEWED to VIEWED via mark_file_viewed and emits updated fields", function()
+		local mark_calls = {}
+		helpers.mock(gh, "mark_file_viewed", function(pr_id, path, cb)
+			table.insert(mark_calls, { pr_id = pr_id, path = path })
+			vim.schedule(function()
+				cb(nil)
+			end)
+		end)
+		helpers.mock(gh, "unmark_file_viewed", function(_, _, _)
+			error("unmark_file_viewed should not be called")
+		end)
+
+		local received
+		files.apply_viewed_toggle("src/foo.lua", function(updated)
+			received = updated
+		end)
+
+		assert.is_true(helpers.wait_for(function()
+			return received ~= nil
+		end, 500))
+		assert.are.equal(1, #mark_calls)
+		assert.are.equal("PR_node_1", mark_calls[1].pr_id)
+		assert.are.equal("src/foo.lua", mark_calls[1].path)
+		assert.are.equal("VIEWED", config.state.viewed_files["src/foo.lua"])
+		assert.are.equal("src/foo.lua", received.path)
+		assert.are.equal("VIEWED", received.viewed_state)
+		assert.are.equal("✓", received.viewed_icon)
+		assert.are.equal("DiagnosticOk", received.viewed_hl)
+	end)
+
+	it("transitions VIEWED to UNVIEWED via unmark_file_viewed", function()
+		config.state.viewed_files["src/bar.lua"] = "VIEWED"
+		local unmark_calls = {}
+		helpers.mock(gh, "unmark_file_viewed", function(_, path, cb)
+			table.insert(unmark_calls, path)
+			vim.schedule(function()
+				cb(nil)
+			end)
+		end)
+		helpers.mock(gh, "mark_file_viewed", function(_, _, _)
+			error("mark_file_viewed should not be called")
+		end)
+
+		local received
+		files.apply_viewed_toggle("src/bar.lua", function(updated)
+			received = updated
+		end)
+
+		assert.is_true(helpers.wait_for(function()
+			return received ~= nil
+		end, 500))
+		assert.are.equal("src/bar.lua", unmark_calls[1])
+		assert.are.equal("UNVIEWED", config.state.viewed_files["src/bar.lua"])
+		assert.are.equal("UNVIEWED", received.viewed_state)
+		assert.are.equal(" ", received.viewed_icon)
+		assert.are.equal("Comment", received.viewed_hl)
+	end)
+
+	it("does not invoke on_done and does not mutate state when gh returns an error", function()
+		helpers.mock(gh, "mark_file_viewed", function(_, _, cb)
+			vim.schedule(function()
+				cb("network error")
+			end)
+		end)
+
+		local invoked = false
+		files.apply_viewed_toggle("src/baz.lua", function(_)
+			invoked = true
+		end)
+
+		-- vim.wait returns true iff the condition became true before timeout.
+		-- We expect the callback to NEVER fire, so fired must stay false.
+		local fired = vim.wait(100, function()
+			return invoked
+		end)
+		assert.is_false(fired)
+		assert.is_nil(config.state.viewed_files["src/baz.lua"])
+	end)
+
+	it("returns early without calling gh when pr_node_id is nil", function()
+		config.state.pr_node_id = nil
+		local gh_called = false
+		helpers.mock(gh, "mark_file_viewed", function(_, _, _)
+			gh_called = true
+		end)
+
+		local invoked = false
+		files.apply_viewed_toggle("src/qux.lua", function(_)
+			invoked = true
+		end)
+
+		-- Neither gh nor on_done should fire; vim.wait only returns true if one of them does.
+		local fired = vim.wait(50, function()
+			return gh_called or invoked
+		end)
+		assert.is_false(fired)
+	end)
+end)

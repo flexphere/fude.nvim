@@ -241,10 +241,10 @@ function M.show_telescope(scope_entries)
 				end)
 
 				map("i", "<Tab>", function()
-					M.toggle_reviewed_in_picker(prompt_bufnr)
+					M.toggle_reviewed_in_telescope(prompt_bufnr)
 				end)
 				map("n", "<Tab>", function()
-					M.toggle_reviewed_in_picker(prompt_bufnr)
+					M.toggle_reviewed_in_telescope(prompt_bufnr)
 				end)
 
 				return true
@@ -253,32 +253,50 @@ function M.show_telescope(scope_entries)
 		:find()
 end
 
---- Toggle reviewed state for the selected commit in the Telescope picker.
---- @param prompt_bufnr number
-function M.toggle_reviewed_in_picker(prompt_bufnr)
-	local action_state = require("telescope.actions.state")
-	local selection = action_state.get_selected_entry()
-	if not selection or selection.is_full_pr then
-		return
-	end
-
-	local sha = selection.sha
+--- Toggle the reviewed state for a commit in local state.
+--- Picker-agnostic core mutator. Updates state.reviewed_commits[sha] and
+--- returns the updated display fields. Returns nil for nil sha (e.g. when
+--- the caller didn't guard against is_full_pr entries).
+--- @param sha string|nil commit SHA
+--- @return { is_reviewed: boolean, reviewed_icon: string, reviewed_hl: string }|nil updated
+function M.apply_reviewed_toggle(sha)
 	if not sha then
-		return
+		return nil
 	end
-
 	local state = config.state
 	if state.reviewed_commits[sha] then
 		state.reviewed_commits[sha] = nil
 	else
 		state.reviewed_commits[sha] = true
 	end
-
 	local is_reviewed = state.reviewed_commits[sha] == true
 	local r_icon, r_hl = M.reviewed_icon(is_reviewed)
-	selection.reviewed = is_reviewed
-	selection.reviewed_icon = r_icon
-	selection.reviewed_hl = r_hl
+	return {
+		is_reviewed = is_reviewed,
+		reviewed_icon = r_icon,
+		reviewed_hl = r_hl,
+	}
+end
+
+--- Telescope adapter for the reviewed-state toggle.
+--- Reads the current selection, delegates state mutation to apply_reviewed_toggle,
+--- then applies the returned display fields to the entry and refreshes the picker.
+--- @param prompt_bufnr number
+function M.toggle_reviewed_in_telescope(prompt_bufnr)
+	local action_state = require("telescope.actions.state")
+	local selection = action_state.get_selected_entry()
+	if not selection or selection.is_full_pr then
+		return
+	end
+
+	local updated = M.apply_reviewed_toggle(selection.sha)
+	if not updated then
+		return
+	end
+
+	selection.reviewed = updated.is_reviewed
+	selection.reviewed_icon = updated.reviewed_icon
+	selection.reviewed_hl = updated.reviewed_hl
 
 	local picker = action_state.get_current_picker(prompt_bufnr)
 	if picker then

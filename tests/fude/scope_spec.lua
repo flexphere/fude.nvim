@@ -387,3 +387,41 @@ describe("format_scope_preview_lines", function()
 		assert.is_truthy(lines[3]:find("lua/fude/scope.lua"))
 	end)
 end)
+
+describe("apply_reviewed_toggle", function()
+	local config = require("fude.config")
+	local helpers = require("tests.helpers")
+
+	before_each(function()
+		config.setup({})
+		config.state.reviewed_commits = {}
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("toggles false to true and returns reviewed display fields", function()
+		local result = scope.apply_reviewed_toggle("sha1")
+		assert.is_true(config.state.reviewed_commits["sha1"])
+		assert.is_true(result.is_reviewed)
+		assert.are.equal("✓", result.reviewed_icon)
+		assert.are.equal("DiagnosticOk", result.reviewed_hl)
+	end)
+
+	it("toggles true to false and clears the reviewed_commits entry", function()
+		config.state.reviewed_commits["sha2"] = true
+		local result = scope.apply_reviewed_toggle("sha2")
+		assert.is_nil(config.state.reviewed_commits["sha2"])
+		assert.is_false(result.is_reviewed)
+		assert.are.equal(" ", result.reviewed_icon)
+		assert.are.equal("Comment", result.reviewed_hl)
+	end)
+
+	it("returns nil when sha is nil without touching state", function()
+		config.state.reviewed_commits["other"] = true
+		local result = scope.apply_reviewed_toggle(nil)
+		assert.is_nil(result)
+		assert.is_true(config.state.reviewed_commits["other"])
+	end)
+end)
