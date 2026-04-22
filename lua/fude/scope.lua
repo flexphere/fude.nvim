@@ -297,17 +297,15 @@ function M.show_snacks(scope_entries)
 			if not item then
 				return
 			end
-			local buf = ctx.buf
-			if not buf or not vim.api.nvim_buf_is_valid(buf) then
-				return
-			end
+			ctx.preview:reset()
 
 			local function apply_preview(files)
-				if not vim.api.nvim_buf_is_valid(buf) then
+				if not ctx.preview.win:valid() then
 					return
 				end
 				local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons, config.format_path)
-				vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+				ctx.preview:set_lines(lines)
+				local buf = ctx.preview.win.buf
 				vim.api.nvim_buf_clear_namespace(buf, preview_ns, 0, -1)
 				for _, hl in ipairs(hls) do
 					vim.api.nvim_buf_add_highlight(buf, preview_ns, hl[4], hl[1], hl[2], hl[3])
@@ -341,8 +339,7 @@ function M.show_snacks(scope_entries)
 				return
 			end
 
-			vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Loading..." })
-			vim.api.nvim_buf_clear_namespace(buf, preview_ns, 0, -1)
+			ctx.preview:set_lines({ "Loading..." })
 
 			if inflight[sha] then
 				return
@@ -352,8 +349,8 @@ function M.show_snacks(scope_entries)
 			gh_mod.get_commit_files(sha, function(err, raw_files)
 				inflight[sha] = nil
 				if err then
-					if vim.api.nvim_buf_is_valid(buf) and current_preview_sha == sha then
-						vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Error: " .. err })
+					if ctx.preview.win:valid() and current_preview_sha == sha then
+						ctx.preview:set_lines({ "Error: " .. err })
 					end
 					return
 				end
@@ -417,8 +414,8 @@ function M.toggle_reviewed_in_snacks(picker, item)
 	item.reviewed_icon = updated.reviewed_icon
 	item.reviewed_hl = updated.reviewed_hl
 
-	if picker and picker.find then
-		pcall(picker.find, picker, { refresh = true })
+	if picker and picker.refresh then
+		pcall(picker.refresh, picker)
 	end
 end
 

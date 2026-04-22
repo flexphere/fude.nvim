@@ -274,17 +274,14 @@ function M.show_snacks()
 			if not item then
 				return
 			end
-			local buf = ctx.buf
-			if not buf or not vim.api.nvim_buf_is_valid(buf) then
-				return
-			end
+			ctx.preview:reset()
 			if item.patch == "" then
-				vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "(no diff)" })
+				ctx.preview:set_lines({ "(no diff)" })
 				return
 			end
 			local lines = vim.split(item.patch, "\n", { trimempty = false })
-			vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-			vim.bo[buf].filetype = "diff"
+			ctx.preview:set_lines(lines)
+			ctx.preview:highlight({ ft = "diff" })
 		end,
 		confirm = function(picker, item)
 			picker:close()
@@ -314,8 +311,8 @@ end
 
 --- Snacks adapter for the viewed-state toggle.
 --- Delegates state mutation to apply_viewed_toggle, then updates the current
---- item's display fields and refreshes the picker. Selection row is preserved
---- by snacks picker:find({ refresh = true }) automatically.
+--- item's display fields and refreshes the picker via picker:refresh() which
+--- preserves cursor position (picker:find() alone resets selection to top).
 --- @param picker snacks.Picker
 --- @param item table|nil current picker item
 function M.toggle_viewed_in_snacks(picker, item)
@@ -326,8 +323,8 @@ function M.toggle_viewed_in_snacks(picker, item)
 	M.apply_viewed_toggle(item.path, function(updated)
 		item.viewed_icon = updated.viewed_icon
 		item.viewed_hl = updated.viewed_hl
-		if picker and picker.find then
-			pcall(picker.find, picker, { refresh = true })
+		if picker and picker.refresh then
+			pcall(picker.refresh, picker)
 		end
 	end)
 end
