@@ -406,7 +406,7 @@ Suggested mappings:
 
 Default configuration: >lua
   require("fude").setup({
-    -- File list mode: "telescope" or "quickfix"
+    -- File list mode: "telescope", "quickfix", or "snacks"
     file_list_mode = "telescope",
     -- Diff filler character (nil to keep user's default)
     diff_filler_char = nil,
@@ -479,8 +479,10 @@ Default configuration: >lua
 
 Options:
 
-`file_list_mode`    "telescope" (default) or "quickfix"
-                  Controls which picker `:FudeReviewFiles` uses.
+`file_list_mode`    "telescope" (default), "quickfix", or "snacks"
+                  Controls which picker `:FudeReviewFiles` uses. "snacks"
+                  requires snacks.nvim; it falls back to quickfix if not
+                  installed.
 
 `diff_filler_char`  Character for diff filler lines (default: nil).
                   Set to " " to hide the filler indicators.
