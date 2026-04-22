@@ -42,7 +42,7 @@ in the editor. It provides:
 - Git repository with a PR on the current branch
 
 Optional:
-- telescope.nvim for file picker with diff preview
+- telescope.nvim for picker UI with diff preview (changed files and review scope)
 - gitsigns.nvim for automatic diff base switching
 - blink.cmp or nvim-cmp for @user / #issue / _commit completion
 
@@ -406,7 +406,7 @@ Suggested mappings:
 
 Default configuration: >lua
   require("fude").setup({
-    -- File list mode: "telescope" or "quickfix"
+    -- Picker mode for changed files and review scope: "telescope", "quickfix", or "snacks"
     file_list_mode = "telescope",
     -- Diff filler character (nil to keep user's default)
     diff_filler_char = nil,
@@ -479,8 +479,12 @@ Default configuration: >lua
 
 Options:
 
-`file_list_mode`    "telescope" (default) or "quickfix"
-                  Controls which picker `:FudeReviewFiles` uses.
+`file_list_mode`    "telescope" (default), "quickfix", or "snacks"
+                  Controls which picker `:FudeReviewFiles` and
+                  `:FudeReviewScope` use. "snacks" requires snacks.nvim;
+                  it falls back to quickfix if not installed. For
+                  `:FudeReviewScope`, "quickfix" falls back to
+                  `vim.ui.select`.
 
 `diff_filler_char`  Character for diff filler lines (default: nil).
                   Set to " " to hide the filler indicators.

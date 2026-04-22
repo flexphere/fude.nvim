@@ -28,7 +28,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 
 - Neovim >= 0.10
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
-- Optional: [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) for file picker
+- Optional: [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) for picker UI (changed files and review scope)
+- Optional: [snacks.nvim](https://github.com/folke/snacks.nvim) for picker UI (alternative to telescope, used when `file_list_mode = "snacks"` for changed files and review scope)
 - Optional: [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim) for diff base switching
 - Optional: [blink.cmp](https://github.com/saghen/blink.cmp) or [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) for `@user` / `#issue` / `_commit` completion
 
@@ -123,7 +124,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 
 ```lua
 require("fude").setup({
-  -- File list mode: "telescope" or "quickfix"
+  -- Picker mode for changed files and review scope: "telescope", "quickfix", or "snacks"
   file_list_mode = "telescope",
   -- Diff filler character (nil to keep user's default)
   diff_filler_char = nil,

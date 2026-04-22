@@ -1,7 +1,7 @@
 local M = {}
 
 M.defaults = {
-	-- File list mode: "telescope" or "quickfix"
+	-- Picker mode for changed files and review scope: "telescope", "quickfix", or "snacks"
 	file_list_mode = "telescope",
 	-- Diff filler character (nil to keep user's default)
 	diff_filler_char = nil,
