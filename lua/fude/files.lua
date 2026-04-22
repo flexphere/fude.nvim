@@ -98,6 +98,8 @@ function M.show()
 
 	if config.opts.file_list_mode == "quickfix" then
 		M.show_quickfix()
+	elseif config.opts.file_list_mode == "snacks" then
+		M.show_snacks()
 	else
 		M.show_telescope()
 	end
@@ -219,6 +221,115 @@ function M.show_telescope()
 	end
 
 	create_picker(entries):find()
+end
+
+--- Show changed files in a snacks.picker.
+function M.show_snacks()
+	local state = config.state
+	local has_snacks, snacks_picker = pcall(require, "snacks.picker")
+	if not has_snacks then
+		vim.notify("fude.nvim: snacks.nvim not found, falling back to quickfix", vim.log.levels.WARN)
+		M.show_quickfix()
+		return
+	end
+
+	local comments_data = require("fude.comments.data")
+	local repo_root = diff.get_repo_root()
+	if not repo_root then
+		return
+	end
+
+	local viewed_sign = config.opts.signs.viewed or "✓"
+	local comment_counts = comments_data.build_file_comment_counts(state.comments, state.pending_comments)
+	local format_path = config.format_path
+
+	local raw_entries = M.build_file_entries(
+		state.changed_files,
+		repo_root,
+		M.status_icons,
+		state.viewed_files,
+		viewed_sign,
+		comment_counts
+	)
+	for _, entry in ipairs(raw_entries) do
+		entry.text = format_path(entry.path)
+	end
+
+	snacks_picker.pick({
+		source = "fude_changed_files",
+		title = string.format("PR #%d Changed Files", state.pr_number),
+		items = raw_entries,
+		format = function(item, _)
+			return {
+				{ item.viewed_icon .. " ", item.viewed_hl },
+				{ item.status_icon .. " ", item.status_hl },
+				{ "+" .. item.additions .. " ", "DiffAdd" },
+				{ "-" .. item.deletions .. " ", "DiffDelete" },
+				{ (item.comment_display ~= "" and (item.comment_display .. " ") or ""), item.comment_hl },
+				{ format_path(item.path) },
+			}
+		end,
+		preview = function(ctx)
+			local item = ctx.item
+			if not item then
+				return
+			end
+			local buf = ctx.buf
+			if not buf or not vim.api.nvim_buf_is_valid(buf) then
+				return
+			end
+			if item.patch == "" then
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "(no diff)" })
+				return
+			end
+			local lines = vim.split(item.patch, "\n", { trimempty = false })
+			vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+			vim.bo[buf].filetype = "diff"
+		end,
+		confirm = function(picker, item)
+			picker:close()
+			if item then
+				vim.cmd("edit " .. vim.fn.fnameescape(item.filename))
+			end
+		end,
+		actions = {
+			toggle_viewed = function(picker, item)
+				M.toggle_viewed_in_snacks(picker, item)
+			end,
+		},
+		win = {
+			input = {
+				keys = {
+					["<Tab>"] = { "toggle_viewed", mode = { "i", "n" } },
+				},
+			},
+			list = {
+				keys = {
+					["<Tab>"] = "toggle_viewed",
+				},
+			},
+		},
+	})
+end
+
+--- Snacks adapter for the viewed-state toggle.
+--- Delegates state mutation to apply_viewed_toggle, then updates the current
+--- item's display fields and refreshes the picker. Selection row is preserved
+--- by snacks picker:find({ refresh = true }) automatically.
+--- @param picker snacks.Picker
+--- @param item table|nil current picker item
+function M.toggle_viewed_in_snacks(picker, item)
+	if not item then
+		return
+	end
+
+	M.apply_viewed_toggle(item.path, function(updated)
+		item.viewed_icon = updated.viewed_icon
+		item.viewed_hl = updated.viewed_hl
+		if picker and picker.find then
+			pcall(picker.find, picker, { refresh = true })
+		end
+	end)
 end
 
 --- Toggle the viewed state for a file via GitHub GraphQL API.
