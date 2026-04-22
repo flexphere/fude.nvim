@@ -355,8 +355,12 @@ describe("apply_viewed_toggle", function()
 			invoked = true
 		end)
 
-		vim.wait(100)
-		assert.is_false(invoked)
+		-- vim.wait returns true iff the condition became true before timeout.
+		-- We expect the callback to NEVER fire, so fired must stay false.
+		local fired = vim.wait(100, function()
+			return invoked
+		end)
+		assert.is_false(fired)
 		assert.is_nil(config.state.viewed_files["src/baz.lua"])
 	end)
 
@@ -372,8 +376,10 @@ describe("apply_viewed_toggle", function()
 			invoked = true
 		end)
 
-		vim.wait(50)
-		assert.is_false(gh_called)
-		assert.is_false(invoked)
+		-- Neither gh nor on_done should fire; vim.wait only returns true if one of them does.
+		local fired = vim.wait(50, function()
+			return gh_called or invoked
+		end)
+		assert.is_false(fired)
 	end)
 end)
