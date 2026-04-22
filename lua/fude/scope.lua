@@ -90,6 +90,8 @@ function M.select_scope()
 
 	if config.opts.file_list_mode == "telescope" then
 		M.show_telescope(scope_entries)
+	elseif config.opts.file_list_mode == "snacks" then
+		M.show_snacks(scope_entries)
 	else
 		M.show_vim_select(scope_entries)
 	end
@@ -251,6 +253,167 @@ function M.show_telescope(scope_entries)
 			end,
 		})
 		:find()
+end
+
+--- Show scope selection in a snacks.picker.
+--- @param scope_entries table[] entries from build_scope_entries
+function M.show_snacks(scope_entries)
+	local has_snacks, snacks_picker = pcall(require, "snacks.picker")
+	if not has_snacks then
+		vim.notify("fude.nvim: snacks.nvim not found, falling back to vim.ui.select", vim.log.levels.WARN)
+		M.show_vim_select(scope_entries)
+		return
+	end
+
+	local state = config.state
+	local files_mod = require("fude.files")
+	local gh_mod = require("fude.gh")
+	local preview_cache = {}
+	local inflight = {}
+	local preview_ns = vim.api.nvim_create_namespace("fude_scope_preview")
+
+	local items = {}
+	for _, entry in ipairs(scope_entries) do
+		entry.text = entry.display_text
+		table.insert(items, entry)
+	end
+
+	snacks_picker.pick({
+		source = "fude_review_scope",
+		title = "Review Scope",
+		items = items,
+		format = function(item, _)
+			local current_icon = item.is_current and "▶" or " "
+			local current_hl = item.is_current and "DiagnosticInfo" or "Comment"
+			return {
+				{ current_icon .. " ", current_hl },
+				{ item.reviewed_icon .. " ", item.reviewed_hl },
+				{ item.display_text },
+			}
+		end,
+		preview = function(ctx)
+			local item = ctx.item
+			if not item then
+				return
+			end
+			local buf = ctx.buf
+			if not buf or not vim.api.nvim_buf_is_valid(buf) then
+				return
+			end
+
+			local function apply_preview(files)
+				if not vim.api.nvim_buf_is_valid(buf) then
+					return
+				end
+				local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons, config.format_path)
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+				vim.api.nvim_buf_clear_namespace(buf, preview_ns, 0, -1)
+				for _, hl in ipairs(hls) do
+					vim.api.nvim_buf_add_highlight(buf, preview_ns, hl[4], hl[1], hl[2], hl[3])
+				end
+			end
+
+			if item.is_full_pr then
+				local files = {}
+				for _, f in ipairs(state.changed_files) do
+					table.insert(files, {
+						filename = f.path,
+						status = f.status,
+						additions = f.additions,
+						deletions = f.deletions,
+					})
+				end
+				apply_preview(files)
+				return
+			end
+
+			local sha = item.sha
+			if not sha then
+				return
+			end
+
+			if preview_cache[sha] then
+				apply_preview(preview_cache[sha])
+				return
+			end
+
+			vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Loading..." })
+			vim.api.nvim_buf_clear_namespace(buf, preview_ns, 0, -1)
+
+			if inflight[sha] then
+				return
+			end
+			inflight[sha] = true
+
+			gh_mod.get_commit_files(sha, function(err, raw_files)
+				inflight[sha] = nil
+				if err then
+					if vim.api.nvim_buf_is_valid(buf) then
+						vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Error: " .. err })
+					end
+					return
+				end
+				local files = {}
+				for _, f in ipairs(raw_files or {}) do
+					table.insert(files, {
+						filename = f.filename,
+						status = f.status,
+						additions = f.additions,
+						deletions = f.deletions,
+					})
+				end
+				preview_cache[sha] = files
+				apply_preview(files)
+			end)
+		end,
+		confirm = function(picker, item)
+			picker:close()
+			if item then
+				M.apply_scope(item)
+			end
+		end,
+		actions = {
+			toggle_reviewed = function(picker, item)
+				M.toggle_reviewed_in_snacks(picker, item)
+			end,
+		},
+		win = {
+			input = {
+				keys = {
+					["<Tab>"] = { "toggle_reviewed", mode = { "i", "n" } },
+				},
+			},
+			list = {
+				keys = {
+					["<Tab>"] = "toggle_reviewed",
+				},
+			},
+		},
+	})
+end
+
+--- Snacks adapter for the reviewed-state toggle.
+--- Delegates state mutation to apply_reviewed_toggle, then updates the current
+--- item's display fields and refreshes the picker.
+--- @param picker snacks.Picker
+--- @param item table|nil current picker item
+function M.toggle_reviewed_in_snacks(picker, item)
+	if not item or item.is_full_pr then
+		return
+	end
+
+	local updated = M.apply_reviewed_toggle(item.sha)
+	if not updated then
+		return
+	end
+
+	item.reviewed = updated.is_reviewed
+	item.reviewed_icon = updated.reviewed_icon
+	item.reviewed_hl = updated.reviewed_hl
+
+	if picker and picker.find then
+		pcall(picker.find, picker, { refresh = true })
+	end
 end
 
 --- Toggle the reviewed state for a commit in local state.
