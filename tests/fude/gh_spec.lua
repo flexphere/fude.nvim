@@ -281,6 +281,11 @@ describe("build_review_threads_query", function()
 		assert.truthy(query:find("isOutdated"))
 		assert.truthy(query:find("databaseId"))
 		assert.truthy(query:find("originalLine"))
+		-- Thread node ID is required for addPullRequestReviewThreadReply mutation
+		assert.truthy(query:find("nodes {%s+id"))
+		-- Only fetch top-level comment per thread: thread_map keys reply targets by root id,
+		-- and outdated info is per-thread (no need to enumerate replies).
+		assert.truthy(query:find("comments%(first: 1%)"))
 	end)
 
 	it("builds query with cursor", function()
@@ -300,6 +305,7 @@ describe("parse_review_threads_response", function()
 							pageInfo = { hasNextPage = false, endCursor = nil },
 							nodes = {
 								{
+									id = "THREAD_A",
 									isOutdated = true,
 									comments = {
 										nodes = {
@@ -309,6 +315,7 @@ describe("parse_review_threads_response", function()
 									},
 								},
 								{
+									id = "THREAD_B",
 									isOutdated = false,
 									comments = {
 										nodes = {
@@ -322,12 +329,15 @@ describe("parse_review_threads_response", function()
 				},
 			},
 		}
-		local outdated_map, has_next, end_cursor = gh.parse_review_threads_response(data)
+		local outdated_map, thread_map, has_next, end_cursor = gh.parse_review_threads_response(data)
 		assert.is_true(outdated_map[100].is_outdated)
 		assert.are.equal(10, outdated_map[100].original_line)
 		assert.is_true(outdated_map[101].is_outdated)
 		assert.is_false(outdated_map[200].is_outdated)
 		assert.are.equal(20, outdated_map[200].original_line)
+		assert.are.equal("THREAD_A", thread_map[100])
+		assert.are.equal("THREAD_A", thread_map[101])
+		assert.are.equal("THREAD_B", thread_map[200])
 		assert.is_false(has_next)
 		assert.is_nil(end_cursor)
 	end)
@@ -341,6 +351,7 @@ describe("parse_review_threads_response", function()
 							pageInfo = { hasNextPage = true, endCursor = "cursor456" },
 							nodes = {
 								{
+									id = "THREAD_C",
 									isOutdated = true,
 									comments = {
 										nodes = {
@@ -354,22 +365,25 @@ describe("parse_review_threads_response", function()
 				},
 			},
 		}
-		local outdated_map, has_next, end_cursor = gh.parse_review_threads_response(data)
+		local outdated_map, thread_map, has_next, end_cursor = gh.parse_review_threads_response(data)
 		assert.is_true(outdated_map[300].is_outdated)
+		assert.are.equal("THREAD_C", thread_map[300])
 		assert.is_true(has_next)
 		assert.are.equal("cursor456", end_cursor)
 	end)
 
-	it("returns empty map for missing pullRequest", function()
+	it("returns empty maps for missing pullRequest", function()
 		local data = { data = { repository = {} } }
-		local outdated_map, has_next, _ = gh.parse_review_threads_response(data)
+		local outdated_map, thread_map, has_next, _ = gh.parse_review_threads_response(data)
 		assert.are.same({}, outdated_map)
+		assert.are.same({}, thread_map)
 		assert.is_false(has_next)
 	end)
 
-	it("returns empty map for nil data", function()
-		local outdated_map, has_next, _ = gh.parse_review_threads_response({})
+	it("returns empty maps for nil data", function()
+		local outdated_map, thread_map, has_next, _ = gh.parse_review_threads_response({})
 		assert.are.same({}, outdated_map)
+		assert.are.same({}, thread_map)
 		assert.is_false(has_next)
 	end)
 
@@ -386,8 +400,9 @@ describe("parse_review_threads_response", function()
 				},
 			},
 		}
-		local outdated_map, _, _ = gh.parse_review_threads_response(data)
+		local outdated_map, thread_map, _, _ = gh.parse_review_threads_response(data)
 		assert.are.same({}, outdated_map)
+		assert.are.same({}, thread_map)
 	end)
 
 	it("handles thread with no comments", function()
@@ -399,6 +414,7 @@ describe("parse_review_threads_response", function()
 							pageInfo = { hasNextPage = false },
 							nodes = {
 								{
+									id = "THREAD_EMPTY",
 									isOutdated = true,
 									comments = { nodes = {} },
 								},
@@ -408,8 +424,9 @@ describe("parse_review_threads_response", function()
 				},
 			},
 		}
-		local outdated_map, _, _ = gh.parse_review_threads_response(data)
+		local outdated_map, thread_map, _, _ = gh.parse_review_threads_response(data)
 		assert.are.same({}, outdated_map)
+		assert.are.same({}, thread_map)
 	end)
 
 	it("handles nil isOutdated as false", function()
@@ -421,6 +438,7 @@ describe("parse_review_threads_response", function()
 							pageInfo = { hasNextPage = false },
 							nodes = {
 								{
+									id = "THREAD_D",
 									-- isOutdated is nil
 									comments = {
 										nodes = {
@@ -434,7 +452,8 @@ describe("parse_review_threads_response", function()
 				},
 			},
 		}
-		local outdated_map, _, _ = gh.parse_review_threads_response(data)
+		local outdated_map, thread_map, _, _ = gh.parse_review_threads_response(data)
 		assert.is_false(outdated_map[400].is_outdated)
+		assert.are.equal("THREAD_D", thread_map[400])
 	end)
 end)

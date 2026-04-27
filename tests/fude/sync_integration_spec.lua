@@ -8,11 +8,11 @@ describe("sync integration", function()
 		helpers.mock_head_sha("abc123def456")
 		-- Mock diff to prevent refresh_extmarks from failing
 		helpers.mock_diff({})
-		-- Mock get_review_threads to return empty outdated map (avoid repo owner lookup)
+		-- Mock get_review_threads to return empty outdated/thread maps (avoid repo owner lookup)
 		local gh = require("fude.gh")
 		helpers.mock(gh, "get_review_threads", function(_, callback)
 			vim.schedule(function()
-				callback(nil, {})
+				callback(nil, {}, {})
 			end)
 		end)
 	end)
@@ -194,6 +194,79 @@ describe("sync integration", function()
 				return cb_called
 			end)
 			assert.is_true(ok, "Callback should be called even on error")
+		end)
+
+		it("skips get_review_threads when outdated disabled and no pending review", function()
+			config.setup({ outdated = { show = false } })
+
+			local gh = require("fude.gh")
+			local threads_called = 0
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				threads_called = threads_called + 1
+				vim.schedule(function()
+					callback(nil, {}, {})
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "comment" },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+			-- Stale thread_map left over from a previously submitted pending review
+			config.state.thread_map = { [99] = "STALE_THREAD" }
+
+			local cb_called = false
+			sync.load_comments(function()
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok)
+			assert.are.equal(0, threads_called, "get_review_threads should not be called when both conditions are unmet")
+			assert.are.same({}, config.state.thread_map, "thread_map should be cleared when no pending review")
+		end)
+
+		it("calls get_review_threads when pending review exists even with outdated disabled", function()
+			config.setup({ outdated = { show = false } })
+
+			local gh = require("fude.gh")
+			local threads_called = 0
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				threads_called = threads_called + 1
+				vim.schedule(function()
+					callback(nil, {}, { [1] = "THREAD_X" })
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {
+					{ id = 99, state = "PENDING" },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "comment" },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/reviews/99/comments"] = {},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			local cb_called = false
+			sync.load_comments(function()
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok)
+			assert.are.equal(1, threads_called, "get_review_threads should be called to populate thread_map")
+			assert.are.equal("THREAD_X", config.state.thread_map[1])
 		end)
 	end)
 
