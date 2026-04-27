@@ -283,6 +283,9 @@ describe("build_review_threads_query", function()
 		assert.truthy(query:find("originalLine"))
 		-- Thread node ID is required for addPullRequestReviewThreadReply mutation
 		assert.truthy(query:find("nodes {%s+id"))
+		-- Only fetch top-level comment per thread: thread_map keys reply targets by root id,
+		-- and outdated info is per-thread (no need to enumerate replies).
+		assert.truthy(query:find("comments%(first: 1%)"))
 	end)
 
 	it("builds query with cursor", function()

@@ -709,6 +709,10 @@ end
 --- @return string query
 function M.build_review_threads_query(owner, repo, pr_number, cursor)
 	local after = cursor and ('"' .. cursor .. '"') or "null"
+	-- comments(first: 1) intentionally fetches only the top-level comment per thread:
+	-- thread_map keys reply targets by their root comment id (get_reply_target_id resolves
+	-- replies to their top-level), and outdated info is per-thread so the root is sufficient.
+	-- This avoids pagination issues for threads with many replies.
 	return string.format(
 		[[
 query {
@@ -719,7 +723,7 @@ query {
         nodes {
           id
           isOutdated
-          comments(first: 100) {
+          comments(first: 1) {
             nodes { databaseId path originalLine }
           }
         }
