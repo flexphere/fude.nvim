@@ -717,8 +717,9 @@ query {
       reviewThreads(first: 100, after: %s) {
         pageInfo { hasNextPage endCursor }
         nodes {
+          id
           isOutdated
-          comments(first: 1) {
+          comments(first: 100) {
             nodes { databaseId path originalLine }
           }
         }
@@ -733,21 +734,24 @@ query {
 	)
 end
 
---- Parse review threads from GraphQL response into an outdated_map.
+--- Parse review threads from GraphQL response into outdated_map and thread_map.
 --- @param data table GraphQL response data
 --- @return table<number, table> outdated_map { [id] = { is_outdated, original_line } }
+--- @return table<number, string> thread_map { [comment_id] = thread_node_id }
 --- @return boolean has_next
 --- @return string|nil end_cursor
 function M.parse_review_threads_response(data)
 	local pr = data.data and data.data.repository and data.data.repository.pullRequest
 	if not pr then
-		return {}, false, nil
+		return {}, {}, false, nil
 	end
 	local outdated_map = {}
+	local thread_map = {}
 	local threads = pr.reviewThreads
 	if threads and threads.nodes then
 		for _, thread in ipairs(threads.nodes) do
 			local is_outdated = thread.isOutdated or false
+			local thread_id = thread.id
 			local comments = thread.comments and thread.comments.nodes
 			if comments then
 				for _, c in ipairs(comments) do
@@ -756,47 +760,86 @@ function M.parse_review_threads_response(data)
 							is_outdated = is_outdated,
 							original_line = c.originalLine,
 						}
+						if thread_id then
+							thread_map[c.databaseId] = thread_id
+						end
 					end
 				end
 			end
 		end
 	end
 	local page_info = threads and threads.pageInfo or {}
-	return outdated_map, page_info.hasNextPage or false, page_info.endCursor
+	return outdated_map, thread_map, page_info.hasNextPage or false, page_info.endCursor
 end
 
 --- Fetch review threads for a PR (with pagination).
---- Returns a map of comment IDs to their outdated status and original line.
+--- Returns outdated info and a comment_id → thread_node_id mapping.
 --- @param pr_number number
---- @param callback fun(err: string|nil, outdated_map: table<number, table>|nil)
+--- @param callback fun(err: string|nil, outdated_map: table<number, table>|nil, thread_map: table<number, string>|nil)
 function M.get_review_threads(pr_number, callback)
 	M.get_repo_owner(function(owner_err, owner, repo)
 		if owner_err then
-			return callback(owner_err, nil)
+			return callback(owner_err, nil, nil)
 		end
 
 		local all_outdated = {}
+		local all_threads = {}
 
 		local function fetch_page(cursor)
 			local query = M.build_review_threads_query(owner, repo, pr_number, cursor)
 			M.run_json({ "api", "graphql", "-f", "query=" .. query }, function(err, response_data)
 				if err then
-					return callback(err, nil)
+					return callback(err, nil, nil)
 				end
-				local outdated_map, has_next, end_cursor = M.parse_review_threads_response(response_data)
+				local outdated_map, thread_map, has_next, end_cursor = M.parse_review_threads_response(response_data)
 				for id, info in pairs(outdated_map) do
 					all_outdated[id] = info
+				end
+				for id, tid in pairs(thread_map) do
+					all_threads[id] = tid
 				end
 				if has_next and end_cursor then
 					fetch_page(end_cursor)
 				else
-					callback(nil, all_outdated)
+					callback(nil, all_outdated, all_threads)
 				end
 			end)
 		end
 
 		fetch_page(nil)
 	end)
+end
+
+--- Reply to a review thread, attached to an existing pending review.
+--- The REST `pulls/{pr}/comments/{id}/replies` endpoint fails with 422 when a
+--- pending review exists, so this GraphQL mutation is used instead.
+--- @param thread_id string GraphQL node ID of the review thread
+--- @param review_id string GraphQL node ID of the pending review
+--- @param body string reply body
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.add_review_thread_reply(thread_id, review_id, body, callback)
+	local query = [[
+mutation($threadId: ID!, $reviewId: ID!, $body: String!) {
+  addPullRequestReviewThreadReply(input: {
+    pullRequestReviewThreadId: $threadId,
+    pullRequestReviewId: $reviewId,
+    body: $body
+  }) {
+    comment { id databaseId }
+  }
+}]]
+	M.run_json({
+		"api",
+		"graphql",
+		"-f",
+		"query=" .. query,
+		"-f",
+		"threadId=" .. thread_id,
+		"-f",
+		"reviewId=" .. review_id,
+		"-f",
+		"body=" .. body,
+	}, callback)
 end
 
 return M

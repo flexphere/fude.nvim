@@ -102,6 +102,8 @@ M.state = {
 	comment_map = {},
 	pending_comments = {}, -- Comments in GitHub pending review: { [path:start:end] = { path, line, start_line?, body } }
 	pending_review_id = nil, -- Current pending review ID on GitHub
+	pending_review_node_id = nil, -- GraphQL node ID of pending review (used by addPullRequestReviewThreadReply mutation)
+	thread_map = {}, -- { [comment_id (numeric)] = thread_node_id (string) } — populated from get_review_threads
 	pr_node_id = nil, -- GraphQL node ID for viewed file API
 	viewed_files = {}, -- { [path] = "VIEWED" | "UNVIEWED" | "DISMISSED" }
 	preview_win = nil,
@@ -155,6 +157,8 @@ function M.reset_state()
 		comment_map = {},
 		pending_comments = {},
 		pending_review_id = nil,
+		pending_review_node_id = nil,
+		thread_map = {},
 		pr_node_id = nil,
 		viewed_files = {},
 		preview_win = nil,

@@ -49,24 +49,26 @@ local function fetch_comments(callback, opts)
 	end
 
 	local function fetch_outdated_and_apply(comments)
-		-- Skip GraphQL call if outdated.show is disabled
-		if config.opts.outdated and config.opts.outdated.show == false then
-			state.outdated_map = {}
-			apply(comments)
-			return
-		end
+		-- Always fetch review threads: thread_map is needed for replying to a
+		-- comment when a pending review exists (GraphQL mutation requires thread ID),
+		-- regardless of the outdated.show setting.
+		gh.get_review_threads(state.pr_number, function(threads_err, outdated_map, thread_map)
+			if threads_err then
+				state.outdated_map = {}
+				state.thread_map = {}
+				vim.notify("fude.nvim: Failed to fetch review threads: " .. threads_err, vim.log.levels.DEBUG)
+				apply(comments)
+				return
+			end
 
-		-- Fetch outdated info via GraphQL
-		gh.get_review_threads(state.pr_number, function(outdated_err, outdated_map)
-			if not outdated_err and outdated_map then
+			state.thread_map = thread_map or {}
+
+			local show_outdated = not (config.opts.outdated and config.opts.outdated.show == false)
+			if show_outdated and outdated_map then
 				state.outdated_map = outdated_map
 				apply_outdated_info(comments, outdated_map)
 			else
 				state.outdated_map = {}
-				-- Continue without outdated info on error (fallback)
-				if outdated_err then
-					vim.notify("fude.nvim: Failed to fetch outdated info: " .. outdated_err, vim.log.levels.DEBUG)
-				end
 			end
 			apply(comments)
 		end)
@@ -141,6 +143,7 @@ function M.submit_as_review(event, body, callback)
 
 			-- Clear pending state
 			state.pending_review_id = nil
+			state.pending_review_node_id = nil
 			state.pending_comments = {}
 
 			require("fude.ui").refresh_extmarks()
@@ -210,8 +213,10 @@ function M.load_comments(callback, opts)
 
 		if pending_review then
 			state.pending_review_id = pending_review.id
+			state.pending_review_node_id = pending_review.node_id
 		else
 			state.pending_review_id = nil
+			state.pending_review_node_id = nil
 			state.pending_comments = {}
 		end
 
@@ -243,6 +248,7 @@ function M.sync_pending_review(callback)
 			gh.delete_review(state.pr_number, state.pending_review_id, function(err)
 				if not err then
 					state.pending_review_id = nil
+					state.pending_review_node_id = nil
 				end
 				callback(err)
 			end)
@@ -259,6 +265,7 @@ function M.sync_pending_review(callback)
 				return
 			end
 			state.pending_review_id = review_data and review_data.id
+			state.pending_review_node_id = review_data and review_data.node_id
 
 			if not state.pending_review_id then
 				-- Review was created but ID is missing; skip comment fetch and let
@@ -308,6 +315,7 @@ function M.sync_pending_review(callback)
 				vim.notify("fude.nvim: Note: " .. err, vim.log.levels.DEBUG)
 			end
 			state.pending_review_id = nil
+			state.pending_review_node_id = nil
 			create_new_review()
 		end)
 	else
@@ -316,6 +324,9 @@ function M.sync_pending_review(callback)
 end
 
 --- Reply to a review comment on GitHub.
+--- When a pending review exists, the REST `pulls/{pr}/comments/{id}/replies`
+--- endpoint fails with 422, so we use the GraphQL `addPullRequestReviewThreadReply`
+--- mutation instead, which attaches the reply to the pending review (also pending).
 --- @param comment_id number target comment ID (must be top-level)
 --- @param body string reply body
 --- @param callback fun(err: string|nil)
@@ -323,6 +334,41 @@ function M.reply_to_comment(comment_id, body, callback)
 	local state = config.state
 	if not state.active or not state.pr_number then
 		callback("Not active")
+		return
+	end
+
+	if state.pending_review_id and state.pending_review_node_id then
+		local function reply_via_graphql(thread_id)
+			gh.add_review_thread_reply(thread_id, state.pending_review_node_id, body, function(err, _)
+				if err then
+					callback(err)
+					return
+				end
+				callback(nil)
+				fetch_comments()
+			end)
+		end
+
+		local cached_thread_id = state.thread_map and state.thread_map[comment_id]
+		if cached_thread_id then
+			reply_via_graphql(cached_thread_id)
+			return
+		end
+
+		-- Cache miss (e.g. comment created since last fetch). Refresh and retry.
+		gh.get_review_threads(state.pr_number, function(err, _, thread_map)
+			if err then
+				callback("Failed to resolve review thread: " .. err)
+				return
+			end
+			state.thread_map = thread_map or {}
+			local resolved = state.thread_map[comment_id]
+			if not resolved then
+				callback("Could not resolve review thread for comment " .. tostring(comment_id))
+				return
+			end
+			reply_via_graphql(resolved)
+		end)
 		return
 	end
 
