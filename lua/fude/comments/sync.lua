@@ -49,22 +49,37 @@ local function fetch_comments(callback, opts)
 	end
 
 	local function fetch_outdated_and_apply(comments)
-		-- Always fetch review threads: thread_map is needed for replying to a
-		-- comment when a pending review exists (GraphQL mutation requires thread ID),
-		-- regardless of the outdated.show setting.
+		-- Fetch review threads only when needed:
+		--   - outdated info is enabled (outdated_map needed for display)
+		--   - or pending review exists (thread_map needed for GraphQL reply mutation)
+		-- When neither applies, skip the GraphQL call entirely. If a reply is later
+		-- attempted, reply_to_comment lazily refreshes thread_map on cache miss.
+		local need_outdated = not (config.opts.outdated and config.opts.outdated.show == false)
+		local need_thread_map = state.pending_review_id ~= nil
+
+		-- Clear stale thread_map when no longer needed (e.g. after pending review is submitted).
+		if not need_thread_map then
+			state.thread_map = {}
+		end
+
+		if not need_outdated and not need_thread_map then
+			state.outdated_map = {}
+			apply(comments)
+			return
+		end
+
 		gh.get_review_threads(state.pr_number, function(threads_err, outdated_map, thread_map)
 			if threads_err then
 				state.outdated_map = {}
-				state.thread_map = {}
 				vim.notify("fude.nvim: Failed to fetch review threads: " .. threads_err, vim.log.levels.DEBUG)
 				apply(comments)
 				return
 			end
 
-			state.thread_map = thread_map or {}
-
-			local show_outdated = not (config.opts.outdated and config.opts.outdated.show == false)
-			if show_outdated and outdated_map then
+			if need_thread_map then
+				state.thread_map = thread_map or {}
+			end
+			if need_outdated and outdated_map then
 				state.outdated_map = outdated_map
 				apply_outdated_info(comments, outdated_map)
 			else
