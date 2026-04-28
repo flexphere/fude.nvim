@@ -994,4 +994,97 @@ describe("init integration", function()
 			assert.equals(true, reset_base_calls[1].global)
 		end)
 	end)
+
+	describe("toggle_iwhite", function()
+		local original_diffopt
+
+		before_each(function()
+			original_diffopt = vim.o.diffopt
+		end)
+
+		after_each(function()
+			vim.o.diffopt = original_diffopt
+		end)
+
+		it("does nothing when not active", function()
+			config.state.active = false
+			local before = vim.o.diffopt
+
+			init.toggle_iwhite()
+
+			assert.equals(before, vim.o.diffopt)
+		end)
+
+		it("toggles iwhite on when not present", function()
+			config.state.active = true
+			vim.opt.diffopt:remove("iwhite")
+
+			init.toggle_iwhite()
+
+			assert.is_true(config.state.iwhite)
+			local opts = vim.opt.diffopt:get()
+			local found = false
+			for _, opt in ipairs(opts) do
+				if opt == "iwhite" then
+					found = true
+					break
+				end
+			end
+			assert.is_true(found, "iwhite should be in diffopt")
+		end)
+
+		it("toggles iwhite off when present", function()
+			config.state.active = true
+			vim.opt.diffopt:append("iwhite")
+
+			init.toggle_iwhite()
+
+			assert.is_false(config.state.iwhite)
+			local opts = vim.opt.diffopt:get()
+			local found = false
+			for _, opt in ipairs(opts) do
+				if opt == "iwhite" then
+					found = true
+					break
+				end
+			end
+			assert.is_false(found, "iwhite should not be in diffopt")
+		end)
+
+		it("syncs state with actual diffopt when state.iwhite is out of sync", function()
+			config.state.active = true
+			-- User already has iwhite in diffopt, but state.iwhite is false (initial default)
+			vim.opt.diffopt:append("iwhite")
+			config.state.iwhite = false
+
+			-- First toggle should detect iwhite is present and remove it
+			init.toggle_iwhite()
+
+			assert.is_false(config.state.iwhite)
+			local opts = vim.opt.diffopt:get()
+			local found = false
+			for _, opt in ipairs(opts) do
+				if opt == "iwhite" then
+					found = true
+					break
+				end
+			end
+			assert.is_false(found, "iwhite should be removed after toggle")
+		end)
+
+		it("stop restores diffopt even when opts.diffopt is nil", function()
+			config.state.active = true
+			config.state.original_diffopt = vim.o.diffopt
+			local saved = vim.o.diffopt
+
+			-- Simulate toggle_iwhite adding iwhite
+			init.toggle_iwhite()
+			assert.is_true(config.state.iwhite)
+
+			-- Simulate stop restoring diffopt
+			vim.o.diffopt = config.state.original_diffopt
+
+			assert.equals(saved, vim.o.diffopt)
+		end)
+	end)
 end)

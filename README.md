@@ -117,6 +117,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeCopyPRURL` | Copy PR URL to clipboard |
 | `:FudeReviewReload` | Reload review data from GitHub |
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
+| `:FudeReviewToggleWhitespace` | Toggle whitespace diff ignore (iwhite) |
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
 | `:FudeCreatePR` | Create draft PR from template |
 

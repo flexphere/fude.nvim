@@ -153,6 +153,10 @@ vim.api.nvim_create_user_command("FudeReviewToggleCommentStyle", function()
 	require("fude.ui").refresh_extmarks()
 end, { desc = "Toggle comment display style (virtualText/inline)" })
 
+vim.api.nvim_create_user_command("FudeReviewToggleWhitespace", function()
+	require("fude").toggle_iwhite()
+end, { desc = "Toggle whitespace diff (iwhite)" })
+
 vim.api.nvim_create_user_command("FudeReviewToggleGitsigns", function()
 	require("fude").toggle_gitsigns()
 end, { desc = "Toggle gitsigns between PR base and HEAD" })
