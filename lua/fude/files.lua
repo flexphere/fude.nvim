@@ -83,6 +83,78 @@ function M.build_file_entries(changed_files, repo_root, icons, viewed_files, vie
 	return entries
 end
 
+--- Find the index of the next/prev changed file relative to the current path.
+--- Wraps around at the edges. If the current path is not in the list, returns
+--- the first entry for "next" and the last for "prev".
+--- @param changed_files table[] list of { path, ... }
+--- @param current_path string|nil repo-relative path of the current buffer (nil if not in repo)
+--- @param direction "next"|"prev"
+--- @return number|nil index 1-based index into changed_files, or nil if list is empty
+function M.find_adjacent_file_index(changed_files, current_path, direction)
+	local total = #changed_files
+	if total == 0 then
+		return nil
+	end
+
+	local current_idx
+	if current_path then
+		for i, file in ipairs(changed_files) do
+			if file.path == current_path then
+				current_idx = i
+				break
+			end
+		end
+	end
+
+	if not current_idx then
+		return direction == "prev" and total or 1
+	end
+
+	if direction == "next" then
+		return (current_idx % total) + 1
+	end
+	return ((current_idx - 2) % total) + 1
+end
+
+--- Move to the next/prev changed file in the PR.
+--- @param direction "next"|"prev"
+local function goto_adjacent(direction)
+	local state = config.state
+	if not state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
+	if #state.changed_files == 0 then
+		vim.notify("fude.nvim: No changed files loaded", vim.log.levels.INFO)
+		return
+	end
+
+	local repo_root = diff.get_repo_root()
+	if not repo_root then
+		return
+	end
+
+	local current_path = diff.to_repo_relative(vim.api.nvim_buf_get_name(0))
+	local idx = M.find_adjacent_file_index(state.changed_files, current_path, direction)
+	if not idx then
+		return
+	end
+
+	local target = state.changed_files[idx]
+	vim.cmd("edit " .. vim.fn.fnameescape(repo_root .. "/" .. target.path))
+end
+
+--- Move to the next changed file in the PR (wraps around).
+function M.next_file()
+	goto_adjacent("next")
+end
+
+--- Move to the previous changed file in the PR (wraps around).
+function M.prev_file()
+	goto_adjacent("prev")
+end
+
 --- Show changed files list using the configured mode.
 function M.show()
 	local state = config.state

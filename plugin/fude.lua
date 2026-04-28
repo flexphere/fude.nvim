@@ -27,6 +27,14 @@ vim.api.nvim_create_user_command("FudeReviewFiles", function()
 	require("fude.files").show()
 end, { desc = "List PR changed files" })
 
+vim.api.nvim_create_user_command("FudeReviewNextFile", function()
+	require("fude.files").next_file()
+end, { desc = "Move to next changed file in PR" })
+
+vim.api.nvim_create_user_command("FudeReviewPrevFile", function()
+	require("fude.files").prev_file()
+end, { desc = "Move to previous changed file in PR" })
+
 vim.api.nvim_create_user_command("FudeReviewOverview", function()
 	require("fude.overview").show()
 end, { desc = "Show PR overview" })

@@ -44,7 +44,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   cmd = {
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
-    "FudeReviewFiles", "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
+    "FudeReviewFiles", "FudeReviewNextFile", "FudeReviewPrevFile",
+    "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeCreatePR",
   },
@@ -58,6 +59,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>eS", ":FudeReviewSuggest<cr>", desc = "Review: Suggest change (selection)", mode = { "v" } },
     { "<leader>ev", "<cmd>FudeReviewViewComment<cr>", desc = "Review: View comments" },
     { "<leader>ef", "<cmd>FudeReviewFiles<cr>", desc = "Review: Changed files" },
+    { "]f", "<cmd>FudeReviewNextFile<cr>", desc = "Review: Next file" },
+    { "[f", "<cmd>FudeReviewPrevFile<cr>", desc = "Review: Prev file" },
     { "<leader>eo", "<cmd>FudeReviewOverview<cr>", desc = "Review: PR Overview" },
     { "<leader>ed", "<cmd>FudeReviewDiff<cr>", desc = "Review: Toggle diff" },
     { "<leader>eb", "<cmd>FudeOpenPRURL<cr>", desc = "Open PR in browser" },
@@ -105,6 +108,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
 | `:FudeReviewViewComment` | View comments on current line |
 | `:FudeReviewFiles` | List PR changed files with comment counts (Telescope/quickfix) |
+| `:FudeReviewNextFile` | Open the next changed file (wraps around) |
+| `:FudeReviewPrevFile` | Open the previous changed file (wraps around) |
 | `:FudeReviewScope` | Select review scope (full PR or specific commit) |
 | `:FudeReviewScopeNext` | Move to next review scope |
 | `:FudeReviewScopePrev` | Move to previous review scope |
