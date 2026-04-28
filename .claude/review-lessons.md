@@ -20,6 +20,16 @@
 - **対策**: 新規テスト追加時、既存アサーションを式変形した結果と一致しないか確認する。意図を補強したい場合はテスト名・コメントの改善で代替し、本当に別の観点（例: クランプ境界、異なる入力範囲）を検証する場合のみテストを追加する
 - **該当箇所**: `tests/fude/ui_spec.lua` (calculate_comment_browser_layout 関連テスト)
 
+## コード品質: 取得済みの値を再取得する helper 経由呼び出し (PR #129, 2026-04-28)
+- **問題**: `goto_adjacent` が `diff.get_repo_root()` を呼んだ直後に `diff.to_repo_relative()` を使っていたが、`to_repo_relative` 内部でも `get_repo_root()` が走るため、1 回の操作で `git rev-parse` が 2 回実行されていた
+- **対策**: 既にローカル変数として保持している値（`repo_root` 等）がある場合は、その値を引数に取る低レベル純粋関数（`diff.make_relative` 等）を直接呼ぶ。便利関数（`to_repo_relative` 等）は呼び出し前に前提条件を持っていない箇所で使う
+- **該当箇所**: `lua/fude/files.lua` (goto_adjacent), 同種パターンの監視: `diff.get_repo_root` と `diff.to_repo_relative` を同一関数内で呼ぶ箇所
+
+## テスト: vim.cmd 副作用によるバッファリーク (PR #129, 2026-04-28)
+- **問題**: `next_file/prev_file` のテストで実際に `vim.cmd("edit ...")` を実行していたため、`/repo/*.lua` の架空バッファが生成され、`helpers.cleanup` が `create_buf` で作ったものしか追跡しないため後続テストにリークしていた
+- **対策**: テスト対象が `vim.cmd("edit ...")` のような副作用で「特定パスの buffer を開く」ことを目的とする場合、`helpers.mock(vim, "cmd", capture_fn)` でコマンド文字列をキャプチャしてアサートする。バッファを実際に作らないので cleanup 漏れも `:edit` の I/O 失敗もない。早期 return パスでは `last_cmd == nil` も検証することで「実際にスキップしている」ことを明示できる
+- **該当箇所**: `tests/fude/files_spec.lua` (next_file/prev_file describe ブロック)
+
 ## テスト: async callback「呼ばれない」検証での固定 sleep (PR #124, 2026-04-22)
 - **問題**: `vim.wait(100)` / `vim.wait(timeout, function() return false end, 10)` のような固定時間スリープ後に「コールバック/副作用が発生していないこと」を assert するテストは、CI 負荷で wait 時間が実質短くなるとフレークする。また「呼ばれたら fail」の意図がコード上は読み取りにくい
 - **対策**: callback が fire しないことを検証するテストでは `local fired = vim.wait(timeout, function() return invoked end)` のように condition を渡し、`assert.is_false(fired)` で wait が timeout したこと（= condition が成立しなかった＝fire しなかった）を検証する。誤って fire した場合は wait が早期脱出するため検出が高速で、意図もコードから読み取れる。複数フラグ（gh 呼出・on_done 呼出等）が共に false であることを検証する場合は condition 内で `flag1 or flag2` に集約すると assert も 1 つで済む

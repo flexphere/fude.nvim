@@ -383,3 +383,149 @@ describe("apply_viewed_toggle", function()
 		assert.is_false(fired)
 	end)
 end)
+
+describe("find_adjacent_file_index", function()
+	local changed = {
+		{ path = "a.lua" },
+		{ path = "b.lua" },
+		{ path = "c.lua" },
+	}
+
+	it("returns nil for empty list", function()
+		assert.is_nil(files.find_adjacent_file_index({}, "a.lua", "next"))
+		assert.is_nil(files.find_adjacent_file_index({}, "a.lua", "prev"))
+	end)
+
+	it("returns next index", function()
+		assert.are.equal(2, files.find_adjacent_file_index(changed, "a.lua", "next"))
+		assert.are.equal(3, files.find_adjacent_file_index(changed, "b.lua", "next"))
+	end)
+
+	it("returns prev index", function()
+		assert.are.equal(1, files.find_adjacent_file_index(changed, "b.lua", "prev"))
+		assert.are.equal(2, files.find_adjacent_file_index(changed, "c.lua", "prev"))
+	end)
+
+	it("wraps around forward at the last entry", function()
+		assert.are.equal(1, files.find_adjacent_file_index(changed, "c.lua", "next"))
+	end)
+
+	it("wraps around backward at the first entry", function()
+		assert.are.equal(3, files.find_adjacent_file_index(changed, "a.lua", "prev"))
+	end)
+
+	it("starts from first entry on next when current is not in list", function()
+		assert.are.equal(1, files.find_adjacent_file_index(changed, "x.lua", "next"))
+		assert.are.equal(1, files.find_adjacent_file_index(changed, nil, "next"))
+	end)
+
+	it("starts from last entry on prev when current is not in list", function()
+		assert.are.equal(3, files.find_adjacent_file_index(changed, "x.lua", "prev"))
+		assert.are.equal(3, files.find_adjacent_file_index(changed, nil, "prev"))
+	end)
+
+	it("handles single-entry list (next/prev both return 1)", function()
+		local single = { { path = "only.lua" } }
+		assert.are.equal(1, files.find_adjacent_file_index(single, "only.lua", "next"))
+		assert.are.equal(1, files.find_adjacent_file_index(single, "only.lua", "prev"))
+	end)
+end)
+
+describe("next_file / prev_file", function()
+	local config = require("fude.config")
+	local diff = require("fude.diff")
+	local helpers = require("tests.helpers")
+
+	local last_cmd
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.changed_files = {
+			{ path = "a.lua" },
+			{ path = "b.lua" },
+			{ path = "c.lua" },
+		}
+		helpers.mock(diff, "get_repo_root", function()
+			return "/repo"
+		end)
+		last_cmd = nil
+		helpers.mock(vim, "cmd", function(c)
+			last_cmd = c
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	-- Stub make_relative so the "current buffer" can be controlled per-test
+	-- without depending on the actual current buffer name or filesystem.
+	local function set_current_path(rel)
+		helpers.mock(diff, "make_relative", function(_, _)
+			return rel
+		end)
+	end
+
+	it("notifies and does nothing when not active", function()
+		config.state.active = false
+		local notified = false
+		helpers.mock(vim, "notify", function(msg, _)
+			if msg:find("Not active", 1, true) then
+				notified = true
+			end
+		end)
+		files.next_file()
+		assert.is_true(notified)
+		assert.is_nil(last_cmd)
+	end)
+
+	it("notifies and does nothing when changed_files is empty", function()
+		config.state.changed_files = {}
+		local notified = false
+		helpers.mock(vim, "notify", function(msg, _)
+			if msg:find("No changed files", 1, true) then
+				notified = true
+			end
+		end)
+		files.next_file()
+		assert.is_true(notified)
+		assert.is_nil(last_cmd)
+	end)
+
+	it("opens the next file relative to the current buffer", function()
+		set_current_path("a.lua")
+		files.next_file()
+		assert.are.equal("edit /repo/b.lua", last_cmd)
+	end)
+
+	it("wraps from the last file to the first on next", function()
+		set_current_path("c.lua")
+		files.next_file()
+		assert.are.equal("edit /repo/a.lua", last_cmd)
+	end)
+
+	it("opens the previous file relative to the current buffer", function()
+		set_current_path("b.lua")
+		files.prev_file()
+		assert.are.equal("edit /repo/a.lua", last_cmd)
+	end)
+
+	it("wraps from the first file to the last on prev", function()
+		set_current_path("a.lua")
+		files.prev_file()
+		assert.are.equal("edit /repo/c.lua", last_cmd)
+	end)
+
+	it("opens the first file when current buffer is not in changed_files (next)", function()
+		set_current_path(nil)
+		files.next_file()
+		assert.are.equal("edit /repo/a.lua", last_cmd)
+	end)
+
+	it("opens the last file when current buffer is not in changed_files (prev)", function()
+		set_current_path(nil)
+		files.prev_file()
+		assert.are.equal("edit /repo/c.lua", last_cmd)
+	end)
+end)

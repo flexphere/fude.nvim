@@ -112,6 +112,20 @@ Using lazy.nvim: >lua
     is used. In quickfix mode, comment counts are shown without
     these highlights.
 
+:FudeReviewNextFile                                *:FudeReviewNextFile*
+    Open the next changed file in the PR. Wraps around from the
+    last file to the first. If the current buffer is not part of
+    the PR's changed files, opens the first changed file.
+    Equivalent Lua API: `require("fude.files").next_file()`.
+    Requires an active review session.
+
+:FudeReviewPrevFile                                *:FudeReviewPrevFile*
+    Open the previous changed file in the PR. Wraps around from the
+    first file to the last. If the current buffer is not part of
+    the PR's changed files, opens the last changed file.
+    Equivalent Lua API: `require("fude.files").prev_file()`.
+    Requires an active review session.
+
 :FudeReviewScope                                    *:FudeReviewScope*
     Select the review scope. Opens a picker showing the PR's commit
     history and a "Full PR" option. By default, the scope is the full
