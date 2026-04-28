@@ -436,6 +436,8 @@ describe("next_file / prev_file", function()
 	local diff = require("fude.diff")
 	local helpers = require("tests.helpers")
 
+	local last_cmd
+
 	before_each(function()
 		config.setup({})
 		config.state.active = true
@@ -447,15 +449,22 @@ describe("next_file / prev_file", function()
 		helpers.mock(diff, "get_repo_root", function()
 			return "/repo"
 		end)
+		last_cmd = nil
+		helpers.mock(vim, "cmd", function(c)
+			last_cmd = c
+		end)
 	end)
 
 	after_each(function()
 		helpers.cleanup()
 	end)
 
-	local function current_basename()
-		local name = vim.api.nvim_buf_get_name(0)
-		return vim.fn.fnamemodify(name, ":t")
+	-- Stub make_relative so the "current buffer" can be controlled per-test
+	-- without depending on the actual current buffer name or filesystem.
+	local function set_current_path(rel)
+		helpers.mock(diff, "make_relative", function(_, _)
+			return rel
+		end)
 	end
 
 	it("notifies and does nothing when not active", function()
@@ -468,6 +477,7 @@ describe("next_file / prev_file", function()
 		end)
 		files.next_file()
 		assert.is_true(notified)
+		assert.is_nil(last_cmd)
 	end)
 
 	it("notifies and does nothing when changed_files is empty", function()
@@ -480,53 +490,42 @@ describe("next_file / prev_file", function()
 		end)
 		files.next_file()
 		assert.is_true(notified)
+		assert.is_nil(last_cmd)
 	end)
 
 	it("opens the next file relative to the current buffer", function()
-		helpers.mock(diff, "to_repo_relative", function(_)
-			return "a.lua"
-		end)
+		set_current_path("a.lua")
 		files.next_file()
-		assert.are.equal("b.lua", current_basename())
+		assert.are.equal("edit /repo/b.lua", last_cmd)
 	end)
 
 	it("wraps from the last file to the first on next", function()
-		helpers.mock(diff, "to_repo_relative", function(_)
-			return "c.lua"
-		end)
+		set_current_path("c.lua")
 		files.next_file()
-		assert.are.equal("a.lua", current_basename())
+		assert.are.equal("edit /repo/a.lua", last_cmd)
 	end)
 
 	it("opens the previous file relative to the current buffer", function()
-		helpers.mock(diff, "to_repo_relative", function(_)
-			return "b.lua"
-		end)
+		set_current_path("b.lua")
 		files.prev_file()
-		assert.are.equal("a.lua", current_basename())
+		assert.are.equal("edit /repo/a.lua", last_cmd)
 	end)
 
 	it("wraps from the first file to the last on prev", function()
-		helpers.mock(diff, "to_repo_relative", function(_)
-			return "a.lua"
-		end)
+		set_current_path("a.lua")
 		files.prev_file()
-		assert.are.equal("c.lua", current_basename())
+		assert.are.equal("edit /repo/c.lua", last_cmd)
 	end)
 
 	it("opens the first file when current buffer is not in changed_files (next)", function()
-		helpers.mock(diff, "to_repo_relative", function(_)
-			return nil
-		end)
+		set_current_path(nil)
 		files.next_file()
-		assert.are.equal("a.lua", current_basename())
+		assert.are.equal("edit /repo/a.lua", last_cmd)
 	end)
 
 	it("opens the last file when current buffer is not in changed_files (prev)", function()
-		helpers.mock(diff, "to_repo_relative", function(_)
-			return nil
-		end)
+		set_current_path(nil)
 		files.prev_file()
-		assert.are.equal("c.lua", current_basename())
+		assert.are.equal("edit /repo/c.lua", last_cmd)
 	end)
 end)
