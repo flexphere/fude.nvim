@@ -135,7 +135,7 @@ local function goto_adjacent(direction)
 		return
 	end
 
-	local current_path = diff.to_repo_relative(vim.api.nvim_buf_get_name(0))
+	local current_path = diff.make_relative(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p"), repo_root)
 	local idx = M.find_adjacent_file_index(state.changed_files, current_path, direction)
 	if not idx then
 		return
