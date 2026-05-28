@@ -502,6 +502,15 @@ local function create_browser(entries, issue_comments)
 		end
 	end
 
+	-- Determine the "original" lines for the lower pane based on current mode.
+	-- Used by the discard confirmation helper.
+	local function current_lower_original()
+		if browser.mode == "edit" and browser.edit_target then
+			return vim.split(format.normalize_newlines(browser.edit_target.body), "\n")
+		end
+		return { "" }
+	end
+
 	-- Cancel: clear lower buf, restore default mode, and return to left pane
 	local function cancel_lower()
 		if vim.api.nvim_buf_is_valid(lower_buf) then
@@ -526,9 +535,14 @@ local function create_browser(entries, issue_comments)
 		end
 	end
 
+	-- Close the browser, but confirm first if the lower pane has unsaved content.
+	local function close_with_confirm()
+		get_ui().confirm_discard_if_dirty(lower_buf, current_lower_original(), close_browser)
+	end
+
 	-- === LEFT PANE KEYMAPS ===
 
-	vim.keymap.set("n", "q", close_browser, { buffer = left_buf, desc = "Close comment browser" })
+	vim.keymap.set("n", "q", close_with_confirm, { buffer = left_buf, desc = "Close comment browser" })
 
 	vim.keymap.set("n", "<CR>", function()
 		local entry = current_entry()
@@ -557,7 +571,7 @@ local function create_browser(entries, issue_comments)
 
 	-- === UPPER PANE KEYMAPS ===
 
-	vim.keymap.set("n", "q", close_browser, { buffer = upper_buf, desc = "Close" })
+	vim.keymap.set("n", "q", close_with_confirm, { buffer = upper_buf, desc = "Close" })
 
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(lower_win) then
@@ -696,13 +710,13 @@ local function create_browser(entries, issue_comments)
 
 	vim.keymap.set("n", "<CR>", submit, { buffer = lower_buf, desc = "Submit" })
 
-	vim.keymap.set("n", "q", function()
-		cancel_lower()
-	end, { buffer = lower_buf, desc = "Cancel" })
+	local function cancel_lower_with_confirm()
+		get_ui().confirm_discard_if_dirty(lower_buf, current_lower_original(), cancel_lower)
+	end
 
-	vim.keymap.set("n", "<Esc>", function()
-		cancel_lower()
-	end, { buffer = lower_buf, desc = "Cancel" })
+	vim.keymap.set("n", "q", cancel_lower_with_confirm, { buffer = lower_buf, desc = "Cancel" })
+
+	vim.keymap.set("n", "<Esc>", cancel_lower_with_confirm, { buffer = lower_buf, desc = "Cancel" })
 
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(left_win) then
