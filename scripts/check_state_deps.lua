@@ -303,7 +303,7 @@ end
 --- Compute discrepancies between the declared table and observed code accesses.
 --- @param table_data table<string, { W: table<string,boolean>, R: table<string,boolean> }>
 --- @param code_data table<string, table<string, { W: boolean, R: boolean }>>  per-module accesses
---- @return { missing_w: any[], missing_r: any[], false_w: any[], false_r: any[], unknown_fields: any[], dead_fields: string[] }
+--- @return table  discrepancies: { missing_w, missing_r, false_w, false_r, unknown_fields, dead_fields }
 function M.compare(table_data, code_data)
 	local d = {
 		missing_w = {},
@@ -457,10 +457,8 @@ end
 -- 9. Main entry
 ----------------------------------------------------------------
 
---- @param args string[]|nil
 --- @return number  exit code
-function M.main(args)
-	args = args or {}
+function M.main()
 	local claude_md_path = "CLAUDE.md"
 	local lua_root = "lua/fude"
 
@@ -504,7 +502,7 @@ end
 ----------------------------------------------------------------
 
 if arg and arg[0] and arg[0]:match("check_state_deps%.lua$") then
-	os.exit(M.main(arg))
+	os.exit(M.main())
 end
 
 return M

@@ -1,7 +1,7 @@
 .PHONY: lint format format-check test check-state-deps all setup
 
 lint:
-	luacheck lua/ plugin/ tests/
+	luacheck lua/ plugin/ tests/ scripts/
 
 format:
 	stylua lua/ plugin/ tests/ scripts/
