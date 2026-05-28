@@ -63,7 +63,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
 | `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser |
-| `pr_number` | init | comments, comments/sync, ui, files, scope, overview, pr |
+| `pr_number` | init | init, comments, comments/sync, files, scope, pr, ui/comment_browser |
 | `base_ref` | init | init, preview, scope, ui/sidepanel |
 | `head_ref` | init | init, scope, ui/sidepanel |
 | `merge_base_sha` | init | init |
