@@ -87,7 +87,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `original_head_sha` | init, scope | init, scope |
 | `original_head_ref` | init | init, scope |
 | `reviewed_commits` | scope | scope, ui/sidepanel |
-| `ns_id` | config | ui/extmarks, comments |
+| `ns_id` | config | config, ui, ui/comment_browser, ui/extmarks |
 | `reply_window` | ui | ui |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
 | `github_user` | init | comments, comments/sync, ui/comment_browser |
