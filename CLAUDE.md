@@ -96,6 +96,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `gitsigns_reset` | init, scope | init |
 | `sidepanel` | ui/sidepanel | ui/sidepanel |
 | `augroup` | init | init |
+| `original_diffopt` | init | init |
 
 **高リスクフィールド**（多数のモジュールから参照）:
 - `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認
