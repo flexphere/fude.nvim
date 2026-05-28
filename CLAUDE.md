@@ -75,7 +75,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `pending_review_id` | comments/sync | comments, comments/sync, ui/comment_browser, ui/extmarks |
 | `pending_review_node_id` | comments/sync | comments/sync |
 | `thread_map` | comments/sync | comments/sync |
-| `pr_node_id` | init | init, files |
+| `pr_node_id` | init | init, files, ui/sidepanel |
 | `viewed_files` | init, init(reload), files | files, scope, ui/sidepanel |
 | `preview_win` | preview | init, preview |
 | `preview_buf` | preview | preview |
