@@ -1,0 +1,133 @@
+# HARNESS.md
+
+本プロジェクトでコーディングエージェント（Claude Code）と協働する際の **ハーネス** を俯瞰する文書。
+Martin Fowler "Harness Engineering for Coding Agents"
+(<https://martinfowler.com/articles/harness-engineering.html>) の語彙を借りて、既存の仕組みを
+**Guides（フィードフォワード制御）** と **Sensors（フィードバック制御）** に分類し、それらを継続的に
+改善する **Steering Loop** の運用ルールを明示する。
+
+詳細な実装規約は `CLAUDE.md` と各 skill に委ね、本ドキュメントは **俯瞰と運用** に絞る。
+
+## 用語の最低限のおさらい
+
+- **Harness** = Model 以外の全て。「エージェントが暴走しないように方向づける装具一式」
+- **Guides** = 実行前に望ましくない出力を予防する制御（コーディング規約、設計ドキュメント、リンタ設定）
+- **Sensors** = 実行後に問題を検出し自己修正を促す制御（テスト、リンタ、レビュー）
+- **計算的（Computational）** = 決定論的・高速（lint, test, type check）
+- **推論的（Inferential）** = LLM や人間の判断を伴う、セマンティックなチェック（コードレビュー、設計レビュー）
+- **Steering Loop** = 同じ問題が複数回起きたら Guides/Sensors を強化する、人間主導のメタプロセス
+
+## 1. 現状の Guides（フィードフォワード）
+
+| 種別 | 実体 | 役割 | 場所 |
+|------|------|------|------|
+| 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
+| 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR の一貫ワークフロー | `.claude/skills/develop/` |
+| 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
+| 推論的 | `/self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/self-review/` |
+| 推論的 | `/pr` skill | コミット分割と draft PR 作成 | `.claude/skills/pr/` |
+| 推論的 | `/review-respond` skill | PR レビューコメント対応と知見記録 | `.claude/skills/review-respond/` |
+| 推論的 | `/harness-audit` skill | 本ドキュメントとレビュー知見の定期点検 | `.claude/skills/harness-audit/` |
+| 推論的 | `.claude/review-lessons.md` | 過去 PR レビューから抽出した再発防止パターン | `.claude/` |
+| 推論的 | `.github/copilot-instructions.md` | Copilot 用の言語指示 | `.github/` |
+| 計算的 | `.stylua.toml` | フォーマット規約 | repo root |
+| 計算的 | `.luacheckrc` | Lint 規約 | repo root |
+
+**設計原則**: skill は **再利用可能な軽量プロセス記述** を保ち、プロジェクト固有の知識は `CLAUDE.md` と
+`pj-checklist` に集中させる。新たに skill を増やすときは「既存 skill の一部に書けないか」をまず疑う。
+
+## 2. 現状の Sensors（フィードバック）
+
+| 種別 | 実体 | タイミング | 何を検出 |
+|------|------|------------|----------|
+| 計算的 | `stylua --check lua/ plugin/ tests/` | 開発中・pre-commit・CI | 整形違反 |
+| 計算的 | `luacheck lua/ plugin/ tests/` | 開発中・pre-commit・CI | Lint 違反、未使用変数等 |
+| 計算的 | `bash run_tests.sh` (plenary busted) | 開発中・pre-commit・CI | 単体・統合テスト失敗 |
+| 計算的 | `.githooks/pre-commit` | commit | 上記 3 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 3 つを CI 上で実行（Neovim 0.10.4 / 0.11.7 / stable の matrix） |
+| 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
+| 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
+| 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
+| 推論的 | 人間レビュー | PR | プロジェクト視点・組織的判断 |
+
+**Quality Left の原則**: 検出は早いほど安い。開発中 → pre-commit → CI → PR レビュー の順に並べる。
+重い検査ほど後段、軽い検査ほど前段で。
+
+## 3. Steering Loop の運用
+
+> Whenever an issue happens multiple times, the feedforward and feedback controls should be improved.
+> — Martin Fowler
+
+本プロジェクトでは以下のループが稼働している:
+
+```
+PR レビュー指摘
+  └─ /review-respond Phase 5: 再発防止パターンを review-lessons.md に追記
+  └─ /review-respond Phase 6: review-lessons.md → pj-checklist へ統合
+       (完全重複は削除、部分重複は抽象化、新規知見は保持)
+       └─ 次回以降の /develop Phase 1・/self-review ラウンド 1-2 で参照される
+```
+
+加えて、低頻度のメタ点検として以下を実施する:
+
+```
+3 ヶ月ごと または review-lessons.md が 15 件を超えたとき
+  └─ /harness-audit を起動
+       └─ pj-checklist の各項目が直近 PR で「発火しているか」を確認
+       └─ 発火していない項目は削除候補、繰り返し見落としているパターンは追加候補
+       └─ HARNESS.md・pj-checklist・review-lessons.md の整合性を取り直す
+```
+
+### 既存 skill との連携ポイント
+
+- `/develop` Phase 1 は `CLAUDE.md` と `review-lessons.md` を参照する。**本ドキュメント (HARNESS.md) も
+  俯瞰用として軽く目を通す**ことで「今どこを触っているか」をハーネス全体地図の上で位置付けできる
+- `/review-respond` Phase 6 は `review-lessons.md` のエントリ統合と削除を行う。一定数を超えたら
+  `/harness-audit` の起動を提案する
+- `/self-review` は本ドキュメントを直接参照しない（個別 skill が役割を持つ）
+
+## 4. 既知のギャップと将来計画
+
+「Fowler の枠組みで埋められる余地」と「本プロジェクトの規模・運用負荷とのトレードオフ」を踏まえた候補。
+**実装はそれぞれ別 PR を推奨**。優先順位は記載のものから着手するのが妥当。
+
+### 4.1 Architecture Fitness Sensor（計算的）
+
+- **State Dependencies テーブルの自動検証**
+  `CLAUDE.md` の状態依存テーブル (W/R) は人手メンテのため、コード変更との乖離が生じうる。
+  `lua/fude/` 全体を AST/grep で走査し、`config.state.<field>` の書き込み・読み込み箇所を抽出して
+  テーブルと突き合わせる検証スクリプトを `make all` に組み込む案
+
+- **純粋関数モジュールの purity 静的チェック**
+  `*/data.lua` `*/format.lua` は CLAUDE.md で「vim API・`config.state` を参照しない」と宣言されている。
+  grep ベースで `vim\.` `config.state` の出現を検出する軽量チェック
+
+### 4.2 Maintainability Sensor（計算的）
+
+- **テストカバレッジ計測**: `luacov` 等で計測し、新規追加コードのカバレッジを可視化
+- **重複コード検出**: 同種の grep パターン（CRLF 正規化、レイアウト計算等）を機械的に検出
+
+### 4.3 Behaviour Sensor（推論的）
+
+- **AI 生成テストの品質評価**（変異テスト等）— Fowler が「最も難しい」と述べる領域。本プロジェクトでは
+  当面、人間レビュー + `/self-review` ラウンド 3 で代替
+
+### 4.4 Steering Loop の改善
+
+- **PR レビュー以外の信号の取り込み**: セルフレビューで発見した知見、ユーザー対話で漏らした不満、
+  テスト失敗の傾向などを `review-lessons.md` に流す導線（現状は PR レビュー指摘のみが対象）
+
+### 4.5 やらないこと
+
+- **harness-audit の完全自動化**: Fowler も指摘するように「ハーネスのドリフト」自体が課題であり、
+  自動運用は新たなメタ層を要する。手動・低頻度に留める
+- **多層 skill 化**: skill を細分化しすぎると認知負荷が上がる。新規 skill は既存 skill に書けない
+  独立した工程に限る
+
+## 5. このドキュメントの保守ルール
+
+- **追加・削除があった項目だけ** 表を更新する。文章本体は俯瞰・運用ルールのみで、詳細は委譲先に
+  リンクする（例: 個々のチェック項目は `pj-checklist` を参照）
+- skill を追加・削除したら本ドキュメントの「現状の Guides」表も同期する
+- `/harness-audit` 実施後、結果に応じて「4. 既知のギャップ」セクションを更新する
+- 200 行を超えたら、肥大化の兆候として委譲先への分割を検討する
