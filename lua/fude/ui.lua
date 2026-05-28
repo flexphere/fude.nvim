@@ -40,6 +40,45 @@ M.clear_all_extmarks = extmarks.clear_all_extmarks
 M.setup_inline_hint_autocmd = extmarks.setup_inline_hint_autocmd
 M.teardown_inline_hint_autocmd = extmarks.teardown_inline_hint_autocmd
 
+--- Compare current buffer lines against original lines (trimmed) and return
+--- whether they differ. Used to decide if a discard confirmation should be shown.
+--- nil/empty `original_lines` is treated as empty input.
+--- @param current_lines string[]
+--- @param original_lines string[]|nil
+--- @return boolean
+function M.should_confirm_discard(current_lines, original_lines)
+	local function normalize(lines)
+		if not lines then
+			return ""
+		end
+		return vim.trim(table.concat(lines, "\n"))
+	end
+	return normalize(current_lines) ~= normalize(original_lines)
+end
+
+--- If the buffer differs from `original_lines`, show a Yes/No confirmation and
+--- invoke `on_proceed` only when the user chooses to discard. Otherwise call
+--- `on_proceed` immediately.
+--- @param buf number
+--- @param original_lines string[]|nil
+--- @param on_proceed fun()
+function M.confirm_discard_if_dirty(buf, original_lines, on_proceed)
+	if not vim.api.nvim_buf_is_valid(buf) then
+		on_proceed()
+		return
+	end
+	local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+	if not M.should_confirm_discard(current, original_lines) then
+		on_proceed()
+		return
+	end
+	vim.ui.select({ "Yes", "No" }, { prompt = "Discard comment?" }, function(choice)
+		if choice == "Yes" then
+			on_proceed()
+		end
+	end)
+end
+
 --- Synchronously set preview buffer in Telescope to avoid one-tick delay.
 --- Telescope defers win_set_buf via vim.schedule for new buffers; calling
 --- nvim_win_set_buf directly with eventignore suppressed fixes this.
@@ -207,10 +246,14 @@ function M.open_comment_input(callback, opts)
 	end, { buffer = buf, desc = "Save" })
 
 	vim.keymap.set("n", "q", function()
-		vim.api.nvim_win_close(win, true)
-		if callback then
-			callback(nil)
-		end
+		M.confirm_discard_if_dirty(buf, initial_lines, function()
+			if vim.api.nvim_win_is_valid(win) then
+				vim.api.nvim_win_close(win, true)
+			end
+			if callback then
+				callback(nil)
+			end
+		end)
 	end, { buffer = buf, desc = "Cancel" })
 end
 
@@ -607,8 +650,8 @@ function M.open_edit_window(thread, comment, opts)
 
 	-- Create lower buffer (editable, pre-filled with comment body)
 	local lower_buf = vim.api.nvim_create_buf(false, true)
-	local initial_lines = vim.split(format.normalize_newlines(comment.body), "\n")
-	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, initial_lines)
+	local original_lines = vim.split(format.normalize_newlines(comment.body), "\n")
+	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, original_lines)
 	vim.bo[lower_buf].buftype = "nofile"
 	vim.bo[lower_buf].bufhidden = "wipe"
 	vim.bo[lower_buf].filetype = "markdown"
@@ -686,7 +729,7 @@ function M.open_edit_window(thread, comment, opts)
 
 	-- Cancel handler
 	local function cancel()
-		close_all()
+		M.confirm_discard_if_dirty(lower_buf, original_lines, close_all)
 	end
 
 	-- Helper to scroll upper window from lower
@@ -792,7 +835,8 @@ function M.open_reply_window(comments, opts)
 
 	-- Create lower buffer (editable input)
 	local lower_buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
+	local original_lines = { "" }
+	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, original_lines)
 	vim.bo[lower_buf].buftype = "nofile"
 	vim.bo[lower_buf].bufhidden = "wipe"
 	vim.bo[lower_buf].filetype = opts.filetype or "markdown"
@@ -870,7 +914,7 @@ function M.open_reply_window(comments, opts)
 
 	-- Cancel handler
 	local function cancel()
-		close_all()
+		M.confirm_discard_if_dirty(lower_buf, original_lines, close_all)
 	end
 
 	-- Helper to scroll upper window from lower
