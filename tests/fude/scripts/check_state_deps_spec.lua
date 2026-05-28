@@ -201,10 +201,13 @@ describe("check_state_deps.extract_field_accesses", function()
 	end)
 
 	it("ignores accesses occurring only inside stripped comments", function()
-		-- extract_field_accesses expects already-stripped source. The caller
-		-- (scan_module_text) strips first. Verify via scan_module_text instead.
-		local r = check.scan_module_text("-- state.foo = 1\nlocal x = 1\n", "test")
-		assert.is_nil(r.foo)
+		-- Verify via scan_module_text (which strips first) with an explicit
+		-- `local state = config.state` alias so detection WOULD fire if the
+		-- comment were not blanked. The assertion would fail without stripping.
+		local src = "local state = config.state\n-- state.commented_only = 1\nstate.real = 1\n"
+		local r = check.scan_module_text(src, "test")
+		assert.is_nil(r.commented_only)
+		assert.is_true(r.real.W) -- sanity: detection works for non-commented access
 	end)
 end)
 
