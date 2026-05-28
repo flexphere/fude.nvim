@@ -92,7 +92,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
 | `github_user` | init | comments, comments/sync, ui/comment_browser |
 | `current_comment_style` | config | config |
-| `outdated_map` | comments/sync | comments/sync |
+| `outdated_map` | comments/sync | |
 | `reload_timer` | init | init |
 | `reloading` | init | init |
 | `gitsigns_reset` | init, scope | init |
