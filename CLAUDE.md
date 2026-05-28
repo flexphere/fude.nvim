@@ -91,7 +91,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `reply_window` | ui | ui |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
 | `github_user` | init | comments, ui/comment_browser |
-| `current_comment_style` | config | ui/extmarks, comments |
+| `current_comment_style` | config | config |
 | `outdated_map` | comments/sync | comments/sync |
 | `reload_timer` | init | init |
 | `reloading` | init | init |
