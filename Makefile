@@ -1,4 +1,4 @@
-.PHONY: lint format format-check test check-state-deps all setup
+.PHONY: lint format format-check test check-state-deps check-purity all setup
 
 lint:
 	luacheck lua/ plugin/ tests/ scripts/
@@ -15,7 +15,10 @@ test:
 check-state-deps:
 	nvim --headless -l scripts/check_state_deps.lua
 
-all: lint format-check test check-state-deps
+check-purity:
+	nvim --headless -l scripts/check_purity.lua
+
+all: lint format-check test check-state-deps check-purity
 
 setup:
 	git config core.hooksPath .githooks
