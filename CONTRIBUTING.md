@@ -42,14 +42,17 @@ make setup   # pre-commit フック (lint + format-check + test) を有効化
 ## チェックコマンド
 
 ```bash
-make lint           # luacheck
-make format         # stylua（自動修正）
-make format-check   # stylua --check
-make test           # plenary-busted テスト
-make all            # lint + format-check + test
+make lint              # luacheck
+make format            # stylua（自動修正）
+make format-check      # stylua --check
+make test              # plenary-busted テスト
+make all               # lint + format-check + test
+make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
 ```
 
 push 前に `make all` が通ることを必ず確認してください。`make setup` で `.githooks/pre-commit` が有効化され、コミット時に自動実行されます。
+
+`make check-state-deps` は `config.state` の読み書きパターンに触れる変更や、`lua/fude/` のモジュール追加・削除を行ったときに手動で実行し、CLAUDE.md の State Dependencies 表が実コードとずれていないかを確認します（`make all` には未組み込み）。
 
 ## テスト
 
