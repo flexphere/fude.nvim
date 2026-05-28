@@ -69,7 +69,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `merge_base_sha` | init, scope | init, scope |
 | `pr_url` | init | ui |
 | `changed_files` | init, init(reload), scope | init, files, scope, ui/sidepanel |
-| `comments` | comments/sync | comments, comments/sync, files, ui/extmarks |
+| `comments` | comments/sync | comments, comments/sync, files, ui/comment_browser, ui/sidepanel |
 | `comment_map` | comments/sync | comments |
 | `pending_comments` | comments, comments/sync | comments, comments/sync, files, ui/extmarks |
 | `pending_review_id` | comments/sync | comments, comments/sync, comments/pickers, ui/extmarks |
