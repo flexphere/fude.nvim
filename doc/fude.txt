@@ -82,6 +82,9 @@ Using lazy.nvim: >lua
     selected lines (visual mode). Opens a floating window for
     composing the comment. Press `<CR>` to save as GitHub pending review
     (visible on PR page with "Pending" status), `q` to cancel.
+    Cancelling with `q` or `<Esc>` (where bound) prompts a Yes/No
+    confirmation when the buffer has unsaved changes, to prevent
+    accidentally discarding an in-progress comment.
     Pending comments can be submitted as a review using |:FudeReviewSubmit|.
 
 :FudeReviewViewComment                          *:FudeReviewViewComment*
