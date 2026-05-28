@@ -15,7 +15,7 @@ test:
 check-state-deps:
 	nvim --headless -l scripts/check_state_deps.lua
 
-all: lint format-check test
+all: lint format-check test check-state-deps
 
 setup:
 	git config core.hooksPath .githooks
