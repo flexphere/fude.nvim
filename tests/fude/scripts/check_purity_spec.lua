@@ -81,10 +81,10 @@ describe("check_purity.scan_file_text", function()
 		assert.are.equal(0, #violations_of(src))
 	end)
 
-	it("does NOT flag identifier suffixes (e.g. someuser.vim.cmd)", function()
-		-- "someuser.vim.cmd" — our pattern requires `vim.cmd` with proper prefix
-		-- Document the limitation: we don't strictly word-boundary on `vim.`.
-		-- Verify the common case: `vim.cmd(` after a dot still flags (acceptable).
+	it("flags vim.cmd even when preceded by another identifier (known limitation)", function()
+		-- Document the limitation: we do NOT word-boundary on the prefix side of
+		-- `vim.<api>`. `self.vim.cmd(...)` is still flagged as a vim.cmd violation.
+		-- Acceptable because no module in this codebase has a sub-table named `vim`.
 		assert.are.equal(1, #violations_of("local x = self.vim.cmd('hi')\n"))
 	end)
 
