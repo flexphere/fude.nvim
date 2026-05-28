@@ -2211,3 +2211,49 @@ describe("format_comments_for_inline", function()
 		assert.is_false(found_custom_bold)
 	end)
 end)
+
+describe("should_confirm_discard", function()
+	it("returns false when both empty", function()
+		assert.is_false(ui.should_confirm_discard({ "" }, { "" }))
+	end)
+
+	it("returns false when current is empty and original is nil", function()
+		assert.is_false(ui.should_confirm_discard({ "" }, nil))
+	end)
+
+	it("returns false when current is empty and original is empty array", function()
+		assert.is_false(ui.should_confirm_discard({ "" }, {}))
+	end)
+
+	it("returns true when current is non-empty and original is nil", function()
+		assert.is_true(ui.should_confirm_discard({ "hello" }, nil))
+	end)
+
+	it("returns true when current is non-empty and original is empty", function()
+		assert.is_true(ui.should_confirm_discard({ "hello" }, { "" }))
+	end)
+
+	it("returns false when current equals original (unchanged)", function()
+		assert.is_false(ui.should_confirm_discard({ "hello" }, { "hello" }))
+	end)
+
+	it("returns true when current differs from original", function()
+		assert.is_true(ui.should_confirm_discard({ "hello" }, { "world" }))
+	end)
+
+	it("returns false when only trailing empty line differs", function()
+		assert.is_false(ui.should_confirm_discard({ "hello", "" }, { "hello" }))
+	end)
+
+	it("returns false when surrounded by whitespace only", function()
+		assert.is_false(ui.should_confirm_discard({ "  hello  " }, { "hello" }))
+	end)
+
+	it("returns true for multiline edits", function()
+		assert.is_true(ui.should_confirm_discard({ "line1", "line2" }, { "line1" }))
+	end)
+
+	it("returns false when multiline content matches", function()
+		assert.is_false(ui.should_confirm_discard({ "line1", "line2" }, { "line1", "line2" }))
+	end)
+end)
