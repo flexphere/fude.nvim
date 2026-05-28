@@ -90,7 +90,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `ns_id` | config | ui/extmarks, comments |
 | `reply_window` | ui | ui |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
-| `github_user` | init | comments, ui/comment_browser |
+| `github_user` | init | comments, comments/sync, ui/comment_browser |
 | `current_comment_style` | config | config |
 | `outdated_map` | comments/sync | comments/sync |
 | `reload_timer` | init | init |
