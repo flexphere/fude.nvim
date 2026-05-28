@@ -115,9 +115,9 @@ function M.refresh_extmarks()
 			end
 
 			if #all_comments_for_display > 0 then
-				local format = require("fude.ui.format")
+				local inline = require("fude.ui.inline")
 				local inline_opts = config.opts.inline or {}
-				local result = format.format_comments_for_inline(all_comments_for_display, config.format_date, inline_opts)
+				local result = inline.format_comments_for_inline(all_comments_for_display, config.format_date, inline_opts)
 				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
 					virt_lines = result.virt_lines,
 					virt_lines_above = false,
