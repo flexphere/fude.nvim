@@ -80,7 +80,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `preview_win` | preview | init, preview, scope, ui/sidepanel |
 | `preview_buf` | preview | |
 | `source_win` | preview | preview, scope |
-| `scope` | scope | scope, preview, init |
+| `scope` | scope, init | scope, preview, init, ui/sidepanel |
 | `scope_commit_sha` | scope | scope, preview, init |
 | `scope_commit_index` | scope | scope |
 | `pr_commits` | init, init(reload) | init, scope, completion/init, ui/sidepanel |
