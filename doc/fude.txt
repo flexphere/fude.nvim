@@ -457,6 +457,11 @@ Default configuration: >lua
       duration = 200, -- ms
       hl_group = "Visual",
     },
+    -- Buffer-local keymaps set during review mode
+    keymaps = {
+      next_comment = "]c",
+      prev_comment = "[c",
+    },
     -- Comment display style: "virtualText" or "inline"
     comment_style = "virtualText",
     -- Inline display options (used when comment_style = "inline")
@@ -552,6 +557,14 @@ Options:
                   when navigating to a comment line (default: 200).
 
 `flash.hl_group`    Highlight group for the flash effect (default: "Visual").
+
+`keymaps.next_comment`
+                  Buffer-local mapping for next-comment navigation, set
+                  during review mode and removed on stop (default: "]c").
+
+`keymaps.prev_comment`
+                  Buffer-local mapping for previous-comment navigation,
+                  set during review mode and removed on stop (default: "[c").
 
 `auto_view_comment` When true, automatically opens the comment viewer
                   float after navigating to a comment line via ]c, [c,
