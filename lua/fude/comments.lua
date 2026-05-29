@@ -191,10 +191,18 @@ function M.reply_to_comment(comment_id)
 		allow_draft = drafts.enabled(),
 		on_save_draft = function(text)
 			drafts.set(draft_key, text)
+			-- Refresh after the reply windows close so the diff buffer (not the
+			-- float) gets the draft indicator update.
+			vim.schedule(function()
+				ui.refresh_extmarks()
+			end)
 			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
 		end,
 		on_discard_draft = function()
 			drafts.remove(draft_key)
+			vim.schedule(function()
+				ui.refresh_extmarks()
+			end)
 		end,
 		on_submit = function(reply_body)
 			sync.reply_to_comment(reply_target_id, reply_body, function(err)
@@ -293,10 +301,18 @@ function M.edit_comment(comment_id)
 		allow_draft = drafts.enabled(),
 		on_save_draft = function(text)
 			drafts.set(draft_key, text)
+			-- Refresh after the edit windows close so the diff buffer (not the
+			-- float) gets the draft indicator update.
+			vim.schedule(function()
+				ui.refresh_extmarks()
+			end)
 			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
 		end,
 		on_discard_draft = function()
 			drafts.remove(draft_key)
+			vim.schedule(function()
+				ui.refresh_extmarks()
+			end)
 		end,
 		on_submit = function(new_body)
 			if is_pending then
