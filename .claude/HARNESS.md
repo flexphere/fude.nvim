@@ -127,6 +127,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 - **Security 自動 scan**: 外部入力は `gh` CLI 経由に限定、コードベースが小さい。手動
   `/security-review` で十分
 - **Computational Guide 拡張**: 動的型言語の性質上、type guard 等は導入コストに見合わない
+- **skill 内自己参照整合の機械的検証**: skill `.md` 内の Phase 番号参照や用語定義の自動検証は、対象 skill 数の少なさ（現状 6）と人手チェックの容易さから ROI 低。新規 skill 追加・修正時に `/pj-checklist` の「skill ドキュメント内の自己参照」項目で人手検出する
 
 ## 5. このドキュメントの保守ルール
 
