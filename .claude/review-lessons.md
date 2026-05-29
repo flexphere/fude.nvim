@@ -6,6 +6,6 @@
 > 過去エントリは git 履歴 (`git log -- .claude/review-lessons.md`) を参照してください。
 > エントリ単位は `### <カテゴリ>: ...` 見出しで数えます（行数ではない）。
 
-<!-- audit 2026-05-30 で PR #144 由来の全 4 エントリを pj-checklist へ統合済み -->
-<!-- 直前の audit 2026-05-29 で全 7 エントリを pj-checklist へ統合済み -->
+<!-- 差分 audit (2026-05-30) で PR #144 由来の全 4 エントリを pj-checklist へ統合済み (report 保存省略) -->
+<!-- formal audit (2026-05-29, .claude/audit-reports/audit-2026-05.md) で全 7 エントリを pj-checklist へ統合済み -->
 
