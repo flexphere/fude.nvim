@@ -153,6 +153,19 @@ describe("drafts IO (set/get/remove/load)", function()
 		assert.is_nil(drafts.get("k1"))
 	end)
 
+	it("returns nil for an entry whose body is not a string (corrupt/hand-edited file)", function()
+		-- Simulate a drafts.json with a non-string body (only reachable via
+		-- external editing/corruption, never via M.set).
+		drafts.save({
+			num = { body = 123, saved_at = "2026-05-29T00:00:00Z" },
+			tbl = { body = { nested = true }, saved_at = "2026-05-29T00:00:00Z" },
+			ok = { body = "valid", saved_at = "2026-05-29T00:00:00Z" },
+		})
+		assert.is_nil(drafts.get("num"))
+		assert.is_nil(drafts.get("tbl"))
+		assert.equals("valid", drafts.get("ok"))
+	end)
+
 	it("remove deletes a key", function()
 		drafts.set("k1", "text")
 		drafts.remove("k1")

@@ -209,7 +209,9 @@ function M.get(key)
 		return nil
 	end
 	local entry = M.load()[key]
-	if type(entry) == "table" then
+	-- drafts.json is an on-disk file that may be hand-edited or corrupted, so
+	-- only restore a string body (callers feed it to vim.split/normalize_newlines).
+	if type(entry) == "table" and type(entry.body) == "string" then
 		return entry.body
 	end
 	return nil
