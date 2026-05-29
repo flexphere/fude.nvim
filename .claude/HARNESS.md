@@ -45,7 +45,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `bash run_tests.sh` (plenary busted) | 開発中・pre-commit・CI | 単体・統合テスト失敗 |
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
 | 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
-| 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性 |
+| 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性、および `lua/fude/config.lua` `M.defaults` の top-level 設定キーが `doc/fude.txt` に backtick 形式で文書化されているかの forward 検証 |
 | 計算的 | `make coverage` (luacov) | 開発中（手動）・CI | `lua/fude/` のテストカバレッジ計測。`make all` には未組み込み（報告のみ・閾値強制なし）。CI artifact `coverage-report` に保管 |
 | 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 6 つを順次実行する **ローカルゲート** |
 | 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
@@ -101,7 +101,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 |--------|--------|------|----------|
 | `check_state_deps` | #134-#135 | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性 | multi-LHS 代入 `state.a, state.b = ...` は最後の LHS のみ W 検出、動的フィールド `state[key]` は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の可能性（現コードベースに該当ケースなし） |
 | `check_purity` | #136 | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
-| `check_docs` | #137 | `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 | コマンドのみ対象（keymap・config option の双方向検証は別 PR）、helptag に動的記法は無いため検出漏れリスクは小 |
+| `check_docs` | #137, (本 PR) | (1) `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 (PR #137)、(2) `config.lua` の `M.defaults` top-level キーが doc に backtick 形式で文書化されているか forward 検証 (本 PR) | config option は **forward のみ** (doc backtick は関数名等を含むため reverse 不適)。nested key (`signs.comment` 等) と default value の整合性は未対応。keymap 検証は §4.2 #4 で別 PR 化 |
 | `luacov` (`make coverage`) | (本 PR) | `lua/fude/` のテストカバレッジ計測（line-hit 率）。報告のみ、閾値強制なし。CI artifact から取得 | 初期は 45-50% 程度の見込み。閾値強制は段階 3（将来 PR）で検討。`/harness-audit` の sensor 発火率指標とは別の独立メトリクス |
 
 ### 4.2 次に着手する PR 候補
@@ -112,7 +112,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 |----|------|--------------|------|---------|
 | 1 | **luacov 閾値強制 (段階 3)** — 数週間の数値傾向を見てから最低カバレッジゲートを設定 | Comp Sensor | 小 | 蓄積データが揃ってから |
 | 2 | **pre-commit 文脈ヒント** — 変更モジュールから連動して見るべき `/pj-checklist` 項目を提示。`/harness-audit` の発火率データを取った後に着手判断 | Inf Guide / Process | 中 | 過剰ノイズ化リスクあり、効果未確認 |
-| 3 | **check_docs の keymap / config option 拡張** — 現在のコマンド検証を `*:keymap*` / `*g:fude_*` にも拡張 | Comp Sensor | 中 | check_docs と同じパターン、3 つ目スクリプト共通基盤がすでに揃っている |
+| 3 | **check_docs の keymap 検証** — config option は本 PR で実装済。残るは plugin-set keymap (`]c`/`[c` 等) の双方向検証。多くの doc 内 keymap は "suggested" (規約)のため検証対象が限定的 | Comp Sensor | 小〜中 | check_docs と同じパターン、用途が限定的なため優先度は低 |
 
 ### 4.3 やらないこと
 

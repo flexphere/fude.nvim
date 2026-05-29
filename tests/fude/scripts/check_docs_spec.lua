@@ -144,4 +144,112 @@ describe("check_docs.format_report", function()
 		assert.is_truthy(report:find("Undocumented"))
 		assert.is_falsy(report:find("Stale"))
 	end)
+
+	it("accepts a multi-category map of {commands=..., options=...}", function()
+		local report, total = check.format_report({
+			commands = { undocumented = { "NewCmd" }, stale = {} },
+			options = { undocumented = { "new_opt" }, stale = {} },
+		})
+		assert.are.equal(2, total)
+		assert.is_truthy(report:find("Undocumented commands %(1%)"))
+		assert.is_truthy(report:find("Undocumented config options %(1%)"))
+	end)
+
+	it("emits OK trailer for empty multi-category input", function()
+		local report, total = check.format_report({
+			commands = { undocumented = {}, stale = {} },
+			options = { undocumented = {}, stale = {} },
+		})
+		assert.are.equal(0, total)
+		assert.is_truthy(report:find("OK"))
+	end)
+end)
+
+describe("check_docs.extract_config_options", function()
+	it("captures top-level keys from M.defaults = { ... }", function()
+		local src = [[
+M.defaults = {
+	foo = 1,
+	bar = "hello",
+	baz = true,
+}
+]]
+		local set = check.extract_config_options(src)
+		assert.is_true(set.foo)
+		assert.is_true(set.bar)
+		assert.is_true(set.baz)
+	end)
+
+	it("does NOT capture nested keys", function()
+		local src = [[
+M.defaults = {
+	signs = {
+		comment = "#",
+		pending = "P",
+	},
+	float = {
+		border = "single",
+	},
+}
+]]
+		local set = check.extract_config_options(src)
+		assert.is_true(set.signs)
+		assert.is_true(set.float)
+		assert.is_nil(set.comment) -- nested
+		assert.is_nil(set.pending) -- nested
+		assert.is_nil(set.border) -- nested
+	end)
+
+	it("handles nil/false/function values", function()
+		local src = [[
+M.defaults = {
+	maybe = nil,
+	flag = false,
+	format_path = nil,
+	on_event = function() return 1 end,
+}
+]]
+		local set = check.extract_config_options(src)
+		assert.is_true(set.maybe)
+		assert.is_true(set.flag)
+		assert.is_true(set.format_path)
+		assert.is_true(set.on_event)
+	end)
+
+	it("ignores M.defaults references inside comments and strings", function()
+		local src = [[
+-- M.defaults = { ghost = 1 }
+local example = "M.defaults = { other_ghost = 2 }"
+M.defaults = {
+	real_key = 1,
+}
+]]
+		local set = check.extract_config_options(src)
+		assert.is_true(set.real_key)
+		assert.is_nil(set.ghost)
+		assert.is_nil(set.other_ghost)
+	end)
+
+	it("returns empty set when M.defaults is absent", function()
+		local set = check.extract_config_options("local M = {}\nreturn M\n")
+		assert.are.equal(0, vim.tbl_count(set))
+	end)
+end)
+
+describe("check_docs.extract_documented_options", function()
+	it("captures standalone backtick-quoted identifiers", function()
+		local set = check.extract_documented_options("Use `foo` and `bar` for setup.\n")
+		assert.is_true(set.foo)
+		assert.is_true(set.bar)
+	end)
+
+	it("indexes the top-level identifier of dotted forms", function()
+		local set = check.extract_documented_options("`signs.comment` sets the indicator.\n")
+		assert.is_true(set.signs)
+	end)
+
+	it("returns empty set for doc with no backtick references", function()
+		local set = check.extract_documented_options("Plain prose with no code refs.\n")
+		assert.are.equal(0, vim.tbl_count(set))
+	end)
 end)
