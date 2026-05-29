@@ -57,26 +57,67 @@ function M.should_confirm_discard(current_lines, original_lines)
 	return normalize(current_lines) ~= normalize(original_lines)
 end
 
---- If the buffer differs from `original_lines`, show a Yes/No confirmation and
---- invoke `on_proceed` only when the user chooses to discard. Otherwise call
---- `on_proceed` immediately.
+--- Choices shown when closing a comment buffer that has unsaved changes and
+--- local drafts are enabled.
+local DRAFT_CLOSE_CHOICES = { "Save draft & close", "Discard & close", "Keep editing" }
+
+--- Prompt for how to close a dirty comment buffer and route the decision.
+--- When `allow_draft` is true a 3-way choice (save draft / discard / keep) is
+--- shown; otherwise a plain Yes/No discard confirmation (the pre-draft UX).
+--- @param allow_draft boolean
+--- @param on_save fun() chosen "save draft & close"
+--- @param on_discard fun() chosen "discard & close"
+local function prompt_close_decision(allow_draft, on_save, on_discard)
+	if allow_draft then
+		vim.ui.select(DRAFT_CLOSE_CHOICES, { prompt = "Unsaved comment:" }, function(choice)
+			if choice == DRAFT_CLOSE_CHOICES[1] then
+				on_save()
+			elseif choice == DRAFT_CLOSE_CHOICES[2] then
+				on_discard()
+			end
+		end)
+	else
+		vim.ui.select({ "Yes", "No" }, { prompt = "Discard comment?" }, function(choice)
+			if choice == "Yes" then
+				on_discard()
+			end
+		end)
+	end
+end
+
+--- If the buffer differs from `original_lines`, prompt how to close it
+--- (optionally offering to save a local draft) and run the matching handler.
+--- When not dirty (or the buffer is gone) it closes immediately without
+--- touching any existing draft.
 --- @param buf number
 --- @param original_lines string[]|nil
---- @param on_proceed fun()
-function M.confirm_discard_if_dirty(buf, original_lines, on_proceed)
+--- @param opts { allow_draft?: boolean, on_save_draft?: fun(text: string), on_discard?: fun(), on_close: fun() }
+function M.confirm_close_with_draft(buf, original_lines, opts)
+	opts = opts or {}
+	local function close()
+		if opts.on_close then
+			opts.on_close()
+		end
+	end
 	if not vim.api.nvim_buf_is_valid(buf) then
-		on_proceed()
+		close()
 		return
 	end
 	local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 	if not M.should_confirm_discard(current, original_lines) then
-		on_proceed()
+		close()
 		return
 	end
-	vim.ui.select({ "Yes", "No" }, { prompt = "Discard comment?" }, function(choice)
-		if choice == "Yes" then
-			on_proceed()
+	prompt_close_decision(opts.allow_draft, function()
+		if opts.on_save_draft then
+			opts.on_save_draft(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"))
 		end
+		close()
+	end, function()
+		if opts.on_discard then
+			opts.on_discard()
+		end
+		close()
 	end)
 end
 
@@ -237,23 +278,38 @@ function M.open_comment_input(callback, opts)
 		vim.api.nvim_win_set_cursor(win, opts.cursor_pos)
 	end
 
-	vim.keymap.set("n", "<CR>", function()
-		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-		local body = vim.trim(table.concat(lines, "\n"))
-		vim.api.nvim_win_close(win, true)
-		if callback then
-			callback(body ~= "" and body or nil)
+	local function finish(action)
+		local text = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+		if vim.api.nvim_win_is_valid(win) then
+			vim.api.nvim_win_close(win, true)
 		end
+		if not callback then
+			return
+		end
+		if action == "submit" then
+			local body = vim.trim(text)
+			callback(body ~= "" and body or nil, "submit")
+		elseif action == "draft" then
+			callback(text, "draft")
+		else
+			callback(nil, action)
+		end
+	end
+
+	vim.keymap.set("n", "<CR>", function()
+		finish("submit")
 	end, { buffer = buf, desc = "Save" })
 
 	vim.keymap.set("n", "q", function()
-		M.confirm_discard_if_dirty(buf, initial_lines, function()
-			if vim.api.nvim_win_is_valid(win) then
-				vim.api.nvim_win_close(win, true)
-			end
-			if callback then
-				callback(nil)
-			end
+		local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		if not M.should_confirm_discard(current, initial_lines) then
+			finish("cancel")
+			return
+		end
+		prompt_close_decision(opts.allow_draft, function()
+			finish("draft")
+		end, function()
+			finish("discard")
 		end)
 	end, { buffer = buf, desc = "Cancel" })
 end
@@ -651,7 +707,7 @@ function M.open_edit_window(thread, comment, opts)
 
 	-- Create lower buffer (editable, pre-filled with comment body)
 	local lower_buf = vim.api.nvim_create_buf(false, true)
-	local original_lines = vim.split(format.normalize_newlines(comment.body), "\n")
+	local original_lines = opts.initial_lines or vim.split(format.normalize_newlines(comment.body), "\n")
 	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, original_lines)
 	vim.bo[lower_buf].buftype = "nofile"
 	vim.bo[lower_buf].bufhidden = "wipe"
@@ -730,7 +786,12 @@ function M.open_edit_window(thread, comment, opts)
 
 	-- Cancel handler
 	local function cancel()
-		M.confirm_discard_if_dirty(lower_buf, original_lines, close_all)
+		M.confirm_close_with_draft(lower_buf, original_lines, {
+			allow_draft = opts.allow_draft,
+			on_save_draft = opts.on_save_draft,
+			on_discard = opts.on_discard_draft,
+			on_close = close_all,
+		})
 	end
 
 	-- Helper to scroll upper window from lower
@@ -836,7 +897,7 @@ function M.open_reply_window(comments, opts)
 
 	-- Create lower buffer (editable input)
 	local lower_buf = vim.api.nvim_create_buf(false, true)
-	local original_lines = { "" }
+	local original_lines = opts.initial_lines or { "" }
 	vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, original_lines)
 	vim.bo[lower_buf].buftype = "nofile"
 	vim.bo[lower_buf].bufhidden = "wipe"
@@ -915,7 +976,12 @@ function M.open_reply_window(comments, opts)
 
 	-- Cancel handler
 	local function cancel()
-		M.confirm_discard_if_dirty(lower_buf, original_lines, close_all)
+		M.confirm_close_with_draft(lower_buf, original_lines, {
+			allow_draft = opts.allow_draft,
+			on_save_draft = opts.on_save_draft,
+			on_discard = opts.on_discard_draft,
+			on_close = close_all,
+		})
 	end
 
 	-- Helper to scroll upper window from lower

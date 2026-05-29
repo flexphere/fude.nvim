@@ -6,6 +6,7 @@ local ui = require("fude.ui")
 local data = require("fude.comments.data")
 local sync = require("fude.comments.sync")
 local pickers = require("fude.comments.pickers")
+local drafts = require("fude.drafts")
 
 -- Re-export data functions (facade)
 M.build_comment_map = data.build_comment_map
@@ -73,13 +74,31 @@ function M.create_comment(is_visual)
 
 	local pending_key = rel_path .. ":" .. start_line .. ":" .. end_line
 	local existing = state.pending_comments[pending_key]
-	local initial_lines = existing and vim.split(format.normalize_newlines(existing.body), "\n") or nil
+	local draft_key = drafts.current_key("line", rel_path, start_line, end_line)
+	local draft_body = drafts.get(draft_key)
+	local initial_lines
+	if draft_body then
+		initial_lines = vim.split(format.normalize_newlines(draft_body), "\n")
+	elseif existing then
+		initial_lines = vim.split(format.normalize_newlines(existing.body), "\n")
+	end
 
-	ui.open_comment_input(function(comment_body)
+	ui.open_comment_input(function(comment_body, action)
+		if action == "draft" then
+			drafts.set(draft_key, comment_body)
+			ui.refresh_extmarks()
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			return
+		elseif action == "discard" then
+			drafts.remove(draft_key)
+			ui.refresh_extmarks()
+			return
+		end
 		if comment_body then
 			-- <CR> pressed: save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
+			drafts.remove(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -94,9 +113,10 @@ function M.create_comment(is_visual)
 				end)
 			end)
 		end
-		-- nil: q pressed, cancel without saving
+		-- "cancel": leave any existing draft untouched
 	end, {
 		initial_lines = initial_lines,
+		allow_draft = drafts.enabled(),
 	})
 end
 
@@ -162,8 +182,21 @@ function M.reply_to_comment(comment_id)
 	-- GitHub API doesn't allow replying to replies, find top-level comment
 	local reply_target_id = data.get_reply_target_id(comment_id, state.comment_map or {})
 
+	local draft_key = drafts.current_key("reply", reply_target_id)
+	local draft_body = drafts.get(draft_key)
+
 	ui.open_reply_window(thread, {
+		initial_lines = draft_body and vim.split(format.normalize_newlines(draft_body), "\n") or nil,
+		allow_draft = drafts.enabled(),
+		on_save_draft = function(text)
+			drafts.set(draft_key, text)
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+		end,
+		on_discard_draft = function()
+			drafts.remove(draft_key)
+		end,
 		on_submit = function(reply_body)
+			drafts.remove(draft_key)
 			sync.reply_to_comment(reply_target_id, reply_body, function(err)
 				if err then
 					vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
@@ -250,8 +283,21 @@ function M.edit_comment(comment_id)
 	-- Get thread for display in upper pane
 	local thread = data.get_comment_thread(comment_id, state.comments or {})
 
+	local draft_key = drafts.current_key("edit", comment_id)
+	local draft_body = drafts.get(draft_key)
+
 	ui.open_edit_window(thread, comment, {
+		initial_lines = draft_body and vim.split(format.normalize_newlines(draft_body), "\n") or nil,
+		allow_draft = drafts.enabled(),
+		on_save_draft = function(text)
+			drafts.set(draft_key, text)
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+		end,
+		on_discard_draft = function()
+			drafts.remove(draft_key)
+		end,
 		on_submit = function(new_body)
+			drafts.remove(draft_key)
 			if is_pending then
 				-- Pending comment: update in pending_comments and re-sync
 				local pending_key = M.find_pending_key(comment_id)
@@ -434,20 +480,39 @@ function M.suggest_change(is_visual)
 
 	local pending_key = rel_path .. ":" .. start_line .. ":" .. end_line
 	local existing = state.pending_comments[pending_key]
+	local draft_key = drafts.current_key("suggest", rel_path, start_line, end_line)
+	local draft_body = drafts.get(draft_key)
 
 	local source_lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
 	local suggestion_lines = { "```suggestion" }
 	vim.list_extend(suggestion_lines, source_lines)
 	table.insert(suggestion_lines, "```")
 
-	local initial_lines = existing and vim.split(format.normalize_newlines(existing.body), "\n") or suggestion_lines
-	local cursor_pos = existing and nil or { 2, 0 }
+	local initial_lines = suggestion_lines
+	if draft_body then
+		initial_lines = vim.split(format.normalize_newlines(draft_body), "\n")
+	elseif existing then
+		initial_lines = vim.split(format.normalize_newlines(existing.body), "\n")
+	end
+	-- Place the cursor below the ```suggestion fence only for a fresh suggestion.
+	local cursor_pos = (draft_body or existing) and nil or { 2, 0 }
 
-	ui.open_comment_input(function(comment_body)
+	ui.open_comment_input(function(comment_body, action)
+		if action == "draft" then
+			drafts.set(draft_key, comment_body)
+			ui.refresh_extmarks()
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			return
+		elseif action == "discard" then
+			drafts.remove(draft_key)
+			ui.refresh_extmarks()
+			return
+		end
 		if comment_body then
 			-- <CR> pressed: save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
+			drafts.remove(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -461,11 +526,12 @@ function M.suggest_change(is_visual)
 				end)
 			end)
 		end
-		-- nil: q pressed, cancel without saving
+		-- "cancel": leave any existing draft untouched
 	end, {
 		initial_lines = initial_lines,
 		title = " Suggest Change ",
 		cursor_pos = cursor_pos,
+		allow_draft = drafts.enabled(),
 	})
 end
 

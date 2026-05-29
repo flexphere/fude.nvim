@@ -40,12 +40,25 @@ end
 function M.create_comment(pr_number)
 	local ui = require("fude.ui")
 	local gh = require("fude.gh")
+	local drafts = require("fude.drafts")
 
-	ui.open_comment_input(function(body)
+	local draft_key = drafts.current_key("issue")
+	local draft_body = drafts.get(draft_key)
+
+	ui.open_comment_input(function(body, action)
+		if action == "draft" then
+			drafts.set(draft_key, body)
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			return
+		elseif action == "discard" then
+			drafts.remove(draft_key)
+			return
+		end
 		if not body then
 			return
 		end
 
+		drafts.remove(draft_key)
 		gh.create_issue_comment(pr_number, body, function(err, _)
 			if err then
 				vim.notify("fude.nvim: Failed to post comment: " .. err, vim.log.levels.ERROR)
@@ -56,6 +69,8 @@ function M.create_comment(pr_number)
 		end)
 	end, {
 		footer = " <CR> submit | q cancel ",
+		initial_lines = draft_body and vim.split(draft_body, "\n") or nil,
+		allow_draft = drafts.enabled(),
 	})
 end
 

@@ -14,6 +14,8 @@ M.defaults = {
 		pending_hl = "DiagnosticHint",
 		viewed = "✓",
 		viewed_hl = "DiagnosticOk",
+		draft = "✎ draft",
+		draft_hl = "DiagnosticWarn",
 	},
 	float = {
 		border = "single",
@@ -88,6 +90,13 @@ M.defaults = {
 	-- Callback invoked after review start completes (all data fetched).
 	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }
 	on_review_start = nil,
+	-- Local on-disk drafts for in-progress (unsubmitted) comment input.
+	-- Persisted under stdpath("state")/fude/drafts.json so input can be paused
+	-- and resumed later, including across PR switches and Neovim restarts.
+	drafts = {
+		enabled = true, -- Set false to disable local draft save/restore entirely
+		retention_days = 30, -- Drafts older than this are pruned on load (<=0 disables)
+	},
 }
 
 M.state = {
