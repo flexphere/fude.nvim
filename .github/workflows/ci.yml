@@ -113,3 +113,38 @@ jobs:
         run: |
           nvim --version
           make check-docs
+
+  coverage:
+    name: Test Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Neovim
+        run: |
+          curl -sL "https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.appimage" -o nvim.appimage
+          chmod +x nvim.appimage
+          sudo mkdir -p /opt/nvim
+          ./nvim.appimage --appimage-extract > /dev/null
+          sudo ln -sf "$(pwd)/squashfs-root/AppRun" /usr/bin/nvim
+
+      - name: Install luarocks and luacov
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y luarocks
+          sudo luarocks install luacov
+
+      - name: Run coverage
+        run: |
+          nvim --version
+          make coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            luacov.report.out
+            luacov.stats.out
+          if-no-files-found: error
+          retention-days: 30
