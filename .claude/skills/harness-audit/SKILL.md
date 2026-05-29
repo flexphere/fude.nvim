@@ -9,14 +9,15 @@ argument-hint: [対象PR件数（省略時は10）]
 このスキルは Martin Fowler の "Harness Engineering" における **Steering Loop** を明示化するもので、
 本プロジェクトの harness（`.claude/HARNESS.md` 参照）が実際に機能しているかを定期点検する。
 
-完全に手動で起動する想定（月次〜四半期、または `review-lessons.md` が 15 件を超えたとき）。
+完全に手動で起動する想定（月次〜四半期、または `review-lessons.md` のエントリ
+（`### ` 見出し）が 15 件を超えたとき）。
 コードベース (`lua/`, `plugin/`, `tests/`) には触れず、`.claude/` と `CLAUDE.md` のメタ層のみを対象とする。
 
 ## 現在のリポジトリ状態
 
 - ブランチ: !`git branch --show-current`
 - Git状態: !`git status --short`
-- review-lessons.md: !`wc -l < .claude/review-lessons.md 2>/dev/null || echo "(not found)"`
+- review-lessons.md エントリ数: !`grep -c "^### " .claude/review-lessons.md 2>/dev/null || echo "(not found)"`
 
 ## フェーズ間のユーザー確認ルール
 
