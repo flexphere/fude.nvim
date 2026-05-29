@@ -1,16 +1,19 @@
-.PHONY: lint format format-check test all setup
+.PHONY: lint format format-check test check-state-deps all setup
 
 lint:
 	luacheck lua/ plugin/ tests/
 
 format:
-	stylua lua/ plugin/ tests/
+	stylua lua/ plugin/ tests/ scripts/
 
 format-check:
-	stylua --check lua/ plugin/ tests/
+	stylua --check lua/ plugin/ tests/ scripts/
 
 test:
 	bash run_tests.sh
+
+check-state-deps:
+	nvim --headless -l scripts/check_state_deps.lua
 
 all: lint format-check test
 

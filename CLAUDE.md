@@ -45,6 +45,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 - **`files.lua`** — Changed files display via Telescope picker, snacks.picker, or quickfix list. All pickers show diff preview and viewed state toggle via `<Tab>`. Shows GitHub viewed status for each file. Exports `apply_viewed_toggle(path, on_done)` as a picker-agnostic state mutator that invokes gh GraphQL mark/unmark, updates `state.viewed_files`, and calls `on_done` with the updated display fields; the Telescope adapter `toggle_viewed_in_telescope` and the snacks adapter `toggle_viewed_in_snacks(picker, item)` both delegate to it. `show()` routes to `show_telescope` / `show_snacks` / `show_quickfix` based on `config.opts.file_list_mode`; snacks falls back to quickfix when snacks.nvim is missing. Also exports `next_file()` / `prev_file()` for jumping between changed files (used by `:FudeReviewNextFile` / `:FudeReviewPrevFile`); both wrap around at the edges and fall back to the first/last entry when the current buffer is not part of the PR. The pure helper `find_adjacent_file_index(changed_files, current_path, direction)` computes the target index.
 - **`scope.lua`** — Review scope selection and navigation. Provides a Telescope picker (or `vim.ui.select` fallback) for choosing between full PR scope and individual commit scope, with commit index display (`[1/10]`) and current scope marker (`▶`). Supports next/prev scope navigation (`next_scope`/`prev_scope`), marking commits as reviewed via `<Tab>` in the Telescope picker (tracked locally in `state.reviewed_commits`), and statusline integration (`statusline()`). On commit scope: checks out the commit, fetches commit-specific changed files, updates gitsigns base to `sha^` (global), and refreshes the diff preview. On full PR scope: restores the original HEAD, re-fetches PR-wide changed files, and computes merge-base (per-buffer gitsigns base is applied via `GitSignsUpdate` autocmd in init.lua). Exports `apply_reviewed_toggle(sha)` as a picker-agnostic state mutator that toggles `state.reviewed_commits[sha]` and returns the updated display fields `{ is_reviewed, reviewed_icon, reviewed_hl }`; both the Telescope adapter `toggle_reviewed_in_telescope` and the snacks adapter `toggle_reviewed_in_snacks(picker, item)` delegate to it. `select_scope()` routes to `show_telescope` / `show_snacks` / `show_vim_select` based on `config.opts.file_list_mode`; snacks falls back to `vim.ui.select` when snacks.nvim is missing.
 - **`overview.lua`** — PR overview display: fetches extended PR info and issue-level comments, renders in a centered float with keymaps for commenting and refreshing.
+- **`completion/init.lua`** — Completion source for comment input buffers. Provides mention (`@user`), issue/PR (`#nnn`), and commit SHA completion candidates via `fetch_mentions`, `fetch_issues`, `fetch_commits`, with a 5-minute TTL cache. `build_commit_items(commit_entries)` is a pure helper that formats commit entries into completion items; `get_context(line_before_cursor)` parses the trigger character (`@`/`#`/sha prefix). Reads `state.pr_commits` (only) for commit completion freshness invalidation.
 - **`pr.lua`** — PR creation and editing. `M.create()` creates draft PRs from templates: searches for `PULL_REQUEST_TEMPLATE` files in standard GitHub locations, shows Telescope picker when multiple templates exist, and opens a two-pane float (title + body) for composing the PR. Submits via `gh pr create --draft`. `M.edit()` edits existing PR title/body: uses `state.pr_number` when review mode is active, otherwise detects via `gh pr view`. Both functions are independent of review mode (`state.active`).
 
 ### Key Patterns
@@ -62,39 +63,43 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
-| `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel |
-| `pr_number` | init | comments, comments/sync, ui, files, scope, overview, pr |
-| `base_ref` | init | init, preview, scope |
-| `head_ref` | init | scope |
-| `merge_base_sha` | init, scope | init, scope |
-| `pr_url` | init | ui |
+| `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser |
+| `pr_number` | init | init, comments, comments/sync, files, scope, pr, ui/comment_browser |
+| `base_ref` | init | init, preview, scope, ui/sidepanel |
+| `head_ref` | init | init, scope, ui/sidepanel |
+| `merge_base_sha` | init | init |
+| `pr_url` | init | init, ui |
 | `changed_files` | init, init(reload), scope | init, files, scope, ui/sidepanel |
-| `comments` | comments/sync | comments, comments/sync, files, ui/extmarks |
-| `comment_map` | comments/sync | comments, comments/sync, ui/extmarks |
-| `pending_comments` | comments, comments/sync | comments, comments/sync, files, ui/extmarks |
-| `pending_review_id` | comments/sync | comments, comments/sync, comments/pickers, ui/extmarks |
-| `pr_node_id` | init | init, files |
-| `viewed_files` | init, init(reload), files | files, scope, ui/sidepanel |
-| `preview_win` | preview | init, preview |
-| `preview_buf` | preview | preview |
+| `comments` | comments/sync | comments, comments/sync, files, ui/comment_browser, ui/sidepanel |
+| `comment_map` | comments/sync | comments, ui/comment_browser |
+| `pending_comments` | comments, comments/sync, ui/comment_browser | comments, comments/sync, files, ui/comment_browser, ui/sidepanel |
+| `pending_review_id` | comments/sync | comments, comments/sync, ui/comment_browser, ui/extmarks |
+| `pending_review_node_id` | comments/sync | comments/sync |
+| `thread_map` | comments/sync | comments/sync |
+| `pr_node_id` | init | init, files, ui/sidepanel |
+| `viewed_files` | init, init(reload), files, ui/sidepanel | files, ui/sidepanel |
+| `preview_win` | preview | init, preview, scope, ui/sidepanel |
+| `preview_buf` | preview | |
 | `source_win` | preview | preview, scope |
-| `scope` | scope | scope, preview, init |
-| `scope_commit_sha` | scope | scope, preview, init |
-| `scope_commit_index` | scope | scope |
-| `pr_commits` | init, init(reload) | scope, ui/sidepanel |
+| `scope` | scope, init | scope, preview, init, ui/sidepanel |
+| `scope_commit_sha` | scope, init | scope, preview, init, ui/sidepanel |
+| `scope_commit_index` | scope, init | scope |
+| `pr_commits` | init, init(reload) | init, scope, completion/init, ui/sidepanel |
 | `original_head_sha` | init, scope | init, scope |
 | `original_head_ref` | init | init, scope |
-| `reviewed_commits` | scope | scope, ui/sidepanel |
-| `ns_id` | config | ui/extmarks, comments |
-| `reply_window` | ui | ui |
+| `reviewed_commits` | scope, ui/sidepanel | scope, ui/sidepanel |
+| `ns_id` | config | config, ui, ui/comment_browser, ui/extmarks |
+| `reply_window` | ui, ui/comment_browser | ui, ui/comment_browser |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
-| `github_user` | init | comments, ui/comment_browser |
-| `current_comment_style` | config | ui/extmarks, comments |
-| `outdated_map` | comments/sync | comments/sync |
-| `reload_timer` | init | init |
+| `github_user` | init | comments, comments/sync, ui/comment_browser |
+| `current_comment_style` | config | config |
+| `outdated_map` | comments/sync | |
+| `reload_timer` | init | init, config |
 | `reloading` | init | init |
 | `gitsigns_reset` | init, scope | init |
 | `sidepanel` | ui/sidepanel | ui/sidepanel |
+| `augroup` | init | init |
+| `original_diffopt` | init | init |
 
 **高リスクフィールド**（多数のモジュールから参照）:
 - `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認
