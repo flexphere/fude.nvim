@@ -142,6 +142,8 @@ require("fude").setup({
     pending_hl = "DiagnosticHint",
     viewed = "✓",
     viewed_hl = "DiagnosticOk",
+    draft = "✎ draft",       -- Indicator for lines with an unsaved local draft
+    draft_hl = "DiagnosticWarn",
   },
   float = {
     border = "single",
@@ -204,8 +206,26 @@ require("fude").setup({
   -- Callback after review start completes (all data fetched)
   -- Receives: { pr_number, base_ref, head_ref, pr_url }
   on_review_start = nil,
+  -- Local on-disk drafts for in-progress (unsubmitted) comment input
+  drafts = {
+    enabled = true,        -- Save/restore drafts when closing a dirty comment buffer
+    retention_days = 30,   -- Prune drafts older than this on load (<=0 keeps forever)
+  },
 })
 ```
+
+## Comment drafts
+
+When you close a comment input with unsaved changes (`q` / `<Esc>`), fude.nvim
+offers to **save the text as a local draft** instead of losing it — a 3-way
+choice of *Save draft & close* / *Discard & close* / *Keep editing*. Drafts are
+stored locally (not sent to GitHub) at `stdpath("state")/fude/drafts.json` and
+restored the next time you open input for the same target, surviving PR switches
+and Neovim restarts. They cover line/range comments, suggestions, PR-level
+comments, replies, and edits, keyed per repo + PR + target so different
+locations and PRs never collide. Lines with a saved draft show a `draft`
+indicator in the diff (like `pending`); reply/edit drafts mark the targeted
+comment's line. Disable with `drafts.enabled = false`.
 
 ## Completion
 

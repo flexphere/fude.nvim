@@ -1,5 +1,6 @@
 local M = {}
 local config = require("fude.config")
+local drafts = require("fude.drafts")
 
 --- Get the namespace ID for flash/highlight extmarks.
 --- Uses config.state.ns_id so existing cleanup paths (clear_extmarks, clear_all_extmarks) cover these.
@@ -156,6 +157,27 @@ function M.refresh_extmarks()
 				})
 			end
 		end
+	end
+
+	-- Local draft indicators: lines with an unsubmitted local draft (not yet on
+	-- GitHub). line/suggest drafts map to their own line; reply/edit drafts map
+	-- to the line of the comment they target (via the comment map).
+	local markers = drafts.file_markers(rel_path)
+	for _, line in ipairs(comment_lines) do
+		for _, c in ipairs(comments_mod.get_comments_at(rel_path, line)) do
+			if markers.comment_ids[c.id] then
+				markers.lines[line] = true
+			end
+		end
+	end
+	for line in pairs(markers.lines) do
+		pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+			virt_text = {
+				{ " " .. config.opts.signs.draft, config.opts.signs.draft_hl },
+			},
+			virt_text_pos = "eol",
+			priority = 44,
+		})
 	end
 end
 

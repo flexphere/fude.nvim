@@ -2257,3 +2257,145 @@ describe("should_confirm_discard", function()
 		assert.is_false(ui.should_confirm_discard({ "line1", "line2" }, { "line1", "line2" }))
 	end)
 end)
+
+describe("confirm_close_with_draft", function()
+	local orig_select
+	local select_choice
+
+	local function make_buf(lines)
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+		return buf
+	end
+
+	before_each(function()
+		orig_select = vim.ui.select
+		-- vim.ui.select stub returns the configured choice.
+		vim.ui.select = function(_items, _opts, on_choice)
+			on_choice(select_choice, nil)
+		end
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+		select_choice = nil
+	end)
+
+	it("closes immediately without prompting when not dirty", function()
+		local buf = make_buf({ "same" })
+		local calls = { save = false, discard = false, close = false }
+		select_choice = "should-not-be-used"
+		ui.confirm_close_with_draft(buf, { "same" }, {
+			allow_draft = true,
+			on_save_draft = function()
+				calls.save = true
+			end,
+			on_discard = function()
+				calls.discard = true
+			end,
+			on_close = function()
+				calls.close = true
+			end,
+		})
+		assert.is_true(calls.close)
+		assert.is_false(calls.save)
+		assert.is_false(calls.discard)
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
+	it("saves the current text as a draft and closes when 'Save draft & close' chosen", function()
+		local buf = make_buf({ "draft body", "line2" })
+		local saved_text
+		local closed = false
+		select_choice = "Save draft & close"
+		ui.confirm_close_with_draft(buf, { "" }, {
+			allow_draft = true,
+			on_save_draft = function(text)
+				saved_text = text
+			end,
+			on_discard = function() end,
+			on_close = function()
+				closed = true
+			end,
+		})
+		assert.equals("draft body\nline2", saved_text)
+		assert.is_true(closed)
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
+	it("discards and closes when 'Discard & close' chosen", function()
+		local buf = make_buf({ "unsaved" })
+		local discarded, closed = false, false
+		select_choice = "Discard & close"
+		ui.confirm_close_with_draft(buf, { "" }, {
+			allow_draft = true,
+			on_save_draft = function() end,
+			on_discard = function()
+				discarded = true
+			end,
+			on_close = function()
+				closed = true
+			end,
+		})
+		assert.is_true(discarded)
+		assert.is_true(closed)
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
+	it("does nothing when 'Keep editing' (nil) chosen", function()
+		local buf = make_buf({ "unsaved" })
+		local closed = false
+		select_choice = nil
+		ui.confirm_close_with_draft(buf, { "" }, {
+			allow_draft = true,
+			on_save_draft = function() end,
+			on_discard = function() end,
+			on_close = function()
+				closed = true
+			end,
+		})
+		assert.is_false(closed)
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
+	it("falls back to Yes/No discard when allow_draft is false", function()
+		local buf = make_buf({ "unsaved" })
+		local discarded, closed = false, false
+		select_choice = "Yes"
+		ui.confirm_close_with_draft(buf, { "" }, {
+			allow_draft = false,
+			on_discard = function()
+				discarded = true
+			end,
+			on_close = function()
+				closed = true
+			end,
+		})
+		assert.is_true(discarded)
+		assert.is_true(closed)
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+end)
+
+describe("open_comment_input keymaps", function()
+	local config = require("fude.config")
+
+	before_each(function()
+		config.setup({})
+	end)
+
+	it("binds both q and <Esc> to cancel", function()
+		ui.open_comment_input(function() end, {})
+		local win = vim.api.nvim_get_current_win()
+		local buf = vim.api.nvim_win_get_buf(win)
+		local lhs = {}
+		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			lhs[m.lhs] = true
+		end
+		vim.cmd("stopinsert")
+		pcall(vim.api.nvim_win_close, win, true)
+		pcall(vim.api.nvim_buf_delete, buf, { force = true })
+		assert.is_true(lhs["q"], "q should be bound")
+		assert.is_true(lhs["<Esc>"], "<Esc> should be bound")
+	end)
+end)

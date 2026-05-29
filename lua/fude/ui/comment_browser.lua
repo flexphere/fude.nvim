@@ -2,6 +2,7 @@ local M = {}
 local config = require("fude.config")
 local format = require("fude.ui.format")
 local data = require("fude.comments.data")
+local drafts = require("fude.drafts")
 
 -- Lazy requires (circular dependency prevention)
 local function get_ui()
@@ -15,6 +16,25 @@ local function get_sync()
 end
 local function get_gh()
 	return require("fude.gh")
+end
+
+--- Compute the local-draft key for the lower input pane given the current mode
+--- and selected entry. Returns nil when no key applies (e.g. no active PR).
+--- @param entry table|nil current browser entry
+--- @param mode string "reply"|"edit"|"new_pr_comment"
+--- @param edit_target table|nil comment being edited (edit mode)
+--- @return string|nil
+local function lower_key_for_entry(entry, mode, edit_target)
+	if mode == "edit" and edit_target then
+		return drafts.current_key("edit", edit_target.id)
+	end
+	if mode == "new_pr_comment" then
+		return drafts.current_key("issue")
+	end
+	if entry and entry.comments and entry.comments[1] then
+		return drafts.current_key("reply", entry.comments[1].id)
+	end
+	return nil
 end
 
 --- Close the comment browser and clean up all windows.
@@ -89,14 +109,20 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 		end
 	end
 
-	-- Clear lower buffer and reset edit target (skip if user has typed content)
-	local lower_has_content = false
+	-- Reset edit target and refresh the lower buffer for the newly selected
+	-- entry. Replace the lower buffer when it is empty or still holds an
+	-- *unedited* auto-restored draft (so the previous entry's draft never leaks
+	-- into another entry's input), but preserve genuinely user-typed content.
+	local current_text = ""
 	if vim.api.nvim_buf_is_valid(browser.lower_buf) then
-		lower_has_content = get_lower_text(browser.lower_buf) ~= ""
+		current_text = get_lower_text(browser.lower_buf)
 	end
-	if not browser.edit_target and not lower_has_content then
+	local unedited_restored = browser.restored_draft ~= nil and current_text == vim.trim(browser.restored_draft)
+	if not browser.edit_target and (current_text == "" or unedited_restored) then
 		if vim.api.nvim_buf_is_valid(browser.lower_buf) then
-			vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, { "" })
+			local draft = drafts.get(lower_key_for_entry(entry, browser.mode, nil))
+			vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, draft and vim.split(draft, "\n") or { "" })
+			browser.restored_draft = draft
 		end
 	end
 	browser.edit_target = nil
@@ -357,12 +383,20 @@ local function create_browser(entries, issue_comments)
 		end)
 	end
 
+	-- Local draft key captured when submit starts; cleared once submit succeeds.
+	local pending_submit_key
+
 	-- Restore lower pane to default state after successful submit
 	local function restore_lower_after_submit()
 		vim.schedule(function()
+			if pending_submit_key then
+				drafts.remove(pending_submit_key)
+				pending_submit_key = nil
+			end
 			if vim.api.nvim_buf_is_valid(lower_buf) then
 				vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
 			end
+			browser.restored_draft = nil
 			browser.edit_target = nil
 			local entry = current_entry()
 			if entry and entry.type == "issue" then
@@ -402,6 +436,9 @@ local function create_browser(entries, issue_comments)
 		if not entry then
 			return
 		end
+
+		-- Capture the draft key now (mode/edit_target are reset after success)
+		pending_submit_key = lower_key_for_entry(entry, browser.mode, browser.edit_target)
 
 		-- Save text for error recovery
 		local saved_lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)
@@ -503,10 +540,22 @@ local function create_browser(entries, issue_comments)
 	end
 
 	-- Determine the "original" lines for the lower pane based on current mode.
-	-- Used by the discard confirmation helper.
+	-- Used by the close/discard confirmation helper. For reply / new-comment
+	-- modes a restored local draft is the baseline, so closing an unchanged
+	-- restored draft does not prompt and the draft is preserved.
 	local function current_lower_original()
 		if browser.mode == "edit" and browser.edit_target then
+			-- A restored edit draft is the baseline (matches what was prefilled),
+			-- so closing it unchanged does not prompt; otherwise the comment body.
+			local edit_draft = drafts.get(drafts.current_key("edit", browser.edit_target.id))
+			if edit_draft then
+				return vim.split(edit_draft, "\n")
+			end
 			return vim.split(format.normalize_newlines(browser.edit_target.body), "\n")
+		end
+		local draft = drafts.get(lower_key_for_entry(current_entry(), browser.mode, browser.edit_target))
+		if draft then
+			return vim.split(draft, "\n")
 		end
 		return { "" }
 	end
@@ -516,6 +565,7 @@ local function create_browser(entries, issue_comments)
 		if vim.api.nvim_buf_is_valid(lower_buf) then
 			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
 		end
+		browser.restored_draft = nil
 		browser.edit_target = nil
 		-- Restore default mode based on current entry
 		local entry = current_entry()
@@ -535,9 +585,29 @@ local function create_browser(entries, issue_comments)
 		end
 	end
 
-	-- Close the browser, but confirm first if the lower pane has unsaved content.
+	-- Close the browser, but confirm first if the lower pane has unsaved content
+	-- (offering to save it as a local draft).
 	local function close_with_confirm()
-		get_ui().confirm_discard_if_dirty(lower_buf, current_lower_original(), close_browser)
+		local key = lower_key_for_entry(current_entry(), browser.mode, browser.edit_target)
+		get_ui().confirm_close_with_draft(lower_buf, current_lower_original(), {
+			allow_draft = drafts.enabled(),
+			on_save_draft = function(text)
+				drafts.set(key, text)
+				-- Refresh after the browser closes so the diff buffer (not the
+				-- browser float) gets the draft indicator update.
+				vim.schedule(function()
+					get_ui().refresh_extmarks()
+				end)
+				vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			end,
+			on_discard = function()
+				drafts.remove(key)
+				vim.schedule(function()
+					get_ui().refresh_extmarks()
+				end)
+			end,
+			on_close = close_browser,
+		})
 	end
 
 	-- === LEFT PANE KEYMAPS ===
@@ -619,7 +689,10 @@ local function create_browser(entries, issue_comments)
 
 		browser.mode = "edit"
 		browser.edit_target = target_comment
-		local body_lines = vim.split(format.normalize_newlines(target_comment.body), "\n")
+		-- Prefer a saved local draft over the current comment body.
+		local draft = drafts.get(drafts.current_key("edit", target_comment.id))
+		local body_lines = draft and vim.split(draft, "\n")
+			or vim.split(format.normalize_newlines(target_comment.body), "\n")
 		if vim.api.nvim_buf_is_valid(lower_buf) then
 			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, body_lines)
 		end
@@ -711,7 +784,18 @@ local function create_browser(entries, issue_comments)
 	vim.keymap.set("n", "<CR>", submit, { buffer = lower_buf, desc = "Submit" })
 
 	local function cancel_lower_with_confirm()
-		get_ui().confirm_discard_if_dirty(lower_buf, current_lower_original(), cancel_lower)
+		local key = lower_key_for_entry(current_entry(), browser.mode, browser.edit_target)
+		get_ui().confirm_close_with_draft(lower_buf, current_lower_original(), {
+			allow_draft = drafts.enabled(),
+			on_save_draft = function(text)
+				drafts.set(key, text)
+				vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			end,
+			on_discard = function()
+				drafts.remove(key)
+			end,
+			on_close = cancel_lower,
+		})
 	end
 
 	vim.keymap.set("n", "q", cancel_lower_with_confirm, { buffer = lower_buf, desc = "Cancel" })
