@@ -50,11 +50,14 @@ make all               # lint + format-check + test + check-state-deps + check-p
 make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
 make check-purity      # `*/data.lua` `*/format.lua` の純粋性 (vim API / state 不参照) 検証
 make check-docs        # plugin/fude.lua のコマンド登録と doc/fude.txt のタグの双方向整合性検証
+make coverage          # luacov でテストカバレッジ計測 (要 `luarocks install --local luacov`)
 ```
 
 push 前に `make all` が通ることを必ず確認してください。`make setup` で `.githooks/pre-commit` が有効化され、コミット時に自動実行されます。
 
 `make check-*` 系は CLAUDE.md / 純粋性宣言 / `doc/fude.txt` の各「文書化された建前」が実コードと乖離していないかを機械検証します。`make all` / pre-commit / CI で自動実行されるため、手動で個別に走らせる必要はほとんどありませんが、ピンポイントで確認したい場合に利用してください。
+
+`make coverage` は `make all` には含まれません（報告のみ・閾値強制なし）。CI では別 job として実行され、レポートは GitHub Actions の artifact `coverage-report` から取得できます。ローカルで実行する場合は `luarocks install --local luacov` を先に実行してください。
 
 ## テスト
 
