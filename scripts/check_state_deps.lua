@@ -21,7 +21,14 @@
 --   * Greedy file-wide alias scope (per-function shadowing of `state` may cause
 --     false positives — currently no such pattern exists in lua/fude/)
 
+-- Bootstrap package.path so direct execution (`nvim --headless -l ...`) can
+-- resolve `require("lib.lua_source")`. Tests already extend package.path via
+-- tests/minimal_init.lua, so this is a no-op there.
+package.path = "scripts/?.lua;" .. package.path
+
 local M = {}
+
+local lua_source = require("lib.lua_source")
 
 ----------------------------------------------------------------
 -- Internal helpers
@@ -31,44 +38,17 @@ local function trim(s)
 	return (s:match("^%s*(.-)%s*$"))
 end
 
-local function blank_nonnewline(s)
-	return (s:gsub("[^\n]", " "))
-end
-
 local function escape_pattern(s)
 	return (s:gsub("([().%%+%-*?[%]^$])", "%%%1"))
 end
 
 ----------------------------------------------------------------
--- 1. Strip comments and string literals (preserve line numbers)
+-- 1. Strip comments and string literals (delegated to lib.lua_source)
 ----------------------------------------------------------------
 
---- Replace Lua comments and string literal contents with spaces (keeping
---- newlines for accurate line numbers).
---- Handles: -- line, --[[ block ]], [[ long string ]], "...", '...'.
---- Does NOT handle level-N long brackets like [==[...]==] (unused in lua/fude/).
---- @param text string
---- @return string
-function M.strip_comments_strings(text)
-	-- (1) Block comments: --[[ ... ]] (greedy balanced)
-	text = text:gsub("(%-%-)(%b[])", function(prefix, body)
-		return blank_nonnewline(prefix) .. blank_nonnewline(body)
-	end)
-	-- (2) Line comments: --... up to newline
-	text = text:gsub("%-%-[^\n]*", blank_nonnewline)
-	-- (3) Long strings: [[ ... ]] (after comments stripped)
-	text = text:gsub("%b[]", function(body)
-		if body:sub(1, 2) == "[[" and body:sub(-2) == "]]" then
-			return blank_nonnewline(body)
-		end
-		return body
-	end)
-	-- (4) Double-quoted strings (single-line)
-	text = text:gsub('"[^"\n]*"', blank_nonnewline)
-	-- (5) Single-quoted strings (single-line)
-	text = text:gsub("'[^'\n]*'", blank_nonnewline)
-	return text
-end
+--- Re-export of `lib.lua_source.strip_comments_strings`. Kept on M so existing
+--- tests (`check_state_deps.strip_comments_strings`) continue to work.
+M.strip_comments_strings = lua_source.strip_comments_strings
 
 ----------------------------------------------------------------
 -- 2. Parse the State Dependencies markdown table

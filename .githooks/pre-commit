@@ -18,4 +18,7 @@ nvim --headless -l scripts/check_state_deps.lua
 echo "=> check-purity"
 nvim --headless -l scripts/check_purity.lua
 
+echo "=> check-docs"
+nvim --headless -l scripts/check_docs.lua
+
 echo "All checks passed."

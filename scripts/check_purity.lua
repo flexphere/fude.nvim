@@ -24,41 +24,22 @@
 -- Permitted vim.* APIs (pure utilities, not detected):
 --   vim.tbl_*, vim.deepcopy, vim.trim, vim.split, vim.list_*, vim.NIL, ...
 
+-- Bootstrap package.path so direct execution (`nvim --headless -l ...`) can
+-- resolve `require("lib.lua_source")`. Tests already extend package.path via
+-- tests/minimal_init.lua, so this is a no-op there.
+package.path = "scripts/?.lua;" .. package.path
+
 local M = {}
 
-----------------------------------------------------------------
--- Internal helpers
-----------------------------------------------------------------
-
-local function blank_nonnewline(s)
-	return (s:gsub("[^\n]", " "))
-end
+local lua_source = require("lib.lua_source")
 
 ----------------------------------------------------------------
--- 1. Strip comments and string literals (preserve line numbers)
--- (Duplicated from scripts/check_state_deps.lua. Refactor into a shared
---  helper once a third script reuses it — YAGNI for now.)
+-- 1. Strip comments and string literals (delegated to lib.lua_source)
 ----------------------------------------------------------------
 
---- Replace Lua comments and string literal contents with spaces (keeping
---- newlines for accurate line numbers).
---- @param text string
---- @return string
-function M.strip_comments_strings(text)
-	text = text:gsub("(%-%-)(%b[])", function(prefix, body)
-		return blank_nonnewline(prefix) .. blank_nonnewline(body)
-	end)
-	text = text:gsub("%-%-[^\n]*", blank_nonnewline)
-	text = text:gsub("%b[]", function(body)
-		if body:sub(1, 2) == "[[" and body:sub(-2) == "]]" then
-			return blank_nonnewline(body)
-		end
-		return body
-	end)
-	text = text:gsub('"[^"\n]*"', blank_nonnewline)
-	text = text:gsub("'[^'\n]*'", blank_nonnewline)
-	return text
-end
+--- Re-export of `lib.lua_source.strip_comments_strings`. Kept on M so existing
+--- tests (`check_purity.strip_comments_strings`) continue to work.
+M.strip_comments_strings = lua_source.strip_comments_strings
 
 ----------------------------------------------------------------
 -- 2. Forbidden patterns
