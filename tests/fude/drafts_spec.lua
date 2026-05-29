@@ -254,3 +254,60 @@ describe("drafts disabled", function()
 		assert.same({}, drafts.load())
 	end)
 end)
+
+describe("drafts.list_drafts", function()
+	local tmp
+
+	before_each(function()
+		config.setup({})
+		config.state.pr_number = 132
+		config.state.pr_url = "https://github.com/owner/repo/pull/132"
+		tmp = vim.fn.tempname()
+		vim.fn.mkdir(tmp, "p")
+		drafts._dir = tmp
+	end)
+
+	after_each(function()
+		drafts._dir = nil
+		vim.fn.delete(tmp, "rf")
+		config.state.pr_number = nil
+		config.state.pr_url = nil
+	end)
+
+	it("returns descriptors with parsed fields per kind", function()
+		drafts.set(drafts.current_key("line", "a.lua", 10, 12), "lc")
+		drafts.set(drafts.current_key("suggest", "b.lua", 3, 3), "sg")
+		drafts.set(drafts.current_key("reply", 77), "rp")
+		drafts.set(drafts.current_key("edit", 88), "ed")
+		drafts.set(drafts.current_key("issue"), "is")
+		local byk = {}
+		for _, d in ipairs(drafts.list_drafts()) do
+			byk[d.kind] = d
+		end
+		assert.are.equal("a.lua", byk.line.path)
+		assert.are.equal(10, byk.line.start_line)
+		assert.are.equal(12, byk.line.end_line)
+		assert.are.equal("lc", byk.line.body)
+		assert.are.equal(3, byk.suggest.start_line)
+		assert.are.equal(77, byk.reply.comment_id)
+		assert.are.equal(88, byk.edit.comment_id)
+		assert.are.equal("is", byk.issue.body)
+	end)
+
+	it("normalizes a legacy numeric saved_at to ISO", function()
+		drafts.save({ [drafts.current_key("issue")] = { body = "x", saved_at = 1780000000 } })
+		local list = drafts.list_drafts()
+		assert.are.equal(1, #list)
+		assert.is_not_nil(list[1].saved_at:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$"))
+	end)
+
+	it("skips entries whose body is not a string", function()
+		drafts.save({ [drafts.current_key("issue")] = { body = 123, saved_at = "2026-01-01T00:00:00Z" } })
+		assert.are.equal(0, #drafts.list_drafts())
+	end)
+
+	it("returns empty when no active PR", function()
+		config.state.pr_number = nil
+		assert.same({}, drafts.list_drafts())
+	end)
+end)

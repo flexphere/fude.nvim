@@ -1465,3 +1465,98 @@ describe("merge_pending_into_comments", function()
 		assert.are.equal(999, merged[1].id)
 	end)
 end)
+
+describe("merge_draft_entries", function()
+	local function fmt(s)
+		return s
+	end
+
+	it("marks an existing thread entry that has a reply draft (no new row)", function()
+		local entries = {
+			{ type = "review", path = "a.lua", line = 5, last_ts = "2026-01-02T00:00:00Z", comments = { { id = 10 } } },
+		}
+		local out = data.merge_draft_entries(entries, {
+			{ kind = "reply", comment_id = 10, body = "wip", saved_at = "2026-01-01T00:00:00Z" },
+		}, "/repo", fmt)
+		assert.are.equal(1, #out)
+		assert.is_true(out[1].has_draft)
+	end)
+
+	it("marks an existing entry that has an edit draft", function()
+		local entries = {
+			{ type = "review", path = "a.lua", line = 5, last_ts = "t", comments = { { id = 10 }, { id = 11 } } },
+		}
+		local out = data.merge_draft_entries(entries, {
+			{ kind = "edit", comment_id = 11, body = "x", saved_at = "t" },
+		}, "/repo", fmt)
+		assert.are.equal(1, #out)
+		assert.is_true(out[1].has_draft)
+	end)
+
+	it("marks the issue entry when an issue draft exists", function()
+		local entries = { { type = "issue", last_ts = "t", comments = { { id = 1 } } } }
+		local out = data.merge_draft_entries(entries, {
+			{ kind = "issue", body = "x", saved_at = "t" },
+		}, "/repo", fmt)
+		assert.are.equal(1, #out)
+		assert.is_true(out[1].has_draft)
+	end)
+
+	it("marks a review entry at the same path:line for a line draft", function()
+		local entries = {
+			{ type = "review", path = "a.lua", line = 5, last_ts = "t", comments = { { id = 10 } } },
+		}
+		local out = data.merge_draft_entries(entries, {
+			{ kind = "line", path = "a.lua", start_line = 5, end_line = 5, body = "x", saved_at = "t" },
+		}, "/repo", fmt)
+		assert.are.equal(1, #out)
+		assert.is_true(out[1].has_draft)
+	end)
+
+	it("synthesizes a draft row for a new line draft with no existing entry", function()
+		local out = data.merge_draft_entries({}, {
+			{ kind = "line", path = "b.lua", start_line = 7, end_line = 7, body = "new", saved_at = "2026-01-01T00:00:00Z" },
+		}, "/repo", fmt)
+		assert.are.equal(1, #out)
+		assert.are.equal("draft", out[1].type)
+		assert.are.equal("b.lua", out[1].path)
+		assert.are.equal(7, out[1].line)
+		assert.are.equal("/repo/b.lua", out[1].filename)
+		assert.are.equal("new", out[1].body)
+	end)
+
+	it("synthesizes a draft row for a new issue draft", function()
+		local out = data.merge_draft_entries({}, {
+			{ kind = "issue", body = "prc", saved_at = "t" },
+		}, "/repo", fmt)
+		assert.are.equal(1, #out)
+		assert.are.equal("draft", out[1].type)
+		assert.are.equal("issue", out[1].kind)
+	end)
+
+	it("skips reply/edit drafts whose target is not in the list", function()
+		local out = data.merge_draft_entries({}, {
+			{ kind = "reply", comment_id = 999, body = "x", saved_at = "t" },
+			{ kind = "edit", comment_id = 998, body = "y", saved_at = "t" },
+		}, "/repo", fmt)
+		assert.are.equal(0, #out)
+	end)
+
+	it("sorts merged entries by last_ts descending", function()
+		local entries = {
+			{ type = "review", path = "a.lua", line = 1, last_ts = "2026-01-02T00:00:00Z", comments = { { id = 1 } } },
+		}
+		local out = data.merge_draft_entries(entries, {
+			{ kind = "line", path = "b.lua", start_line = 2, end_line = 2, body = "x", saved_at = "2026-01-03T00:00:00Z" },
+		}, "/repo", fmt)
+		assert.are.equal(2, #out)
+		assert.are.equal("2026-01-03T00:00:00Z", out[1].last_ts)
+	end)
+
+	it("returns entries unchanged when drafts_list is empty", function()
+		local entries = { { type = "review", last_ts = "t", comments = {} } }
+		local out = data.merge_draft_entries(entries, {}, "/repo", fmt)
+		assert.are.equal(1, #out)
+		assert.is_nil(out[1].has_draft)
+	end)
+end)
