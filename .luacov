@@ -1,0 +1,23 @@
+-- luacov configuration
+--
+-- Run via:  make coverage  (sets LUACOV=1 and eval `luarocks path`)
+-- Generates: luacov.stats.out (raw), luacov.report.out (formatted)
+
+return {
+	-- Track only plugin source, not tests/scripts/plugin entry point.
+	-- `plugin/fude.lua` is excluded because it only registers user commands
+	-- and is never re-loaded by tests (its coverage would always show as
+	-- "missed", which is noise).
+	include = { "lua/fude" },
+	exclude = {
+		"tests",
+		"scripts",
+		"plugin",
+	},
+
+	statsfile = "luacov.stats.out",
+	reportfile = "luacov.report.out",
+
+	-- Default tick-based stats writer; flushed automatically on exit.
+	tick = false,
+}
