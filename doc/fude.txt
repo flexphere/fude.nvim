@@ -14,6 +14,7 @@ CONTENTS                                                   *fude-contents*
   6. Configuration ............. |fude-configuration|
   7. Statusline ................ |fude-statusline|
   8. Completion ................ |fude-completion|
+  9. Drafts .................... |fude-drafts|
 
 ==============================================================================
 1. INTRODUCTION                                        *fude-introduction*
@@ -82,9 +83,11 @@ Using lazy.nvim: >lua
     selected lines (visual mode). Opens a floating window for
     composing the comment. Press `<CR>` to save as GitHub pending review
     (visible on PR page with "Pending" status), `q` to cancel.
-    Cancelling with `q` or `<Esc>` (where bound) prompts a Yes/No
-    confirmation when the buffer has unsaved changes, to prevent
-    accidentally discarding an in-progress comment.
+    Closing with `q` or `<Esc>` (where bound) when the buffer has unsaved
+    changes prompts a 3-way choice: save the text as a local draft,
+    discard it, or keep editing. Saved drafts are restored the next time
+    you open input for the same location, and persist across PR switches
+    and Neovim restarts. See |fude-drafts|.
     Pending comments can be submitted as a review using |:FudeReviewSubmit|.
 
 :FudeReviewViewComment                          *:FudeReviewViewComment*
@@ -436,6 +439,8 @@ Default configuration: >lua
       pending_hl = "DiagnosticHint",
       viewed = "✓",
       viewed_hl = "DiagnosticOk",
+      draft = "✎ draft",
+      draft_hl = "DiagnosticWarn",
     },
     float = {
       border = "single",
@@ -530,6 +535,14 @@ Options:
 
 `signs.viewed_hl`   Highlight group for viewed file indicators
                   (default: "DiagnosticOk").
+
+`signs.draft`       Text shown in virtual text on lines that have an unsaved
+                  local draft (see |fude-drafts|). For reply / edit drafts the
+                  indicator appears on the targeted comment's line
+                  (default: "✎ draft").
+
+`signs.draft_hl`    Highlight group for draft indicators
+                  (default: "DiagnosticWarn").
 
 `float.border`      Border style for floating windows.
 
@@ -685,6 +698,18 @@ Options:
                     })
 <
 
+`drafts.enabled`    Enable local on-disk drafts for in-progress comment
+                  input (default: true). When false, closing a dirty
+                  comment buffer falls back to a plain Yes/No discard
+                  confirmation and no drafts are saved or restored.
+                  See |fude-drafts|.
+
+`drafts.retention_days`
+                  Drafts older than this many days are pruned when the
+                  draft store is next loaded (default: 30). Set to 0 or a
+                  negative number to keep drafts indefinitely.
+
+
 ==============================================================================
 7. STATUSLINE                                        *fude-statusline*
 
@@ -740,6 +765,45 @@ Trigger characters:
 Data for `@` and `#` is cached for 5 minutes per session and fetched from the
 GitHub API asynchronously. Data for `_` uses locally cached PR commits (no
 additional API call).
+
+==============================================================================
+9. DRAFTS                                                    *fude-drafts*
+
+When you close a comment input that has unsaved changes (via `q` / `<Esc>`),
+fude.nvim offers to save the text as a *local draft* instead of discarding it:
+
+    Save draft & close   Persist the current text locally and close.
+    Discard & close      Throw the text away (and delete any saved draft).
+    Keep editing         Return to the input without closing.
+
+Drafts are local to your machine and are NOT sent to GitHub (unlike a pending
+review comment, which is created by pressing `<CR>`). A saved draft is restored
+automatically the next time you open input for the same target.
+
+Drafts cover every comment input: line and range comments, |:FudeReviewSuggest|
+suggestions, PR-level (issue) comments, replies, and edits. Each is keyed by
+repository, PR number, and target, so drafts for different locations and
+different PRs are kept independently and never collide. A draft is removed once
+its comment is submitted, or when you explicitly discard it.
+
+Lines that have a saved draft show a `draft` indicator in the diff (configurable
+via `signs.draft` / `signs.draft_hl`), similar to the `pending` indicator. Line
+and suggestion drafts mark their own line; reply and edit drafts mark the line of
+the comment they target. PR-level (issue) drafts have no diff line and so are not
+indicated in the buffer.
+
+Drafts are stored as JSON at: >
+    stdpath("state")/fude/drafts.json
+<
+and therefore survive switching between PRs and restarting Neovim. Stale drafts
+are pruned on load (see `drafts.retention_days`). Set `drafts.enabled = false`
+to turn the feature off entirely (see |fude-configuration|).
+
+Limitations:
+  - A draft is matched by line range; if the diff shifts the lines, the draft
+    will not be restored at the new position (same as pending comments).
+  - The draft file is written with last-write-wins semantics, so running
+    multiple Neovim instances against the same draft store may drop a draft.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:
