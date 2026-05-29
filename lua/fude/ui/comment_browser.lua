@@ -545,6 +545,12 @@ local function create_browser(entries, issue_comments)
 	-- restored draft does not prompt and the draft is preserved.
 	local function current_lower_original()
 		if browser.mode == "edit" and browser.edit_target then
+			-- A restored edit draft is the baseline (matches what was prefilled),
+			-- so closing it unchanged does not prompt; otherwise the comment body.
+			local edit_draft = drafts.get(drafts.current_key("edit", browser.edit_target.id))
+			if edit_draft then
+				return vim.split(edit_draft, "\n")
+			end
 			return vim.split(format.normalize_newlines(browser.edit_target.body), "\n")
 		end
 		local draft = drafts.get(lower_key_for_entry(current_entry(), browser.mode, browser.edit_target))
@@ -587,10 +593,18 @@ local function create_browser(entries, issue_comments)
 			allow_draft = drafts.enabled(),
 			on_save_draft = function(text)
 				drafts.set(key, text)
+				-- Refresh after the browser closes so the diff buffer (not the
+				-- browser float) gets the draft indicator update.
+				vim.schedule(function()
+					get_ui().refresh_extmarks()
+				end)
 				vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
 			end,
 			on_discard = function()
 				drafts.remove(key)
+				vim.schedule(function()
+					get_ui().refresh_extmarks()
+				end)
 			end,
 			on_close = close_browser,
 		})
