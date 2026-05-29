@@ -9,14 +9,15 @@ argument-hint: [対象PR件数（省略時は10）]
 このスキルは Martin Fowler の "Harness Engineering" における **Steering Loop** を明示化するもので、
 本プロジェクトの harness（`.claude/HARNESS.md` 参照）が実際に機能しているかを定期点検する。
 
-完全に手動で起動する想定（月次〜四半期、または `review-lessons.md` が 15 件を超えたとき）。
+完全に手動で起動する想定（月次〜四半期、または `review-lessons.md` のエントリ
+（`### ` 見出し）が 15 件を超えたとき）。
 コードベース (`lua/`, `plugin/`, `tests/`) には触れず、`.claude/` と `CLAUDE.md` のメタ層のみを対象とする。
 
 ## 現在のリポジトリ状態
 
 - ブランチ: !`git branch --show-current`
 - Git状態: !`git status --short`
-- review-lessons.md: !`wc -l < .claude/review-lessons.md 2>/dev/null || echo "(not found)"`
+- review-lessons.md エントリ数: !`grep -c "^### " .claude/review-lessons.md 2>/dev/null || echo "(not found)"`
 
 ## フェーズ間のユーザー確認ルール
 
@@ -46,16 +47,21 @@ argument-hint: [対象PR件数（省略時は10）]
    - 既に `review-lessons.md` に記録済みの PR でも、当時取り込まれなかった他コメントの再評価対象として残す
 3. **現在の Guide ファイル**: `.claude/skills/pj-checklist/SKILL.md`（特にレビューチェックリスト節）
 4. **現在の累積知見**: `.claude/review-lessons.md`
-5. **計算的 sensor 関連の git 履歴**: 直近 N PR で各 sensor 関連の修正コミットを抽出
+5. **計算的 sensor 関連の git 履歴**: 直近 N PR で各 sensor 関連の修正コミットを抽出。
+   `origin/main~N` は **コミット数** N（PR 数ではない）の範囲指定になるため、対象 PR の最古
+   `mergedAt` 以降を `--since` で切る:
    ```bash
+   # 対象 N PR の最古マージ日時を取得
+   SINCE=$(gh pr list --state merged --limit N --json mergedAt --jq 'map(.mergedAt) | min')
+
    # check_state_deps 発火 = CLAUDE.md State Dependencies / 関連モジュール責務の docs commit
-   git log --oneline origin/main~N..origin/main -- CLAUDE.md | grep -E "State Dependencies|ドリフト|R に|W に"
+   git log --oneline --since="$SINCE" -- CLAUDE.md | grep -E "State Dependencies|ドリフト|R に|W に"
    # check_purity 発火 = 純粋性違反の refactor / ui/format.lua → inline 等
-   git log --oneline origin/main~N..origin/main | grep -E "純粋性|impure|inline"
+   git log --oneline --since="$SINCE" | grep -E "純粋性|impure|inline"
    # check_docs 発火 = doc/fude.txt と plugin/fude.lua の整合修正
-   git log --oneline origin/main~N..origin/main -- doc/fude.txt plugin/fude.lua
+   git log --oneline --since="$SINCE" -- doc/fude.txt plugin/fude.lua
    # luacov 発火 = coverage 関連 (将来段階 3 の閾値違反含む)
-   git log --oneline origin/main~N..origin/main | grep -E "coverage|カバレッジ"
+   git log --oneline --since="$SINCE" | grep -E "coverage|カバレッジ"
    ```
 6. **HARNESS.md の現状表**: §1 (Guides) と §2 (Sensors) の表内容を §3.6 で 4-quadrant matrix 再生成のため記憶
 
@@ -97,7 +103,7 @@ Phase 2 のレビューコメントを 1 件ずつ、以下に該当しないか
 
 #### 3.5 計算的 Sensor 発火率
 
-Phase 2.5 で収集した git 履歴を集計し、各計算的 sensor の発火状況を表化:
+Phase 2 step 5 で収集した git 履歴を集計し、各計算的 sensor の発火状況を表化:
 
 | Sensor | 発火 PR 数 | 該当 PR |
 |--------|----------|--------|

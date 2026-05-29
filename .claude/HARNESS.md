@@ -28,7 +28,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 推論的 | `/pr` skill | コミット分割と draft PR 作成 | `.claude/skills/pr/` |
 | 推論的 | `/review-respond` skill | PR レビューコメント対応と知見記録 | `.claude/skills/review-respond/` |
 | 推論的 | `/harness-audit` skill | 本ドキュメントとレビュー知見の定期点検 | `.claude/skills/harness-audit/` |
-| 推論的 | `.claude/review-lessons.md` | 過去 PR レビューから抽出した再発防止パターン | `.claude/` |
+| 推論的 | `.claude/review-lessons.md` | 未統合の再発防止パターンの一時置き場（`/review-respond` Phase 6 または `/harness-audit` で `pj-checklist` に統合後クリア） | `.claude/` |
 | 推論的 | `.github/copilot-instructions.md` | Copilot 用の言語指示 | `.github/` |
 | 計算的 | `.stylua.toml` | フォーマット規約 | repo root |
 | 計算的 | `.luacheckrc` | Lint 規約 | repo root |
