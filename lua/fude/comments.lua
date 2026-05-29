@@ -98,7 +98,6 @@ function M.create_comment(is_visual)
 			-- <CR> pressed: save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
-			drafts.remove(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -107,6 +106,8 @@ function M.create_comment(is_visual)
 						-- Remove from pending_comments on failure
 						state.pending_comments[pending_key] = nil
 					else
+						-- Drop the local draft only after the pending save succeeds.
+						drafts.remove(draft_key)
 						vim.notify("fude.nvim: Pending comment saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()
@@ -196,12 +197,13 @@ function M.reply_to_comment(comment_id)
 			drafts.remove(draft_key)
 		end,
 		on_submit = function(reply_body)
-			drafts.remove(draft_key)
 			sync.reply_to_comment(reply_target_id, reply_body, function(err)
 				if err then
 					vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
 					return
 				end
+				-- Drop the local draft only after the reply is posted.
+				drafts.remove(draft_key)
 				vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
 			end)
 		end,
@@ -297,7 +299,6 @@ function M.edit_comment(comment_id)
 			drafts.remove(draft_key)
 		end,
 		on_submit = function(new_body)
-			drafts.remove(draft_key)
 			if is_pending then
 				-- Pending comment: update in pending_comments and re-sync
 				local pending_key = M.find_pending_key(comment_id)
@@ -308,6 +309,8 @@ function M.edit_comment(comment_id)
 							if err then
 								vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
 							else
+								-- Drop the local draft only after the update succeeds.
+								drafts.remove(draft_key)
 								vim.notify("fude.nvim: Pending comment updated", vim.log.levels.INFO)
 							end
 							ui.refresh_extmarks()
@@ -320,6 +323,7 @@ function M.edit_comment(comment_id)
 							vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
 							return
 						end
+						drafts.remove(draft_key)
 						vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
 					end)
 				end
@@ -330,6 +334,7 @@ function M.edit_comment(comment_id)
 						vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
 						return
 					end
+					drafts.remove(draft_key)
 					vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
 				end)
 			end
@@ -512,7 +517,6 @@ function M.suggest_change(is_visual)
 			-- <CR> pressed: save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
-			drafts.remove(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -520,6 +524,8 @@ function M.suggest_change(is_visual)
 						vim.notify("fude.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
 						state.pending_comments[pending_key] = nil
 					else
+						-- Drop the local draft only after the pending save succeeds.
+						drafts.remove(draft_key)
 						vim.notify("fude.nvim: Pending suggestion saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()

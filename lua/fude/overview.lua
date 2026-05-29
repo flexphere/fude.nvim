@@ -58,12 +58,13 @@ function M.create_comment(pr_number)
 			return
 		end
 
-		drafts.remove(draft_key)
 		gh.create_issue_comment(pr_number, body, function(err, _)
 			if err then
 				vim.notify("fude.nvim: Failed to post comment: " .. err, vim.log.levels.ERROR)
 				return
 			end
+			-- Drop the local draft only after the comment is posted.
+			drafts.remove(draft_key)
 			vim.notify("fude.nvim: Comment posted", vim.log.levels.INFO)
 			M.show()
 		end)

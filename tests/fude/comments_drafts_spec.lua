@@ -62,7 +62,7 @@ describe("comments local draft wiring", function()
 		assert.equals("work in progress", drafts.get(key))
 	end)
 
-	it("create_comment submit removes the draft for that location", function()
+	it("create_comment submit removes the draft only after the pending save succeeds", function()
 		focus_test_buf()
 		local key = drafts.current_key("line", "draft_test.lua", 1, 1)
 		drafts.set(key, "old draft")
@@ -75,7 +75,31 @@ describe("comments local draft wiring", function()
 		end)
 
 		comments.create_comment(false)
+		-- Removal happens inside vim.schedule on success.
+		helpers.wait_for(function()
+			return drafts.get(key) == nil
+		end)
 		assert.is_nil(drafts.get(key))
+	end)
+
+	it("create_comment keeps the draft when the pending sync fails", function()
+		focus_test_buf()
+		local key = drafts.current_key("line", "draft_test.lua", 1, 1)
+		drafts.set(key, "old draft")
+
+		helpers.mock(sync, "sync_pending_review", function(callback)
+			callback("network boom")
+		end)
+		helpers.mock(ui, "open_comment_input", function(callback, _opts)
+			callback("final comment", "submit")
+		end)
+
+		comments.create_comment(false)
+		-- Failure path clears the optimistic pending entry; use that as the sync point.
+		helpers.wait_for(function()
+			return config.state.pending_comments["draft_test.lua:1:1"] == nil
+		end)
+		assert.equals("old draft", drafts.get(key))
 	end)
 
 	it("create_comment with action 'discard' removes the draft", function()
@@ -148,6 +172,28 @@ describe("comments local draft wiring", function()
 
 		comments.reply_to_comment(7)
 		assert.is_nil(drafts.get(key))
+	end)
+
+	it("reply_to_comment keeps the draft when the reply fails", function()
+		local data = require("fude.comments.data")
+		helpers.mock(data, "get_comment_thread", function()
+			return { { id = 7, body = "root" } }
+		end)
+		helpers.mock(data, "get_reply_target_id", function()
+			return 7
+		end)
+		helpers.mock(sync, "reply_to_comment", function(_id, _body, callback)
+			callback("reply boom")
+		end)
+		local key = drafts.current_key("reply", 7)
+		drafts.set(key, "draft reply")
+
+		helpers.mock(ui, "open_reply_window", function(_thread, opts)
+			opts.on_submit("final reply")
+		end)
+
+		comments.reply_to_comment(7)
+		assert.equals("draft reply", drafts.get(key))
 	end)
 
 	it("edit_comment prefers a draft over the comment body for prefill", function()
