@@ -45,8 +45,9 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `bash run_tests.sh` (plenary busted) | 開発中・pre-commit・CI | 単体・統合テスト失敗 |
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
 | 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
-| 計算的 | `.githooks/pre-commit` | commit | 上記 5 つを順次実行する **ローカルゲート** |
-| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 5 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
+| 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性 |
+| 計算的 | `.githooks/pre-commit` | commit | 上記 6 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 6 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
@@ -98,7 +99,8 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 | Sensor | 実装 PR | 概要 | 既知の限界 |
 |--------|--------|------|----------|
 | `check_state_deps` | #134-#135 | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性 | multi-LHS 代入 `state.a, state.b = ...` は最後の LHS のみ W 検出、動的フィールド `state[key]` は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の可能性（現コードベースに該当ケースなし） |
-| `check_purity` | (本 PR) | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
+| `check_purity` | #136 | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
+| `check_docs` | (本 PR) | `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 | コマンドのみ対象（keymap・config option の双方向検証は別 PR）、helptag に動的記法は無いため検出漏れリスクは小 |
 
 ### 4.2 次に着手する PR 候補
 
@@ -106,10 +108,10 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 
 | 順 | PR 案 | quadrant 強化 | 規模 | 着手判断 |
 |----|------|--------------|------|---------|
-| 1 | **Doc ↔ implementation cross-check sensor** — `plugin/fude.lua` のコマンド登録と `doc/fude.txt` 記述の相互 Grep。メトリクスで「頻出ドリフト源（pj-checklist 統合時 25%）」と判明 | Comp Sensor | 中-大 (~200 行 + tests) | check_purity と同じ pattern。初回ドリフト修正コミットを覚悟 |
-| 2 | **Test coverage 計測 (luacov)** — 報告のみ、閾値強制は当面なし。データが溜まったら最低カバレッジ閾値を導入 | Comp Sensor | 中 | 既存 plenary との統合に既知の罠あれば調整 |
-| 3 | **`/harness-audit` reporting 拡張** — 過去 N PR の sensor 別検出件数を集計、4-quadrant coverage matrix を自動生成 | Inf Sensor (メタ) | 小 (skill のみ) | Fowler の「sensor 発火率」問いに答える基盤 |
-| 4 | **pre-commit 文脈ヒント** — 変更モジュールから連動して見るべき `/pj-checklist` 項目を提示。`/harness-audit` の発火率データを取った後に着手判断 | Inf Guide / Process | 中 | 過剰ノイズ化リスクあり、効果未確認 |
+| 1 | **Test coverage 計測 (luacov)** — 報告のみ、閾値強制は当面なし。データが溜まったら最低カバレッジ閾値を導入 | Comp Sensor | 中 | 既存 plenary との統合に既知の罠あれば調整 |
+| 2 | **`/harness-audit` reporting 拡張** — 過去 N PR の sensor 別検出件数を集計、4-quadrant coverage matrix を自動生成 | Inf Sensor (メタ) | 小 (skill のみ) | Fowler の「sensor 発火率」問いに答える基盤 |
+| 3 | **pre-commit 文脈ヒント** — 変更モジュールから連動して見るべき `/pj-checklist` 項目を提示。`/harness-audit` の発火率データを取った後に着手判断 | Inf Guide / Process | 中 | 過剰ノイズ化リスクあり、効果未確認 |
+| 4 | **check_docs の keymap / config option 拡張** — 現在のコマンド検証を `*:keymap*` / `*g:fude_*` にも拡張 | Comp Sensor | 中 | check_docs と同じパターン、3 つ目スクリプト共通基盤がすでに揃っている |
 
 ### 4.3 やらないこと
 
