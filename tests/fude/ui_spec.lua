@@ -2376,3 +2376,26 @@ describe("confirm_close_with_draft", function()
 		vim.api.nvim_buf_delete(buf, { force = true })
 	end)
 end)
+
+describe("open_comment_input keymaps", function()
+	local config = require("fude.config")
+
+	before_each(function()
+		config.setup({})
+	end)
+
+	it("binds both q and <Esc> to cancel", function()
+		ui.open_comment_input(function() end, {})
+		local win = vim.api.nvim_get_current_win()
+		local buf = vim.api.nvim_win_get_buf(win)
+		local lhs = {}
+		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			lhs[m.lhs] = true
+		end
+		vim.cmd("stopinsert")
+		pcall(vim.api.nvim_win_close, win, true)
+		pcall(vim.api.nvim_buf_delete, buf, { force = true })
+		assert.is_true(lhs["q"], "q should be bound")
+		assert.is_true(lhs["<Esc>"], "<Esc> should be bound")
+	end)
+end)

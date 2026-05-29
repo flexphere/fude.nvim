@@ -300,7 +300,7 @@ function M.open_comment_input(callback, opts)
 		finish("submit")
 	end, { buffer = buf, desc = "Save" })
 
-	vim.keymap.set("n", "q", function()
+	local function close_input()
 		local current = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 		if not M.should_confirm_discard(current, initial_lines) then
 			finish("cancel")
@@ -311,7 +311,10 @@ function M.open_comment_input(callback, opts)
 		end, function()
 			finish("discard")
 		end)
-	end, { buffer = buf, desc = "Cancel" })
+	end
+
+	vim.keymap.set("n", "q", close_input, { buffer = buf, desc = "Cancel" })
+	vim.keymap.set("n", "<Esc>", close_input, { buffer = buf, desc = "Cancel" })
 end
 
 --- Show comments in a floating window.
