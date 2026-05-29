@@ -317,4 +317,75 @@ describe("extmarks integration", function()
 			assert.are.equal(0, #vim.api.nvim_buf_get_extmarks(buf2, ns, 0, -1, {}))
 		end)
 	end)
+
+	describe("refresh_extmarks draft indicator", function()
+		local drafts = require("fude.drafts")
+		local tmp
+
+		before_each(function()
+			tmp = vim.fn.tempname()
+			vim.fn.mkdir(tmp, "p")
+			drafts._dir = tmp
+			config.state.pr_number = 132
+			config.state.pr_url = "https://github.com/owner/repo/pull/132"
+		end)
+
+		after_each(function()
+			drafts._dir = nil
+			vim.fn.delete(tmp, "rf")
+		end)
+
+		local function find_draft_line(buf)
+			local marks = vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })
+			for _, mark in ipairs(marks) do
+				local details = mark[4]
+				if details.virt_text and details.virt_text[1][1]:find("draft", 1, true) then
+					return mark[2] -- 0-indexed line
+				end
+			end
+			return nil
+		end
+
+		it("shows a draft indicator on a line with a saved line draft", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+			config.state.active = true
+			config.state.comment_map = {}
+			config.state.pending_comments = {}
+			drafts.set(drafts.current_key("line", "test.lua", 3, 3), "wip")
+
+			extmarks.refresh_extmarks()
+
+			assert.equals(2, find_draft_line(buf)) -- 0-indexed line 2 = line 3
+		end)
+
+		it("shows a draft indicator on a comment line that has a reply draft", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+			config.state.active = true
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = { { id = 42, body = "existing" } },
+				},
+			}
+			config.state.pending_comments = {}
+			drafts.set(drafts.current_key("reply", 42), "draft reply")
+
+			extmarks.refresh_extmarks()
+
+			assert.equals(1, find_draft_line(buf)) -- 0-indexed line 1 = line 2
+		end)
+
+		it("shows no draft indicator when there are no drafts", function()
+			local buf = helpers.create_buf({ "line1", "line2" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+			config.state.active = true
+			config.state.comment_map = {}
+			config.state.pending_comments = {}
+
+			extmarks.refresh_extmarks()
+
+			assert.is_nil(find_draft_line(buf))
+		end)
+	end)
 end)
