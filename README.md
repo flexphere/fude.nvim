@@ -225,7 +225,10 @@ and Neovim restarts. They cover line/range comments, suggestions, PR-level
 comments, replies, and edits, keyed per repo + PR + target so different
 locations and PRs never collide. Lines with a saved draft show a `draft`
 indicator in the diff (like `pending`); reply/edit drafts mark the targeted
-comment's line. Disable with `drafts.enabled = false`.
+comment's line. Drafts also appear in the comment browser
+(`:FudeReviewListComments`) — existing entries gain a `✎draft` marker and new
+drafts show as `[draft]` rows you can jump to. Disable with
+`drafts.enabled = false`.
 
 ## Completion
 
