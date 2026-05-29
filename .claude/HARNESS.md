@@ -110,10 +110,9 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 
 | 順 | PR 案 | quadrant 強化 | 規模 | 着手判断 |
 |----|------|--------------|------|---------|
-| 1 | **`/harness-audit` reporting 拡張** — 過去 N PR の sensor 別検出件数を集計、4-quadrant coverage matrix を自動生成 | Inf Sensor (メタ) | 小 (skill のみ) | Fowler の「sensor 発火率」問いに答える基盤 |
-| 2 | **luacov 閾値強制 (段階 3)** — 数週間の数値傾向を見てから最低カバレッジゲートを設定 | Comp Sensor | 小 | 蓄積データが揃ってから |
-| 3 | **pre-commit 文脈ヒント** — 変更モジュールから連動して見るべき `/pj-checklist` 項目を提示。`/harness-audit` の発火率データを取った後に着手判断 | Inf Guide / Process | 中 | 過剰ノイズ化リスクあり、効果未確認 |
-| 4 | **check_docs の keymap / config option 拡張** — 現在のコマンド検証を `*:keymap*` / `*g:fude_*` にも拡張 | Comp Sensor | 中 | check_docs と同じパターン、3 つ目スクリプト共通基盤がすでに揃っている |
+| 1 | **luacov 閾値強制 (段階 3)** — 数週間の数値傾向を見てから最低カバレッジゲートを設定 | Comp Sensor | 小 | 蓄積データが揃ってから |
+| 2 | **pre-commit 文脈ヒント** — 変更モジュールから連動して見るべき `/pj-checklist` 項目を提示。`/harness-audit` の発火率データを取った後に着手判断 | Inf Guide / Process | 中 | 過剰ノイズ化リスクあり、効果未確認 |
+| 3 | **check_docs の keymap / config option 拡張** — 現在のコマンド検証を `*:keymap*` / `*g:fude_*` にも拡張 | Comp Sensor | 中 | check_docs と同じパターン、3 つ目スクリプト共通基盤がすでに揃っている |
 
 ### 4.3 やらないこと
 
