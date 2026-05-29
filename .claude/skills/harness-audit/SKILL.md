@@ -46,10 +46,23 @@ argument-hint: [対象PR件数（省略時は10）]
    - 既に `review-lessons.md` に記録済みの PR でも、当時取り込まれなかった他コメントの再評価対象として残す
 3. **現在の Guide ファイル**: `.claude/skills/pj-checklist/SKILL.md`（特にレビューチェックリスト節）
 4. **現在の累積知見**: `.claude/review-lessons.md`
+5. **計算的 sensor 関連の git 履歴**: 直近 N PR で各 sensor 関連の修正コミットを抽出
+   ```bash
+   # check_state_deps 発火 = CLAUDE.md State Dependencies / 関連モジュール責務の docs commit
+   git log --oneline origin/main~N..origin/main -- CLAUDE.md | grep -E "State Dependencies|ドリフト|R に|W に"
+   # check_purity 発火 = 純粋性違反の refactor / ui/format.lua → inline 等
+   git log --oneline origin/main~N..origin/main | grep -E "純粋性|impure|inline"
+   # check_docs 発火 = doc/fude.txt と plugin/fude.lua の整合修正
+   git log --oneline origin/main~N..origin/main -- doc/fude.txt plugin/fude.lua
+   # luacov 発火 = coverage 関連 (将来段階 3 の閾値違反含む)
+   git log --oneline origin/main~N..origin/main | grep -E "coverage|カバレッジ"
+   ```
+6. **HARNESS.md の現状表**: §1 (Guides) と §2 (Sensors) の表内容を §3.6 で 4-quadrant matrix 再生成のため記憶
 
 ### Phase 3: 分析 [自律実行可]
 
-以下 4 軸で分析する:
+以下 6 軸で分析する。3.1〜3.4 は推論的な品質、3.5〜3.6 は計算的な
+ハーネス全体構造のメトリクス。
 
 #### 3.1 pj-checklist の発火率
 
@@ -82,12 +95,56 @@ Phase 2 のレビューコメントを 1 件ずつ、以下に該当しないか
 - `make all` のターゲットが Makefile と一致しているか
 - 「Future work」の項目が解消されていれば該当節から削除
 
+#### 3.5 計算的 Sensor 発火率
+
+Phase 2.5 で収集した git 履歴を集計し、各計算的 sensor の発火状況を表化:
+
+| Sensor | 発火 PR 数 | 該当 PR |
+|--------|----------|--------|
+| check_state_deps | <件数> | <PR# リスト> |
+| check_purity | <件数> | <PR# リスト> |
+| check_docs | <件数> | <PR# リスト> |
+| luacov | <件数> | <PR# リスト> |
+
+判断軸 (Fowler "if sensors never fire..." への応答):
+- **発火 0 件かつ確立後 3 ヶ月以上経過**: regression catcher として待機中。
+  sensor が**現実的に発火しうるパターン**を 1〜2 行で言語化し、現実が
+  常に整合している（高品質）か、検出範囲が狭すぎる（不十分）かを判断
+- **発火 1+ 件**: 効いている。ただし「同じ問題が複数回」なら、Sensor を
+  **より早い段階**（pre-commit より開発中 lint へ等）に移動できないか検討
+
+#### 3.6 4-Quadrant Coverage Matrix (Fowler メトリクス)
+
+HARNESS.md §1 (Guides) と §2 (Sensors) の現状から、12 関心領域 × 4 quadrant の
+カバレッジを再生成する。前回 audit との差分が steering loop の進捗指標になる。
+
+| # | 関心領域 | Comp Guide | Comp Sensor | Inf Guide | Inf Sensor |
+|---|---------|:----------:|:-----------:|:---------:|:----------:|
+| 1 | Format / Style | | | | |
+| 2 | Lua/言語正当性 | | | | |
+| 3 | 振る舞い正当性 | | | | |
+| 4 | アーキテクチャ整合性 | | | | |
+| 5 | 堅牢性 | | | | |
+| 6 | ドキュメント整合性 | | | | |
+| 7 | テスト品質 | | | | |
+| 8 | 保守性 | | | | |
+| 9 | パフォーマンス | | | | |
+| 10 | セキュリティ | | | | |
+| 11 | プロセス/ワークフロー | | | | |
+| 12 | Steering Loop メタ点検 | | | | |
+
+凡例: ✓ 専用機構あり / △ 汎用機構経由 / ✗ なし
+
+充足度集計を出力し、新たに ✗ → △ や △ → ✓ に変化した quadrant を「進捗」、
+✗ のまま残っている領域を HARNESS.md §4.3「やらないこと」と照合して、
+今回の audit で取り組むべきギャップを 1〜3 件に絞り込む。
+
 ### Phase 4: 提案レビュー [確認必須]
 
 以下のフォーマットで結果をユーザーに提示する:
 
 ```
-## ハーネス点検レポート（対象 PR: #<min>〜#<max>, 計 <N> 件）
+## ハーネス点検レポート（対象 PR: #<min>〜#<max>, 計 <N> 件、点検日: YYYY-MM-DD）
 
 ### pj-checklist 発火状況
 - 効いている項目: <件数>件
@@ -100,6 +157,17 @@ Phase 2 のレビューコメントを 1 件ずつ、以下に該当しないか
   - PR #<n>: <コメント要約> → <該当 pj-checklist 項目>
 - 新規ルール候補: <件数>件
   - <パターン要約> (出典: PR #<n>)
+
+### 計算的 Sensor 発火率
+| Sensor | 発火 PR 数 | 該当 PR | コメント |
+|--------|----------|--------|---------|
+| check_state_deps | ... | ... | ... |
+| check_purity | ... | ... | ... |
+| check_docs | ... | ... | ... |
+| luacov | ... | ... | ... |
+
+### 4-Quadrant Coverage Matrix
+（Phase 3.6 で生成した完全な表 + 充足度集計 + 前回 audit との差分）
 
 ### review-lessons.md
 - 統合済み（削除候補）: <件数>件
@@ -122,6 +190,15 @@ Phase 2 のレビューコメントを 1 件ずつ、以下に該当しないか
 1. `.claude/skills/pj-checklist/SKILL.md` の追加・削除・抽象化
 2. `.claude/review-lessons.md` の統合済みエントリ削除と未統合エントリの整理
 3. `.claude/HARNESS.md` の表・Future work セクションの同期
+4. **audit レポートを `.claude/audit-reports/audit-<YYYY-MM>.md` に保存**:
+   ```bash
+   mkdir -p .claude/audit-reports
+   # 同月内に複数回 audit する場合は audit-YYYY-MM-DD.md (日付付与) を採用
+   ```
+   保存内容は Phase 4 で提示した完全なレポート（pj-checklist 発火、取りこぼし、
+   sensor 発火率、4-quadrant matrix、review-lessons 健全性、HARNESS.md 整合性、
+   次アクション）。これにより四半期間隔の傾向分析・前回 audit との差分比較が
+   可能になる
 
 それぞれ Edit tool で最小差分の修正にとどめる。1 ファイル更新ごとに変更後の関連節を 5〜10 行
 ユーザーに見せて、誤適用がないか確認する。
