@@ -97,7 +97,26 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 	end
 
 	-- Set lower pane mode and title based on entry type
-	if entry.type == "issue" then
+	if entry.type == "draft" then
+		-- Synthesized draft row (no GitHub counterpart). issue drafts are editable
+		-- in the lower pane (new_pr_comment); line/suggest drafts are edited by
+		-- jumping to the file (<CR>), so the lower pane stays inert.
+		if entry.kind == "issue" then
+			browser.mode = "new_pr_comment"
+			if vim.api.nvim_win_is_valid(browser.lower_win) then
+				pcall(vim.api.nvim_win_set_config, browser.lower_win, { title = " New PR Comment ", title_pos = "center" })
+			end
+		else
+			browser.mode = "reply"
+			if vim.api.nvim_win_is_valid(browser.lower_win) then
+				pcall(
+					vim.api.nvim_win_set_config,
+					browser.lower_win,
+					{ title = " Draft (<CR> to edit in file) ", title_pos = "center" }
+				)
+			end
+		end
+	elseif entry.type == "issue" then
 		browser.mode = "new_pr_comment"
 		if vim.api.nvim_win_is_valid(browser.lower_win) then
 			pcall(vim.api.nvim_win_set_config, browser.lower_win, { title = " New PR Comment ", title_pos = "center" })
@@ -333,6 +352,7 @@ local function create_browser(entries, issue_comments)
 				state.github_user,
 				state.comments
 			)
+			new_entries = data.merge_draft_entries(new_entries, drafts.list_drafts(), repo_root, config.format_date)
 			if #new_entries == 0 then
 				close_browser()
 				vim.notify("fude.nvim: No comments found", vim.log.levels.INFO)
@@ -434,6 +454,14 @@ local function create_browser(entries, issue_comments)
 
 		local entry = current_entry()
 		if not entry then
+			return
+		end
+
+		-- A line/suggest draft row is not editable inline (mode "reply" but no
+		-- thread to reply to); it is edited by jumping to the file with <CR>.
+		-- issue drafts use new_pr_comment mode and submit normally below.
+		if entry.type == "draft" and browser.mode ~= "new_pr_comment" then
+			vim.notify("fude.nvim: Press <CR> to edit this draft in the file", vim.log.levels.INFO)
 			return
 		end
 
@@ -616,18 +644,25 @@ local function create_browser(entries, issue_comments)
 
 	vim.keymap.set("n", "<CR>", function()
 		local entry = current_entry()
-		if entry and entry.type == "review" and entry.filename then
+		if entry and (entry.type == "review" or entry.type == "draft") and entry.filename then
 			close_browser()
 			vim.cmd("edit " .. vim.fn.fnameescape(entry.filename))
 			local lnum = math.max(1, entry.lnum or 1)
 			pcall(vim.api.nvim_win_set_cursor, 0, { lnum, 0 })
-			if config.opts.auto_view_comment then
+			-- A draft has no submitted comment to view; just flash the line so the
+			-- user can re-open input there (which restores the draft).
+			if entry.type == "review" and config.opts.auto_view_comment then
 				get_comments().view_comments()
 			else
 				get_ui().flash_line(lnum)
 			end
+		elseif entry and entry.type == "draft" and entry.kind == "issue" then
+			-- PR-level draft: focus the lower input (prefilled with the draft).
+			if vim.api.nvim_win_is_valid(lower_win) then
+				vim.api.nvim_set_current_win(lower_win)
+			end
 		end
-	end, { buffer = left_buf, desc = "Jump to file" })
+	end, { buffer = left_buf, desc = "Jump to file / edit draft" })
 
 	vim.keymap.set("n", "R", function()
 		refresh()
@@ -657,7 +692,7 @@ local function create_browser(entries, issue_comments)
 
 	vim.keymap.set("n", "e", function()
 		local entry = current_entry()
-		if not entry then
+		if not entry or not entry.comments then
 			return
 		end
 
@@ -704,7 +739,7 @@ local function create_browser(entries, issue_comments)
 
 	vim.keymap.set("n", "d", function()
 		local entry = current_entry()
-		if not entry then
+		if not entry or not entry.comments then
 			return
 		end
 		-- Find the target comment (last own comment in the thread)
@@ -856,6 +891,7 @@ function M.open()
 			state.github_user,
 			state.comments
 		)
+		entries = data.merge_draft_entries(entries, drafts.list_drafts(), repo_root, config.format_date)
 
 		if #entries == 0 then
 			vim.notify("fude.nvim: No comments found", vim.log.levels.INFO)

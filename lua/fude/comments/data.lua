@@ -542,6 +542,79 @@ function M.build_comment_browser_entries(
 	return entries
 end
 
+--- Merge local draft descriptors into comment browser entries. Pure.
+--- Drafts that target an existing entry (reply/edit by comment id; line/suggest
+--- by path:line; issue when a PR-comment entry exists) flag that entry with
+--- `has_draft`. Drafts with no corresponding entry (new line/suggest/issue) are
+--- appended as `type = "draft"` rows. reply/edit drafts whose target is not in
+--- the list are skipped (no thread to show). Entries are re-sorted by `last_ts`.
+--- @param entries table[] from build_comment_browser_entries
+--- @param drafts_list table[] from drafts.list_drafts()
+--- @param repo_root string
+--- @param format_date_fn fun(s: string): string
+--- @return table[] entries (mutated and re-sorted)
+function M.merge_draft_entries(entries, drafts_list, repo_root, format_date_fn)
+	entries = entries or {}
+	if not drafts_list or #drafts_list == 0 then
+		return entries
+	end
+
+	local by_comment_id = {}
+	local by_path_line = {}
+	local issue_entry = nil
+	for _, e in ipairs(entries) do
+		if e.type == "issue" then
+			issue_entry = e
+		end
+		if e.comments then
+			for _, c in ipairs(e.comments) do
+				if c.id then
+					by_comment_id[c.id] = e
+				end
+			end
+		end
+		if e.path and type(e.line) == "number" then
+			by_path_line[e.path .. ":" .. e.line] = e
+		end
+	end
+
+	for _, d in ipairs(drafts_list) do
+		local matched
+		if d.kind == "reply" or d.kind == "edit" then
+			matched = d.comment_id and by_comment_id[d.comment_id]
+		elseif d.kind == "issue" then
+			matched = issue_entry
+		elseif (d.kind == "line" or d.kind == "suggest") and d.path and d.start_line then
+			matched = by_path_line[d.path .. ":" .. d.start_line]
+		end
+
+		if matched then
+			matched.has_draft = true
+		elseif d.kind == "line" or d.kind == "suggest" or d.kind == "issue" then
+			local entry = {
+				type = "draft",
+				kind = d.kind,
+				last_ts = d.saved_at or "",
+				last_date = format_date_fn(d.saved_at or ""),
+				body = d.body,
+				has_draft = true,
+			}
+			if d.kind == "line" or d.kind == "suggest" then
+				entry.path = d.path
+				entry.line = d.start_line
+				entry.lnum = d.start_line
+				entry.filename = d.path and (repo_root .. "/" .. d.path) or nil
+			end
+			table.insert(entries, entry)
+		end
+	end
+
+	table.sort(entries, function(a, b)
+		return (a.last_ts or "") > (b.last_ts or "")
+	end)
+	return entries
+end
+
 --- Check if a comment is outdated (line is nil/vim.NIL but original_line exists).
 --- @param comment table comment object from GitHub API
 --- @return boolean
