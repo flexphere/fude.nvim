@@ -109,17 +109,20 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 		end
 	end
 
-	-- Clear lower buffer and reset edit target (skip if user has typed content).
-	-- Restore a saved local draft for the newly selected entry, if one exists.
-	local lower_has_content = false
+	-- Reset edit target and refresh the lower buffer for the newly selected
+	-- entry. Replace the lower buffer when it is empty or still holds an
+	-- *unedited* auto-restored draft (so the previous entry's draft never leaks
+	-- into another entry's input), but preserve genuinely user-typed content.
+	local current_text = ""
 	if vim.api.nvim_buf_is_valid(browser.lower_buf) then
-		lower_has_content = get_lower_text(browser.lower_buf) ~= ""
+		current_text = get_lower_text(browser.lower_buf)
 	end
-	if not browser.edit_target and not lower_has_content then
+	local unedited_restored = browser.restored_draft ~= nil and current_text == vim.trim(browser.restored_draft)
+	if not browser.edit_target and (current_text == "" or unedited_restored) then
 		if vim.api.nvim_buf_is_valid(browser.lower_buf) then
 			local draft = drafts.get(lower_key_for_entry(entry, browser.mode, nil))
-			local lines = draft and vim.split(draft, "\n") or { "" }
-			vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, lines)
+			vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, draft and vim.split(draft, "\n") or { "" })
+			browser.restored_draft = draft
 		end
 	end
 	browser.edit_target = nil
@@ -393,6 +396,7 @@ local function create_browser(entries, issue_comments)
 			if vim.api.nvim_buf_is_valid(lower_buf) then
 				vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
 			end
+			browser.restored_draft = nil
 			browser.edit_target = nil
 			local entry = current_entry()
 			if entry and entry.type == "issue" then
@@ -555,6 +559,7 @@ local function create_browser(entries, issue_comments)
 		if vim.api.nvim_buf_is_valid(lower_buf) then
 			vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
 		end
+		browser.restored_draft = nil
 		browser.edit_target = nil
 		-- Restore default mode based on current entry
 		local entry = current_entry()
