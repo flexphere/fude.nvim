@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+AI 協働開発のハーネス全体像（Guides / Sensors / Steering Loop の俯瞰）は `.claude/HARNESS.md` を参照してください。本ファイルはアーキテクチャと品質ルールの詳細を扱います。
+
 ## Project Overview
 
 fude.nvim is a Neovim plugin for GitHub PR code review. It shows base branch diffs in a side pane, lets users create/view/reply to review comments with virtual text indicators, browse changed files via Telescope or quickfix, and view PR overviews. Requires Neovim >= 0.10 and GitHub CLI (`gh`).
