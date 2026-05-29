@@ -20,3 +20,8 @@
 - **問題**: ドキュメント（README/doc/PR 説明）が「全コメント入力で `<Esc>` 閉じ可」のように複数経路共通の挙動を謳っていても、実装が一部の variant（reply/edit/browser）にしか入っておらず、他（open_comment_input）で発火しない不一致が残った。
 - **対策**: 「全 X で」と記述・想定する挙動（キーマップ、確認ダイアログ、通知等）は、類似する全 variant を Grep で列挙し、各実装に存在するか確認する。並行する複数実装はドリフトしやすい。
 - **該当箇所**: lua/fude/ui.lua (open_comment_input), lua/fude/comments.lua, lua/fude/ui/comment_browser.lua
+
+### 堅牢性: 永続化ファイルから読んだ値は型を検証してから使う (PR #144, 2026-05-30)
+- **問題**: ディスク上の永続ファイル（例: drafts.json）は手編集・破損・旧スキーマ混在により、JSON として妥当でもフィールド型が想定外になり得る（`body` が数値、`saved_at` が epoch と ISO の混在など）。値を型前提の API（`vim.split` / `normalize_newlines`、文字列比較等）に渡すと実行時エラーになる。fude が唯一の writer でも、ファイル内容は外部入力として扱うべき。実例: PR #144 のユーザー drafts.json に epoch と ISO の `saved_at` が実際に混在していた。
+- **対策**: deserialize 後の値は、それを返すソース（getter/loader）で型を検証し、不正な型は安全側（nil 返却 / スキップ / 保持）に倒す。`deserialize` の「壊れ JSON → `{}` フォールバック」と同じ防御スタンスをフィールド単位でも適用する。型前提の処理を呼び出し側に分散させず、ソースで一括して担保する（呼び出し側は nil ガードのみで済む）。
+- **該当箇所**: lua/fude/drafts.lua (get / prune)
