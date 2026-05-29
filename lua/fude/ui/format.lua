@@ -588,7 +588,27 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 	for i, entry in ipairs(entries) do
 		local line_idx = i - 1 -- 0-indexed for highlights
 		local text
-		if entry.type == "issue" then
+		if entry.type == "draft" then
+			-- Local (unsubmitted) draft with no GitHub counterpart.
+			local date = format_date_fn(entry.last_ts)
+			if entry.kind == "issue" then
+				text = string.format("%s  [draft]  PR Comment", date)
+			else
+				local raw = type(entry.path) == "string" and format_path_fn(entry.path) or nil
+				local display_path = (type(raw) == "string") and raw or entry.path or "(unknown)"
+				local line_num = type(entry.line) == "number" and entry.line or nil
+				if line_num then
+					text = string.format("%s  [draft]  %s:%d", date, display_path, line_num)
+				else
+					text = string.format("%s  [draft]  %s", date, display_path)
+				end
+			end
+			local draft_start = #date + 2
+			table.insert(
+				hl_ranges,
+				{ line = line_idx, col_start = draft_start, col_end = draft_start + #"[draft]", hl = "DiagnosticWarn" }
+			)
+		elseif entry.type == "issue" then
 			local date = format_date_fn(entry.last_ts)
 			text = string.format("%s  PR Comment", date)
 			-- Highlight "PR Comment" label
@@ -651,6 +671,13 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 			end
 		end
 
+		-- Mark existing entries that also have an unsubmitted local draft.
+		if entry.type ~= "draft" and entry.has_draft then
+			local col = #text
+			text = text .. "  ✎draft"
+			table.insert(hl_ranges, { line = line_idx, col_start = col, col_end = #text, hl = "DiagnosticWarn" })
+		end
+
 		table.insert(lines, text)
 	end
 
@@ -666,6 +693,15 @@ end
 --- @param format_date_fn fun(s: string): string
 --- @return table { lines: string[], hl_ranges: table[] }
 function M.format_comment_browser_thread(entry, all_comments, all_issue_comments, format_date_fn)
+	if entry.type == "draft" then
+		-- Unsubmitted local draft: show its body as a preview.
+		local lines = { "Local draft (not yet submitted)", "" }
+		for _, l in ipairs(vim.split(M.normalize_newlines(entry.body or ""), "\n")) do
+			table.insert(lines, l)
+		end
+		return { lines = lines, hl_ranges = { { line = 0, col_start = 0, col_end = -1, hl = "DiagnosticWarn" } } }
+	end
+
 	if entry.type == "issue" then
 		-- Show all issue comments as a thread
 		return M.format_reply_comments_for_display(all_issue_comments or {}, format_date_fn)

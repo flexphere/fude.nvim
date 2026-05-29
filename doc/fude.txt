@@ -792,6 +792,12 @@ and suggestion drafts mark their own line; reply and edit drafts mark the line o
 the comment they target. PR-level (issue) drafts have no diff line and so are not
 indicated in the buffer.
 
+Drafts also appear in the comment browser (|:FudeReviewListComments|). A draft
+that targets an existing comment/thread adds a `✎draft` marker to that entry; a
+new draft with no submitted counterpart shows as a `[draft]` row. On a draft row,
+`<CR>` jumps to the file (line/suggestion drafts) so you can resume editing
+there, or focuses the input pane (PR-level drafts).
+
 Drafts are stored as JSON at: >
     stdpath("state")/fude/drafts.json
 <

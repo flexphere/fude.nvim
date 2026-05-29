@@ -2399,3 +2399,49 @@ describe("open_comment_input keymaps", function()
 		assert.is_true(lhs["<Esc>"], "<Esc> should be bound")
 	end)
 end)
+
+describe("format_comment_browser_list draft rendering", function()
+	local function fmt(s)
+		return s
+	end
+
+	it("renders a synthesized issue draft row", function()
+		local entries = { { type = "draft", kind = "issue", last_ts = "2026-01-01T00:00:00Z", body = "x" } }
+		local r = format.format_comment_browser_list(entries, fmt, nil, nil)
+		assert.is_not_nil(r.lines[1]:find("[draft]", 1, true))
+		assert.is_not_nil(r.lines[1]:find("PR Comment", 1, true))
+	end)
+
+	it("renders a synthesized line draft row with path:line", function()
+		local entries = { { type = "draft", kind = "line", path = "a.lua", line = 5, last_ts = "t", body = "x" } }
+		local r = format.format_comment_browser_list(entries, fmt, nil, nil)
+		assert.is_not_nil(r.lines[1]:find("[draft]", 1, true))
+		assert.is_not_nil(r.lines[1]:find("a.lua:5", 1, true))
+	end)
+
+	it("appends a draft marker to an existing entry with has_draft", function()
+		local entries = { { type = "review", path = "a.lua", line = 5, last_ts = "t", author = "me", has_draft = true } }
+		local r = format.format_comment_browser_list(entries, fmt, nil, nil)
+		assert.is_not_nil(r.lines[1]:find("✎draft", 1, true))
+	end)
+
+	it("does not append a marker when has_draft is absent", function()
+		local entries = { { type = "review", path = "a.lua", line = 5, last_ts = "t", author = "me" } }
+		local r = format.format_comment_browser_list(entries, fmt, nil, nil)
+		assert.is_nil(r.lines[1]:find("✎draft", 1, true))
+	end)
+end)
+
+describe("format_comment_browser_thread draft", function()
+	local function fmt(s)
+		return s
+	end
+
+	it("shows the draft body as a preview", function()
+		local entry = { type = "draft", kind = "line", body = "line one\nline two" }
+		local r = format.format_comment_browser_thread(entry, {}, {}, fmt)
+		local joined = table.concat(r.lines, "\n")
+		assert.is_not_nil(joined:find("line one", 1, true))
+		assert.is_not_nil(joined:find("line two", 1, true))
+	end)
+end)

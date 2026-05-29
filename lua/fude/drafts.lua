@@ -145,6 +145,55 @@ function M.file_markers(rel_path)
 	return out
 end
 
+--- Normalize a stored saved_at into a UTC ISO-8601 string so it sorts together
+--- with GitHub comment timestamps. Legacy numeric (epoch) values are converted.
+--- @param saved_at any
+--- @return string
+local function saved_at_iso(saved_at)
+	if type(saved_at) == "string" then
+		return saved_at
+	end
+	if type(saved_at) == "number" then
+		return os.date("!%Y-%m-%dT%H:%M:%SZ", saved_at)
+	end
+	return ""
+end
+
+--- List the active PR's drafts as structured descriptors for the comment
+--- browser. Skips entries whose body is not a string. saved_at is normalized to
+--- a UTC ISO-8601 string.
+--- @return table[] { key, kind, body, saved_at, path?, start_line?, end_line?, comment_id? }
+function M.list_drafts()
+	local out = {}
+	if not M.enabled() then
+		return out
+	end
+	local st = config.state
+	if not st.pr_number then
+		return out
+	end
+	local repo = M.repo_slug(st.pr_url) or "?"
+	local prefix = repo .. ":#" .. tostring(st.pr_number) .. ":"
+	for key, entry in pairs(M.load()) do
+		if type(entry) == "table" and type(entry.body) == "string" and key:sub(1, #prefix) == prefix then
+			local rest = key:sub(#prefix + 1)
+			local kind = rest:match("^([^:]+)")
+			local desc = { key = key, kind = kind, body = entry.body, saved_at = saved_at_iso(entry.saved_at) }
+			if kind == "line" or kind == "suggest" then
+				local path, sl, el = rest:match("^[^:]+:(.+):(%d+):(%d+)$")
+				desc.path = path
+				desc.start_line = tonumber(sl)
+				desc.end_line = tonumber(el)
+			elseif kind == "reply" or kind == "edit" then
+				local id = rest:match("^[^:]+:(.+)$")
+				desc.comment_id = tonumber(id) or id
+			end
+			table.insert(out, desc)
+		end
+	end
+	return out
+end
+
 -- === Config helpers ===
 
 --- Whether local drafts are enabled (default true).
