@@ -161,11 +161,25 @@ function M.cleanup()
 end
 
 --- Wait for a condition function to return true, with timeout.
+---
+--- Default timeout is 5000ms (not 1000ms) to absorb CI runner load spikes —
+--- mocks that use `vim.schedule(...)` to defer the callback can occasionally
+--- fire later than 1s under matrix-parallel CI contention, causing flaky
+--- failures (e.g. sync_pending_review timeouts observed on PRs #134-#136).
+---
+--- `vim.wait` returns immediately once `condition_fn` becomes truthy, so a
+--- larger default has **zero cost** when callbacks fire promptly — it only
+--- slows down genuinely-failing tests (which need investigation anyway).
+---
+--- For "should NOT fire" assertions, use `vim.wait` directly with an
+--- explicit short timeout (50-100ms) to keep negative-path tests fast; do
+--- not use this helper.
+---
 --- @param condition_fn fun(): boolean
---- @param timeout_ms number|nil timeout in milliseconds (default 1000)
+--- @param timeout_ms number|nil timeout in milliseconds (default 5000)
 --- @return boolean success
 function M.wait_for(condition_fn, timeout_ms)
-	timeout_ms = timeout_ms or 1000
+	timeout_ms = timeout_ms or 5000
 	return vim.wait(timeout_ms, condition_fn, 10)
 end
 
