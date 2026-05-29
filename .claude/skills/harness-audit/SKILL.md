@@ -196,15 +196,26 @@ HARNESS.md §1 (Guides) と §2 (Sensors) の現状から、12 関心領域 × 4
 1. `.claude/skills/pj-checklist/SKILL.md` の追加・削除・抽象化
 2. `.claude/review-lessons.md` の統合済みエントリ削除と未統合エントリの整理
 3. `.claude/HARNESS.md` の表・Future work セクションの同期
-4. **audit レポートを `.claude/audit-reports/audit-<YYYY-MM>.md` に保存**:
+4. **audit レポートを `.claude/audit-reports/audit-<YYYY-MM>.md` に保存** (formal audit のみ必須):
    ```bash
    mkdir -p .claude/audit-reports
-   # 同月内に複数回 audit する場合は audit-YYYY-MM-DD.md (日付付与) を採用
+   # 同月内に複数回 formal audit する場合は audit-YYYY-MM-DD.md (日付付与) を採用
    ```
    保存内容は Phase 4 で提示した完全なレポート（pj-checklist 発火、取りこぼし、
    sensor 発火率、4-quadrant matrix、review-lessons 健全性、HARNESS.md 整合性、
    次アクション）。これにより四半期間隔の傾向分析・前回 audit との差分比較が
-   可能になる
+   可能になる。
+
+   **例外: 差分 audit (差分点検) は保存を省略可**:
+   - **定義**: 直前の formal audit から 1-2 週間以内、対象 PR が 10 件未満で、
+     `pj-checklist` 統合や `HARNESS.md` 微修正等のメンテナンスを目的とする軽量サイクル
+   - **理由**: 構造的な進化が乏しく、四半期間隔の傾向分析対象としての価値が低い。
+     直近 formal audit との差分は git 履歴で十分追跡可能
+   - **判断主体**: Phase 4 でユーザーが「差分 audit として扱い保存を省略する」と
+     明示した場合のみ省略する（既定は **保存**）
+   - **省略時の記録**: `review-lessons.md` のクリーンアップマーカーには
+     「**差分 audit (YYYY-MM-DD) で統合済み**」と明示し、formal audit と
+     区別できる表現にする
 
 それぞれ Edit tool で最小差分の修正にとどめる。1 ファイル更新ごとに変更後の関連節を 5〜10 行
 ユーザーに見せて、誤適用がないか確認する。
