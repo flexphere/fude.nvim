@@ -40,12 +40,12 @@ Martin Fowler "Harness Engineering for Coding Agents"
 
 | 種別 | 実体 | タイミング | 何を検出 |
 |------|------|------------|----------|
-| 計算的 | `stylua --check lua/ plugin/ tests/` | 開発中・pre-commit・CI | 整形違反 |
-| 計算的 | `luacheck lua/ plugin/ tests/` | 開発中・pre-commit・CI | Lint 違反、未使用変数等 |
+| 計算的 | `stylua --check lua/ plugin/ tests/ scripts/` | 開発中・pre-commit・CI | 整形違反 |
+| 計算的 | `luacheck lua/ plugin/ tests/ scripts/` | 開発中・pre-commit・CI | Lint 違反、未使用変数等 |
 | 計算的 | `bash run_tests.sh` (plenary busted) | 開発中・pre-commit・CI | 単体・統合テスト失敗 |
-| 計算的 | `.githooks/pre-commit` | commit | 上記 3 つを順次実行する **ローカルゲート** |
-| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 3 つを CI 上で実行（Neovim 0.10.4 / 0.11.7 / stable の matrix） |
-| 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 手動 | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証。`make all` には未組み込み（PR 2 で組み込み予定） |
+| 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
+| 計算的 | `.githooks/pre-commit` | commit | 上記 4 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 4 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
@@ -94,8 +94,8 @@ PR レビュー指摘
 
 ### 4.1 Architecture Fitness Sensor（計算的）
 
-- ~~**State Dependencies テーブルの自動検証**~~ — `scripts/check_state_deps.lua` として実装済み
-  (§2 Sensors 表参照)。`make all` への組み込みは PR 2 で予定。**既知の限界**:
+- ~~**State Dependencies テーブルの自動検証**~~ — `scripts/check_state_deps.lua` として実装、
+  `make all` / pre-commit / CI に組み込み完了 (§2 Sensors 表参照)。**既知の限界**:
   multi-LHS 代入 (`state.a, state.b = ...`) は最後の LHS のみ W 検出、動的フィールド
   (`state[key]`) は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の
   可能性（現コードベースに該当ケースなし）

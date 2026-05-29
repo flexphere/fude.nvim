@@ -12,4 +12,7 @@ stylua --check lua/ plugin/ tests/
 echo "=> tests"
 bash run_tests.sh
 
+echo "=> check-state-deps"
+nvim --headless -l scripts/check_state_deps.lua
+
 echo "All checks passed."
