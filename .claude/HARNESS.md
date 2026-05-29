@@ -44,8 +44,9 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `luacheck lua/ plugin/ tests/ scripts/` | 開発中・pre-commit・CI | Lint 違反、未使用変数等 |
 | 計算的 | `bash run_tests.sh` (plenary busted) | 開発中・pre-commit・CI | 単体・統合テスト失敗 |
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
-| 計算的 | `.githooks/pre-commit` | commit | 上記 4 つを順次実行する **ローカルゲート** |
-| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 4 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
+| 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
+| 計算的 | `.githooks/pre-commit` | commit | 上記 5 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 5 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
@@ -87,44 +88,42 @@ PR レビュー指摘
   `/harness-audit` の起動を提案する
 - `/self-review` は本ドキュメントを直接参照しない（個別 skill が役割を持つ）
 
-## 4. 既知のギャップと将来計画
+## 4. Roadmap：既知のギャップと将来計画
 
-「Fowler の枠組みで埋められる余地」と「本プロジェクトの規模・運用負荷とのトレードオフ」を踏まえた候補。
-**実装はそれぞれ別 PR を推奨**。優先順位は記載のものから着手するのが妥当。
+Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** として整理する。
+完了済の sensor は §4.1、次に着手すべき PR 候補は §4.2、見送り判断は §4.3 を参照。
 
-### 4.1 Architecture Fitness Sensor（計算的）
+### 4.1 完了済の Sensor
 
-- ~~**State Dependencies テーブルの自動検証**~~ — `scripts/check_state_deps.lua` として実装、
-  `make all` / pre-commit / CI に組み込み完了 (§2 Sensors 表参照)。**既知の限界**:
-  multi-LHS 代入 (`state.a, state.b = ...`) は最後の LHS のみ W 検出、動的フィールド
-  (`state[key]`) は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の
-  可能性（現コードベースに該当ケースなし）
+| Sensor | 実装 PR | 概要 | 既知の限界 |
+|--------|--------|------|----------|
+| `check_state_deps` | #134-#135 | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性 | multi-LHS 代入 `state.a, state.b = ...` は最後の LHS のみ W 検出、動的フィールド `state[key]` は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の可能性（現コードベースに該当ケースなし） |
+| `check_purity` | (本 PR) | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
 
-- **純粋関数モジュールの purity 静的チェック**
-  `*/data.lua` `*/format.lua` は CLAUDE.md で「vim API・`config.state` を参照しない」と宣言されている。
-  grep ベースで `vim\.` `config.state` の出現を検出する軽量チェック
+### 4.2 次に着手する PR 候補
 
-### 4.2 Maintainability Sensor（計算的）
+優先度高〜中。それぞれ独立した PR として段階的に着手する。
 
-- **テストカバレッジ計測**: `luacov` 等で計測し、新規追加コードのカバレッジを可視化
-- **重複コード検出**: 同種の grep パターン（CRLF 正規化、レイアウト計算等）を機械的に検出
+| 順 | PR 案 | quadrant 強化 | 規模 | 着手判断 |
+|----|------|--------------|------|---------|
+| 1 | **Doc ↔ implementation cross-check sensor** — `plugin/fude.lua` のコマンド登録と `doc/fude.txt` 記述の相互 Grep。メトリクスで「頻出ドリフト源（pj-checklist 統合時 25%）」と判明 | Comp Sensor | 中-大 (~200 行 + tests) | check_purity と同じ pattern。初回ドリフト修正コミットを覚悟 |
+| 2 | **Test coverage 計測 (luacov)** — 報告のみ、閾値強制は当面なし。データが溜まったら最低カバレッジ閾値を導入 | Comp Sensor | 中 | 既存 plenary との統合に既知の罠あれば調整 |
+| 3 | **`/harness-audit` reporting 拡張** — 過去 N PR の sensor 別検出件数を集計、4-quadrant coverage matrix を自動生成 | Inf Sensor (メタ) | 小 (skill のみ) | Fowler の「sensor 発火率」問いに答える基盤 |
+| 4 | **pre-commit 文脈ヒント** — 変更モジュールから連動して見るべき `/pj-checklist` 項目を提示。`/harness-audit` の発火率データを取った後に着手判断 | Inf Guide / Process | 中 | 過剰ノイズ化リスクあり、効果未確認 |
 
-### 4.3 Behaviour Sensor（推論的）
-
-- **AI 生成テストの品質評価**（変異テスト等）— Fowler が「最も難しい」と述べる領域。本プロジェクトでは
-  当面、人間レビュー + `/self-review` ラウンド 3 で代替
-
-### 4.4 Steering Loop の改善
-
-- **PR レビュー以外の信号の取り込み**: セルフレビューで発見した知見、ユーザー対話で漏らした不満、
-  テスト失敗の傾向などを `review-lessons.md` に流す導線（現状は PR レビュー指摘のみが対象）
-
-### 4.5 やらないこと
+### 4.3 やらないこと
 
 - **harness-audit の完全自動化**: Fowler も指摘するように「ハーネスのドリフト」自体が課題であり、
   自動運用は新たなメタ層を要する。手動・低頻度に留める
 - **多層 skill 化**: skill を細分化しすぎると認知負荷が上がる。新規 skill は既存 skill に書けない
   独立した工程に限る
+- **Duplication detection (semgrep 等)**: 既存 `/pj-checklist` の「重複ロジック検索」ルール + 推論的
+  レビューで十分。semgrep のセットアップ・false positive 対応コスト >> 効果
+- **Performance 監視**: Neovim プラグインの性質上、ユーザーから Issue で来る。能動監視のコストに
+  見合わない
+- **Security 自動 scan**: 外部入力は `gh` CLI 経由に限定、コードベースが小さい。手動
+  `/security-review` で十分
+- **Computational Guide 拡張**: 動的型言語の性質上、type guard 等は導入コストに見合わない
 
 ## 5. このドキュメントの保守ルール
 

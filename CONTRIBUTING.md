@@ -46,13 +46,14 @@ make lint              # luacheck
 make format            # stylua（自動修正）
 make format-check      # stylua --check
 make test              # plenary-busted テスト
-make all               # lint + format-check + test
+make all               # lint + format-check + test + check-state-deps + check-purity
 make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
+make check-purity      # `*/data.lua` `*/format.lua` の純粋性 (vim API / state 不参照) 検証
 ```
 
 push 前に `make all` が通ることを必ず確認してください。`make setup` で `.githooks/pre-commit` が有効化され、コミット時に自動実行されます。
 
-`make check-state-deps` は `config.state` の読み書きパターンに触れる変更や、`lua/fude/` のモジュール追加・削除を行ったときに、CLAUDE.md の State Dependencies 表が実コードとずれていないかを確認します。`make all` / pre-commit / CI で自動実行されるため、手動で個別に走らせる必要はほとんどありませんが、ピンポイントで確認したい場合に利用してください。
+`make check-state-deps` と `make check-purity` は CLAUDE.md の宣言（State Dependencies 表、`ui/format.lua` 等の純粋性宣言）が実コードと乖離していないかを機械検証します。`make all` / pre-commit / CI で自動実行されるため、手動で個別に走らせる必要はほとんどありませんが、ピンポイントで確認したい場合に利用してください。
 
 ## テスト
 

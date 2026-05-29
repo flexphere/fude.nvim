@@ -75,3 +75,22 @@ jobs:
         run: |
           nvim --version
           make check-state-deps
+
+  check-purity:
+    name: Purity Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Neovim
+        run: |
+          curl -sL "https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.appimage" -o nvim.appimage
+          chmod +x nvim.appimage
+          sudo mkdir -p /opt/nvim
+          ./nvim.appimage --appimage-extract > /dev/null
+          sudo ln -sf "$(pwd)/squashfs-root/AppRun" /usr/bin/nvim
+
+      - name: Run check-purity
+        run: |
+          nvim --version
+          make check-purity

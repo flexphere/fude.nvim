@@ -1,6 +1,7 @@
 local M = {}
 local config = require("fude.config")
 local format = require("fude.ui.format")
+local inline = require("fude.ui.inline")
 local extmarks = require("fude.ui.extmarks")
 
 local ref_ns = vim.api.nvim_create_namespace("fude_refs")
@@ -25,7 +26,7 @@ M.build_overview_right_lines = format.build_overview_right_lines
 M.calculate_comment_browser_layout = format.calculate_comment_browser_layout
 M.format_comment_browser_list = format.format_comment_browser_list
 M.format_comment_browser_thread = format.format_comment_browser_thread
-M.format_comments_for_inline = format.format_comments_for_inline
+M.format_comments_for_inline = inline.format_comments_for_inline
 M.parse_markdown_line = format.parse_markdown_line
 M.build_highlighted_chunks = format.build_highlighted_chunks
 M.apply_markdown_highlight_to_line = format.apply_markdown_highlight_to_line
