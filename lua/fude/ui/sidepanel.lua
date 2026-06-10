@@ -115,21 +115,14 @@ function M.format_files_section_tree(tree_entries, total_file_count, width)
 		if entry.type == "directory" then
 			local viewed_all = entry.total_files > 0 and entry.viewed_files == entry.total_files
 			local viewed_marker = viewed_all and " ✓" or ""
-			local file_count = string.format("(%d)", entry.total_files or 0)
-			local adds = string.format("+%-3d", entry.additions or 0)
-			local dels = string.format("-%-3d", entry.deletions or 0)
-			local text = indent .. entry.name .. " " .. file_count .. " " .. adds .. " " .. dels .. viewed_marker
+			local text = indent .. entry.name .. viewed_marker
 			table.insert(lines, text)
 
 			local pos = #indent
 			table.insert(highlights, { line_idx, pos, pos + #entry.name, "Directory" })
-			pos = pos + #entry.name + 1 + #file_count + 1
-			table.insert(highlights, { line_idx, pos, pos + #adds, "DiffAdd" })
-			pos = pos + #adds + 1
-			table.insert(highlights, { line_idx, pos, pos + #dels, "DiffDelete" })
 			if viewed_all then
 				local viewed_hl = (config.opts.signs and config.opts.signs.viewed_hl) or "DiagnosticOk"
-				local marker_start = pos + #dels + 1
+				local marker_start = pos + #entry.name + 1
 				table.insert(highlights, { line_idx, marker_start, marker_start + #"✓", viewed_hl })
 			end
 		else
