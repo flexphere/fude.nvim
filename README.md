@@ -47,7 +47,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewFiles", "FudeReviewNextFile", "FudeReviewPrevFile",
     "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
-    "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeCreatePR",
+    "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
+    "FudeReviewToggleFileTree", "FudeCreatePR",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
@@ -123,6 +124,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewReload` | Reload review data from GitHub |
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
+| `:FudeReviewPanel` | Toggle review side panel |
+| `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template |
 
 ## Configuration
@@ -202,6 +205,12 @@ require("fude").setup({
     show = true,           -- Show outdated comments
     label = "[outdated]",  -- Label string for outdated comments
     hl_group = "Comment",  -- Highlight group for outdated label in comment browser
+  },
+  -- Side panel options
+  sidepanel = {
+    width = 40,          -- Panel width in columns
+    position = "left",   -- "left" or "right"
+    file_tree = "flat",  -- "flat" or "tree"
   },
   -- Callback after review start completes (all data fetched)
   -- Receives: { pr_number, base_ref, head_ref, pr_url }

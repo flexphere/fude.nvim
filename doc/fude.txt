@@ -352,6 +352,7 @@ Using lazy.nvim: >lua
     Keymaps (panel):~
       `<CR>`    Select scope entry or open file
       `<Tab>`   Toggle reviewed (scope) / viewed (file)
+      `t`       Toggle files between flat list and tree
       `R`       Reload review data from GitHub
       `q`       Close panel
 
@@ -360,6 +361,12 @@ Using lazy.nvim: >lua
     The panel auto-refreshes when the scope changes, data is reloaded,
     or viewed/reviewed state is toggled.
     Configurable via `sidepanel` options. Requires an active session.
+
+:FudeReviewToggleFileTree              *:FudeReviewToggleFileTree*
+    Toggle the open side panel's Files section between flat list and
+    directory tree. This changes only the current panel session; the
+    default is controlled by `sidepanel.file_tree`.
+    Requires the side panel to be open.
 
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
     Toggle gitsigns base between PR base and HEAD.
@@ -494,6 +501,7 @@ Default configuration: >lua
     sidepanel = {
       width = 40,       -- Panel width in columns (minimum 20)
       position = "left", -- "left" or "right"
+      file_tree = "flat", -- "flat" or "tree"
     },
     -- Outdated comment display options
     outdated = {
@@ -659,6 +667,12 @@ Options:
 `sidepanel.position`
                   Side of the editor to open the panel: "left" or "right"
                   (default: "left").
+
+`sidepanel.file_tree`
+                  Files section layout for the side panel: "flat" or "tree"
+                  (default: "flat"). The tree layout groups changed files
+                  by directory and can be toggled for the current panel with
+                  |:FudeReviewToggleFileTree| or `t` in the panel.
 
 `outdated.show`     Show outdated comments (default: true).
                   Outdated comments are those whose position in the code

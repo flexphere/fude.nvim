@@ -168,3 +168,7 @@ end, { desc = "Toggle gitsigns between PR base and HEAD" })
 vim.api.nvim_create_user_command("FudeReviewPanel", function()
 	require("fude.ui.sidepanel").toggle()
 end, { desc = "Toggle review side panel" })
+
+vim.api.nvim_create_user_command("FudeReviewToggleFileTree", function()
+	require("fude.ui.sidepanel").toggle_file_tree_mode()
+end, { desc = "Toggle review side panel file list between flat and tree" })

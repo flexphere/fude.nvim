@@ -187,4 +187,41 @@ describe("sidepanel integration", function()
 		-- One changed file
 		assert.are.equal(1, #panel.file_entries)
 	end)
+
+	it("uses flat files by default", function()
+		config.state.changed_files = {
+			{ path = "a/b.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+
+		assert.is_nil(panel.tree_entries)
+		assert.are.equal("flat", panel.file_tree_mode)
+		assert.is_false(vim.tbl_contains(lines, "a"))
+	end)
+
+	it("uses tree files when configured", function()
+		config.setup({ sidepanel = { file_tree = "tree" } })
+		config.state.active = true
+		config.state.pr_number = 1
+		config.state.base_ref = "main"
+		config.state.head_ref = "feat/test"
+		config.state.changed_files = {
+			{ path = "a/b.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		config.state.pr_commits = {}
+		config.state.viewed_files = {}
+		config.state.reviewed_commits = {}
+		config.state.comments = {}
+		config.state.pending_comments = {}
+
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+
+		assert.is_not_nil(panel.tree_entries)
+		assert.are.equal("tree", panel.file_tree_mode)
+		assert.is_true(vim.tbl_contains(lines, "a"))
+	end)
 end)

@@ -187,6 +187,68 @@ describe("format_files_section", function()
 	end)
 end)
 
+describe("format_files_section_tree", function()
+	local tree = require("fude.ui.sidepanel.tree")
+
+	local function make_file_entry(path, opts)
+		opts = opts or {}
+		return {
+			path = path,
+			additions = opts.additions or 0,
+			deletions = opts.deletions or 0,
+			status_icon = opts.status_icon or "~",
+			status_hl = "DiffChange",
+			viewed_icon = opts.viewed_icon or " ",
+			viewed_hl = "Comment",
+		}
+	end
+
+	it("renders header with total file count", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("a/c.md"),
+			make_file_entry("d.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+		assert.are.equal(" Files (3)", lines[1])
+	end)
+
+	it("renders directories as indented labels", function()
+		local file_entries = { make_file_entry("a/b/c.md") }
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, 1, 40)
+		assert.are.equal("a", lines[3])
+		assert.are.equal("  b", lines[4])
+		assert.is_truthy(lines[5]:find("    "))
+		assert.truthy(lines[5]:find("c.md"))
+	end)
+
+	it("keeps flat row diff columns on file entries", function()
+		local file_entries = { make_file_entry("a/foo.md", { additions = 7, deletions = 2 }) }
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, 1, 40)
+		assert.truthy(lines[4]:find("~"))
+		assert.truthy(lines[4]:find("%+7"))
+		assert.truthy(lines[4]:find("%-2"))
+		assert.truthy(lines[4]:find("foo.md"))
+	end)
+
+	it("returns rendered tree-entry count", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("c.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local _, _, count = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+		assert.are.equal(3, count)
+	end)
+end)
+
 describe("build_sidepanel_content", function()
 	it("combines scope and file sections with blank separator", function()
 		local scope_lines = { "Header S", "---", "Entry S1" }
