@@ -215,15 +215,29 @@ describe("format_files_section_tree", function()
 		assert.are.equal(" Files (3)", lines[1])
 	end)
 
-	it("renders directories as indented labels", function()
+	it("renders directories as indented labels with aggregate counts", function()
 		local file_entries = { make_file_entry("a/b/c.md") }
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, {})
 		local lines = sidepanel.format_files_section_tree(entries, 1, 40)
-		assert.are.equal("a", lines[3])
-		assert.are.equal("  b", lines[4])
+		assert.are.equal("a (1) +0   -0  ", lines[3])
+		assert.are.equal("  b (1) +0   -0  ", lines[4])
 		assert.is_truthy(lines[5]:find("    "))
 		assert.truthy(lines[5]:find("c.md"))
+	end)
+
+	it("renders directory diff totals", function()
+		local file_entries = {
+			make_file_entry("a/b.md", { additions = 7, deletions = 2 }),
+			make_file_entry("a/c.md", { additions = 3, deletions = 1 }),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+
+		assert.truthy(lines[3]:find("%(2%)"))
+		assert.truthy(lines[3]:find("%+10"))
+		assert.truthy(lines[3]:find("%-3"))
 	end)
 
 	it("keeps flat row diff columns on file entries", function()

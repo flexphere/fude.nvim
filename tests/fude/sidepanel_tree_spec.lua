@@ -89,6 +89,19 @@ describe("compute_aggregate", function()
 		assert.are.equal(3, agg.total_files)
 		assert.are.equal(1, agg.viewed_files)
 	end)
+
+	it("reuses cached aggregate values", function()
+		local root = tree.build_tree({
+			make_file("a/x.md", { additions = 1 }),
+			make_file("a/y.md", { additions = 2 }),
+		})
+		local cache = {}
+		local first = tree.compute_aggregate(root.children[1], {}, cache)
+		local second = tree.compute_aggregate(root.children[1], {}, cache)
+
+		assert.are.equal(3, first.additions)
+		assert.are.same(first, second)
+	end)
 end)
 
 describe("flatten_tree", function()
@@ -108,5 +121,6 @@ describe("flatten_tree", function()
 		assert.are.equal("file", entries[3].type)
 		assert.are.equal("c.md", entries[3].name)
 		assert.are.equal(5, entries[1].additions)
+		assert.are.equal(1, entries[1].total_files)
 	end)
 end)

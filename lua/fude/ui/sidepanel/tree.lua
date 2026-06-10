@@ -87,27 +87,36 @@ end
 --- Compute aggregate stats for a node.
 --- @param node table tree node
 --- @param viewed_files table<string, string>|nil { [path] = "VIEWED" | ... }
+--- @param cache table<table, table>|nil memoized aggregate values by node
 --- @return table { additions, deletions, total_files, viewed_files }
-function M.compute_aggregate(node, viewed_files)
+function M.compute_aggregate(node, viewed_files, cache)
 	viewed_files = viewed_files or {}
+	cache = cache or {}
+	if cache[node] then
+		return cache[node]
+	end
+
 	if node.type == "file" then
 		local f = node.file or {}
-		return {
+		local agg = {
 			additions = f.additions or 0,
 			deletions = f.deletions or 0,
 			total_files = 1,
 			viewed_files = viewed_files[node.path] == "VIEWED" and 1 or 0,
 		}
+		cache[node] = agg
+		return agg
 	end
 
 	local agg = { additions = 0, deletions = 0, total_files = 0, viewed_files = 0 }
 	for _, child in ipairs(node.children or {}) do
-		local child_agg = M.compute_aggregate(child, viewed_files)
+		local child_agg = M.compute_aggregate(child, viewed_files, cache)
 		agg.additions = agg.additions + child_agg.additions
 		agg.deletions = agg.deletions + child_agg.deletions
 		agg.total_files = agg.total_files + child_agg.total_files
 		agg.viewed_files = agg.viewed_files + child_agg.viewed_files
 	end
+	cache[node] = agg
 	return agg
 end
 
@@ -117,11 +126,12 @@ end
 --- @return table[] entries
 function M.flatten_tree(root, viewed_files)
 	local entries = {}
+	local aggregate_cache = {}
 
 	local function visit(node, depth)
 		for _, child in ipairs(node.children or {}) do
 			if child.type == "directory" then
-				local agg = M.compute_aggregate(child, viewed_files)
+				local agg = M.compute_aggregate(child, viewed_files, aggregate_cache)
 				table.insert(entries, {
 					type = "directory",
 					path = child.path,

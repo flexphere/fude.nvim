@@ -222,6 +222,13 @@ describe("sidepanel integration", function()
 
 		assert.is_not_nil(panel.tree_entries)
 		assert.are.equal("tree", panel.file_tree_mode)
-		assert.is_true(vim.tbl_contains(lines, "a"))
+		local found_dir = false
+		for _, line in ipairs(lines) do
+			if line:find("^a %(1%) %+1") then
+				found_dir = true
+				break
+			end
+		end
+		assert.is_true(found_dir)
 	end)
 end)
