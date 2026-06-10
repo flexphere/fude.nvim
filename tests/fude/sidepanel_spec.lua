@@ -1,4 +1,5 @@
 local sidepanel = require("fude.ui.sidepanel")
+local config = require("fude.config")
 
 describe("format_scope_section", function()
 	local scope_entries = {
@@ -190,6 +191,10 @@ end)
 describe("format_files_section_tree", function()
 	local tree = require("fude.ui.sidepanel.tree")
 
+	after_each(function()
+		config.setup({})
+	end)
+
 	local function make_file_entry(path, opts)
 		opts = opts or {}
 		return {
@@ -236,6 +241,19 @@ describe("format_files_section_tree", function()
 		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
 
 		assert.are.equal("a", lines[3])
+	end)
+
+	it("uses configured viewed sign for fully viewed directories", function()
+		config.setup({ signs = { viewed = "●" } })
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("a/c.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, { ["a/b.md"] = "VIEWED", ["a/c.md"] = "VIEWED" })
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+
+		assert.are.equal("a ●", lines[3])
 	end)
 
 	it("keeps flat row diff columns on file entries", function()
