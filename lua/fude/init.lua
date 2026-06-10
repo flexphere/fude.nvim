@@ -275,9 +275,9 @@ function M.start()
 			on_ready()
 		end)
 
-		-- Apply diffopt settings
+		-- Save original diffopt (always, so toggle_iwhite changes are restored on stop)
+		state.original_diffopt = vim.o.diffopt
 		if config.opts.diffopt then
-			state.original_diffopt = vim.o.diffopt
 			for _, opt in ipairs(config.opts.diffopt) do
 				vim.opt.diffopt:append(opt)
 			end
@@ -705,6 +705,37 @@ function M.restore_gitsigns_base()
 				M.apply_gitsigns_base_for_buffer(bufnr)
 			end
 		end
+	end
+end
+
+--- Toggle whitespace diff ignore (iwhite).
+--- When enabled, whitespace-only changes are hidden from the diff view.
+function M.toggle_iwhite()
+	local state = config.state
+	if not state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+
+	-- Sync state.iwhite with actual diffopt before toggling
+	local diffopt = vim.opt.diffopt:get()
+	local has_iwhite = false
+	for _, opt in ipairs(diffopt) do
+		if opt == "iwhite" then
+			has_iwhite = true
+			break
+		end
+	end
+	state.iwhite = has_iwhite
+
+	if state.iwhite then
+		state.iwhite = false
+		vim.opt.diffopt:remove("iwhite")
+		vim.notify("fude.nvim: Whitespace diff ON", vim.log.levels.INFO)
+	else
+		state.iwhite = true
+		vim.opt.diffopt:append("iwhite")
+		vim.notify("fude.nvim: Whitespace diff ignored", vim.log.levels.INFO)
 	end
 end
 
