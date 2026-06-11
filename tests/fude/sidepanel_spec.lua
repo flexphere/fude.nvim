@@ -1,4 +1,5 @@
 local sidepanel = require("fude.ui.sidepanel")
+local config = require("fude.config")
 
 describe("format_scope_section", function()
 	local scope_entries = {
@@ -184,6 +185,97 @@ describe("format_files_section", function()
 		assert.are.equal(2, #lines) -- header + separator
 		assert.are.equal(0, count)
 		assert.truthy(lines[1]:find("Files %(0%)"))
+	end)
+end)
+
+describe("format_files_section_tree", function()
+	local tree = require("fude.ui.sidepanel.tree")
+
+	after_each(function()
+		config.setup({})
+	end)
+
+	local function make_file_entry(path, opts)
+		opts = opts or {}
+		return {
+			path = path,
+			additions = opts.additions or 0,
+			deletions = opts.deletions or 0,
+			status_icon = opts.status_icon or "~",
+			status_hl = "DiffChange",
+			viewed_icon = opts.viewed_icon or " ",
+			viewed_hl = "Comment",
+		}
+	end
+
+	it("renders header with total file count", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("a/c.md"),
+			make_file_entry("d.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+		assert.are.equal(" Files (3)", lines[1])
+	end)
+
+	it("renders directories as indented labels", function()
+		local file_entries = { make_file_entry("a/b/c.md") }
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, 1, 40)
+		assert.are.equal("a", lines[3])
+		assert.are.equal("  b", lines[4])
+		assert.is_truthy(lines[5]:find("    "))
+		assert.truthy(lines[5]:find("c.md"))
+	end)
+
+	it("does not render directory aggregate totals", function()
+		local file_entries = {
+			make_file_entry("a/b.md", { additions = 7, deletions = 2 }),
+			make_file_entry("a/c.md", { additions = 3, deletions = 1 }),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+
+		assert.are.equal("a", lines[3])
+	end)
+
+	it("uses configured viewed sign for fully viewed directories", function()
+		config.setup({ signs = { viewed = "●" } })
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("a/c.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, { ["a/b.md"] = "VIEWED", ["a/c.md"] = "VIEWED" })
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+
+		assert.are.equal("a ●", lines[3])
+	end)
+
+	it("keeps flat row diff columns on file entries", function()
+		local file_entries = { make_file_entry("a/foo.md", { additions = 7, deletions = 2 }) }
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, 1, 40)
+		assert.truthy(lines[4]:find("~"))
+		assert.truthy(lines[4]:find("%+7"))
+		assert.truthy(lines[4]:find("%-2"))
+		assert.truthy(lines[4]:find("foo.md"))
+	end)
+
+	it("returns rendered tree-entry count", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("c.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local _, _, count = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+		assert.are.equal(3, count)
 	end)
 end)
 

@@ -95,6 +95,60 @@ function M.format_files_section(file_entries, width, format_path_fn)
 	return lines, highlights, #file_entries
 end
 
+--- Format the files section lines as a directory tree.
+--- @param tree_entries table[] entries from ui.sidepanel.tree.flatten_tree
+--- @param total_file_count number total number of changed files
+--- @param width number available width in columns
+--- @return string[] lines
+--- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
+--- @return number entry_count number of rendered tree entries
+function M.format_files_section_tree(tree_entries, total_file_count, width)
+	local lines = { string.format(" Files (%d)", total_file_count), string.rep("─", width) }
+	local highlights = {
+		{ 0, 0, -1, "Title" },
+	}
+
+	for _, entry in ipairs(tree_entries) do
+		local indent = string.rep("  ", entry.depth)
+		local line_idx = #lines
+
+		if entry.type == "directory" then
+			local viewed_all = entry.total_files > 0 and entry.viewed_files == entry.total_files
+			local viewed_sign = (config.opts.signs and config.opts.signs.viewed) or "✓"
+			local viewed_marker = viewed_all and (" " .. viewed_sign) or ""
+			local text = indent .. entry.name .. viewed_marker
+			table.insert(lines, text)
+
+			local pos = #indent
+			table.insert(highlights, { line_idx, pos, pos + #entry.name, "Directory" })
+			if viewed_all then
+				local viewed_hl = (config.opts.signs and config.opts.signs.viewed_hl) or "DiagnosticOk"
+				local marker_start = pos + #entry.name + 1
+				table.insert(highlights, { line_idx, marker_start, marker_start + #viewed_sign, viewed_hl })
+			end
+		else
+			local f = entry.file or {}
+			local viewed = f.viewed_icon or " "
+			local status = f.status_icon or "?"
+			local adds = string.format("+%-3d", f.additions or 0)
+			local dels = string.format("-%-3d", f.deletions or 0)
+			local text = indent .. viewed .. " " .. status .. " " .. adds .. " " .. dels .. " " .. entry.name
+			table.insert(lines, text)
+
+			local viewed_start = #indent
+			table.insert(highlights, { line_idx, viewed_start, viewed_start + #viewed, f.viewed_hl or "Comment" })
+			local status_start = viewed_start + #viewed + 1
+			table.insert(highlights, { line_idx, status_start, status_start + #status, f.status_hl or "DiffChange" })
+			local adds_start = status_start + #status + 1
+			table.insert(highlights, { line_idx, adds_start, adds_start + #adds, "DiffAdd" })
+			local dels_start = adds_start + #adds + 1
+			table.insert(highlights, { line_idx, dels_start, dels_start + #dels, "DiffDelete" })
+		end
+	end
+
+	return lines, highlights, #tree_entries
+end
+
 --- Build the full sidepanel buffer content from scope and files sections.
 --- @param scope_lines string[]
 --- @param scope_hls table[]
@@ -230,7 +284,18 @@ local function render(panel)
 
 	-- Format sections
 	local scope_lines, scope_hls, scope_count = M.format_scope_section(scope_entries, width)
-	local file_lines, file_hls, file_count = M.format_files_section(file_entries, width, config.format_path)
+	local file_lines, file_hls, file_count
+	local tree_entries
+	if (panel.file_tree_mode or sp_opts.file_tree) == "tree" then
+		local tree_mod = require("fude.ui.sidepanel.tree")
+		local tree = tree_mod.build_tree(file_entries)
+		tree_mod.collapse_singleton_chains(tree)
+		tree_entries = tree_mod.flatten_tree(tree, state.viewed_files)
+		file_lines, file_hls, file_count = M.format_files_section_tree(tree_entries, #file_entries, width)
+	else
+		file_lines, file_hls, file_count = M.format_files_section(file_entries, width, config.format_path)
+	end
+
 	local lines, highlights, section_map =
 		M.build_sidepanel_content(scope_lines, scope_hls, scope_count, file_lines, file_hls, file_count)
 
@@ -252,6 +317,7 @@ local function render(panel)
 	-- Store entries and map for keymap handlers
 	panel.scope_entries = scope_entries
 	panel.file_entries = file_entries
+	panel.tree_entries = tree_entries
 	panel.section_map = section_map
 end
 
@@ -325,8 +391,10 @@ function M.open()
 		buf = buf,
 		scope_entries = {},
 		file_entries = {},
+		tree_entries = nil,
 		section_map = nil,
 		augroup = nil,
+		file_tree_mode = sp_opts.file_tree or "flat",
 	}
 	state.sidepanel = panel
 
@@ -417,6 +485,10 @@ function M.setup_keymaps(panel)
 			M.toggle_file_viewed(panel, entry_info)
 		end
 	end, { buffer = buf, desc = "Toggle reviewed/viewed" })
+
+	vim.keymap.set("n", "t", function()
+		M.toggle_file_tree_mode(panel)
+	end, { buffer = buf, desc = "Toggle tree/flat file list" })
 end
 
 --- Get the entry under the cursor.
@@ -442,9 +514,19 @@ function M.get_current_entry(panel)
 			return { type = "scope", index = result.index, entry = entry }
 		end
 	elseif result.type == "file" then
-		local entry = panel.file_entries[result.index]
-		if entry then
-			return { type = "file", index = result.index, entry = entry }
+		if panel.tree_entries then
+			local tree_entry = panel.tree_entries[result.index]
+			if tree_entry then
+				if tree_entry.type == "directory" then
+					return { type = "directory", index = result.index, entry = tree_entry }
+				end
+				return { type = "file", index = result.index, entry = tree_entry.file, tree_entry = tree_entry }
+			end
+		else
+			local entry = panel.file_entries[result.index]
+			if entry then
+				return { type = "file", index = result.index, entry = entry }
+			end
 		end
 	end
 
@@ -493,6 +575,19 @@ function M.toggle_scope_reviewed(_panel, entry_info)
 		state.reviewed_commits[sha] = true
 	end
 
+	M.refresh()
+end
+
+--- Toggle the panel's file display mode for the current panel session.
+--- @param panel table|nil sidepanel state (defaults to active panel)
+function M.toggle_file_tree_mode(panel)
+	panel = panel or config.state.sidepanel
+	if not panel then
+		vim.notify("fude.nvim: Side panel is not open", vim.log.levels.WARN)
+		return
+	end
+	panel.file_tree_mode = panel.file_tree_mode == "tree" and "flat" or "tree"
+	vim.notify("fude.nvim: File list mode: " .. panel.file_tree_mode, vim.log.levels.INFO)
 	M.refresh()
 end
 
