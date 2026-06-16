@@ -6,7 +6,7 @@ describe("preview integration", function()
 	before_each(function()
 		config.setup({})
 		helpers.mock_diff({ ["source.lua"] = "source.lua" })
-		helpers.mock_base_content("base line 1\nbase line 2\nbase line 3")
+		helpers.mock_base_content("base line 1\nbase line 2\nbase line 3\n")
 	end)
 
 	after_each(function()
@@ -42,9 +42,28 @@ describe("preview integration", function()
 
 			assert.is_not_nil(config.state.preview_buf)
 			local lines = vim.api.nvim_buf_get_lines(config.state.preview_buf, 0, -1, false)
+			assert.are.equal(3, #lines)
 			assert.are.equal("base line 1", lines[1])
 			assert.are.equal("base line 2", lines[2])
 			assert.are.equal("base line 3", lines[3])
+		end)
+
+		it("handles base content without trailing newline", function()
+			helpers.mock_base_content("no trailing newline")
+
+			local buf = helpers.create_buf({ "current line 1" }, "source.lua")
+			local source_win = vim.api.nvim_get_current_win()
+			vim.api.nvim_win_set_buf(source_win, buf)
+
+			config.state.active = true
+			config.state.base_ref = "main"
+			config.state.scope = "full_pr"
+
+			preview.open_preview(source_win)
+
+			local lines = vim.api.nvim_buf_get_lines(config.state.preview_buf, 0, -1, false)
+			assert.are.equal(1, #lines)
+			assert.are.equal("no trailing newline", lines[1])
 		end)
 
 		it("enables diff mode on both windows", function()
