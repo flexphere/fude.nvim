@@ -66,6 +66,25 @@ describe("preview integration", function()
 			assert.are.equal("no trailing newline", lines[1])
 		end)
 
+		it("preserves trailing blank lines in base content", function()
+			helpers.mock_base_content("line 1\n\n")
+
+			local buf = helpers.create_buf({ "current line 1" }, "source.lua")
+			local source_win = vim.api.nvim_get_current_win()
+			vim.api.nvim_win_set_buf(source_win, buf)
+
+			config.state.active = true
+			config.state.base_ref = "main"
+			config.state.scope = "full_pr"
+
+			preview.open_preview(source_win)
+
+			local lines = vim.api.nvim_buf_get_lines(config.state.preview_buf, 0, -1, false)
+			assert.are.equal(2, #lines)
+			assert.are.equal("line 1", lines[1])
+			assert.are.equal("", lines[2])
+		end)
+
 		it("enables diff mode on both windows", function()
 			local buf = helpers.create_buf({ "line 1", "line 2" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
