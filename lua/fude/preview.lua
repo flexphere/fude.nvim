@@ -38,6 +38,9 @@ function M.open_preview(source_win)
 	end
 
 	local preview_buf = vim.api.nvim_create_buf(false, true)
+	if content:sub(-1) == "\n" then
+		content = content:sub(1, -2)
+	end
 	local lines = vim.split(content, "\n", { trimempty = false })
 	vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, lines)
 
