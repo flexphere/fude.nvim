@@ -45,6 +45,21 @@ function M.comment_count_display(submitted, pending, outdated)
 	return "💬" .. total, hl
 end
 
+--- Count files with VIEWED state among changed files.
+--- @param viewed_files table<string, string>|nil { [path] = "VIEWED" | "UNVIEWED" | "DISMISSED" }
+--- @param changed_files table[] list of { path, ... }
+--- @return number
+function M.count_viewed(viewed_files, changed_files)
+	viewed_files = viewed_files or {}
+	local count = 0
+	for _, file in ipairs(changed_files) do
+		if viewed_files[file.path] == "VIEWED" then
+			count = count + 1
+		end
+	end
+	return count
+end
+
 --- Build normalized file entries from changed files list.
 --- @param changed_files table[] list of { path, status, additions, deletions, patch }
 --- @param repo_root string repository root directory

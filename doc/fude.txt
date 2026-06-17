@@ -347,7 +347,8 @@ Using lazy.nvim: >lua
 
     Files:~
       Lists all changed files in the current scope with status icons,
-      additions/deletions counts, and viewed state.
+      additions/deletions counts, and viewed state. The header shows
+      the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 
     Keymaps (panel):~
       `<CR>`    Select scope entry or open file

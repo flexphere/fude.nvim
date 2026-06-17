@@ -114,41 +114,41 @@ describe("format_files_section", function()
 		},
 	}
 
-	it("creates header with file count", function()
-		local lines = sidepanel.format_files_section(file_entries, 40)
-		assert.truthy(lines[1]:find("Files %(2%)"))
+	it("creates header with viewed and total file count", function()
+		local lines = sidepanel.format_files_section(file_entries, 40, nil, 1)
+		assert.truthy(lines[1]:find("Files %(Reviewed: 1/2%)"))
 	end)
 
 	it("creates separator as second line", function()
-		local lines = sidepanel.format_files_section(file_entries, 40)
+		local lines = sidepanel.format_files_section(file_entries, 40, nil, 1)
 		assert.truthy(lines[2]:find("─"))
 	end)
 
 	it("creates one line per file entry after header", function()
-		local lines, _, count = sidepanel.format_files_section(file_entries, 60)
+		local lines, _, count = sidepanel.format_files_section(file_entries, 60, nil, 1)
 		assert.are.equal(2, count)
 		assert.are.equal(4, #lines) -- header + separator + 2 entries
 	end)
 
 	it("shows viewed icon", function()
-		local lines = sidepanel.format_files_section(file_entries, 60)
+		local lines = sidepanel.format_files_section(file_entries, 60, nil, 1)
 		assert.truthy(lines[3]:find("✓"))
 	end)
 
 	it("shows status icon", function()
-		local lines = sidepanel.format_files_section(file_entries, 60)
+		local lines = sidepanel.format_files_section(file_entries, 60, nil, 1)
 		assert.truthy(lines[3]:find("~"))
 		assert.truthy(lines[4]:find("%+"))
 	end)
 
 	it("shows additions and deletions", function()
-		local lines = sidepanel.format_files_section(file_entries, 60)
+		local lines = sidepanel.format_files_section(file_entries, 60, nil, 1)
 		assert.truthy(lines[3]:find("+10"))
 		assert.truthy(lines[3]:find("-5"))
 	end)
 
 	it("shows file path", function()
-		local lines = sidepanel.format_files_section(file_entries, 80)
+		local lines = sidepanel.format_files_section(file_entries, 80, nil, 1)
 		assert.truthy(lines[3]:find("lua/fude/scope.lua"))
 	end)
 
@@ -156,13 +156,13 @@ describe("format_files_section", function()
 		local fn = function(p)
 			return p:match("[^/]+$")
 		end
-		local lines = sidepanel.format_files_section(file_entries, 80, fn)
+		local lines = sidepanel.format_files_section(file_entries, 80, fn, 1)
 		assert.truthy(lines[3]:find("scope.lua"))
 		assert.is_falsy(lines[3]:find("lua/fude/scope.lua"))
 	end)
 
 	it("uses identity when format_path_fn is nil", function()
-		local lines = sidepanel.format_files_section(file_entries, 80, nil)
+		local lines = sidepanel.format_files_section(file_entries, 80, nil, 1)
 		assert.truthy(lines[3]:find("lua/fude/scope.lua"))
 	end)
 
@@ -170,21 +170,26 @@ describe("format_files_section", function()
 		local fn = function()
 			return nil
 		end
-		local lines = sidepanel.format_files_section(file_entries, 80, fn)
+		local lines = sidepanel.format_files_section(file_entries, 80, fn, 1)
 		assert.truthy(lines[3]:find("lua/fude/scope.lua"))
 	end)
 
 	it("returns highlights for each file entry", function()
-		local _, file_hls = sidepanel.format_files_section(file_entries, 60)
+		local _, file_hls = sidepanel.format_files_section(file_entries, 60, nil, 1)
 		-- header (1) + 4 highlights per file (viewed, status, adds, dels) × 2 files = 9
 		assert.are.equal(9, #file_hls)
 	end)
 
 	it("handles empty entries", function()
-		local lines, _, count = sidepanel.format_files_section({}, 40)
+		local lines, _, count = sidepanel.format_files_section({}, 40, nil, 0)
 		assert.are.equal(2, #lines) -- header + separator
 		assert.are.equal(0, count)
-		assert.truthy(lines[1]:find("Files %(0%)"))
+		assert.truthy(lines[1]:find("Files %(Reviewed: 0/0%)"))
+	end)
+
+	it("shows all-viewed count in header", function()
+		local lines = sidepanel.format_files_section(file_entries, 40, nil, 2)
+		assert.truthy(lines[1]:find("Files %(Reviewed: 2/2%)"))
 	end)
 end)
 
@@ -208,7 +213,7 @@ describe("format_files_section_tree", function()
 		}
 	end
 
-	it("renders header with total file count", function()
+	it("renders header with viewed and total file count", function()
 		local file_entries = {
 			make_file_entry("a/b.md"),
 			make_file_entry("a/c.md"),
@@ -216,15 +221,15 @@ describe("format_files_section_tree", function()
 		}
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, {})
-		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
-		assert.are.equal(" Files (3)", lines[1])
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 0)
+		assert.are.equal(" Files (Reviewed: 0/3)", lines[1])
 	end)
 
 	it("renders directories as indented labels", function()
 		local file_entries = { make_file_entry("a/b/c.md") }
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, {})
-		local lines = sidepanel.format_files_section_tree(entries, 1, 40)
+		local lines = sidepanel.format_files_section_tree(entries, 1, 40, 0)
 		assert.are.equal("a", lines[3])
 		assert.are.equal("  b", lines[4])
 		assert.is_truthy(lines[5]:find("    "))
@@ -238,7 +243,7 @@ describe("format_files_section_tree", function()
 		}
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, {})
-		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 0)
 
 		assert.are.equal("a", lines[3])
 	end)
@@ -251,7 +256,7 @@ describe("format_files_section_tree", function()
 		}
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, { ["a/b.md"] = "VIEWED", ["a/c.md"] = "VIEWED" })
-		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 2)
 
 		assert.are.equal("a ●", lines[3])
 	end)
@@ -260,7 +265,7 @@ describe("format_files_section_tree", function()
 		local file_entries = { make_file_entry("a/foo.md", { additions = 7, deletions = 2 }) }
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, {})
-		local lines = sidepanel.format_files_section_tree(entries, 1, 40)
+		local lines = sidepanel.format_files_section_tree(entries, 1, 40, 0)
 		assert.truthy(lines[4]:find("~"))
 		assert.truthy(lines[4]:find("%+7"))
 		assert.truthy(lines[4]:find("%-2"))
@@ -274,8 +279,19 @@ describe("format_files_section_tree", function()
 		}
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, {})
-		local _, _, count = sidepanel.format_files_section_tree(entries, #file_entries, 40)
+		local _, _, count = sidepanel.format_files_section_tree(entries, #file_entries, 40, 0)
 		assert.are.equal(3, count)
+	end)
+
+	it("shows viewed count in header", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("a/c.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 1)
+		assert.are.equal(" Files (Reviewed: 1/2)", lines[1])
 	end)
 end)
 
