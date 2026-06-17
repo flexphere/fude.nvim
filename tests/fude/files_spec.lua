@@ -268,6 +268,42 @@ describe("build_file_entries with comment_counts", function()
 	end)
 end)
 
+describe("count_viewed", function()
+	it("counts all VIEWED files", function()
+		local viewed = { ["a.lua"] = "VIEWED", ["b.lua"] = "VIEWED", ["c.lua"] = "VIEWED" }
+		local changed = { { path = "a.lua" }, { path = "b.lua" }, { path = "c.lua" } }
+		assert.are.equal(3, files.count_viewed(viewed, changed))
+	end)
+
+	it("counts only VIEWED, not UNVIEWED or DISMISSED", function()
+		local viewed = { ["a.lua"] = "VIEWED", ["b.lua"] = "UNVIEWED", ["c.lua"] = "DISMISSED" }
+		local changed = { { path = "a.lua" }, { path = "b.lua" }, { path = "c.lua" } }
+		assert.are.equal(1, files.count_viewed(viewed, changed))
+	end)
+
+	it("returns 0 when no files are VIEWED", function()
+		local viewed = { ["a.lua"] = "UNVIEWED", ["b.lua"] = "UNVIEWED" }
+		local changed = { { path = "a.lua" }, { path = "b.lua" } }
+		assert.are.equal(0, files.count_viewed(viewed, changed))
+	end)
+
+	it("returns 0 for empty changed_files", function()
+		local viewed = { ["a.lua"] = "VIEWED" }
+		assert.are.equal(0, files.count_viewed(viewed, {}))
+	end)
+
+	it("returns 0 when viewed_files is nil", function()
+		local changed = { { path = "a.lua" }, { path = "b.lua" } }
+		assert.are.equal(0, files.count_viewed(nil, changed))
+	end)
+
+	it("ignores paths in viewed_files not in changed_files", function()
+		local viewed = { ["a.lua"] = "VIEWED", ["x.lua"] = "VIEWED" }
+		local changed = { { path = "a.lua" }, { path = "b.lua" } }
+		assert.are.equal(1, files.count_viewed(viewed, changed))
+	end)
+end)
+
 describe("apply_viewed_toggle", function()
 	local config = require("fude.config")
 	local helpers = require("tests.helpers")
