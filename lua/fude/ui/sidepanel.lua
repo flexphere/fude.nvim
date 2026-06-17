@@ -56,7 +56,7 @@ end
 --- @param file_entries table[] entries from files.build_file_entries
 --- @param width number available width in columns
 --- @param format_path_fn (fun(s: string): string|nil)|nil formats file path for display (nil = identity)
---- @param viewed_count number number of files with VIEWED state
+--- @param viewed_count number count of files with VIEWED state
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of file entries
@@ -64,6 +64,7 @@ function M.format_files_section(file_entries, width, format_path_fn, viewed_coun
 	format_path_fn = format_path_fn or function(p)
 		return p
 	end
+	viewed_count = viewed_count or 0
 	local lines = { string.format(" Files (Reviewed: %d/%d)", viewed_count, #file_entries), string.rep("─", width) }
 	local highlights = {
 		{ 0, 0, -1, "Title" },
@@ -100,11 +101,12 @@ end
 --- @param tree_entries table[] entries from ui.sidepanel.tree.flatten_tree
 --- @param total_file_count number total number of changed files
 --- @param width number available width in columns
---- @param viewed_count number number of files with VIEWED state
+--- @param viewed_count number count of files with VIEWED state
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of rendered tree entries
 function M.format_files_section_tree(tree_entries, total_file_count, width, viewed_count)
+	viewed_count = viewed_count or 0
 	local lines = { string.format(" Files (Reviewed: %d/%d)", viewed_count, total_file_count), string.rep("─", width) }
 	local highlights = {
 		{ 0, 0, -1, "Title" },
@@ -271,6 +273,7 @@ local function render(panel)
 	-- Build file entries (skip if repo root unavailable)
 	local repo_root = diff_mod.get_repo_root()
 	local file_entries = {}
+	local viewed_count = 0
 	if repo_root then
 		local viewed_sign = (config.opts.signs and config.opts.signs.viewed) or "✓"
 		local comment_counts = comments_data.build_file_comment_counts(state.comments, state.pending_comments)
@@ -282,11 +285,11 @@ local function render(panel)
 			viewed_sign,
 			comment_counts
 		)
+		viewed_count = files_mod.count_viewed(state.viewed_files, state.changed_files or {})
 	end
 
 	-- Format sections
 	local scope_lines, scope_hls, scope_count = M.format_scope_section(scope_entries, width)
-	local viewed_count = files_mod.count_viewed(state.viewed_files, state.changed_files or {})
 	local file_lines, file_hls, file_count
 	local tree_entries
 	if (panel.file_tree_mode or sp_opts.file_tree) == "tree" then
