@@ -191,6 +191,40 @@ describe("format_files_section", function()
 		local lines = sidepanel.format_files_section(file_entries, 40, nil, 2)
 		assert.truthy(lines[1]:find("Files %(Reviewed: 2/2%)"))
 	end)
+
+	it("shows current file marker for matching path", function()
+		local lines = sidepanel.format_files_section(file_entries, 80, nil, 1, "lua/fude/scope.lua")
+		assert.truthy(lines[3]:find("▶"))
+	end)
+
+	it("does not show marker for non-current files", function()
+		local lines = sidepanel.format_files_section(file_entries, 80, nil, 1, "lua/fude/scope.lua")
+		assert.is_falsy(lines[4]:find("▶"))
+	end)
+
+	it("returns DiagnosticInfo highlight for current file", function()
+		local _, hls = sidepanel.format_files_section(file_entries, 60, nil, 1, "lua/fude/scope.lua")
+		local found = false
+		for _, hl in ipairs(hls) do
+			if hl[4] == "DiagnosticInfo" then
+				found = true
+				break
+			end
+		end
+		assert.is_true(found)
+	end)
+
+	it("no marker when current_path is nil", function()
+		local lines = sidepanel.format_files_section(file_entries, 80, nil, 1, nil)
+		assert.is_falsy(lines[3]:find("▶"))
+		assert.is_falsy(lines[4]:find("▶"))
+	end)
+
+	it("no marker when current_path does not match any file", function()
+		local lines = sidepanel.format_files_section(file_entries, 80, nil, 1, "lua/fude/nonexistent.lua")
+		assert.is_falsy(lines[3]:find("▶"))
+		assert.is_falsy(lines[4]:find("▶"))
+	end)
 end)
 
 describe("format_files_section_tree", function()
@@ -292,6 +326,51 @@ describe("format_files_section_tree", function()
 		local entries = tree.flatten_tree(root, {})
 		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 1)
 		assert.are.equal(" Files (Reviewed: 1/2)", lines[1])
+	end)
+
+	it("shows current file marker for matching file in tree", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+			make_file_entry("a/c.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 0, "a/b.md")
+		local found_marker = false
+		local found_no_marker = false
+		for i = 3, #lines do
+			if lines[i]:find("b.md") and lines[i]:find("▶") then
+				found_marker = true
+			end
+			if lines[i]:find("c.md") and not lines[i]:find("▶") then
+				found_no_marker = true
+			end
+		end
+		assert.is_true(found_marker)
+		assert.is_true(found_no_marker)
+	end)
+
+	it("does not show marker on directory entries", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 0, "a/b.md")
+		-- Line 3 is the directory "a", should not have ▶
+		assert.is_falsy(lines[3]:find("▶"))
+	end)
+
+	it("no marker when current_path is nil", function()
+		local file_entries = {
+			make_file_entry("a/b.md"),
+		}
+		local root = tree.build_tree(file_entries)
+		local entries = tree.flatten_tree(root, {})
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 0, nil)
+		for i = 3, #lines do
+			assert.is_falsy(lines[i]:find("▶"))
+		end
 	end)
 end)
 
