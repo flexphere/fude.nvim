@@ -297,7 +297,7 @@ local function render(panel)
 	)
 
 	-- Build file entries (skip if repo root unavailable)
-	local repo_root = diff_mod.get_repo_root()
+	local repo_root = panel.repo_root
 	local file_entries = {}
 	local viewed_count = 0
 	if repo_root then
@@ -317,7 +317,15 @@ local function render(panel)
 	-- Determine current file path for marker
 	local current_path = nil
 	if repo_root then
-		local target_win = M.find_target_window(panel.win)
+		local current_win = vim.api.nvim_get_current_win()
+		local target_win = nil
+		if current_win ~= panel.win and current_win ~= state.preview_win then
+			local buf = vim.api.nvim_win_get_buf(current_win)
+			if vim.bo[buf].buftype == "" then
+				target_win = current_win
+			end
+		end
+		target_win = target_win or M.find_target_window(panel.win)
 		if target_win then
 			local target_buf = vim.api.nvim_win_get_buf(target_win)
 			local buf_name = vim.api.nvim_buf_get_name(target_buf)
@@ -476,6 +484,7 @@ function M.open()
 		section_map = nil,
 		augroup = nil,
 		file_tree_mode = sp_opts.file_tree or "flat",
+		repo_root = get_diff().get_repo_root(),
 	}
 	state.sidepanel = panel
 
