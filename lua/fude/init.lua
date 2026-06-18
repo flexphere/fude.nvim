@@ -316,9 +316,15 @@ function M.start()
 				vim.schedule(function()
 					require("fude.ui").refresh_extmarks()
 					M.setup_buf_keymaps()
+					local panel = config.state.sidepanel
+					if panel and panel.win and vim.api.nvim_win_is_valid(panel.win) then
+						if vim.api.nvim_get_current_buf() ~= panel.buf then
+							require("fude.ui.sidepanel").follow_current_file()
+						end
+					end
 				end)
 			end,
-			desc = "fude.nvim: Update extmarks and keymaps",
+			desc = "fude.nvim: Update extmarks, keymaps, and sidepanel marker",
 		})
 
 		-- Apply gitsigns base per-buffer after gitsigns attaches

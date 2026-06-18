@@ -57,10 +57,11 @@ end
 --- @param width number available width in columns
 --- @param format_path_fn (fun(s: string): string|nil)|nil formats file path for display (nil = identity)
 --- @param viewed_count number count of files with VIEWED state
+--- @param current_path string|nil repo-relative path of the currently open file
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of file entries
-function M.format_files_section(file_entries, width, format_path_fn, viewed_count)
+function M.format_files_section(file_entries, width, format_path_fn, viewed_count, current_path)
 	format_path_fn = format_path_fn or function(p)
 		return p
 	end
@@ -71,20 +72,27 @@ function M.format_files_section(file_entries, width, format_path_fn, viewed_coun
 	}
 
 	for _, entry in ipairs(file_entries) do
+		local is_current = current_path and entry.path == current_path
+		local current_icon = is_current and "▶" or " "
 		local viewed = entry.viewed_icon or " "
 		local status = entry.status_icon or "?"
 		local adds = string.format("+%-3d", entry.additions or 0)
 		local dels = string.format("-%-3d", entry.deletions or 0)
 		local raw = format_path_fn(entry.path)
 		local display_name = type(raw) == "string" and raw or entry.path
-		local text = " " .. viewed .. " " .. status .. " " .. adds .. " " .. dels .. " " .. display_name
+		local text = current_icon .. " " .. viewed .. " " .. status .. " " .. adds .. " " .. dels .. " " .. display_name
 		local line_idx = #lines
 		table.insert(lines, text)
 
+		-- Current file highlight
+		if is_current then
+			table.insert(highlights, { line_idx, 0, #current_icon, "DiagnosticInfo" })
+		end
 		-- Viewed icon highlight
-		table.insert(highlights, { line_idx, 1, 1 + #viewed, entry.viewed_hl or "Comment" })
+		local viewed_start = #current_icon + 1
+		table.insert(highlights, { line_idx, viewed_start, viewed_start + #viewed, entry.viewed_hl or "Comment" })
 		-- Status icon highlight
-		local status_start = 1 + #viewed + 1
+		local status_start = viewed_start + #viewed + 1
 		table.insert(highlights, { line_idx, status_start, status_start + #status, entry.status_hl or "DiffChange" })
 		-- Additions highlight
 		local adds_start = status_start + #status + 1
@@ -102,10 +110,11 @@ end
 --- @param total_file_count number total number of changed files
 --- @param width number available width in columns
 --- @param viewed_count number count of files with VIEWED state
+--- @param current_path string|nil repo-relative path of the currently open file
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of rendered tree entries
-function M.format_files_section_tree(tree_entries, total_file_count, width, viewed_count)
+function M.format_files_section_tree(tree_entries, total_file_count, width, viewed_count, current_path)
 	viewed_count = viewed_count or 0
 	local lines = { string.format(" Files (Reviewed: %d/%d)", viewed_count, total_file_count), string.rep("─", width) }
 	local highlights = {
@@ -132,14 +141,31 @@ function M.format_files_section_tree(tree_entries, total_file_count, width, view
 			end
 		else
 			local f = entry.file or {}
+			local is_current = current_path and entry.path == current_path
+			local current_icon = is_current and "▶" or " "
 			local viewed = f.viewed_icon or " "
 			local status = f.status_icon or "?"
 			local adds = string.format("+%-3d", f.additions or 0)
 			local dels = string.format("-%-3d", f.deletions or 0)
-			local text = indent .. viewed .. " " .. status .. " " .. adds .. " " .. dels .. " " .. entry.name
+			local text = indent
+				.. current_icon
+				.. " "
+				.. viewed
+				.. " "
+				.. status
+				.. " "
+				.. adds
+				.. " "
+				.. dels
+				.. " "
+				.. entry.name
 			table.insert(lines, text)
 
-			local viewed_start = #indent
+			local ci_start = #indent
+			if is_current then
+				table.insert(highlights, { line_idx, ci_start, ci_start + #current_icon, "DiagnosticInfo" })
+			end
+			local viewed_start = ci_start + #current_icon + 1
 			table.insert(highlights, { line_idx, viewed_start, viewed_start + #viewed, f.viewed_hl or "Comment" })
 			local status_start = viewed_start + #viewed + 1
 			table.insert(highlights, { line_idx, status_start, status_start + #status, f.status_hl or "DiffChange" })
@@ -288,6 +314,20 @@ local function render(panel)
 		viewed_count = files_mod.count_viewed(state.viewed_files, state.changed_files or {})
 	end
 
+	-- Determine current file path for marker
+	local current_path = nil
+	if repo_root then
+		local target_win = M.find_target_window(panel.win)
+		if target_win then
+			local target_buf = vim.api.nvim_win_get_buf(target_win)
+			local buf_name = vim.api.nvim_buf_get_name(target_buf)
+			if buf_name and buf_name ~= "" then
+				local abs_path = vim.fn.fnamemodify(buf_name, ":p")
+				current_path = diff_mod.make_relative(abs_path, repo_root)
+			end
+		end
+	end
+
 	-- Format sections
 	local scope_lines, scope_hls, scope_count = M.format_scope_section(scope_entries, width)
 	local file_lines, file_hls, file_count
@@ -297,9 +337,11 @@ local function render(panel)
 		local tree = tree_mod.build_tree(file_entries)
 		tree_mod.collapse_singleton_chains(tree)
 		tree_entries = tree_mod.flatten_tree(tree, state.viewed_files)
-		file_lines, file_hls, file_count = M.format_files_section_tree(tree_entries, #file_entries, width, viewed_count)
+		file_lines, file_hls, file_count =
+			M.format_files_section_tree(tree_entries, #file_entries, width, viewed_count, current_path)
 	else
-		file_lines, file_hls, file_count = M.format_files_section(file_entries, width, config.format_path, viewed_count)
+		file_lines, file_hls, file_count =
+			M.format_files_section(file_entries, width, config.format_path, viewed_count, current_path)
 	end
 
 	local lines, highlights, section_map =
@@ -325,6 +367,18 @@ local function render(panel)
 	panel.file_entries = file_entries
 	panel.tree_entries = tree_entries
 	panel.section_map = section_map
+
+	-- Compute target cursor line for current file (1-based)
+	panel.current_file_line = nil
+	if current_path and section_map then
+		local entries = tree_entries or file_entries
+		for i, ent in ipairs(entries) do
+			if ent.type ~= "directory" and ent.path == current_path then
+				panel.current_file_line = section_map.files_entry_offset + i
+				break
+			end
+		end
+	end
 end
 
 --- Refresh the sidepanel content (re-render with current state).
@@ -348,6 +402,27 @@ function M.refresh()
 		local line_count = vim.api.nvim_buf_line_count(panel.buf)
 		local new_row = math.min(cursor[1], line_count)
 		pcall(vim.api.nvim_win_set_cursor, panel.win, { new_row, cursor[2] })
+	end
+end
+
+--- Re-render the sidepanel and move cursor to the currently open file.
+--- Used by BufEnter to keep the sidepanel cursor in sync with the active buffer.
+function M.follow_current_file()
+	local panel = config.state.sidepanel
+	if not panel then
+		return
+	end
+	if not panel.win or not vim.api.nvim_win_is_valid(panel.win) then
+		config.state.sidepanel = nil
+		return
+	end
+
+	render(panel)
+
+	if panel.current_file_line and vim.api.nvim_win_is_valid(panel.win) and vim.api.nvim_buf_is_valid(panel.buf) then
+		local line_count = vim.api.nvim_buf_line_count(panel.buf)
+		local target = math.min(panel.current_file_line, line_count)
+		pcall(vim.api.nvim_win_set_cursor, panel.win, { target, 0 })
 	end
 end
 
