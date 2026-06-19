@@ -360,7 +360,9 @@ Using lazy.nvim: >lua
     When opening a file with `<CR>`, the cursor moves to a non-panel
     window before opening the file. The panel stays open.
     The panel auto-refreshes when the scope changes, data is reloaded,
-    or viewed/reviewed state is toggled.
+    viewed/reviewed state is toggled, or the current buffer changes.
+    The currently open file is marked with `▶` in the Files section,
+    and the panel cursor follows the active file automatically.
     Configurable via `sidepanel` options. Requires an active session.
 
 :FudeReviewToggleFileTree              *:FudeReviewToggleFileTree*
