@@ -73,6 +73,18 @@ Using lazy.nvim: >lua
 :FudeReviewToggle                                    *:FudeReviewToggle*
     Toggle review session on or off.
 
+:FudeReviewLocal [{base}]                              *:FudeReviewLocal*
+    Start local (pre-PR) review mode against {base} (default: the
+    repository's default branch). Changed files come from the local
+    git diff (merge-base with {base}, plus untracked files) and review
+    comments are stored in `.fude/reviews/<session-id>.jsonl` inside
+    the worktree instead of GitHub. Resumes the session recorded in
+    `.fude/current.json` when one exists.
+
+:FudeReviewLocalStop                               *:FudeReviewLocalStop*
+    Stop local review mode and clear `.fude/current.json`. The
+    session's JSONL file is kept for later reference.
+
 :FudeReviewDiff                                        *:FudeReviewDiff*
     Toggle the diff preview window. Opens a side-by-side diff view
     showing the base branch version of the current file, or closes

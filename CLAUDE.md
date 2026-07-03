@@ -66,15 +66,17 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
-| `active` | init | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser |
+| `active` | init, local/session | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser, local/session |
+| `review_mode` | init, local/session | init, scope, local/session |
+| `local_session` | local/session | local/session |
 | `pr_number` | init | init, comments, comments/sync, files, scope, pr, ui/comment_browser, drafts |
-| `base_ref` | init | init, preview, scope, ui/sidepanel |
-| `head_ref` | init | init, scope, ui/sidepanel |
-| `merge_base_sha` | init | init |
+| `base_ref` | init, local/session | init, preview, scope, ui/sidepanel |
+| `head_ref` | init, local/session | init, scope, ui/sidepanel, local/session |
+| `merge_base_sha` | init, local/session | init |
 | `pr_url` | init | init, ui, drafts |
-| `changed_files` | init, init(reload), scope | init, files, scope, ui/sidepanel |
-| `comments` | comments/sync | comments, comments/sync, files, ui/comment_browser, ui/sidepanel |
-| `comment_map` | comments/sync | comments, ui/comment_browser |
+| `changed_files` | init, init(reload), scope, local/session | init, files, scope, ui/sidepanel, local/session |
+| `comments` | comments/sync, local/session | comments, comments/sync, files, ui/comment_browser, ui/sidepanel, local/session |
+| `comment_map` | comments/sync, local/session | comments, ui/comment_browser |
 | `pending_comments` | comments, comments/sync, ui/comment_browser | comments, comments/sync, files, ui/comment_browser, ui/sidepanel |
 | `pending_review_id` | comments/sync | comments, comments/sync, ui/comment_browser, ui/extmarks |
 | `pending_review_node_id` | comments/sync | comments/sync |
@@ -94,15 +96,15 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `ns_id` | config | config, ui, ui/comment_browser, ui/extmarks |
 | `reply_window` | ui, ui/comment_browser | ui, ui/comment_browser |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
-| `github_user` | init | comments, comments/sync, ui/comment_browser |
+| `github_user` | init, local/session | comments, comments/sync, ui/comment_browser |
 | `current_comment_style` | config | config |
 | `outdated_map` | comments/sync | |
-| `reload_timer` | init | init, config |
-| `reloading` | init | init |
+| `reload_timer` | init, local/session | init, config, local/session |
+| `reloading` | init, local/session | init, local/session |
 | `gitsigns_reset` | init, scope | init |
 | `sidepanel` | ui/sidepanel | init, ui/sidepanel |
-| `augroup` | init | init |
-| `original_diffopt` | init | init |
+| `augroup` | init | init, local/session |
+| `original_diffopt` | init, local/session | init, local/session |
 
 **高リスクフィールド**（多数のモジュールから参照）:
 - `active` — 6モジュールが参照。変更時は全モジュールのガード条件を確認

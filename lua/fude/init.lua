@@ -159,6 +159,7 @@ function M.start()
 		end
 
 		state.active = true
+		state.review_mode = "github"
 		state.pr_number = pr_info.number
 		state.base_ref = pr_info.baseRefName
 		state.head_ref = pr_info.headRefName
@@ -308,61 +309,69 @@ function M.start()
 		local comments_mod = require("fude.comments")
 		comments_mod.load_comments(on_ready)
 
-		state.augroup = vim.api.nvim_create_augroup("Fude", { clear = true })
-
-		vim.api.nvim_create_autocmd("BufEnter", {
-			group = state.augroup,
-			callback = function(ev)
-				local entered_buf = ev.buf
-				vim.schedule(function()
-					require("fude.ui").refresh_extmarks()
-					M.setup_buf_keymaps()
-					local panel = config.state.sidepanel
-					if panel and panel.win and vim.api.nvim_win_is_valid(panel.win) then
-						if entered_buf ~= panel.buf then
-							require("fude.ui.sidepanel").follow_current_file()
-						end
-					end
-				end)
-			end,
-			desc = "fude.nvim: Update extmarks, keymaps, and sidepanel marker",
-		})
-
-		-- Apply gitsigns base per-buffer after gitsigns attaches
-		-- New files use base_ref, existing files use merge_base_sha
-		vim.api.nvim_create_autocmd("User", {
-			group = state.augroup,
-			pattern = "GitSignsUpdate",
-			callback = function(ev)
-				local bufnr = ev.buf
-				vim.schedule(function()
-					M.apply_gitsigns_base_for_buffer(bufnr)
-				end)
-			end,
-			desc = "fude.nvim: Apply gitsigns base per-buffer",
-		})
-
-		-- Apply gitsigns base to current buffer immediately (in case gitsigns already attached)
-		vim.schedule(function()
-			M.apply_gitsigns_base_for_buffer()
-		end)
-
-		vim.api.nvim_create_autocmd("WinResized", {
-			group = state.augroup,
-			callback = function()
-				vim.schedule(function()
-					require("fude.ui").refresh_extmarks()
-				end)
-			end,
-			desc = "fude.nvim: Update extmarks on window resize",
-		})
-
-		-- Set keymaps on the current buffer immediately
-		M.setup_buf_keymaps()
-
-		-- Setup hint autocmd for comment lines (shows available actions)
-		require("fude.ui").setup_inline_hint_autocmd()
+		M.setup_review_autocmds(state)
 	end)
+end
+
+--- Create the review-mode augroup and shared autocmds (extmark refresh,
+--- per-buffer gitsigns base, keymaps, inline hints). Shared by the GitHub
+--- review flow (`M.start`) and the local review flow (`fude.local.session`).
+--- @param state table the session's `config.state` table (stored for teardown)
+function M.setup_review_autocmds(state)
+	state.augroup = vim.api.nvim_create_augroup("Fude", { clear = true })
+
+	vim.api.nvim_create_autocmd("BufEnter", {
+		group = state.augroup,
+		callback = function(ev)
+			local entered_buf = ev.buf
+			vim.schedule(function()
+				require("fude.ui").refresh_extmarks()
+				M.setup_buf_keymaps()
+				local panel = config.state.sidepanel
+				if panel and panel.win and vim.api.nvim_win_is_valid(panel.win) then
+					if entered_buf ~= panel.buf then
+						require("fude.ui.sidepanel").follow_current_file()
+					end
+				end
+			end)
+		end,
+		desc = "fude.nvim: Update extmarks, keymaps, and sidepanel marker",
+	})
+
+	-- Apply gitsigns base per-buffer after gitsigns attaches
+	-- New files use base_ref, existing files use merge_base_sha
+	vim.api.nvim_create_autocmd("User", {
+		group = state.augroup,
+		pattern = "GitSignsUpdate",
+		callback = function(ev)
+			local bufnr = ev.buf
+			vim.schedule(function()
+				M.apply_gitsigns_base_for_buffer(bufnr)
+			end)
+		end,
+		desc = "fude.nvim: Apply gitsigns base per-buffer",
+	})
+
+	-- Apply gitsigns base to current buffer immediately (in case gitsigns already attached)
+	vim.schedule(function()
+		M.apply_gitsigns_base_for_buffer()
+	end)
+
+	vim.api.nvim_create_autocmd("WinResized", {
+		group = state.augroup,
+		callback = function()
+			vim.schedule(function()
+				require("fude.ui").refresh_extmarks()
+			end)
+		end,
+		desc = "fude.nvim: Update extmarks on window resize",
+	})
+
+	-- Set keymaps on the current buffer immediately
+	M.setup_buf_keymaps()
+
+	-- Setup hint autocmd for comment lines (shows available actions)
+	require("fude.ui").setup_inline_hint_autocmd()
 end
 
 --- Set buffer-local keymaps for the current buffer during review mode.
@@ -418,6 +427,12 @@ function M.stop()
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.INFO)
+		return
+	end
+
+	-- Local review sessions have their own teardown (no PR / checkout handling)
+	if state.review_mode == "local" then
+		require("fude.local.session").stop()
 		return
 	end
 
@@ -534,12 +549,18 @@ function M.unmark_viewed()
 end
 
 --- Reload review data from GitHub (comments, files, viewed state, commits).
+--- For local review sessions, delegates to the local reload (JSONL re-read).
 --- @param silent boolean|nil suppress completion notification when true
 function M.reload(silent)
 	if not config.state.active then
 		if not silent then
 			vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		end
+		return
+	end
+
+	if config.state.review_mode == "local" then
+		require("fude.local.session").reload(silent)
 		return
 	end
 	if config.state.reloading then

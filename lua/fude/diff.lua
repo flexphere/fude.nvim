@@ -145,6 +145,68 @@ function M.get_default_branch()
 	return nil
 end
 
+--- Get the current branch name (nil when detached HEAD).
+--- @return string|nil branch name
+function M.get_current_branch()
+	local result = vim.system({ "git", "symbolic-ref", "--quiet", "--short", "HEAD" }, { text = true }):wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
+--- Get the HEAD commit SHA (synchronous, local git operation).
+--- @return string|nil sha
+function M.get_head_sha()
+	local result = vim.system({ "git", "rev-parse", "HEAD" }, { text = true }):wait()
+	if result.code == 0 then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
+--- Get the configured git user name (fallback: $USER).
+--- @return string user name
+function M.get_git_user()
+	local result = vim.system({ "git", "config", "user.name" }, { text = true }):wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return os.getenv("USER") or "local"
+end
+
+--- Get name-status diff output between a ref and the working tree.
+--- @param ref string base commit SHA or ref
+--- @return string|nil output
+function M.get_name_status(ref)
+	local result = vim.system({ "git", "diff", "--name-status", "-M", ref }, { text = true }):wait()
+	if result.code == 0 then
+		return result.stdout
+	end
+	return nil
+end
+
+--- Get numstat diff output between a ref and the working tree.
+--- @param ref string base commit SHA or ref
+--- @return string|nil output
+function M.get_numstat(ref)
+	local result = vim.system({ "git", "diff", "--numstat", "-M", ref }, { text = true }):wait()
+	if result.code == 0 then
+		return result.stdout
+	end
+	return nil
+end
+
+--- Get untracked (non-ignored) files in the working tree.
+--- @return string|nil output newline-separated paths
+function M.get_untracked()
+	local result = vim.system({ "git", "ls-files", "--others", "--exclude-standard" }, { text = true }):wait()
+	if result.code == 0 then
+		return result.stdout
+	end
+	return nil
+end
+
 --- Get the subject of the first commit since base branch.
 --- @param base_ref string base branch name (e.g., "main")
 --- @return string|nil subject first commit message subject

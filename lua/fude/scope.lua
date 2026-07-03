@@ -717,12 +717,22 @@ function M.find_prev_scope_index(current_scope, current_index, total)
 	return idx - 1
 end
 
+--- Format the statusline label for a local review session.
+--- @param base_ref string|nil base ref of the local session
+--- @return string label e.g. "Local: main"
+function M.format_local_scope_label(base_ref)
+	return string.format("Local: %s", base_ref or "?")
+end
+
 --- Get the statusline label for the current scope.
---- @return string label e.g. "Scope: PR" or "Scope: 3/10"
+--- @return string label e.g. "Scope: PR", "Scope: 3/10", or "Local: main"
 function M.statusline()
 	local state = config.state
 	if not state.active then
 		return ""
+	end
+	if state.review_mode == "local" then
+		return M.format_local_scope_label(state.base_ref)
 	end
 	local total = #state.pr_commits
 	return M.format_scope_label(state.scope, state.scope_commit_index, total)
