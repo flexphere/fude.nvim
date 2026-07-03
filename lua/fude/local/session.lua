@@ -29,10 +29,9 @@ end
 --- @param path_expr string
 --- @return string new path
 function M.resolve_rename_path(path_expr)
-	local prefix, old, new, suffix = path_expr:match("^(.-){(.-) => (.-)}(.*)$")
+	local prefix, new, suffix = path_expr:match("^(.-){.- => (.-)}(.*)$")
 	if prefix then
-		local _ = old
-		return (prefix .. new .. suffix):gsub("//", "/")
+		return ((prefix .. new .. suffix):gsub("//", "/"))
 	end
 	local plain_new = path_expr:match("^.* => (.+)$")
 	if plain_new then
@@ -186,6 +185,11 @@ function M.start(base_arg)
 
 	local existing = store.read_current(repo_root)
 	if existing and existing.worktree_root ~= repo_root then
+		existing = nil
+	end
+	-- A stale pointer whose JSONL was deleted cannot be resumed (the new file
+	-- would lack its session header); start a fresh session instead.
+	if existing and vim.fn.filereadable(store.session_file(repo_root, existing.id)) == 0 then
 		existing = nil
 	end
 

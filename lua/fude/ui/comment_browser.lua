@@ -12,10 +12,27 @@ local function get_comments()
 	return require("fude.comments")
 end
 local function get_sync()
+	-- Local review sessions use the JSONL backend (same external shape)
+	if config.state.review_mode == "local" then
+		return require("fude.comments.local_sync")
+	end
 	return require("fude.comments.sync")
 end
 local function get_gh()
 	return require("fude.gh")
+end
+
+--- Fetch PR-level issue comments, or immediately yield none in local review
+--- mode (PR-level comments have no local backend).
+--- @param callback fun(issue_comments: table[])
+local function fetch_issue_comments(callback)
+	if config.state.review_mode == "local" then
+		callback({})
+		return
+	end
+	get_gh().get_issue_comments(config.state.pr_number, function(err, issue_comments)
+		callback((not err and issue_comments) or {})
+	end)
 end
 
 --- Compute the local-draft key for the lower input pane given the current mode
@@ -334,10 +351,7 @@ local function create_browser(entries, issue_comments)
 
 	-- Refresh the browser (re-fetch and rebuild)
 	local function refresh()
-		get_gh().get_issue_comments(state.pr_number, function(err, new_issue_comments)
-			if err then
-				new_issue_comments = {}
-			end
+		fetch_issue_comments(function(new_issue_comments)
 			local diff = require("fude.diff")
 			local repo_root = diff.get_repo_root()
 			if not repo_root then
@@ -546,6 +560,10 @@ local function create_browser(entries, issue_comments)
 				end)
 			end
 		elseif browser.mode == "new_pr_comment" then
+			if config.state.review_mode == "local" then
+				vim.notify("fude.nvim: PR-level comments are not available in local review mode", vim.log.levels.WARN)
+				return
+			end
 			get_gh().create_issue_comment(state.pr_number, body, function(err, _)
 				if err then
 					vim.notify("fude.nvim: Failed to post comment: " .. err, vim.log.levels.ERROR)
@@ -877,11 +895,7 @@ function M.open()
 	end
 
 	-- Fetch issue comments, then build entries
-	get_gh().get_issue_comments(state.pr_number, function(err, issue_comments)
-		if err then
-			issue_comments = {}
-		end
-
+	fetch_issue_comments(function(issue_comments)
 		local entries = data.build_comment_browser_entries(
 			state.comment_map,
 			issue_comments,

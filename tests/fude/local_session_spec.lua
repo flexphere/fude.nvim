@@ -208,6 +208,23 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(second_id, config.state.local_session.id)
 	end)
 
+	it("starts fresh when the pointed session file was deleted", function()
+		mock_local_git()
+		session.start(nil)
+		local first_id = config.state.local_session.id
+		local first_file = config.state.local_session.file
+
+		-- Simulate a stale pointer: file removed, current.json left behind
+		config.state.active = false
+		config.state.review_mode = nil
+		vim.fn.delete(first_file)
+
+		session.start(nil)
+		assert.are_not.equal(first_id, config.state.local_session.id)
+		local events = store.read_events(config.state.local_session.file)
+		assert.equals("session", events[1].event)
+	end)
+
 	it("reload picks up externally appended events", function()
 		mock_local_git()
 		session.start(nil)

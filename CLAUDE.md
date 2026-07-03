@@ -71,7 +71,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
 | `active` | init, local/session | comments, comments/sync, comments/local_sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser, local/session, local/tracker |
-| `review_mode` | init, local/session | init, scope, comments, local/session, local/tracker |
+| `review_mode` | init, local/session | init, scope, comments, overview, ui/comment_browser, local/session, local/tracker |
 | `local_session` | local/session | comments, comments/local_sync, local/session |
 | `pr_number` | init | init, comments, comments/sync, files, scope, pr, ui/comment_browser, drafts |
 | `base_ref` | init, local/session | init, preview, scope, ui/sidepanel |

@@ -69,6 +69,10 @@ function M.select_scope()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
+		return
+	end
 
 	local commit_entries
 	if #state.pr_commits == 0 then
@@ -745,6 +749,10 @@ function M.next_scope()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
+		return
+	end
 
 	local gh_mod = require("fude.gh")
 	local commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
@@ -766,6 +774,10 @@ function M.prev_scope()
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
 		return
 	end
 
