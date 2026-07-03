@@ -65,6 +65,15 @@ M.defaults = {
 		label = "[outdated]", -- Label string for outdated comments
 		hl_group = "Comment", -- Highlight group for virtualText indicator
 	},
+	-- Resolved comment display options
+	resolved = {
+		-- Whether to apply and label resolved state. The underlying review-threads
+		-- fetch is shared with outdated detection, so it is skipped only when
+		-- outdated.show is also false and no pending review exists.
+		show = true,
+		label = "[resolved]", -- Label string for resolved threads
+		hl_group = "DiagnosticOk", -- Highlight group for resolved labels
+	},
 	keymaps = {
 		create_comment = "<leader>Rc",
 		view_comments = "<leader>Rv",
@@ -144,7 +153,6 @@ M.state = {
 	github_user = nil, -- Authenticated GitHub username (for ownership check)
 	comment_browser = nil, -- 3-pane comment browser window state
 	current_comment_style = nil, -- Runtime override for comment_style (nil = use opts.comment_style)
-	outdated_map = {}, -- { [comment_id] = { is_outdated = true, original_line = N } }
 	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
 	reloading = false, -- Guard flag to prevent concurrent reloads
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
@@ -201,7 +209,6 @@ function M.reset_state()
 		github_user = nil,
 		comment_browser = nil,
 		current_comment_style = nil,
-		outdated_map = {},
 		reload_timer = nil,
 		reloading = false,
 		gitsigns_reset = false,

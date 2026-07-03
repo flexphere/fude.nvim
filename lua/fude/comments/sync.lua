@@ -4,17 +4,41 @@ local gh = require("fude.gh")
 local data = require("fude.comments.data")
 local is_null = require("fude.util").is_null
 
---- Apply outdated info from outdated_map to comments.
+--- Apply per-thread info (outdated/resolved) from thread_info_map to comments.
 --- Note: We intentionally do NOT set original_line here to prevent outdated comments
 --- from appearing in comment_map (and thus being displayed at wrong positions in the editor).
 --- Outdated comments are displayed only in FudeReviewListComments.
+--- thread_info_map is keyed by the thread's root comment ID (the GraphQL query fetches
+--- only the top-level comment per thread), so is_outdated is applied to root comments
+--- only (matching the previous behavior), while is_resolved — a per-thread state — is
+--- also propagated to replies via in_reply_to_id.
 --- @param comments table[] array of comment objects
---- @param outdated_map table<number, table> { [databaseId] = { is_outdated, original_line } }
-local function apply_outdated_info(comments, outdated_map)
+--- @param thread_info_map table<number, table> { [root_comment_id] = { is_outdated, is_resolved, original_line } }
+--- @param opts table { apply_outdated = boolean, apply_resolved = boolean }
+local function apply_thread_info(comments, thread_info_map, opts)
+	-- Fallback index for threads whose root comment was deleted on GitHub: the
+	-- GraphQL "root" is then the earliest surviving reply, whose in_reply_to_id
+	-- still points at the deleted root — the same id its sibling replies carry.
+	local info_by_parent = {}
 	for _, c in ipairs(comments) do
-		local info = outdated_map[c.id]
-		if info and info.is_outdated then
+		local info = thread_info_map[c.id]
+		if info and not is_null(c.in_reply_to_id) then
+			info_by_parent[c.in_reply_to_id] = info
+		end
+	end
+	for _, c in ipairs(comments) do
+		local info = thread_info_map[c.id]
+		if opts.apply_outdated and info and info.is_outdated then
 			c.is_outdated = true
+		end
+		if opts.apply_resolved then
+			local thread_info = info
+			if not thread_info and not is_null(c.in_reply_to_id) then
+				thread_info = thread_info_map[c.in_reply_to_id] or info_by_parent[c.in_reply_to_id]
+			end
+			if thread_info and thread_info.is_resolved then
+				c.is_resolved = true
+			end
 		end
 	end
 end
@@ -48,13 +72,15 @@ local function fetch_comments(callback, opts)
 		end
 	end
 
-	local function fetch_outdated_and_apply(comments)
+	local function fetch_thread_info_and_apply(comments)
 		-- Fetch review threads only when needed:
-		--   - outdated info is enabled (outdated_map needed for display)
+		--   - outdated info is enabled (thread_info_map needed for display)
+		--   - or resolved info is enabled (thread_info_map needed for display)
 		--   - or pending review exists (thread_map needed for GraphQL reply mutation)
-		-- When neither applies, skip the GraphQL call entirely. If a reply is later
+		-- When none applies, skip the GraphQL call entirely. If a reply is later
 		-- attempted, reply_to_comment lazily refreshes thread_map on cache miss.
 		local need_outdated = not (config.opts.outdated and config.opts.outdated.show == false)
+		local need_resolved = not (config.opts.resolved and config.opts.resolved.show == false)
 		local need_thread_map = state.pending_review_id ~= nil
 
 		-- Clear stale thread_map when no longer needed (e.g. after pending review is submitted).
@@ -62,15 +88,13 @@ local function fetch_comments(callback, opts)
 			state.thread_map = {}
 		end
 
-		if not need_outdated and not need_thread_map then
-			state.outdated_map = {}
+		if not need_outdated and not need_resolved and not need_thread_map then
 			apply(comments)
 			return
 		end
 
-		gh.get_review_threads(state.pr_number, function(threads_err, outdated_map, thread_map)
+		gh.get_review_threads(state.pr_number, function(threads_err, thread_info_map, thread_map)
 			if threads_err then
-				state.outdated_map = {}
 				vim.notify("fude.nvim: Failed to fetch review threads: " .. threads_err, vim.log.levels.DEBUG)
 				apply(comments)
 				return
@@ -79,11 +103,11 @@ local function fetch_comments(callback, opts)
 			if need_thread_map then
 				state.thread_map = thread_map or {}
 			end
-			if need_outdated and outdated_map then
-				state.outdated_map = outdated_map
-				apply_outdated_info(comments, outdated_map)
-			else
-				state.outdated_map = {}
+			if (need_outdated or need_resolved) and thread_info_map then
+				apply_thread_info(comments, thread_info_map, {
+					apply_outdated = need_outdated,
+					apply_resolved = need_resolved,
+				})
 			end
 			apply(comments)
 		end)
@@ -125,11 +149,11 @@ local function fetch_comments(callback, opts)
 					)
 					comments = merged
 				end
-				fetch_outdated_and_apply(comments)
+				fetch_thread_info_and_apply(comments)
 			end)
 		else
 			state.pending_comments = {}
-			fetch_outdated_and_apply(comments)
+			fetch_thread_info_and_apply(comments)
 		end
 	end)
 end
