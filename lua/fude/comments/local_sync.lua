@@ -73,6 +73,7 @@ function M.load_comments(callback, opts)
 	state.comments = comments
 	state.comment_map = data.build_comment_map(comments)
 	require("fude.ui").refresh_extmarks()
+	require("fude.local.tracker").sync_all()
 
 	if not (opts and opts.silent) then
 		vim.notify(string.format("fude.nvim: Loaded %d comments", #comments), vim.log.levels.INFO)
@@ -191,6 +192,38 @@ function M.delete_comment(comment_id, callback)
 		}),
 		callback
 	)
+end
+
+--- Persist re-anchored comment positions as move events (batch), then
+--- refresh state once. Used by the extmark tracker on BufWritePost.
+--- @param moves table[] { id, path, start_line, end_line }
+--- @param callback fun(err: string|nil)
+function M.move_comments(moves, callback)
+	local state = config.state
+	local session = state.local_session
+	if not state.active or not session then
+		callback("Not active")
+		return
+	end
+	local created_at = now_iso()
+	for _, move in ipairs(moves or {}) do
+		local ok, err = store.append_event(
+			session.file,
+			store.build_move_event({
+				id = move.id,
+				path = move.path,
+				start_line = move.start_line,
+				end_line = move.end_line,
+				created_at = created_at,
+			})
+		)
+		if not ok then
+			callback(err or "Failed to write review file")
+			return
+		end
+	end
+	M.load_comments(nil, { silent = true })
+	callback(nil)
 end
 
 --- Toggle a thread's resolved status (resolve <-> reopen).

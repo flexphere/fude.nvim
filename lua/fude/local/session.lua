@@ -284,6 +284,35 @@ function M.start(base_arg)
 	local init = require("fude")
 	init.setup_review_autocmds(state)
 	require("fude.ui").refresh_extmarks()
+
+	-- Local-only autocmds: keep tracking extmarks in sync and write drifted
+	-- comment positions back to the JSONL store on save.
+	local tracker = require("fude.local.tracker")
+	vim.api.nvim_create_autocmd("BufWritePost", {
+		group = state.augroup,
+		callback = function(ev)
+			tracker.on_buf_write(ev.buf)
+		end,
+		desc = "fude.nvim: Re-anchor local review comments after save",
+	})
+	vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost" }, {
+		group = state.augroup,
+		callback = function(ev)
+			local bufnr = ev.buf
+			vim.schedule(function()
+				if not vim.api.nvim_buf_is_valid(bufnr) or vim.bo[bufnr].buftype ~= "" then
+					return
+				end
+				local rel_path = require("fude.diff").to_repo_relative(vim.api.nvim_buf_get_name(bufnr))
+				if rel_path then
+					tracker.sync_buffer(bufnr, rel_path)
+				end
+			end)
+		end,
+		desc = "fude.nvim: Track local review comments in opened buffers",
+	})
+	tracker.sync_all()
+
 	start_reload_timer()
 
 	vim.notify(
@@ -317,6 +346,7 @@ function M.stop()
 	require("fude.preview").close_preview()
 	require("fude.ui").clear_all_extmarks()
 	require("fude.ui").teardown_inline_hint_autocmd()
+	require("fude.local.tracker").teardown()
 	require("fude").clear_buf_keymaps()
 
 	local has_gitsigns, gitsigns = pcall(require, "gitsigns")

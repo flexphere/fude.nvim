@@ -197,9 +197,17 @@ function M.materialize(events)
 	end
 	comments = visible
 
-	-- Propagate thread resolved state onto each comment (root and replies).
+	-- Propagate thread state onto each comment. Replies carry no position of
+	-- their own (reply events have no path/line), so they inherit the root's
+	-- current path/line — including any later move events — which keeps them
+	-- visible in comment_map at the thread's anchor line, like the GitHub API.
 	for _, comment in ipairs(comments) do
 		local root_id = comment.in_reply_to_id or comment.id
+		local root = by_id[root_id]
+		if comment.in_reply_to_id and root and not root._deleted then
+			comment.path = root.path
+			comment.line = root.line
+		end
 		local thread = threads[root_id]
 		if thread then
 			comment.resolved = thread.resolved
