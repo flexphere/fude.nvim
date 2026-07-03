@@ -156,10 +156,13 @@ describe("drafts IO (set/get/remove/load)", function()
 	it("returns nil for an entry whose body is not a string (corrupt/hand-edited file)", function()
 		-- Simulate a drafts.json with a non-string body (only reachable via
 		-- external editing/corruption, never via M.set).
+		-- saved_at must be current: get() goes through the real load path,
+		-- which prunes entries older than the retention window.
+		local now_iso = os.date("!%Y-%m-%dT%H:%M:%SZ")
 		drafts.save({
-			num = { body = 123, saved_at = "2026-05-29T00:00:00Z" },
-			tbl = { body = { nested = true }, saved_at = "2026-05-29T00:00:00Z" },
-			ok = { body = "valid", saved_at = "2026-05-29T00:00:00Z" },
+			num = { body = 123, saved_at = now_iso },
+			tbl = { body = { nested = true }, saved_at = now_iso },
+			ok = { body = "valid", saved_at = now_iso },
 		})
 		assert.is_nil(drafts.get("num"))
 		assert.is_nil(drafts.get("tbl"))
