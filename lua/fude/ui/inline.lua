@@ -39,7 +39,8 @@ end
 --- why this lives in ui/inline.lua rather than the pure ui/format.lua.
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
---- @param opts table|nil inline display options (see config.defaults.inline)
+--- @param opts table|nil inline display options (see config.defaults.inline),
+---   plus `resolved` ({ label: string }, see config.defaults.resolved) for the border label
 --- @return table { virt_lines: table[][] } virt_line chunks for nvim_buf_set_extmark
 function M.format_comments_for_inline(comments, format_date_fn, opts)
 	opts = opts or {}
@@ -51,6 +52,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 	local border_hl = opts.border_hl or "DiagnosticInfo"
 	local md_enabled = opts.markdown_highlight ~= false
 	local md_hl = opts.markdown_hl or {}
+	local resolved_label = (opts.resolved and opts.resolved.label) or "[resolved]"
 
 	local virt_lines = {}
 	local indent = "    " -- Left margin (4 chars)
@@ -77,7 +79,14 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 		-- Top border: ╭─ Comment ─────────────────────╮
 		-- Use strdisplaywidth for correct UTF-8 width calculation
-		local label = is_pending and " Comment [pending] " or " Comment "
+		-- Pending takes precedence, but the two states are effectively exclusive:
+		-- an unsubmitted thread cannot be resolved on GitHub.
+		local label = " Comment "
+		if is_pending then
+			label = " Comment [pending] "
+		elseif comment.is_resolved then
+			label = " Comment " .. resolved_label .. " "
+		end
 		local corner_width = 2 -- ╭ and ╮ are 1 cell each
 		local left_dash_width = 1 -- ─ after ╭
 		local label_display_width = vim.fn.strdisplaywidth(label)
