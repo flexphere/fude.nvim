@@ -31,6 +31,30 @@ M.reply_to_comment_sync = sync.reply_to_comment
 -- Re-export picker functions (facade)
 M.list_comments = pickers.list_comments
 
+--- Whether the active session is a local (pre-PR) review.
+--- @return boolean
+local function is_local_mode()
+	return config.state.review_mode == "local"
+end
+
+--- Pick the comment backend for the active session (GitHub API or local JSONL).
+--- Both expose load_comments / reply_to_comment / edit_comment / delete_comment
+--- with identical callback signatures.
+--- @return table backend module
+local function get_backend()
+	if is_local_mode() then
+		return require("fude.comments.local_sync")
+	end
+	return sync
+end
+
+--- Whether an active session has a comment target (PR or local session).
+--- @param state table config.state
+--- @return boolean
+local function has_review_target(state)
+	return state.active and (state.pr_number ~= nil or state.local_session ~= nil)
+end
+
 --- Get comments at a specific file and line.
 --- @param rel_path string repo-relative file path
 --- @param line number line number
@@ -46,11 +70,49 @@ function M.get_comment_lines(rel_path)
 	return data.get_comment_lines(config.state.comment_map, rel_path)
 end
 
+--- Create a comment through the local backend (used by create/suggest flows).
+--- @param buf number source buffer
+--- @param rel_path string repo-relative path
+--- @param start_line number
+--- @param end_line number
+--- @param initial_lines string[]|nil prefill for the input buffer
+--- @param title string|nil input float title
+--- @param cursor_pos table|nil input float initial cursor
+local function create_local_comment(buf, rel_path, start_line, end_line, initial_lines, title, cursor_pos)
+	-- Best-effort re-anchor aid: the commented source lines at creation time.
+	local context_lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
+	local context = table.concat(context_lines, "\n")
+
+	ui.open_comment_input(function(comment_body)
+		if comment_body then
+			require("fude.comments.local_sync").create_comment(
+				rel_path,
+				start_line,
+				end_line,
+				comment_body,
+				context,
+				function(err)
+					if err then
+						vim.notify("fude.nvim: Failed to save comment: " .. err, vim.log.levels.ERROR)
+						return
+					end
+					vim.notify("fude.nvim: Comment saved", vim.log.levels.INFO)
+				end
+			)
+		end
+	end, {
+		initial_lines = initial_lines,
+		title = title,
+		cursor_pos = cursor_pos,
+		allow_draft = false,
+	})
+end
+
 --- Create a new comment on the current line or visual selection.
 --- @param is_visual boolean whether the comment is for a visual selection
 function M.create_comment(is_visual)
 	local state = config.state
-	if not state.active or not state.pr_number then
+	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
@@ -70,6 +132,11 @@ function M.create_comment(is_visual)
 	else
 		start_line = vim.fn.line(".")
 		end_line = start_line
+	end
+
+	if is_local_mode() then
+		create_local_comment(buf, rel_path, start_line, end_line, nil, nil, nil)
+		return
 	end
 
 	local pending_key = rel_path .. ":" .. start_line .. ":" .. end_line
@@ -153,7 +220,7 @@ end
 --- @param comment_id number|nil specific comment id, or nil to use latest on current line
 function M.reply_to_comment(comment_id)
 	local state = config.state
-	if not state.active or not state.pr_number then
+	if not has_review_target(state) then
 		return
 	end
 
@@ -188,7 +255,7 @@ function M.reply_to_comment(comment_id)
 
 	ui.open_reply_window(thread, {
 		initial_lines = draft_body and vim.split(format.normalize_newlines(draft_body), "\n") or nil,
-		allow_draft = drafts.enabled(),
+		allow_draft = draft_key ~= nil and drafts.enabled(),
 		on_save_draft = function(text)
 			drafts.set(draft_key, text)
 			-- Refresh after the reply windows close so the diff buffer (not the
@@ -205,7 +272,7 @@ function M.reply_to_comment(comment_id)
 			end)
 		end,
 		on_submit = function(reply_body)
-			sync.reply_to_comment(reply_target_id, reply_body, function(err)
+			get_backend().reply_to_comment(reply_target_id, reply_body, function(err)
 				if err then
 					vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
 					return
@@ -251,10 +318,10 @@ function M.is_pending_comment(comment)
 end
 
 --- Edit a comment (pending or submitted).
---- @param comment_id number comment ID to edit
+--- @param comment_id number|string comment ID to edit
 function M.edit_comment(comment_id)
 	local state = config.state
-	if not state.active or not state.pr_number then
+	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
@@ -298,7 +365,7 @@ function M.edit_comment(comment_id)
 
 	ui.open_edit_window(thread, comment, {
 		initial_lines = draft_body and vim.split(format.normalize_newlines(draft_body), "\n") or nil,
-		allow_draft = drafts.enabled(),
+		allow_draft = draft_key ~= nil and drafts.enabled(),
 		on_save_draft = function(text)
 			drafts.set(draft_key, text)
 			-- Refresh after the edit windows close so the diff buffer (not the
@@ -344,8 +411,8 @@ function M.edit_comment(comment_id)
 					end)
 				end
 			else
-				-- Submitted comment: direct API update
-				sync.edit_comment(comment_id, new_body, function(err)
+				-- Submitted comment: direct backend update (GitHub API or local JSONL)
+				get_backend().edit_comment(comment_id, new_body, function(err)
 					if err then
 						vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
 						return
@@ -359,10 +426,10 @@ function M.edit_comment(comment_id)
 end
 
 --- Delete a comment (pending or submitted).
---- @param comment_id number comment ID to delete
+--- @param comment_id number|string comment ID to delete
 function M.delete_comment(comment_id)
 	local state = config.state
-	if not state.active or not state.pr_number then
+	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
@@ -420,8 +487,8 @@ function M.delete_comment(comment_id)
 				end)
 			end)
 		else
-			-- Submitted comment: direct API delete
-			sync.delete_comment(comment_id, function(err)
+			-- Submitted comment: direct backend delete (GitHub API or local JSONL)
+			get_backend().delete_comment(comment_id, function(err)
 				if err then
 					vim.notify("fude.nvim: Delete failed: " .. err, vim.log.levels.ERROR)
 					return
@@ -477,7 +544,7 @@ end
 --- @param is_visual boolean whether the suggestion is for a visual selection
 function M.suggest_change(is_visual)
 	local state = config.state
-	if not state.active or not state.pr_number then
+	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
@@ -497,6 +564,15 @@ function M.suggest_change(is_visual)
 	else
 		start_line = vim.fn.line(".")
 		end_line = start_line
+	end
+
+	if is_local_mode() then
+		local source_lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
+		local suggestion_lines = { "```suggestion" }
+		vim.list_extend(suggestion_lines, source_lines)
+		table.insert(suggestion_lines, "```")
+		create_local_comment(buf, rel_path, start_line, end_line, suggestion_lines, " Suggest Change ", { 2, 0 })
+		return
 	end
 
 	local pending_key = rel_path .. ":" .. start_line .. ":" .. end_line
@@ -555,6 +631,47 @@ function M.suggest_change(is_visual)
 		cursor_pos = cursor_pos,
 		allow_draft = drafts.enabled(),
 	})
+end
+
+--- Toggle resolved status of the comment thread on the current line.
+--- Local review mode only (GitHub review threads are not resolvable from
+--- this plugin yet).
+function M.toggle_resolve()
+	local state = config.state
+	if not has_review_target(state) then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if not is_local_mode() then
+		vim.notify("fude.nvim: Resolve is available in local review mode only", vim.log.levels.WARN)
+		return
+	end
+
+	local buf = vim.api.nvim_get_current_buf()
+	local filepath = vim.api.nvim_buf_get_name(buf)
+	local rel_path = diff.to_repo_relative(filepath)
+	if not rel_path then
+		return
+	end
+
+	local line = vim.fn.line(".")
+	local line_comments = M.get_comments_at(rel_path, line)
+	if #line_comments == 0 then
+		vim.notify("fude.nvim: No comments on this line", vim.log.levels.INFO)
+		return
+	end
+
+	local thread_id = data.get_reply_target_id(line_comments[1].id, state.comment_map or {})
+	local root = data.find_comment_by_id(thread_id, state.comment_map or {})
+	local currently_resolved = (root and root.comment.resolved) or false
+
+	require("fude.comments.local_sync").toggle_resolved(thread_id, currently_resolved, function(err, resolved)
+		if err then
+			vim.notify("fude.nvim: Resolve failed: " .. err, vim.log.levels.ERROR)
+			return
+		end
+		vim.notify(resolved and "fude.nvim: Thread resolved" or "fude.nvim: Thread reopened", vim.log.levels.INFO)
+	end)
 end
 
 --- Navigate to the previous comment in the current file.

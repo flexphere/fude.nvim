@@ -66,17 +66,17 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
-| `active` | init, local/session | comments, comments/sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser, local/session |
-| `review_mode` | init, local/session | init, scope, local/session |
-| `local_session` | local/session | local/session |
+| `active` | init, local/session | comments, comments/sync, comments/local_sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser, local/session |
+| `review_mode` | init, local/session | init, scope, comments, local/session |
+| `local_session` | local/session | comments, comments/local_sync, local/session |
 | `pr_number` | init | init, comments, comments/sync, files, scope, pr, ui/comment_browser, drafts |
 | `base_ref` | init, local/session | init, preview, scope, ui/sidepanel |
 | `head_ref` | init, local/session | init, scope, ui/sidepanel, local/session |
 | `merge_base_sha` | init, local/session | init |
 | `pr_url` | init | init, ui, drafts |
 | `changed_files` | init, init(reload), scope, local/session | init, files, scope, ui/sidepanel, local/session |
-| `comments` | comments/sync, local/session | comments, comments/sync, files, ui/comment_browser, ui/sidepanel, local/session |
-| `comment_map` | comments/sync, local/session | comments, ui/comment_browser |
+| `comments` | comments/sync, comments/local_sync | comments, comments/sync, files, ui/comment_browser, ui/sidepanel, local/session |
+| `comment_map` | comments/sync, comments/local_sync | comments, ui/comment_browser |
 | `pending_comments` | comments, comments/sync, ui/comment_browser | comments, comments/sync, files, ui/comment_browser, ui/sidepanel |
 | `pending_review_id` | comments/sync | comments, comments/sync, ui/comment_browser, ui/extmarks |
 | `pending_review_node_id` | comments/sync | comments/sync |
@@ -96,7 +96,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `ns_id` | config | config, ui, ui/comment_browser, ui/extmarks |
 | `reply_window` | ui, ui/comment_browser | ui, ui/comment_browser |
 | `comment_browser` | ui/comment_browser | ui/comment_browser |
-| `github_user` | init, local/session | comments, comments/sync, ui/comment_browser |
+| `github_user` | init, local/session | comments, comments/sync, comments/local_sync, ui/comment_browser |
 | `current_comment_style` | config | config |
 | `outdated_map` | comments/sync | |
 | `reload_timer` | init, local/session | init, config, local/session |

@@ -85,6 +85,11 @@ Using lazy.nvim: >lua
     Stop local review mode and clear `.fude/current.json`. The
     session's JSONL file is kept for later reference.
 
+:FudeReviewResolve                                   *:FudeReviewResolve*
+    Toggle resolved status of the comment thread on the current line.
+    Available in local review mode only. Resolved threads stay visible
+    with a `[resolved]` badge.
+
 :FudeReviewDiff                                        *:FudeReviewDiff*
     Toggle the diff preview window. Opens a side-by-side diff view
     showing the base branch version of the current file, or closes

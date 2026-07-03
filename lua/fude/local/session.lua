@@ -121,58 +121,6 @@ end
 
 -- === Session helpers ===
 
---- Count lines of each commented file, preferring loaded buffer contents
---- (unsaved edits) over the on-disk file. Missing files get no entry.
---- @param repo_root string
---- @param paths string[] repo-relative paths
---- @return table<string, number> path -> line count
-local function get_line_counts(repo_root, paths)
-	local counts = {}
-	for _, path in ipairs(paths) do
-		local abs = repo_root .. "/" .. path
-		local bufnr = vim.fn.bufnr(abs)
-		if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-			counts[path] = vim.api.nvim_buf_line_count(bufnr)
-		elseif vim.fn.filereadable(abs) == 1 then
-			local ok, lines = pcall(vim.fn.readfile, abs)
-			if ok then
-				counts[path] = #lines
-			end
-		end
-	end
-	return counts
-end
-
---- Collect the distinct paths referenced by materialized comments.
---- @param comments table[]
---- @return string[] paths
-local function comment_paths(comments)
-	local set = {}
-	for _, c in ipairs(comments) do
-		if type(c.path) == "string" then
-			set[c.path] = true
-		end
-	end
-	local paths = vim.tbl_keys(set)
-	table.sort(paths)
-	return paths
-end
-
---- Load comments from the session JSONL into state (comments + comment_map).
---- @param state table config.state
-local function load_comments_into_state(state)
-	local session = state.local_session
-	if not session then
-		return
-	end
-	local data = require("fude.comments.data")
-	local events = store.read_events(session.file)
-	local comments = store.materialize(events).comments
-	store.apply_outdated(comments, get_line_counts(session.worktree_root, comment_paths(comments)))
-	state.comments = comments
-	state.comment_map = data.build_comment_map(comments)
-end
-
 --- Refresh state.changed_files from local git.
 --- @param state table config.state
 local function load_changed_files_into_state(state)
@@ -323,7 +271,7 @@ function M.start(base_arg)
 	state.github_user = diff_mod.get_git_user()
 
 	load_changed_files_into_state(state)
-	load_comments_into_state(state)
+	require("fude.comments.local_sync").load_comments(nil, { silent = true })
 
 	-- Apply diffopt settings (same as the GitHub flow)
 	if config.opts.diffopt then
@@ -407,8 +355,7 @@ function M.reload(silent)
 
 	local ok, err = pcall(function()
 		load_changed_files_into_state(state)
-		load_comments_into_state(state)
-		require("fude.ui").refresh_extmarks()
+		require("fude.comments.local_sync").load_comments(nil, { silent = true })
 		require("fude.ui.sidepanel").refresh()
 	end)
 	state.reloading = false

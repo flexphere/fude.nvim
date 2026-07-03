@@ -101,6 +101,10 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 				end
 				table.insert(header_chunks, { "(" .. created .. ")", timestamp_hl })
 			end
+			local badges = format.comment_badges(comment)
+			if badges ~= "" then
+				table.insert(header_chunks, { badges, "DiagnosticHint" })
+			end
 			table.insert(virt_lines, header_chunks)
 		end
 

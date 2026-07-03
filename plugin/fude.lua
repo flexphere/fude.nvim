@@ -113,10 +113,18 @@ vim.api.nvim_create_user_command("FudeCopyPRURL", function()
 	end)
 end, { desc = "Copy PR URL to clipboard" })
 
+vim.api.nvim_create_user_command("FudeReviewResolve", function()
+	require("fude.comments").toggle_resolve()
+end, { desc = "Toggle resolved status of the comment thread on the current line (local review)" })
+
 vim.api.nvim_create_user_command("FudeReviewSubmit", function()
 	local state = require("fude.config").state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Local review has no submit step (comments are saved immediately)", vim.log.levels.WARN)
 		return
 	end
 

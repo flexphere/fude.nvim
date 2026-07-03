@@ -15,6 +15,7 @@
 ---   move     — line re-anchor for a comment id (extmark tracking writeback)
 ---   resolve  — mark a thread resolved (thread_id = root comment id)
 ---   reopen   — reopen a resolved thread
+---   delete   — remove a comment id from the materialized view (audit stays)
 local M = {}
 local util = require("fude.util")
 local is_null = util.is_null
@@ -31,6 +32,7 @@ local EVENT_KINDS = {
 	move = true,
 	resolve = true,
 	reopen = true,
+	delete = true,
 }
 
 -- === Pure functions ===
@@ -177,8 +179,23 @@ function M.materialize(events)
 				threads[thread_id].resolved_by = (kind == "resolve") and event.author or nil
 				threads[thread_id].resolved_at = (kind == "resolve") and event.created_at or nil
 			end
+		elseif kind == "delete" then
+			local target = by_id[event.id]
+			if target then
+				target._deleted = true
+			end
 		end
 	end
+
+	-- Drop deleted comments from the materialized view (the events remain on
+	-- disk as an audit trail). Replies of a deleted root survive as orphans.
+	local visible = {}
+	for _, comment in ipairs(comments) do
+		if not comment._deleted then
+			table.insert(visible, comment)
+		end
+	end
+	comments = visible
 
 	-- Propagate thread resolved state onto each comment (root and replies).
 	for _, comment in ipairs(comments) do
@@ -300,6 +317,18 @@ function M.build_status_event(kind, opts)
 		event = kind,
 		id = opts.id,
 		thread_id = opts.thread_id,
+		author = opts.author,
+		created_at = opts.created_at,
+	}
+end
+
+--- Build a delete event (removes a comment from the materialized view).
+--- @param opts table { id, author, created_at }
+--- @return table delete event
+function M.build_delete_event(opts)
+	return {
+		event = "delete",
+		id = opts.id,
 		author = opts.author,
 		created_at = opts.created_at,
 	}
