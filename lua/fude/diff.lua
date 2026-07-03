@@ -207,6 +207,27 @@ function M.get_untracked()
 	return nil
 end
 
+--- Get the working-tree diff for a single file against a base SHA, used for the
+--- local review file-list preview. Tries `git diff <base> -- <path>` (tracked
+--- changes) first, then falls back to `git diff --no-index` (untracked/new
+--- files, which don't appear in a normal diff). Returns nil when there is no
+--- diff to show.
+--- @param base_sha string base commit SHA
+--- @param path string repo-relative file path
+--- @return string|nil patch text
+function M.get_review_patch(base_sha, path)
+	local result = vim.system({ "git", "diff", base_sha, "--", path }, { text = true }):wait()
+	if result.code == 0 and result.stdout and result.stdout ~= "" then
+		return result.stdout
+	end
+	-- Untracked/new file: diff against /dev/null (exits 1 when they differ).
+	local untracked = vim.system({ "git", "diff", "--no-index", "--", "/dev/null", path }, { text = true }):wait()
+	if untracked.stdout and untracked.stdout ~= "" then
+		return untracked.stdout
+	end
+	return nil
+end
+
 --- Get the subject of the first commit since base branch.
 --- @param base_ref string base branch name (e.g., "main")
 --- @return string|nil subject first commit message subject

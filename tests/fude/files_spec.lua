@@ -152,6 +152,61 @@ describe("status_icons", function()
 	end)
 end)
 
+describe("picker_title", function()
+	it("uses the PR number when present", function()
+		assert.equals("PR #42 Changed Files", files.picker_title(42))
+	end)
+
+	it("falls back to a neutral label for local review (no PR)", function()
+		assert.equals("Local Review: Changed Files", files.picker_title(nil))
+	end)
+end)
+
+describe("resolve_patch", function()
+	local config = require("fude.config")
+	local diff = require("fude.diff")
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("returns the entry's own patch when it has one", function()
+		assert.equals("@@ diff @@", files.resolve_patch({ path = "f.lua", patch = "@@ diff @@" }))
+	end)
+
+	it("generates the patch on demand in local review mode", function()
+		config.state.review_mode = "local"
+		config.state.local_session = { base_sha = "basesha" }
+		helpers.mock(diff, "get_review_patch", function(base, path)
+			assert.equals("basesha", base)
+			assert.equals("f.lua", path)
+			return "generated diff"
+		end)
+		assert.equals("generated diff", files.resolve_patch({ path = "f.lua", patch = "" }))
+	end)
+
+	it("returns empty string when local generation finds no diff", function()
+		config.state.review_mode = "local"
+		config.state.local_session = { base_sha = "basesha" }
+		helpers.mock(diff, "get_review_patch", function()
+			return nil
+		end)
+		assert.equals("", files.resolve_patch({ path = "f.lua", patch = "" }))
+	end)
+
+	it("does not generate a patch in GitHub review mode", function()
+		config.state.review_mode = "github"
+		local called = false
+		helpers.mock(diff, "get_review_patch", function()
+			called = true
+			return "x"
+		end)
+		assert.equals("", files.resolve_patch({ path = "f.lua", patch = "" }))
+		assert.is_false(called)
+	end)
+end)
+
 describe("comment_count_display", function()
 	it("returns empty string for zero comments", function()
 		local display, hl = files.comment_count_display(0, 0, 0)

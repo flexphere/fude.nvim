@@ -10,6 +10,34 @@ M.status_icons = {
 	copied = "C",
 }
 
+--- Build the changed-files picker title. GitHub review shows the PR number;
+--- local review (no PR) uses a neutral label.
+--- @param pr_number number|nil
+--- @return string
+function M.picker_title(pr_number)
+	if pr_number then
+		return string.format("PR #%d Changed Files", pr_number)
+	end
+	return "Local Review: Changed Files"
+end
+
+--- Resolve the diff text to preview for a changed-file entry. GitHub review
+--- ships the patch with each entry; local review has no patch on the entry
+--- (kept out of the reload path for cost), so it is generated on demand here
+--- when the entry is actually previewed.
+--- @param entry table file entry with .patch and .path
+--- @return string patch text ("" when there is nothing to show)
+function M.resolve_patch(entry)
+	if entry.patch and entry.patch ~= "" then
+		return entry.patch
+	end
+	local state = config.state
+	if state.review_mode == "local" and state.local_session then
+		return diff.get_review_patch(state.local_session.base_sha, entry.path) or ""
+	end
+	return entry.patch or ""
+end
+
 --- Determine the viewed icon for a file.
 --- @param viewed_state string|nil "VIEWED", "UNVIEWED", "DISMISSED", or nil
 --- @param viewed_sign string character to show for viewed files
@@ -261,7 +289,7 @@ function M.show_telescope()
 
 	local function create_picker(initial_entries)
 		return pickers.new({}, {
-			prompt_title = string.format("PR #%d Changed Files", state.pr_number),
+			prompt_title = M.picker_title(state.pr_number),
 			finder = finders.new_table({
 				results = initial_entries,
 				entry_maker = function(entry)
@@ -277,11 +305,12 @@ function M.show_telescope()
 				define_preview = function(self, entry)
 					ui.sync_preview_buffer(self)
 
-					if entry.patch == "" then
+					local patch = M.resolve_patch(entry)
+					if patch == "" then
 						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, { "(no diff)" })
 						return
 					end
-					local lines = vim.split(entry.patch, "\n", { trimempty = false })
+					local lines = vim.split(patch, "\n", { trimempty = false })
 					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 					vim.bo[self.state.bufnr].filetype = "diff"
 				end,
@@ -344,7 +373,7 @@ function M.show_snacks()
 
 	snacks_picker.pick({
 		source = "fude_changed_files",
-		title = string.format("PR #%d Changed Files", state.pr_number),
+		title = M.picker_title(state.pr_number),
 		items = raw_entries,
 		format = function(item, _)
 			return {
@@ -363,11 +392,12 @@ function M.show_snacks()
 			end
 			ctx.preview:reset()
 			ctx.preview:minimal()
-			if item.patch == "" then
+			local patch = M.resolve_patch(item)
+			if patch == "" then
 				ctx.preview:set_lines({ "(no diff)" })
 				return
 			end
-			local lines = vim.split(item.patch, "\n", { trimempty = false })
+			local lines = vim.split(patch, "\n", { trimempty = false })
 			ctx.preview:set_lines(lines)
 			ctx.preview:highlight({ ft = "diff" })
 		end,
@@ -522,7 +552,7 @@ function M.show_quickfix()
 	end
 
 	vim.fn.setqflist({}, " ", {
-		title = string.format("PR #%d Changed Files", state.pr_number),
+		title = M.picker_title(state.pr_number),
 		items = items,
 	})
 	vim.cmd("copen")
