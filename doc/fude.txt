@@ -15,6 +15,7 @@ CONTENTS                                                   *fude-contents*
   7. Statusline ................ |fude-statusline|
   8. Completion ................ |fude-completion|
   9. Drafts .................... |fude-drafts|
+  10. Local Review ............. |fude-local-review|
 
 ==============================================================================
 1. INTRODUCTION                                        *fude-introduction*
@@ -844,6 +845,49 @@ Limitations:
     will not be restored at the new position (same as pending comments).
   - The draft file is written with last-write-wins semantics, so running
     multiple Neovim instances against the same draft store may drop a draft.
+
+==============================================================================
+10. LOCAL REVIEW                                      *fude-local-review*
+
+|:FudeReviewLocal| reviews the working tree before a PR exists — typically
+to review AI-agent-generated code locally. No GitHub interaction happens in
+this mode.
+
+Data model~
+
+Comments live in an append-only JSONL event log inside the worktree: >
+    .fude/reviews/<session-id>.jsonl    one JSON event per line
+    .fude/current.json                  pointer to the active session
+<
+Add `.fude/` to your `.gitignore`. Event kinds: `session` (header),
+`comment` (thread root with path/start_line/end_line/body/author/
+author_type/context), `reply`, `edit`, `move` (line re-anchor), `resolve`,
+`reopen`, and `delete` (hides the comment from the view; the log line
+remains as an audit trail).
+
+Behavior~
+
+  - Changed files come from the local git diff (merge-base with the base
+    ref) plus untracked files.
+  - Comments are saved immediately on `<CR>` — there is no pending review
+    or submit step. |:FudeReviewSubmit| is not available in this mode.
+  - Comment positions follow buffer edits via extmarks and are re-anchored
+    in the JSONL on `:write` (as `move` events). Comments whose file or
+    line disappeared are shown as `[outdated]` in the comment browser.
+  - |:FudeReviewResolve| toggles a thread's resolved state (`[resolved]`
+    badge). Resolved threads stay visible.
+  - Comment drafts (|fude-drafts|) are disabled in local review mode
+    (comments are saved locally anyway).
+  - The statusline component (|fude-statusline|) shows `Local: <base>`.
+
+AI agent integration~
+
+The JSONL file is the only contract. An agent reads the events and appends
+replies with `author_type: "agent"` (shown with an `[agent]` badge). Enable
+`auto_reload` (see |fude-configuration|) to pick up agent replies
+automatically. Agents must append whole lines only — never rewrite existing
+lines. A skill scaffold for a resident Claude Code session is provided at
+`contrib/skills/fude-watch/` in the repository.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:

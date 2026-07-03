@@ -127,6 +127,9 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewPanel` | Toggle review side panel |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template |
+| `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
+| `:FudeReviewLocalStop` | Stop local review mode |
+| `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
 ## Configuration
 
@@ -238,6 +241,54 @@ comment's line. Drafts also appear in the comment browser
 (`:FudeReviewListComments`) — existing entries gain a `✎draft` marker and new
 drafts show as `[draft]` rows you can jump to. Disable with
 `drafts.enabled = false`.
+
+## Local review mode (pre-PR)
+
+`:FudeReviewLocal [base]` reviews your working tree **before a PR exists** —
+typically to review AI-agent-generated code locally. No GitHub interaction
+happens in this mode:
+
+- Changed files come from the local git diff (merge-base with `base`, default:
+  the repository's default branch), plus untracked files.
+- Comments are stored in `.fude/reviews/<session-id>.jsonl` inside the
+  worktree as an **append-only event log** (add `.fude/` to your
+  `.gitignore`). `.fude/current.json` points to the active session, so the
+  session survives Neovim restarts until `:FudeReviewLocalStop`.
+- The usual review UI works as-is: comments (`:FudeReviewComment`),
+  suggestions, replies, edits, the comment browser, side panel, and diff
+  preview. There is no submit step — comments are saved immediately.
+- `:FudeReviewResolve` toggles a thread's resolved state (shown as a
+  `[resolved]` badge).
+- Comment positions follow your edits via extmarks and are re-anchored in the
+  JSONL on save. Comments whose file/line disappeared are shown as
+  `[outdated]` in the comment browser.
+
+### AI agent integration
+
+The JSONL file is the only contract: an agent reads the events and appends
+its replies (`author_type: "agent"`, shown with an `[agent]` badge). Enable
+`auto_reload` to pick up agent replies automatically:
+
+```lua
+require("fude").setup({ auto_reload = { enabled = true, interval = 15 } })
+```
+
+Each line of `.fude/reviews/<session-id>.jsonl` is one JSON event:
+
+```jsonl
+{"event":"session","session_id":"...","base_ref":"main","base_sha":"...","branch":"feat/x","worktree_root":"/path/to/repo","created_at":"..."}
+{"event":"comment","id":"<uuid>","thread_id":"<uuid>","path":"lua/mod.lua","start_line":10,"end_line":12,"body":"...","author":"you","author_type":"human","created_at":"...","context":"..."}
+{"event":"reply","id":"<uuid>","thread_id":"<root-id>","in_reply_to":"<root-id>","body":"...","author":"claude","author_type":"agent","created_at":"..."}
+{"event":"resolve","id":"<uuid>","thread_id":"<root-id>","author":"you","created_at":"..."}
+```
+
+Other event kinds: `edit` (body replacement), `move` (line re-anchor),
+`reopen`, `delete` (hides the comment; the log line remains as an audit
+trail). Agents should **append only** — never rewrite existing lines.
+
+For a resident Claude Code session, `contrib/skills/fude-watch/` provides a
+skill scaffold that tails the active session file and responds to new
+comments as they appear.
 
 ## Completion
 
