@@ -1098,6 +1098,76 @@ describe("build_comment_browser_entries", function()
 		assert.is_falsy(entries[1].is_outdated)
 	end)
 
+	it("marks is_resolved when every comment in the entry is resolved", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "root",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_resolved = true,
+					},
+					{
+						id = 2,
+						body = "reply",
+						user = { login = "bob" },
+						created_at = "2024-01-02T00:00:00Z",
+						is_resolved = true,
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_resolved)
+	end)
+
+	it("does not mark is_resolved when any comment in the entry is unresolved", function()
+		local map = {
+			["src/a.lua"] = {
+				[1] = {
+					{
+						id = 1,
+						body = "resolved thread root",
+						user = { login = "alice" },
+						created_at = "2024-01-01T00:00:00Z",
+						is_resolved = true,
+					},
+					{
+						id = 2,
+						body = "unresolved thread root on same line",
+						user = { login = "bob" },
+						created_at = "2024-01-02T00:00:00Z",
+					},
+				},
+			},
+		}
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
+		assert.are.equal(1, #entries)
+		assert.is_false(entries[1].is_resolved)
+	end)
+
+	it("marks is_resolved on outdated entries built from all_comments", function()
+		local all_comments = {
+			{
+				id = 100,
+				path = "src/old.lua",
+				line = nil,
+				body = "outdated and resolved",
+				user = { login = "alice" },
+				created_at = "2024-01-01T00:00:00Z",
+				is_outdated = true,
+				is_resolved = true,
+			},
+		}
+		local entries = data.build_comment_browser_entries({}, {}, "/repo", id_fn, nil, nil, all_comments)
+		assert.are.equal(1, #entries)
+		assert.is_true(entries[1].is_outdated)
+		assert.is_true(entries[1].is_resolved)
+	end)
+
 	it("includes outdated comments from all_comments that are not in comment_map", function()
 		-- comment_map has no entries (outdated comments are excluded from comment_map)
 		local map = {}

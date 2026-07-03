@@ -189,6 +189,78 @@ describe("extmarks integration", function()
 			pcall(vim.api.nvim_buf_delete, scratch_buf, { force = true })
 		end)
 
+		local function find_virt_text(buf, line0, pattern)
+			local marks = vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })
+			for _, mark in ipairs(marks) do
+				if mark[2] == line0 and mark[4].virt_text then
+					local text = mark[4].virt_text[1][1]
+					if text:find(pattern) then
+						return true
+					end
+				end
+			end
+			return false
+		end
+
+		it("shows resolved indicator when every comment on the line is resolved", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+
+			config.state.active = true
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = {
+						{ id = 1, body = "root", is_resolved = true },
+						{ id = 2, body = "reply", is_resolved = true },
+					},
+				},
+			}
+			config.state.pending_comments = {}
+
+			extmarks.refresh_extmarks()
+
+			assert.is_true(find_virt_text(buf, 1, "%[resolved%]"), "Should show resolved indicator on line 2")
+		end)
+
+		it("does not show resolved indicator when the line has an unresolved comment", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+
+			config.state.active = true
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = {
+						{ id = 1, body = "resolved", is_resolved = true },
+						{ id = 2, body = "unresolved" },
+					},
+				},
+			}
+			config.state.pending_comments = {}
+
+			extmarks.refresh_extmarks()
+
+			assert.is_false(find_virt_text(buf, 1, "%[resolved%]"), "Mixed line should not show resolved indicator")
+		end)
+
+		it("uses custom resolved label and hl_group from config", function()
+			config.setup({ resolved = { label = "[DONE]", hl_group = "Title" } })
+			helpers.mock_diff({ ["test.lua"] = "test.lua" })
+			local buf = helpers.create_buf({ "line1", "line2" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+
+			config.state.active = true
+			config.state.comment_map = {
+				["test.lua"] = {
+					[1] = { { id = 1, body = "done", is_resolved = true } },
+				},
+			}
+			config.state.pending_comments = {}
+
+			extmarks.refresh_extmarks()
+
+			assert.is_true(find_virt_text(buf, 0, "%[DONE%]"), "Should use custom resolved label")
+		end)
+
 		it("marks pending comments with is_pending flag in inline mode", function()
 			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
 			vim.api.nvim_set_current_buf(buf)

@@ -33,3 +33,21 @@ describe("is_null", function()
 		assert.is_false(util.is_null({}))
 	end)
 end)
+
+describe("all_comments_resolved", function()
+	it("returns false for an empty list", function()
+		assert.is_false(util.all_comments_resolved({}))
+	end)
+
+	it("returns true when every comment is resolved", function()
+		assert.is_true(util.all_comments_resolved({ { is_resolved = true }, { is_resolved = true } }))
+	end)
+
+	it("returns false when any comment is unresolved", function()
+		assert.is_false(util.all_comments_resolved({ { is_resolved = true }, {} }))
+	end)
+
+	it("returns false when no comment is resolved", function()
+		assert.is_false(util.all_comments_resolved({ {}, {} }))
+	end)
+end)

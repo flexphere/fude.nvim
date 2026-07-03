@@ -196,8 +196,8 @@ describe("sync integration", function()
 			assert.is_true(ok, "Callback should be called even on error")
 		end)
 
-		it("skips get_review_threads when outdated disabled and no pending review", function()
-			config.setup({ outdated = { show = false } })
+		it("skips get_review_threads when outdated and resolved disabled and no pending review", function()
+			config.setup({ outdated = { show = false }, resolved = { show = false } })
 
 			local gh = require("fude.gh")
 			local threads_called = 0
@@ -228,8 +228,118 @@ describe("sync integration", function()
 				return cb_called
 			end)
 			assert.is_true(ok)
-			assert.are.equal(0, threads_called, "get_review_threads should not be called when both conditions are unmet")
+			assert.are.equal(0, threads_called, "get_review_threads should not be called when all conditions are unmet")
 			assert.are.same({}, config.state.thread_map, "thread_map should be cleared when no pending review")
+		end)
+
+		it("applies is_resolved to root comments and propagates to replies", function()
+			local gh = require("fude.gh")
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				vim.schedule(function()
+					callback(nil, {
+						[1] = { is_outdated = false, is_resolved = true, original_line = 10 },
+						[3] = { is_outdated = false, is_resolved = false, original_line = 20 },
+					}, {})
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "root", in_reply_to_id = vim.NIL },
+					{ id = 2, path = "foo.lua", line = 10, body = "reply", in_reply_to_id = 1 },
+					{ id = 3, path = "foo.lua", line = 20, body = "unresolved", in_reply_to_id = vim.NIL },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			sync.load_comments()
+
+			local ok = helpers.wait_for(function()
+				return #config.state.comments > 0
+			end)
+			assert.is_true(ok, "Should have fetched comments")
+
+			local by_id = {}
+			for _, c in ipairs(config.state.comments) do
+				by_id[c.id] = c
+			end
+			assert.is_true(by_id[1].is_resolved)
+			assert.is_true(by_id[2].is_resolved, "reply should inherit is_resolved from its thread root")
+			assert.is_nil(by_id[3].is_resolved)
+		end)
+
+		it("propagates is_resolved to siblings when the thread root was deleted", function()
+			local gh = require("fude.gh")
+			-- Root comment (id=1) was deleted on GitHub: GraphQL comments(first:1)
+			-- returns the earliest surviving reply (id=2), so thread info is keyed
+			-- by 2 while the REST replies still point at the deleted root (1).
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				vim.schedule(function()
+					callback(nil, {
+						[2] = { is_outdated = false, is_resolved = true, original_line = 10 },
+					}, {})
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 2, path = "foo.lua", line = 10, body = "surviving reply", in_reply_to_id = 1 },
+					{ id = 3, path = "foo.lua", line = 10, body = "sibling reply", in_reply_to_id = 1 },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			sync.load_comments()
+
+			local ok = helpers.wait_for(function()
+				return #config.state.comments > 0
+			end)
+			assert.is_true(ok, "Should have fetched comments")
+
+			local by_id = {}
+			for _, c in ipairs(config.state.comments) do
+				by_id[c.id] = c
+			end
+			assert.is_true(by_id[2].is_resolved)
+			assert.is_true(by_id[3].is_resolved, "sibling should inherit is_resolved via the shared deleted-root id")
+		end)
+
+		it("applies only is_resolved when outdated disabled but resolved enabled", function()
+			config.setup({ outdated = { show = false } })
+
+			local gh = require("fude.gh")
+			local threads_called = 0
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				threads_called = threads_called + 1
+				vim.schedule(function()
+					callback(nil, {
+						[1] = { is_outdated = true, is_resolved = true, original_line = 10 },
+					}, {})
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "comment", in_reply_to_id = vim.NIL },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			sync.load_comments()
+
+			local ok = helpers.wait_for(function()
+				return #config.state.comments > 0
+			end)
+			assert.is_true(ok, "Should have fetched comments")
+			assert.are.equal(1, threads_called, "get_review_threads should be called for resolved info")
+			assert.is_true(config.state.comments[1].is_resolved)
+			assert.is_nil(config.state.comments[1].is_outdated, "is_outdated should not be applied when outdated disabled")
 		end)
 
 		it("calls get_review_threads when pending review exists even with outdated disabled", function()

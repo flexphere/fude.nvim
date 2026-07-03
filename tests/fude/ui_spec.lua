@@ -61,6 +61,32 @@ describe("calculate_float_dimensions", function()
 	end)
 end)
 
+describe("build_comments_float_title", function()
+	it("returns plain title when no comment is resolved", function()
+		local comments = { { id = 1 }, { id = 2 } }
+		assert.are.equal(" Comments (2) ", ui.build_comments_float_title(comments, nil))
+	end)
+
+	it("returns plain title when only some comments are resolved", function()
+		local comments = { { id = 1, is_resolved = true }, { id = 2 } }
+		assert.are.equal(" Comments (2) ", ui.build_comments_float_title(comments, nil))
+	end)
+
+	it("appends resolved label when every comment is resolved", function()
+		local comments = { { id = 1, is_resolved = true }, { id = 2, is_resolved = true } }
+		assert.are.equal(" Comments (2) [resolved] ", ui.build_comments_float_title(comments, nil))
+	end)
+
+	it("uses custom label from resolved_opts", function()
+		local comments = { { id = 1, is_resolved = true } }
+		assert.are.equal(" Comments (1) [DONE] ", ui.build_comments_float_title(comments, { label = "[DONE]" }))
+	end)
+
+	it("returns plain title for empty comments", function()
+		assert.are.equal(" Comments (0) ", ui.build_comments_float_title({}, nil))
+	end)
+end)
+
 describe("format_comments_for_display", function()
 	local identity = function(s)
 		return s or ""
@@ -1743,6 +1769,88 @@ describe("format_comment_browser_list", function()
 		assert.are.equal("Error", result.hl_ranges[1].hl)
 	end)
 
+	it("appends [resolved] label to resolved review entries", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "f.lua", line = 1, is_resolved = true },
+		}
+		local result = ui.format_comment_browser_list(entries, id_fn)
+		assert.is_truthy(result.lines[1]:find("@alice"))
+		assert.is_truthy(result.lines[1]:find("%[resolved%]$"))
+		local last_hl = result.hl_ranges[#result.hl_ranges]
+		assert.are.equal("DiagnosticOk", last_hl.hl)
+	end)
+
+	it("shows both [outdated] and [resolved] when a thread is outdated and resolved", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "a",
+				path = "f.lua",
+				line = 1,
+				is_outdated = true,
+				is_resolved = true,
+			},
+		}
+		local result = ui.format_comment_browser_list(entries, id_fn)
+		assert.is_truthy(result.lines[1]:find("%[outdated%]"))
+		assert.is_truthy(result.lines[1]:find("%[resolved%]"))
+	end)
+
+	it("shows [resolved] alongside [pending] for pending replies to resolved threads", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "a",
+				path = "f.lua",
+				line = 1,
+				is_pending = true,
+				is_resolved = true,
+			},
+		}
+		local result = ui.format_comment_browser_list(entries, id_fn)
+		assert.is_truthy(result.lines[1]:find("%[pending%]"))
+		assert.is_truthy(result.lines[1]:find("%[resolved%]"))
+	end)
+
+	it("places [resolved] before the draft marker", function()
+		local entries = {
+			{
+				type = "review",
+				last_ts = "2024-01-01",
+				author = "a",
+				path = "f.lua",
+				line = 1,
+				is_resolved = true,
+				has_draft = true,
+			},
+		}
+		local result = ui.format_comment_browser_list(entries, id_fn)
+		assert.is_truthy(result.lines[1]:find("%[resolved%]  ✎draft$"))
+	end)
+
+	it("uses custom label and hl_group from resolved_opts", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-01", author = "a", path = "f.lua", line = 1, is_resolved = true },
+		}
+		local result = ui.format_comment_browser_list(entries, id_fn, nil, nil, { label = "[DONE]", hl_group = "Title" })
+		assert.is_truthy(result.lines[1]:find("%[DONE%]"))
+		assert.is_falsy(result.lines[1]:find("%[resolved%]"))
+		local last_hl = result.hl_ranges[#result.hl_ranges]
+		assert.are.equal("Title", last_hl.hl)
+	end)
+
+	it("does not append [resolved] to unresolved or issue entries", function()
+		local entries = {
+			{ type = "review", last_ts = "2024-01-02", author = "a", path = "f.lua", line = 1 },
+			{ type = "issue", last_ts = "2024-01-01", author = nil, is_pending = false },
+		}
+		local result = ui.format_comment_browser_list(entries, id_fn)
+		assert.is_falsy(result.lines[1]:find("%[resolved%]"))
+		assert.is_falsy(result.lines[2]:find("%[resolved%]"))
+	end)
+
 	it("applies format_path_fn to review entry path", function()
 		local entries = {
 			{ type = "review", last_ts = "2024-01-01", author = "alice", path = "lua/fude/init.lua", line = 42 },
@@ -2114,6 +2222,46 @@ describe("format_comments_for_inline", function()
 			end
 		end
 		assert.is_true(found_pending)
+	end)
+
+	local function find_in_top_border(result, pattern)
+		for _, chunk in ipairs(result.virt_lines[1]) do
+			if chunk[1]:find(pattern) then
+				return true
+			end
+		end
+		return false
+	end
+
+	it("includes resolved label in top border for resolved comments", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "done", is_resolved = true },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_true(find_in_top_border(result, "%[resolved%]"))
+	end)
+
+	it("uses custom resolved label from opts.resolved.label in top border", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "done", is_resolved = true },
+		}
+		local result = ui.format_comments_for_inline(comments, identity, { resolved = { label = "[DONE]" } })
+		assert.is_true(find_in_top_border(result, "%[DONE%]"))
+	end)
+
+	it("prefers pending label over resolved label in top border", function()
+		local comments = {
+			{
+				user = { login = "alice" },
+				created_at = "2024-01-01",
+				body = "x",
+				is_pending = true,
+				is_resolved = true,
+			},
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_true(find_in_top_border(result, "%[pending%]"))
+		assert.is_false(find_in_top_border(result, "%[resolved%]"))
 	end)
 
 	it("splits multiline body", function()
