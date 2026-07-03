@@ -253,6 +253,39 @@ function M.build_reviewers_list(review_requests, latest_reviews)
 	return reviewers
 end
 
+--- Build candidates for review re-request: users who already submitted a review,
+--- excluding users with a pending re-request, the PR author, and bots.
+--- @param review_requests table[] reviewRequests from gh pr view (each has login)
+--- @param latest_reviews table[] latestReviews from gh pr view (each has author.login, state)
+--- @param author_login string|nil PR author login (re-requesting from the author is rejected by the API)
+--- @return table[] list of { login: string, state: string } sorted by login
+function M.build_re_request_candidates(review_requests, latest_reviews, author_login)
+	local requested = {}
+	for _, req in ipairs(review_requests) do
+		-- Team review requests have no login; re-requesting teams is out of scope
+		if req.login then
+			requested[req.login] = true
+		end
+	end
+
+	local candidates = {}
+	local seen = {}
+	for _, review in ipairs(latest_reviews) do
+		local login = review.author and review.author.login
+		local is_bot = review.author and review.author.is_bot
+		if login and not seen[login] and not requested[login] and login ~= author_login and not is_bot then
+			seen[login] = true
+			table.insert(candidates, { login = login, state = review.state or "COMMENTED" })
+		end
+	end
+
+	table.sort(candidates, function(a, b)
+		return a.login < b.login
+	end)
+
+	return candidates
+end
+
 --- Build summary string for reviewers (e.g. "1/2 approved").
 --- @param reviewers table[] list of { login: string, state: string }
 --- @return string
@@ -436,7 +469,10 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 
 	-- Footer
 	table.insert(lines, "")
-	table.insert(lines, " ]s/[s: sections  ]c/[c: comments  C: comment  za: fold  R: refresh  <Tab>: switch  q: close")
+	table.insert(
+		lines,
+		" ]s/[s: sections  ]c/[c: comments  C: comment  r: re-request  za: fold  R: refresh  <Tab>: switch  q: close"
+	)
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
 	return { lines = lines, hl_ranges = hl_ranges, sections = sections, comment_positions = comment_positions }

@@ -529,6 +529,23 @@ function M.create_pending_review(pr_number, commit_id, review_comments, callback
 	}, callback, json_payload)
 end
 
+--- Re-request a review from users who have already reviewed.
+--- @param pr_number number
+--- @param reviewers string[] logins to re-request (must be non-empty; an empty list encodes as a JSON object)
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.re_request_review(pr_number, reviewers, callback)
+	local json_payload = vim.json.encode({ reviewers = reviewers })
+
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/requested_reviewers",
+		"--method",
+		"POST",
+		"--input",
+		"-",
+	}, callback, json_payload)
+end
+
 --- Submit an existing pending review.
 --- @param pr_number number
 --- @param review_id number
