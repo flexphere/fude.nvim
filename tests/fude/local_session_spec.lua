@@ -91,6 +91,36 @@ describe("session.build_changed_files", function()
 		local files = session.build_changed_files("M\tlua/a.lua\n", nil, nil)
 		assert.same({ path = "lua/a.lua", status = "modified", additions = 0, deletions = 0 }, files[1])
 	end)
+
+	it("excludes the plugin's own .fude/ store artifacts", function()
+		local files = session.build_changed_files(
+			"M\tlua/a.lua\nA\t.fude/reviews/s1.jsonl\n",
+			nil,
+			".fude/current.json\nuntracked.md\n"
+		)
+		local paths = {}
+		for _, f in ipairs(files) do
+			paths[f.path] = true
+		end
+		assert.is_true(paths["lua/a.lua"])
+		assert.is_true(paths["untracked.md"])
+		assert.is_nil(paths[".fude/reviews/s1.jsonl"])
+		assert.is_nil(paths[".fude/current.json"])
+	end)
+end)
+
+describe("session.is_store_path", function()
+	it("matches .fude and its descendants", function()
+		assert.is_true(session.is_store_path(".fude"))
+		assert.is_true(session.is_store_path(".fude/current.json"))
+		assert.is_true(session.is_store_path(".fude/reviews/s1.jsonl"))
+	end)
+
+	it("does not match unrelated paths", function()
+		assert.is_false(session.is_store_path("lua/fude/init.lua"))
+		assert.is_false(session.is_store_path(".fuderc"))
+		assert.is_false(session.is_store_path("src/.fude_notes.md"))
+	end)
 end)
 
 describe("session lifecycle (start/reload/stop)", function()

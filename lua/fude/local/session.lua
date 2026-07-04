@@ -93,23 +93,34 @@ end
 --- @param numstat_out string|nil `git diff --numstat -M` output
 --- @param untracked_out string|nil `git ls-files --others --exclude-standard` output
 --- @return table[] changed files { path, status, additions, deletions }
+--- Whether a repo-relative path is one of the plugin's own review-store
+--- artifacts (`.fude/...`), which must never appear as a reviewable change
+--- regardless of the repo's .gitignore.
+--- @param path string repo-relative path
+--- @return boolean
+function M.is_store_path(path)
+	return path == ".fude" or path:sub(1, 6) == ".fude/"
+end
+
 function M.build_changed_files(name_status_out, numstat_out, untracked_out)
 	local counts = M.parse_numstat(numstat_out)
 	local files = {}
 	local seen = {}
 	for _, entry in ipairs(M.parse_name_status(name_status_out)) do
-		local c = counts[entry.path] or {}
-		table.insert(files, {
-			path = entry.path,
-			status = entry.status,
-			additions = c.additions or 0,
-			deletions = c.deletions or 0,
-		})
-		seen[entry.path] = true
+		if not M.is_store_path(entry.path) then
+			local c = counts[entry.path] or {}
+			table.insert(files, {
+				path = entry.path,
+				status = entry.status,
+				additions = c.additions or 0,
+				deletions = c.deletions or 0,
+			})
+			seen[entry.path] = true
+		end
 	end
 	if untracked_out then
 		for path in untracked_out:gmatch("[^\n]+") do
-			if path ~= "" and not seen[path] then
+			if path ~= "" and not seen[path] and not M.is_store_path(path) then
 				table.insert(files, { path = path, status = "added", additions = 0, deletions = 0 })
 				seen[path] = true
 			end
