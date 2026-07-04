@@ -225,6 +225,21 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("Local: uncommitted", require("fude.scope").statusline())
 	end)
 
+	it("switching to base scope with no base ref stays put without crashing", function()
+		mock_local_git({
+			get_default_branch = function()
+				return nil
+			end,
+		})
+		session.start(nil)
+		assert.equals("uncommitted", config.state.local_session.scope)
+
+		-- Selecting the "Base branch" scope row (e.g. from the side panel) must
+		-- not crash when the session never had a base branch.
+		session.set_scope("base")
+		assert.equals("uncommitted", config.state.local_session.scope)
+	end)
+
 	it("reviews a zero-commit repo against the empty tree", function()
 		mock_local_git({
 			get_default_branch = function()
@@ -513,6 +528,12 @@ describe("session.resolve_scope_base", function()
 		end)
 		local diff_base = session.resolve_scope_base("base", "main")
 		assert.is_nil(diff_base)
+	end)
+
+	it("returns nil for base scope when there is no base ref (no crash)", function()
+		local diff_base, content_ref = session.resolve_scope_base("base", nil)
+		assert.is_nil(diff_base)
+		assert.is_nil(content_ref)
 	end)
 end)
 

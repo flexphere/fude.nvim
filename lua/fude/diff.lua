@@ -105,9 +105,12 @@ function M.parse_log_first_subject(output)
 end
 
 --- Get the merge-base between a ref and HEAD.
---- @param ref string branch name or commit SHA
+--- @param ref string|nil branch name or commit SHA
 --- @return string|nil merge-base SHA
 function M.get_merge_base(ref)
+	if not ref then
+		return nil
+	end
 	local result = vim.system({ "git", "merge-base", ref, "HEAD" }, { text = true }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)

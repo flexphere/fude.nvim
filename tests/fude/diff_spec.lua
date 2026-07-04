@@ -149,6 +149,20 @@ describe("get_merge_base", function()
 		assert.are.equal("fallback789", diff.get_merge_base("main"))
 	end)
 
+	it("returns nil for a nil ref without invoking git", function()
+		local called = false
+		vim.system = function(_cmd, _opts)
+			called = true
+			return {
+				wait = function()
+					return { code = 0, stdout = "x" }
+				end,
+			}
+		end
+		assert.is_nil(diff.get_merge_base(nil))
+		assert.is_false(called)
+	end)
+
 	it("returns nil when both ref and origin/<ref> fail", function()
 		vim.system = function(_cmd, _opts)
 			return {

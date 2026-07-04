@@ -160,6 +160,11 @@ function M.resolve_scope_base(scope, base_ref)
 		end
 		return empty, empty
 	end
+	-- "base" scope needs a base branch; there is none to diff against when the
+	-- session started without one (e.g. a remote-less / zero-commit repo).
+	if not base_ref then
+		return nil, nil
+	end
 	local merge_base = diff_mod.get_merge_base(base_ref)
 	if not merge_base then
 		return nil, nil
@@ -513,6 +518,10 @@ function M.set_scope(scope)
 	end
 	local session = state.local_session
 	if session.scope == scope then
+		return
+	end
+	if scope == "base" and not session.base_ref then
+		vim.notify("fude.nvim: No base branch for this session; staying on the uncommitted scope", vim.log.levels.WARN)
 		return
 	end
 
