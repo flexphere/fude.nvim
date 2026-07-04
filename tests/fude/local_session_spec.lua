@@ -535,6 +535,73 @@ describe("session.resolve_scope_base", function()
 		assert.is_nil(diff_base)
 		assert.is_nil(content_ref)
 	end)
+
+	it("unpushed resolves to the upstream ref", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_upstream_ref", function()
+			return "origin/feat/a"
+		end)
+		local diff_base, content_ref = session.resolve_scope_base("unpushed", "main", "/repo")
+		assert.equals("origin/feat/a", diff_base)
+		assert.equals("origin/feat/a", content_ref)
+	end)
+
+	it("unpushed returns nil when there is no upstream", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_upstream_ref", function()
+			return nil
+		end)
+		local diff_base = session.resolve_scope_base("unpushed", "main", "/repo")
+		assert.is_nil(diff_base)
+	end)
+end)
+
+describe("session.scope_specs", function()
+	local diff = require("fude.diff")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	local function session_of(fields)
+		return vim.tbl_extend("force", { worktree_root = "/repo", scope = "base" }, fields)
+	end
+
+	it("offers base + unpushed + uncommitted on a pushed feature branch", function()
+		helpers.mock(diff, "get_upstream_ref", function()
+			return "origin/feat/x"
+		end)
+		local specs = session.scope_specs(session_of({ base_ref = "main", branch = "feat/x", scope = "unpushed" }))
+		assert.equals(3, #specs)
+		assert.equals("base", specs[1].scope)
+		assert.equals("Base branch (main)", specs[1].label)
+		assert.equals("unpushed", specs[2].scope)
+		assert.equals("Unpushed (origin/feat/x)", specs[2].label)
+		assert.is_true(specs[2].is_current)
+		assert.equals("uncommitted", specs[3].scope)
+	end)
+
+	it("hides base when the branch is the base branch", function()
+		helpers.mock(diff, "get_upstream_ref", function()
+			return "origin/main"
+		end)
+		local specs = session.scope_specs(session_of({ base_ref = "main", branch = "main" }))
+		local scopes = vim.tbl_map(function(s)
+			return s.scope
+		end, specs)
+		assert.same({ "unpushed", "uncommitted" }, scopes)
+	end)
+
+	it("hides unpushed when there is no upstream", function()
+		helpers.mock(diff, "get_upstream_ref", function()
+			return nil
+		end)
+		local specs = session.scope_specs(session_of({ base_ref = "main", branch = "feat/x" }))
+		local scopes = vim.tbl_map(function(s)
+			return s.scope
+		end, specs)
+		assert.same({ "base", "uncommitted" }, scopes)
+	end)
 end)
 
 describe("scope.format_local_scope_label", function()

@@ -62,33 +62,28 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 	return entries
 end
 
---- Build scope entries for the sidepanel in local review mode.
---- Same entry shape as `build_scope_entries` (so `format_scope_section` and the
---- sidepanel selection handler work unchanged), but the two rows are the local
---- diff scopes rather than PR / commits.
---- @param current_scope string|nil "base" (default) or "uncommitted"
---- @param base_ref string|nil session base branch
+--- Build scope entries for the sidepanel in local review mode from a list of
+--- scope specs. Same entry shape as `build_scope_entries` (so
+--- `format_scope_section` and the sidepanel selection handler work unchanged).
+--- Availability and labels are decided by the caller (`local/session` via
+--- `scope_specs`), so only the scopes valid for the current git state appear.
+--- @param specs table[] { { scope = string, label = string, is_current = boolean } }
 --- @return table[] entries with a `local_scope` value field
-function M.build_local_scope_entries(current_scope, base_ref)
-	current_scope = current_scope or "base"
-	local rows = {
-		{ scope = "base", text = string.format("Base branch (%s)", base_ref or "?") },
-		{ scope = "uncommitted", text = "Uncommitted (staged + unstaged)" },
-	}
+function M.build_local_scope_entries(specs)
 	local entries = {}
-	for _, row in ipairs(rows) do
+	for _, s in ipairs(specs or {}) do
 		table.insert(entries, {
-			value = row.scope,
-			local_scope = row.scope,
-			display_text = row.text,
+			value = s.scope,
+			local_scope = s.scope,
+			display_text = s.label,
 			sha = nil,
 			is_full_pr = false,
 			reviewed = false,
 			reviewed_icon = " ",
 			reviewed_hl = "Comment",
 			index = nil,
-			total = #rows,
-			is_current = current_scope == row.scope,
+			total = #specs,
+			is_current = s.is_current == true,
 		})
 	end
 	return entries
@@ -755,9 +750,12 @@ end
 
 --- Format the statusline label for a local review session.
 --- @param base_ref string|nil base ref of the local session
---- @param scope string|nil "base" (default) or "uncommitted"
---- @return string label e.g. "Local: main" or "Local: uncommitted"
+--- @param scope string|nil "base" | "unpushed" | "uncommitted"
+--- @return string label e.g. "Local: main", "Local: unpushed", "Local: uncommitted"
 function M.format_local_scope_label(base_ref, scope)
+	if scope == "unpushed" then
+		return "Local: unpushed"
+	end
 	if scope == "uncommitted" then
 		return "Local: uncommitted"
 	end

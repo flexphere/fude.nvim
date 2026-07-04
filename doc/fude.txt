@@ -96,11 +96,15 @@ Using lazy.nvim: >lua
     session's JSONL file is kept for later reference.
 
 :FudeReviewLocalScope [{scope}]                   *:FudeReviewLocalScope*
-    Switch the local review scope (diff base). {scope} is `base` or
-    `uncommitted`; with no argument, opens a picker. `base` (default)
-    diffs against the merge-base with the base branch (whole branch);
-    `uncommitted` diffs against HEAD (staged + unstaged changes only).
-    Comments are unaffected — they anchor to the working tree.
+    Switch the local review scope (diff base). {scope} is `base`,
+    `unpushed`, or `uncommitted`; with no argument, opens a picker of
+    the scopes available for the current git state. Every scope compares
+    the working tree against a ref, so comments stay anchored:
+      `base`        merge-base with the base branch (whole branch diff);
+                    shown only on a branch that differs from its base.
+      `unpushed`    the upstream ref @{upstream} (changes not yet pushed);
+                    shown only when the branch has an upstream.
+      `uncommitted` HEAD (staged + unstaged only); always available.
 
 :FudeReviewResolve                                   *:FudeReviewResolve*
     Toggle resolved status of the comment thread on the current line.
@@ -887,9 +891,10 @@ Behavior~
 
   - Changed files come from the local git diff plus untracked files. The
     diff base depends on the scope (|:FudeReviewLocalScope|): `base`
-    (default) uses the merge-base with the base ref (whole branch diff),
-    `uncommitted` uses HEAD (staged + unstaged changes only). The
-    statusline shows `Local: <base>` or `Local: uncommitted`.
+    (merge-base with the base ref), `unpushed` (the @{upstream} ref), or
+    `uncommitted` (HEAD). Only the scopes valid for the current git state
+    are offered; the statusline shows the active one (`Local: <base>`,
+    `Local: unpushed`, `Local: uncommitted`).
   - Comments are saved immediately on `<CR>` — there is no pending review
     or submit step. |:FudeReviewSubmit| is not available in this mode.
   - Comment positions follow buffer edits via extmarks and are re-anchored

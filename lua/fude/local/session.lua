@@ -131,21 +131,26 @@ end
 
 -- === Session helpers ===
 
---- Scope labels understood by the local session.
-M.SCOPES = { "base", "uncommitted" }
+--- Scope labels understood by the local session. Every scope compares the
+--- working tree against a ref (right side = working tree), so comment anchors
+--- stay valid across all of them.
+M.SCOPES = { "base", "unpushed", "uncommitted" }
 
 --- Resolve the diff base for a local review scope.
 ---   "base"        → merge-base with the base branch (the whole branch diff)
+---   "unpushed"    → the upstream tracking ref (changes not yet pushed)
 ---   "uncommitted" → HEAD (only staged + unstaged working-tree changes), or
 ---                   the empty tree when the repo has no commits yet (so a
 ---                   fresh repo of agent work is still reviewable)
 --- `diff_base` is the ref passed to `git diff` (used for the changed-files
 --- list and per-file patches); `content_ref` is the ref passed to `git show`
---- for the side-by-side preview's base pane.
---- @param scope string "base"|"uncommitted"
---- @param base_ref string the session's base branch
+--- for the side-by-side preview's base pane. Returns nil when the scope is not
+--- available (no base branch / no upstream / no commits).
+--- @param scope string "base"|"unpushed"|"uncommitted"
+--- @param base_ref string|nil the session's base branch
+--- @param cwd string|nil repo root (for upstream resolution)
 --- @return string|nil diff_base, string|nil content_ref
-function M.resolve_scope_base(scope, base_ref)
+function M.resolve_scope_base(scope, base_ref, cwd)
 	local diff_mod = require("fude.diff")
 	if scope == "uncommitted" then
 		if diff_mod.get_head_sha() then
@@ -160,6 +165,13 @@ function M.resolve_scope_base(scope, base_ref)
 		end
 		return empty, empty
 	end
+	if scope == "unpushed" then
+		local upstream = diff_mod.get_upstream_ref(cwd)
+		if not upstream then
+			return nil, nil
+		end
+		return upstream, upstream
+	end
 	-- "base" scope needs a base branch; there is none to diff against when the
 	-- session started without one (e.g. a remote-less / zero-commit repo).
 	if not base_ref then
@@ -170,6 +182,30 @@ function M.resolve_scope_base(scope, base_ref)
 		return nil, nil
 	end
 	return merge_base, base_ref
+end
+
+--- Build the list of scopes available for the current git state, with labels,
+--- for the side-panel / picker. `base` is offered only on a branch that
+--- differs from its base ref; `unpushed` only when the branch has an upstream;
+--- `uncommitted` always. The current scope is flagged.
+--- @param session table the active local session
+--- @return table[] specs { { scope, label, is_current } }
+function M.scope_specs(session)
+	local diff_mod = require("fude.diff")
+	local root = session.worktree_root
+	local specs = {}
+	if session.base_ref and session.branch ~= session.base_ref then
+		table.insert(specs, { scope = "base", label = string.format("Base branch (%s)", session.base_ref) })
+	end
+	local upstream = diff_mod.get_upstream_ref(root)
+	if upstream then
+		table.insert(specs, { scope = "unpushed", label = string.format("Unpushed (%s)", upstream) })
+	end
+	table.insert(specs, { scope = "uncommitted", label = "Uncommitted (staged + unstaged)" })
+	for _, s in ipairs(specs) do
+		s.is_current = s.scope == session.scope
+	end
+	return specs
 end
 
 --- Refresh state.changed_files from local git.
@@ -295,20 +331,33 @@ function M.start(base_arg)
 	local branch = diff_mod.get_current_branch()
 	local now = os.time()
 
-	-- Determine the initial scope. When no base branch can be found (a fresh,
-	-- remote-less repo of agent work), fall back to reviewing the uncommitted
-	-- working-tree changes instead of failing.
-	local initial_scope = (existing and existing.scope) or "base"
+	-- Determine the initial scope. Default to "base" on a feature branch (a base
+	-- ref that differs from the current branch); otherwise the base scope is
+	-- meaningless (on the base branch itself, or no base ref at all), so fall
+	-- back to reviewing the uncommitted working-tree changes.
+	local on_base_branch = branch ~= nil and branch == base_ref
+	local initial_scope = (existing and existing.scope)
 	local no_base_fallback = false
-	if not base_ref and initial_scope == "base" then
-		initial_scope = "uncommitted"
-		no_base_fallback = true
+	if not initial_scope then
+		if base_ref and not on_base_branch then
+			initial_scope = "base"
+		else
+			initial_scope = "uncommitted"
+			no_base_fallback = not base_ref
+		end
 	end
 
-	local base_sha, content_ref = M.resolve_scope_base(initial_scope, base_ref)
+	local base_sha, content_ref = M.resolve_scope_base(initial_scope, base_ref, repo_root)
 	if not base_sha then
-		vim.notify("fude.nvim: Cannot resolve base ref for " .. (base_ref or "?"), vim.log.levels.ERROR)
-		return
+		-- A resumed scope may no longer be resolvable (e.g. "unpushed" lost its
+		-- upstream, or "base" lost its ref). Fall back to the always-available
+		-- uncommitted scope rather than failing to start.
+		initial_scope = "uncommitted"
+		base_sha, content_ref = M.resolve_scope_base("uncommitted", base_ref, repo_root)
+		if not base_sha then
+			vim.notify("fude.nvim: Cannot resolve base ref for " .. (base_ref or "?"), vim.log.levels.ERROR)
+			return
+		end
 	end
 
 	local session
@@ -505,7 +554,7 @@ end
 --- base (changed files, per-file patches, gitsigns base, side-by-side preview).
 --- Comments are unaffected — they anchor to the working tree, which does not
 --- change with the scope.
---- @param scope string "base"|"uncommitted"
+--- @param scope string "base"|"unpushed"|"uncommitted"
 function M.set_scope(scope)
 	local state = config.state
 	if not state.active or state.review_mode ~= "local" then
@@ -520,14 +569,15 @@ function M.set_scope(scope)
 	if session.scope == scope then
 		return
 	end
-	if scope == "base" and not session.base_ref then
-		vim.notify("fude.nvim: No base branch for this session; staying on the uncommitted scope", vim.log.levels.WARN)
-		return
-	end
 
-	local diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref)
+	local diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root)
 	if not diff_base then
-		vim.notify("fude.nvim: Failed to resolve base for scope: " .. scope, vim.log.levels.ERROR)
+		-- Scope unavailable for the current git state (no base branch / no
+		-- upstream). Explain rather than silently failing.
+		local why = (scope == "base") and "no base branch for this session"
+			or (scope == "unpushed") and "this branch has no upstream (nothing pushed)"
+			or ("cannot resolve base for " .. scope)
+		vim.notify("fude.nvim: Cannot switch to " .. scope .. " scope — " .. why, vim.log.levels.WARN)
 		return
 	end
 
@@ -562,24 +612,16 @@ function M.select_scope()
 		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
 		return
 	end
-	local current = state.local_session.scope
-	local labels = {
-		base = "Base branch (whole branch diff)",
-		uncommitted = "Uncommitted only (staged + unstaged)",
-	}
-	local items = {}
-	for _, scope in ipairs(M.SCOPES) do
-		table.insert(items, scope)
-	end
-	vim.ui.select(items, {
+	-- Offer only the scopes available for the current git state.
+	local specs = M.scope_specs(state.local_session)
+	vim.ui.select(specs, {
 		prompt = "Local review scope:",
-		format_item = function(scope)
-			local marker = scope == current and "▶ " or "  "
-			return marker .. (labels[scope] or scope)
+		format_item = function(s)
+			return (s.is_current and "▶ " or "  ") .. s.label
 		end,
 	}, function(choice)
 		if choice then
-			M.set_scope(choice)
+			M.set_scope(choice.scope)
 		end
 	end)
 end

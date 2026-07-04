@@ -282,12 +282,12 @@ local function render(panel)
 	local sp_opts = config.opts.sidepanel or {}
 	local width = math.max(20, sp_opts.width or 40)
 
-	-- Build scope entries: local review shows the two local diff scopes,
+	-- Build scope entries: local review shows the available local diff scopes,
 	-- GitHub review shows Full PR + commits.
 	local scope_entries
 	if state.review_mode == "local" then
-		scope_entries =
-			scope_mod.build_local_scope_entries(state.local_session and state.local_session.scope, state.base_ref)
+		local specs = state.local_session and require("fude.local.session").scope_specs(state.local_session) or {}
+		scope_entries = scope_mod.build_local_scope_entries(specs)
 	else
 		local commit_entries = {}
 		if #state.pr_commits > 0 then

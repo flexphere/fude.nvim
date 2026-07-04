@@ -129,7 +129,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeCreatePR` | Create draft PR from template |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalStop` | Stop local review mode |
-| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `uncommitted`) |
+| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted`) |
 | `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
 ## Configuration
@@ -250,15 +250,20 @@ typically to review AI-agent-generated code locally. No GitHub interaction
 happens in this mode:
 
 - Changed files come from the local git diff, plus untracked files. The diff
-  base depends on the **scope** (switch with `:FudeReviewLocalScope`):
-  - `base` (default) — merge-base with `base` (default: the remote default
-    branch, else a local `main`/`master`): the whole branch diff, including
-    committed work.
-  - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes.
-  When no base branch can be found (a fresh, remote-less repo), the session
-  starts in the `uncommitted` scope instead of failing. In a repo with no
-  commits yet, the diff base is the empty tree, so staged and untracked files
-  are all reviewable.
+  base depends on the **scope** (switch with `:FudeReviewLocalScope`). Every
+  scope compares the working tree against a ref, so comments stay anchored:
+  - `base` — merge-base with `base` (default: the remote default branch, else
+    a local `main`/`master`): the whole branch diff, including committed work.
+    Shown only on a branch that differs from its base ref.
+  - `unpushed` — the upstream tracking ref (`@{upstream}`): changes not yet
+    pushed. Shown only when the branch has an upstream.
+  - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes. Always
+    available.
+  The side panel / picker lists only the scopes valid for the current git
+  state, and the statusline shows the active one. When no base branch can be
+  found (a fresh, remote-less repo), the session starts in `uncommitted`; in a
+  repo with no commits, the diff base is the empty tree so staged and untracked
+  files are all reviewable.
 - Comments are stored in `.fude/reviews/<session-id>.jsonl` inside the
   worktree as an **append-only event log** (add `.fude/` to your
   `.gitignore`). `.fude/current.json` points to the active session, so the

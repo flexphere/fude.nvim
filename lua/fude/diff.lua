@@ -189,6 +189,21 @@ function M.get_empty_tree()
 	return nil
 end
 
+--- Get the upstream tracking ref of the current branch (e.g. "origin/feat/a"),
+--- used as the diff base for the "unpushed" local review scope. Returns nil
+--- when the branch has no upstream (never pushed / no tracking configured).
+--- @param cwd string|nil repo root
+--- @return string|nil upstream ref
+function M.get_upstream_ref(cwd)
+	local result = vim
+		.system({ "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}" }, { text = true, cwd = cwd })
+		:wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
 --- Get the configured git user name (fallback: $USER).
 --- @return string user name
 function M.get_git_user()
