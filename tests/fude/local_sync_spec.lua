@@ -208,6 +208,25 @@ describe("local_sync CRUD", function()
 		assert.equals(before, after)
 	end)
 
+	it("reverts to on-disk positions when persisting a re-anchor move fails", function()
+		local_sync.create_comment("f.lua", 3, 3, "note", "line3", function() end)
+
+		-- Drift the file on disk so reanchor wants to move the comment to line 5.
+		vim.fn.writefile({ "new1", "new2", "line1", "line2", "line3", "line4", "line5" }, tmp_repo .. "/f.lua")
+
+		-- Make move-event persistence fail during the reload's reanchor pass.
+		helpers.mock(store, "append_event", function()
+			return false, "disk full"
+		end)
+
+		session.reload(true)
+
+		-- State must match the on-disk (un-moved) position, not the in-memory
+		-- reanchor, since the move could not be persisted.
+		assert.equals(3, config.state.comments[1].line)
+		assert.is_not_nil(config.state.comment_map["f.lua"][3])
+	end)
+
 	it("keeps a comment anchored when only its line content changed", function()
 		-- Content edited in place (context gone) but the line still exists: the
 		-- comment stays put rather than being falsely marked outdated.

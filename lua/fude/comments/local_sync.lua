@@ -98,8 +98,9 @@ function M.load_comments(callback, opts)
 	local moves = store.reanchor(comments, closed_lines)
 	if #moves > 0 then
 		local created = now_iso()
+		local append_failed = false
 		for _, mv in ipairs(moves) do
-			store.append_event(
+			local ok = store.append_event(
 				session.file,
 				store.build_move_event({
 					id = mv.id,
@@ -109,6 +110,17 @@ function M.load_comments(callback, opts)
 					created_at = created,
 				})
 			)
+			if not ok then
+				append_failed = true
+			end
+		end
+		-- reanchor already mutated `comments` in memory. If persisting a move
+		-- failed (disk full / permissions / conflict), memory and the JSONL would
+		-- diverge, so re-materialize from disk (which includes any moves that DID
+		-- persist) to keep state consistent with the file.
+		if append_failed then
+			vim.notify("fude.nvim: Failed to persist comment re-anchor; using on-disk positions", vim.log.levels.WARN)
+			comments = store.materialize(store.read_events(session.file)).comments
 		end
 	end
 
