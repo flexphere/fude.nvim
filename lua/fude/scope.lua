@@ -62,11 +62,42 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 	return entries
 end
 
+--- Build scope entries for the sidepanel in local review mode from a list of
+--- scope specs. Same entry shape as `build_scope_entries` (so
+--- `format_scope_section` and the sidepanel selection handler work unchanged).
+--- Availability and labels are decided by the caller (`local/session` via
+--- `scope_specs`), so only the scopes valid for the current git state appear.
+--- @param specs table[] { { scope = string, label = string, is_current = boolean } }
+--- @return table[] entries with a `local_scope` value field
+function M.build_local_scope_entries(specs)
+	local entries = {}
+	for _, s in ipairs(specs or {}) do
+		table.insert(entries, {
+			value = s.scope,
+			local_scope = s.scope,
+			display_text = s.label,
+			sha = nil,
+			is_full_pr = false,
+			reviewed = false,
+			reviewed_icon = " ",
+			reviewed_hl = "Comment",
+			index = nil,
+			total = #specs,
+			is_current = s.is_current == true,
+		})
+	end
+	return entries
+end
+
 --- Show the scope selection picker.
 function M.select_scope()
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
 		return
 	end
 
@@ -717,12 +748,30 @@ function M.find_prev_scope_index(current_scope, current_index, total)
 	return idx - 1
 end
 
+--- Format the statusline label for a local review session.
+--- @param base_ref string|nil base ref of the local session
+--- @param scope string|nil "base" | "unpushed" | "uncommitted"
+--- @return string label e.g. "Local: main", "Local: unpushed", "Local: uncommitted"
+function M.format_local_scope_label(base_ref, scope)
+	if scope == "unpushed" then
+		return "Local: unpushed"
+	end
+	if scope == "uncommitted" then
+		return "Local: uncommitted"
+	end
+	return string.format("Local: %s", base_ref or "?")
+end
+
 --- Get the statusline label for the current scope.
---- @return string label e.g. "Scope: PR" or "Scope: 3/10"
+--- @return string label e.g. "Scope: PR", "Scope: 3/10", or "Local: main"
 function M.statusline()
 	local state = config.state
 	if not state.active then
 		return ""
+	end
+	if state.review_mode == "local" then
+		local scope = state.local_session and state.local_session.scope
+		return M.format_local_scope_label(state.base_ref, scope)
 	end
 	local total = #state.pr_commits
 	return M.format_scope_label(state.scope, state.scope_commit_index, total)
@@ -733,6 +782,10 @@ function M.next_scope()
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
 		return
 	end
 
@@ -756,6 +809,10 @@ function M.prev_scope()
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
 		return
 	end
 

@@ -149,6 +149,20 @@ describe("get_merge_base", function()
 		assert.are.equal("fallback789", diff.get_merge_base("main"))
 	end)
 
+	it("returns nil for a nil ref without invoking git", function()
+		local called = false
+		vim.system = function(_cmd, _opts)
+			called = true
+			return {
+				wait = function()
+					return { code = 0, stdout = "x" }
+				end,
+			}
+		end
+		assert.is_nil(diff.get_merge_base(nil))
+		assert.is_false(called)
+	end)
+
 	it("returns nil when both ref and origin/<ref> fail", function()
 		vim.system = function(_cmd, _opts)
 			return {
@@ -169,5 +183,73 @@ describe("get_merge_base", function()
 			}
 		end
 		assert.are.equal("sha_with_spaces", diff.get_merge_base("main"))
+	end)
+end)
+
+describe("get_review_patch", function()
+	local original_system
+
+	before_each(function()
+		original_system = vim.system
+	end)
+
+	after_each(function()
+		vim.system = original_system
+	end)
+
+	it("returns the tracked diff from git diff <base>", function()
+		vim.system = function(cmd, _opts)
+			return {
+				wait = function()
+					-- git diff <base> -- <path>
+					if cmd[3] ~= "--no-index" then
+						return { code = 0, stdout = "@@ tracked diff @@\n" }
+					end
+					return { code = 1, stdout = "" }
+				end,
+			}
+		end
+		assert.equals("@@ tracked diff @@\n", diff.get_review_patch("basesha", "f.lua"))
+	end)
+
+	it("passes the repo root as cwd so pathspecs resolve from a subdir", function()
+		local seen_cwd
+		vim.system = function(_cmd, opts)
+			seen_cwd = opts.cwd
+			return {
+				wait = function()
+					return { code = 0, stdout = "@@ diff @@\n" }
+				end,
+			}
+		end
+		diff.get_review_patch("basesha", "sub/f.lua", "/repo/root")
+		assert.equals("/repo/root", seen_cwd)
+	end)
+
+	it("falls back to --no-index for an untracked file", function()
+		vim.system = function(cmd, _opts)
+			return {
+				wait = function()
+					if cmd[3] == "--no-index" then
+						-- git diff --no-index exits 1 with the diff when files differ
+						return { code = 1, stdout = "@@ untracked diff @@\n" }
+					end
+					-- git diff <base> -- <path> is empty for an untracked file
+					return { code = 0, stdout = "" }
+				end,
+			}
+		end
+		assert.equals("@@ untracked diff @@\n", diff.get_review_patch("basesha", "new.py"))
+	end)
+
+	it("returns nil when neither produces a diff", function()
+		vim.system = function(_cmd, _opts)
+			return {
+				wait = function()
+					return { code = 0, stdout = "" }
+				end,
+			}
+		end
+		assert.is_nil(diff.get_review_patch("basesha", "unchanged.lua"))
 	end)
 end)

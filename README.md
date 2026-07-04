@@ -127,6 +127,11 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewPanel` | Toggle review side panel |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template |
+| `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
+| `:FudeReviewLocalStop` | Stop local review mode |
+| `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
+| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted`) |
+| `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
 ## Configuration
 
@@ -238,6 +243,72 @@ comment's line. Drafts also appear in the comment browser
 (`:FudeReviewListComments`) — existing entries gain a `✎draft` marker and new
 drafts show as `[draft]` rows you can jump to. Disable with
 `drafts.enabled = false`.
+
+## Local review mode (pre-PR)
+
+`:FudeReviewLocal [base]` reviews your working tree **before a PR exists** —
+typically to review AI-agent-generated code locally. No GitHub interaction
+happens in this mode:
+
+- Changed files come from the local git diff, plus untracked files. The diff
+  base depends on the **scope** (switch with `:FudeReviewLocalScope`). Every
+  scope compares the working tree against a ref, so comments stay anchored:
+  - `base` — merge-base with `base` (default: the remote default branch, else
+    a local `main`/`master`): the whole branch diff, including committed work.
+    Shown only on a branch that differs from its base ref.
+  - `unpushed` — the upstream tracking ref (`@{upstream}`): changes not yet
+    pushed. Shown only when the branch has an upstream.
+  - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes. Always
+    available.
+  The side panel / picker lists only the scopes valid for the current git
+  state, and the statusline shows the active one. When no base branch can be
+  found (a fresh, remote-less repo), the session starts in `uncommitted`; in a
+  repo with no commits, the diff base is the empty tree so staged and untracked
+  files are all reviewable.
+- Comments are stored in `.fude/reviews/<session-id>.jsonl` inside the
+  worktree as an **append-only event log** (add `.fude/` to your
+  `.gitignore`). `.fude/current.json` points to the active session, so the
+  session survives Neovim restarts until `:FudeReviewLocalStop`.
+- The usual review UI works as-is: comments (`:FudeReviewComment`),
+  suggestions, replies, edits, the comment browser, side panel, and diff
+  preview. There is no submit step — comments are saved immediately.
+- `:FudeReviewResolve` toggles a thread's resolved state (shown as a
+  `[resolved]` badge).
+- Viewed state works locally (`:FudeReviewViewed` / `<Tab>` in the panel or
+  picker), persisted in the JSONL instead of GitHub.
+- Comment positions follow your edits via extmarks and are re-anchored in the
+  JSONL on save. On reload, comments whose line drifted while the buffer was
+  closed (e.g. an external agent edit) are re-anchored by matching their saved
+  context. Comments whose file/line disappeared and can't be re-anchored are
+  shown as `[outdated]` in the comment browser.
+
+### AI agent integration
+
+The JSONL file is the only contract: an agent reads the events and appends
+its replies (`author_type: "agent"`, shown with an `[agent]` badge). Enable
+`auto_reload` to pick up agent replies automatically:
+
+```lua
+require("fude").setup({ auto_reload = { enabled = true, interval = 15 } })
+```
+
+Each line of `.fude/reviews/<session-id>.jsonl` is one JSON event:
+
+```jsonl
+{"event":"session","session_id":"...","base_ref":"main","base_sha":"...","branch":"feat/x","worktree_root":"/path/to/repo","created_at":"..."}
+{"event":"comment","id":"<uuid>","thread_id":"<uuid>","path":"lua/mod.lua","start_line":10,"end_line":12,"body":"...","author":"you","author_type":"human","created_at":"...","context":"..."}
+{"event":"reply","id":"<uuid>","thread_id":"<root-id>","in_reply_to":"<root-id>","body":"...","author":"claude","author_type":"agent","created_at":"..."}
+{"event":"resolve","id":"<uuid>","thread_id":"<root-id>","author":"you","created_at":"..."}
+```
+
+Other event kinds: `edit` (body replacement), `move` (line re-anchor),
+`reopen`, `delete` (hides the comment; the log line remains as an audit
+trail), and `viewed` (per-file viewed state). Agents should **append only**
+— never rewrite existing lines.
+
+For a resident Claude Code session, `contrib/skills/fude-watch/` provides a
+skill scaffold that tails the active session file and responds to new
+comments as they appear.
 
 ## Completion
 

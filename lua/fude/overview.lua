@@ -8,6 +8,10 @@ function M.show()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: PR overview is not available in local review mode", vim.log.levels.WARN)
+		return
+	end
 
 	local gh = require("fude.gh")
 	local ui = require("fude.ui")

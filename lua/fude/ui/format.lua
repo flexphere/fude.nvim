@@ -7,6 +7,22 @@ function M.normalize_newlines(s)
 	return (s or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 end
 
+--- Build status badges for a comment header (" [agent]", " [resolved]").
+--- Local review comments carry author_type ("human"|"agent") and a
+--- thread-level resolved flag; GitHub comments have neither and get "".
+--- @param comment table comment object
+--- @return string badge suffix ("" when none apply)
+function M.comment_badges(comment)
+	local badges = ""
+	if comment.author_type == "agent" then
+		badges = badges .. " [agent]"
+	end
+	if comment.resolved then
+		badges = badges .. " [resolved]"
+	end
+	return badges
+end
+
 --- Calculate centered float window dimensions from percentage-based sizes.
 --- @param columns number screen width
 --- @param screen_lines number screen height
@@ -33,7 +49,7 @@ function M.format_comments_for_display(comments, format_date_fn)
 		local start_line = #lines
 		local author = comment.user and comment.user.login or "unknown"
 		local created = format_date_fn(comment.created_at)
-		local header = string.format("@%s  %s", author, created)
+		local header = string.format("@%s  %s%s", author, created, M.comment_badges(comment))
 		table.insert(lines, header)
 		table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
 		local comment_body = M.normalize_newlines(comment.body)
@@ -332,7 +348,7 @@ function M.format_reply_comments_for_display(comments, format_date_fn)
 	for i, comment in ipairs(comments) do
 		local author = comment.user and comment.user.login or "unknown"
 		local created = format_date_fn(comment.created_at)
-		local header = string.format("@%s (%s):", author, created)
+		local header = string.format("@%s (%s):%s", author, created, M.comment_badges(comment))
 		local header_line_idx = #lines
 		table.insert(lines, header)
 		-- Author highlight: from 0 to end of @username

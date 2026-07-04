@@ -15,6 +15,33 @@ vim.api.nvim_create_user_command("FudeReviewToggle", function()
 	require("fude").toggle()
 end, { desc = "Toggle PR review mode" })
 
+vim.api.nvim_create_user_command("FudeReviewLocal", function(opts)
+	require("fude.local.session").start(opts.args ~= "" and opts.args or nil)
+end, { desc = "Start local (pre-PR) review mode against a base ref", nargs = "?" })
+
+vim.api.nvim_create_user_command("FudeReviewLocalStop", function()
+	require("fude.local.session").stop()
+end, { desc = "Stop local review mode" })
+
+vim.api.nvim_create_user_command("FudeReviewLocalToggle", function(opts)
+	require("fude.local.session").toggle(opts.args ~= "" and opts.args or nil)
+end, { desc = "Toggle local (pre-PR) review mode against a base ref", nargs = "?" })
+
+vim.api.nvim_create_user_command("FudeReviewLocalScope", function(opts)
+	local session = require("fude.local.session")
+	if opts.args ~= "" then
+		session.set_scope(opts.args)
+	else
+		session.select_scope()
+	end
+end, {
+	desc = "Select local review scope (base / unpushed / uncommitted)",
+	nargs = "?",
+	complete = function()
+		return require("fude.local.session").SCOPES
+	end,
+})
+
 vim.api.nvim_create_user_command("FudeReviewComment", function(opts)
 	require("fude.comments").create_comment(opts.range > 0)
 end, { desc = "Create PR review comment", range = true })
@@ -105,10 +132,18 @@ vim.api.nvim_create_user_command("FudeCopyPRURL", function()
 	end)
 end, { desc = "Copy PR URL to clipboard" })
 
+vim.api.nvim_create_user_command("FudeReviewResolve", function()
+	require("fude.comments").toggle_resolve()
+end, { desc = "Toggle resolved status of the comment thread on the current line (local review)" })
+
 vim.api.nvim_create_user_command("FudeReviewSubmit", function()
 	local state = require("fude.config").state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Local review has no submit step (comments are saved immediately)", vim.log.levels.WARN)
 		return
 	end
 

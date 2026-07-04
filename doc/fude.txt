@@ -15,6 +15,7 @@ CONTENTS                                                   *fude-contents*
   7. Statusline ................ |fude-statusline|
   8. Completion ................ |fude-completion|
   9. Drafts .................... |fude-drafts|
+  10. Local Review ............. |fude-local-review|
 
 ==============================================================================
 1. INTRODUCTION                                        *fude-introduction*
@@ -72,6 +73,49 @@ Using lazy.nvim: >lua
 
 :FudeReviewToggle                                    *:FudeReviewToggle*
     Toggle review session on or off.
+
+:FudeReviewLocal [{base}]                              *:FudeReviewLocal*
+    Start local (pre-PR) review mode against {base}. Changed files
+    come from the local git diff (merge-base with {base}, plus
+    untracked files) and review comments are stored in
+    `.fude/reviews/<session-id>.jsonl` inside the worktree instead of
+    GitHub. Resumes the session recorded in `.fude/current.json` when
+    one exists.
+
+    When {base} is omitted, the base ref is resolved in order: the
+    remote default branch (origin/HEAD, origin/main, origin/master),
+    then a local `main`/`master`. If none is found (e.g. a fresh,
+    remote-less repo), the session starts in the `uncommitted` scope
+    (diff against HEAD) instead of failing; switch to a base scope
+    with |:FudeReviewLocalScope| once a base exists. In a repo with no
+    commits yet, the diff base is the empty tree, so staged and
+    untracked files are all reviewable as additions.
+
+:FudeReviewLocalStop                               *:FudeReviewLocalStop*
+    Stop local review mode and clear `.fude/current.json`. The
+    session's JSONL file is kept for later reference.
+
+:FudeReviewLocalToggle [{base}]              *:FudeReviewLocalToggle*
+    Toggle local review mode: stop when a local session is active,
+    otherwise start one against {base} (same resolution as
+    |:FudeReviewLocal|). Refuses to start while a GitHub review is
+    active (stop it with |:FudeReviewStop| first).
+
+:FudeReviewLocalScope [{scope}]                   *:FudeReviewLocalScope*
+    Switch the local review scope (diff base). {scope} is `base`,
+    `unpushed`, or `uncommitted`; with no argument, opens a picker of
+    the scopes available for the current git state. Every scope compares
+    the working tree against a ref, so comments stay anchored:
+      `base`        merge-base with the base branch (whole branch diff);
+                    shown only on a branch that differs from its base.
+      `unpushed`    the upstream ref @{upstream} (changes not yet pushed);
+                    shown only when the branch has an upstream.
+      `uncommitted` HEAD (staged + unstaged only); always available.
+
+:FudeReviewResolve                                   *:FudeReviewResolve*
+    Toggle resolved status of the comment thread on the current line.
+    Available in local review mode only. Resolved threads stay visible
+    with a `[resolved]` badge.
 
 :FudeReviewDiff                                        *:FudeReviewDiff*
     Toggle the diff preview window. Opens a side-by-side diff view
@@ -341,9 +385,13 @@ Using lazy.nvim: >lua
     that shows two sections:
 
     Review Scope:~
-      Lists the PR's commit history with a "Full PR" option at the top.
-      The currently active scope is marked with `▶`. Reviewed commits
-      show a checkmark indicator.
+      In PR review, lists the PR's commit history with a "Full PR"
+      option at the top; reviewed commits show a checkmark indicator,
+      and `<Tab>` toggles a commit's reviewed state.
+      In local review (|fude-local-review|), lists the local diff scopes
+      available for the current git state ("Base branch", "Unpushed",
+      "Uncommitted" — see |:FudeReviewLocalScope|); here `<CR>` or `<Tab>`
+      switches scope. The active scope is marked with `▶`.
 
     Files:~
       Lists all changed files in the current scope with status icons,
@@ -351,10 +399,11 @@ Using lazy.nvim: >lua
       the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 
     Keymaps (panel):~
-      `<CR>`    Select scope entry or open file
-      `<Tab>`   Toggle reviewed (scope) / viewed (file)
+      `<CR>`    Select scope entry / switch local scope, or open file
+      `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
+                (local). On a file: toggle viewed.
       `t`       Toggle files between flat list and tree
-      `R`       Reload review data from GitHub
+      `R`       Reload review data
       `q`       Close panel
 
     When opening a file with `<CR>`, the cursor moves to a non-panel
@@ -827,6 +876,60 @@ Limitations:
     will not be restored at the new position (same as pending comments).
   - The draft file is written with last-write-wins semantics, so running
     multiple Neovim instances against the same draft store may drop a draft.
+
+==============================================================================
+10. LOCAL REVIEW                                      *fude-local-review*
+
+|:FudeReviewLocal| reviews the working tree before a PR exists — typically
+to review AI-agent-generated code locally. No GitHub interaction happens in
+this mode.
+
+Data model~
+
+Comments live in an append-only JSONL event log inside the worktree: >
+    .fude/reviews/<session-id>.jsonl    one JSON event per line
+    .fude/current.json                  pointer to the active session
+<
+Add `.fude/` to your `.gitignore`. Event kinds: `session` (header),
+`comment` (thread root with path/start_line/end_line/body/author/
+author_type/context), `reply`, `edit`, `move` (line re-anchor), `resolve`,
+`reopen`, `delete` (hides the comment from the view; the log line
+remains as an audit trail), and `viewed` (per-file viewed state).
+
+Behavior~
+
+  - Changed files come from the local git diff plus untracked files. The
+    diff base depends on the scope (|:FudeReviewLocalScope|): `base`
+    (merge-base with the base ref), `unpushed` (the @{upstream} ref), or
+    `uncommitted` (HEAD). Only the scopes valid for the current git state
+    are offered; the statusline shows the active one (`Local: <base>`,
+    `Local: unpushed`, `Local: uncommitted`).
+  - Comments are saved immediately on `<CR>` — there is no pending review
+    or submit step. |:FudeReviewSubmit| is not available in this mode.
+  - Comment positions follow buffer edits via extmarks and are re-anchored
+    in the JSONL on `:write` (as `move` events). On reload, comments whose
+    line drifted while the buffer was closed (e.g. an external agent edit)
+    are re-anchored by matching their saved `context` uniquely elsewhere in
+    the file, persisting the result as a `move`. Comments whose file or
+    line disappeared and cannot be re-anchored are shown as `[outdated]`
+    in the comment browser.
+  - |:FudeReviewResolve| toggles a thread's resolved state (`[resolved]`
+    badge). Resolved threads stay visible.
+  - Viewed state works locally: |:FudeReviewViewed| / |:FudeReviewUnviewed|
+    and the side panel / picker `<Tab>` mark files viewed, persisted in
+    the JSONL. The panel's "Files (Reviewed: N/M)" count reflects it.
+  - Comment drafts (|fude-drafts|) are disabled in local review mode
+    (comments are saved locally anyway).
+  - The statusline component (|fude-statusline|) shows `Local: <base>`.
+
+AI agent integration~
+
+The JSONL file is the only contract. An agent reads the events and appends
+replies with `author_type: "agent"` (shown with an `[agent]` badge). Enable
+`auto_reload` (see |fude-configuration|) to pick up agent replies
+automatically. Agents must append whole lines only — never rewrite existing
+lines. A skill scaffold for a resident Claude Code session is provided at
+`contrib/skills/fude-watch/` in the repository.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:

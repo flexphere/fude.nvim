@@ -1,5 +1,36 @@
 local scope = require("fude.scope")
 
+describe("build_local_scope_entries", function()
+	it("maps scope specs to sidepanel entries preserving order and current flag", function()
+		local entries = scope.build_local_scope_entries({
+			{ scope = "base", label = "Base branch (main)", is_current = false },
+			{ scope = "unpushed", label = "Unpushed (origin/feat/a)", is_current = true },
+			{ scope = "uncommitted", label = "Uncommitted (staged + unstaged)", is_current = false },
+		})
+		assert.equals(3, #entries)
+		assert.equals("base", entries[1].local_scope)
+		assert.equals("Base branch (main)", entries[1].display_text)
+		assert.is_false(entries[1].is_current)
+		assert.equals("unpushed", entries[2].local_scope)
+		assert.is_true(entries[2].is_current)
+		assert.equals("uncommitted", entries[3].value)
+	end)
+
+	it("returns no entries for an empty spec list", function()
+		assert.same({}, scope.build_local_scope_entries({}))
+		assert.same({}, scope.build_local_scope_entries(nil))
+	end)
+end)
+
+describe("format_local_scope_label", function()
+	it("labels each scope", function()
+		assert.equals("Local: main", scope.format_local_scope_label("main", "base"))
+		assert.equals("Local: unpushed", scope.format_local_scope_label("main", "unpushed"))
+		assert.equals("Local: uncommitted", scope.format_local_scope_label("main", "uncommitted"))
+		assert.equals("Local: ?", scope.format_local_scope_label(nil, "base"))
+	end)
+end)
+
 describe("build_scope_entries", function()
 	it("returns full PR entry first followed by commits", function()
 		local commits = {

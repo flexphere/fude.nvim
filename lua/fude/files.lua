@@ -10,6 +10,35 @@ M.status_icons = {
 	copied = "C",
 }
 
+--- Build the changed-files picker title. GitHub review shows the PR number;
+--- local review (no PR) uses a neutral label.
+--- @param pr_number number|nil
+--- @return string
+function M.picker_title(pr_number)
+	if pr_number then
+		return string.format("PR #%d Changed Files", pr_number)
+	end
+	return "Local Review: Changed Files"
+end
+
+--- Resolve the diff text to preview for a changed-file entry. GitHub review
+--- ships the patch with each entry; local review has no patch on the entry
+--- (kept out of the reload path for cost), so it is generated on demand here
+--- when the entry is actually previewed.
+--- @param entry table file entry with .patch and .path
+--- @return string patch text ("" when there is nothing to show)
+function M.resolve_patch(entry)
+	if entry.patch and entry.patch ~= "" then
+		return entry.patch
+	end
+	local state = config.state
+	if state.review_mode == "local" and state.local_session then
+		local session = state.local_session
+		return diff.get_review_patch(session.base_sha, entry.path, session.worktree_root) or ""
+	end
+	return entry.patch or ""
+end
+
 --- Determine the viewed icon for a file.
 --- @param viewed_state string|nil "VIEWED", "UNVIEWED", "DISMISSED", or nil
 --- @param viewed_sign string character to show for viewed files
@@ -261,7 +290,7 @@ function M.show_telescope()
 
 	local function create_picker(initial_entries)
 		return pickers.new({}, {
-			prompt_title = string.format("PR #%d Changed Files", state.pr_number),
+			prompt_title = M.picker_title(state.pr_number),
 			finder = finders.new_table({
 				results = initial_entries,
 				entry_maker = function(entry)
@@ -277,11 +306,12 @@ function M.show_telescope()
 				define_preview = function(self, entry)
 					ui.sync_preview_buffer(self)
 
-					if entry.patch == "" then
+					local patch = M.resolve_patch(entry)
+					if patch == "" then
 						vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, { "(no diff)" })
 						return
 					end
-					local lines = vim.split(entry.patch, "\n", { trimempty = false })
+					local lines = vim.split(patch, "\n", { trimempty = false })
 					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 					vim.bo[self.state.bufnr].filetype = "diff"
 				end,
@@ -344,7 +374,7 @@ function M.show_snacks()
 
 	snacks_picker.pick({
 		source = "fude_changed_files",
-		title = string.format("PR #%d Changed Files", state.pr_number),
+		title = M.picker_title(state.pr_number),
 		items = raw_entries,
 		format = function(item, _)
 			return {
@@ -363,11 +393,12 @@ function M.show_snacks()
 			end
 			ctx.preview:reset()
 			ctx.preview:minimal()
-			if item.patch == "" then
+			local patch = M.resolve_patch(item)
+			if patch == "" then
 				ctx.preview:set_lines({ "(no diff)" })
 				return
 			end
-			local lines = vim.split(item.patch, "\n", { trimempty = false })
+			local lines = vim.split(patch, "\n", { trimempty = false })
 			ctx.preview:set_lines(lines)
 			ctx.preview:highlight({ ft = "diff" })
 		end,
@@ -425,15 +456,38 @@ end
 --- @param on_done fun(updated: { path: string, viewed_state: string, viewed_icon: string, viewed_hl: string })
 function M.apply_viewed_toggle(path, on_done)
 	local state = config.state
+	local viewed_sign = config.opts.signs.viewed or "✓"
+	local current_state = state.viewed_files[path]
+	local new_state = (current_state == "VIEWED") and "UNVIEWED" or "VIEWED"
+
+	local function finish()
+		local v_icon, v_hl = M.viewed_icon(new_state, viewed_sign)
+		on_done({
+			path = path,
+			viewed_state = new_state,
+			viewed_icon = v_icon,
+			viewed_hl = v_hl,
+		})
+	end
+
+	-- Local review: persist to the JSONL store (no GitHub round-trip).
+	if state.review_mode == "local" then
+		require("fude.comments.local_sync").set_viewed(path, new_state == "VIEWED", function(err)
+			if err then
+				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			finish()
+		end)
+		return
+	end
+
 	if not state.pr_node_id then
 		vim.notify("fude.nvim: PR node ID not available", vim.log.levels.WARN)
 		return
 	end
 
 	local gh_mod = require("fude.gh")
-	local viewed_sign = config.opts.signs.viewed or "✓"
-	local current_state = state.viewed_files[path]
-	local new_state = (current_state == "VIEWED") and "UNVIEWED" or "VIEWED"
 	local toggle_fn = (current_state == "VIEWED") and gh_mod.unmark_file_viewed or gh_mod.mark_file_viewed
 
 	toggle_fn(state.pr_node_id, path, function(err)
@@ -442,13 +496,7 @@ function M.apply_viewed_toggle(path, on_done)
 			return
 		end
 		state.viewed_files[path] = new_state
-		local v_icon, v_hl = M.viewed_icon(new_state, viewed_sign)
-		on_done({
-			path = path,
-			viewed_state = new_state,
-			viewed_icon = v_icon,
-			viewed_hl = v_hl,
-		})
+		finish()
 	end)
 end
 
@@ -522,7 +570,7 @@ function M.show_quickfix()
 	end
 
 	vim.fn.setqflist({}, " ", {
-		title = string.format("PR #%d Changed Files", state.pr_number),
+		title = M.picker_title(state.pr_number),
 		items = items,
 	})
 	vim.cmd("copen")

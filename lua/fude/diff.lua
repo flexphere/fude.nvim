@@ -105,9 +105,12 @@ function M.parse_log_first_subject(output)
 end
 
 --- Get the merge-base between a ref and HEAD.
---- @param ref string branch name or commit SHA
+--- @param ref string|nil branch name or commit SHA
 --- @return string|nil merge-base SHA
 function M.get_merge_base(ref)
+	if not ref then
+		return nil
+	end
 	local result = vim.system({ "git", "merge-base", ref, "HEAD" }, { text = true }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)
@@ -134,7 +137,7 @@ function M.get_default_branch()
 		return (branch:gsub("^origin/", ""))
 	end
 
-	-- Fallback: check common default branch names
+	-- Fallback: check common default branch names on the remote
 	for _, name in ipairs({ "main", "master" }) do
 		local check = vim.system({ "git", "rev-parse", "--verify", "origin/" .. name }, { text = true }):wait()
 		if check.code == 0 then
@@ -142,6 +145,135 @@ function M.get_default_branch()
 		end
 	end
 
+	-- Fallback: local main/master (remote-less repos, e.g. pre-push agent work)
+	for _, name in ipairs({ "main", "master" }) do
+		local check = vim.system({ "git", "rev-parse", "--verify", name }, { text = true }):wait()
+		if check.code == 0 then
+			return name
+		end
+	end
+
+	return nil
+end
+
+--- Get the current branch name (nil when detached HEAD).
+--- @return string|nil branch name
+function M.get_current_branch()
+	local result = vim.system({ "git", "symbolic-ref", "--quiet", "--short", "HEAD" }, { text = true }):wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
+--- Get the HEAD commit SHA (synchronous, local git operation).
+--- @return string|nil sha
+function M.get_head_sha()
+	local result = vim.system({ "git", "rev-parse", "HEAD" }, { text = true }):wait()
+	if result.code == 0 then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
+--- Get the repository's empty-tree object hash. Used as a diff base for
+--- zero-commit repos (no HEAD), where diffing against the empty tree shows
+--- every tracked/staged file as added. Computed via `git hash-object` so it
+--- is correct for both SHA-1 and SHA-256 repositories.
+--- @return string|nil hash
+function M.get_empty_tree()
+	local result = vim.system({ "git", "hash-object", "-t", "tree", "/dev/null" }, { text = true }):wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
+--- Get the upstream tracking ref of the current branch (e.g. "origin/feat/a"),
+--- used as the diff base for the "unpushed" local review scope. Returns nil
+--- when the branch has no upstream (never pushed / no tracking configured).
+--- @param cwd string|nil repo root
+--- @return string|nil upstream ref
+function M.get_upstream_ref(cwd)
+	local result = vim
+		.system({ "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}" }, { text = true, cwd = cwd })
+		:wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
+--- Get the configured git user name (fallback: $USER).
+--- @return string user name
+function M.get_git_user()
+	local result = vim.system({ "git", "config", "user.name" }, { text = true }):wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return os.getenv("USER") or "local"
+end
+
+--- Get name-status diff output between a ref and the working tree.
+--- @param ref string base commit SHA or ref
+--- @param cwd string|nil repo root (so output is correct when nvim's cwd is a subdir)
+--- @return string|nil output
+function M.get_name_status(ref, cwd)
+	local result = vim.system({ "git", "diff", "--name-status", "-M", ref }, { text = true, cwd = cwd }):wait()
+	if result.code == 0 then
+		return result.stdout
+	end
+	return nil
+end
+
+--- Get numstat diff output between a ref and the working tree.
+--- @param ref string base commit SHA or ref
+--- @param cwd string|nil repo root
+--- @return string|nil output
+function M.get_numstat(ref, cwd)
+	local result = vim.system({ "git", "diff", "--numstat", "-M", ref }, { text = true, cwd = cwd }):wait()
+	if result.code == 0 then
+		return result.stdout
+	end
+	return nil
+end
+
+--- Get untracked (non-ignored) files in the working tree.
+--- Runs in `cwd` (repo root) so it lists every untracked file with repo-relative
+--- paths — `git ls-files --others` is cwd-relative and limited to the cwd
+--- subtree otherwise.
+--- @param cwd string|nil repo root
+--- @return string|nil output newline-separated paths
+function M.get_untracked(cwd)
+	local result = vim.system({ "git", "ls-files", "--others", "--exclude-standard" }, { text = true, cwd = cwd }):wait()
+	if result.code == 0 then
+		return result.stdout
+	end
+	return nil
+end
+
+--- Get the working-tree diff for a single file against a base SHA, used for the
+--- local review file-list preview. Tries `git diff <base> -- <path>` (tracked
+--- changes) first, then falls back to `git diff --no-index` (untracked/new
+--- files, which don't appear in a normal diff). Returns nil when there is no
+--- diff to show. Runs in `cwd` (repo root) so the repo-relative pathspec
+--- resolves even when nvim's cwd is a subdirectory.
+--- @param base_sha string base commit SHA
+--- @param path string repo-relative file path
+--- @param cwd string|nil repo root
+--- @return string|nil patch text
+function M.get_review_patch(base_sha, path, cwd)
+	local result = vim.system({ "git", "diff", base_sha, "--", path }, { text = true, cwd = cwd }):wait()
+	if result.code == 0 and result.stdout and result.stdout ~= "" then
+		return result.stdout
+	end
+	-- Untracked/new file: diff against /dev/null (exits 1 when they differ).
+	local untracked = vim
+		.system({ "git", "diff", "--no-index", "--", "/dev/null", path }, { text = true, cwd = cwd })
+		:wait()
+	if untracked.stdout and untracked.stdout ~= "" then
+		return untracked.stdout
+	end
 	return nil
 end
 

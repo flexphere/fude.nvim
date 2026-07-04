@@ -282,19 +282,26 @@ local function render(panel)
 	local sp_opts = config.opts.sidepanel or {}
 	local width = math.max(20, sp_opts.width or 40)
 
-	-- Build scope entries
-	local commit_entries = {}
-	if #state.pr_commits > 0 then
-		commit_entries = get_gh().parse_commit_entries(state.pr_commits)
+	-- Build scope entries: local review shows the available local diff scopes,
+	-- GitHub review shows Full PR + commits.
+	local scope_entries
+	if state.review_mode == "local" then
+		local specs = state.local_session and require("fude.local.session").scope_specs(state.local_session) or {}
+		scope_entries = scope_mod.build_local_scope_entries(specs)
+	else
+		local commit_entries = {}
+		if #state.pr_commits > 0 then
+			commit_entries = get_gh().parse_commit_entries(state.pr_commits)
+		end
+		scope_entries = scope_mod.build_scope_entries(
+			commit_entries,
+			state.base_ref or "",
+			state.head_ref or "",
+			state.reviewed_commits,
+			state.scope,
+			state.scope_commit_sha
+		)
 	end
-	local scope_entries = scope_mod.build_scope_entries(
-		commit_entries,
-		state.base_ref or "",
-		state.head_ref or "",
-		state.reviewed_commits,
-		state.scope,
-		state.scope_commit_sha
-	)
 
 	-- Build file entries (skip if repo root unavailable)
 	local repo_root = panel.repo_root
@@ -547,8 +554,11 @@ function M.setup_keymaps(panel)
 		end
 
 		if entry_info.type == "scope" then
-			local scope_mod = get_scope()
-			scope_mod.apply_scope(entry_info.entry)
+			if config.state.review_mode == "local" then
+				require("fude.local.session").set_scope(entry_info.entry.local_scope)
+			else
+				get_scope().apply_scope(entry_info.entry)
+			end
 		elseif entry_info.type == "file" then
 			local filename = entry_info.entry.filename
 			if filename then
@@ -570,7 +580,12 @@ function M.setup_keymaps(panel)
 		end
 
 		if entry_info.type == "scope" then
-			M.toggle_scope_reviewed(panel, entry_info)
+			-- Local review scopes have no "reviewed" state; switch scope instead.
+			if config.state.review_mode == "local" then
+				require("fude.local.session").set_scope(entry_info.entry.local_scope)
+			else
+				M.toggle_scope_reviewed(panel, entry_info)
+			end
 		elseif entry_info.type == "file" then
 			M.toggle_file_viewed(panel, entry_info)
 		end

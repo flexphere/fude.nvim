@@ -25,7 +25,10 @@ function M.open_preview(source_win)
 	end
 
 	local base_ref = state.base_ref
-	if state.scope == "commit" and state.scope_commit_sha then
+	if state.review_mode == "local" and state.local_session and state.local_session.content_ref then
+		-- Local review: base pane follows the scope (base branch vs HEAD)
+		base_ref = state.local_session.content_ref
+	elseif state.scope == "commit" and state.scope_commit_sha then
 		base_ref = state.scope_commit_sha .. "^"
 	end
 
