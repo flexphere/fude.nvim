@@ -636,7 +636,9 @@ local function create_browser(entries, issue_comments)
 	local function close_with_confirm()
 		local key = lower_key_for_entry(current_entry(), browser.mode, browser.edit_target)
 		get_ui().confirm_close_with_draft(lower_buf, current_lower_original(), {
-			allow_draft = drafts.enabled(),
+			-- key is nil in local review mode (drafts need a PR number); disable
+			-- the save-draft option so we don't offer a no-op drafts.set(nil, …).
+			allow_draft = key ~= nil and drafts.enabled(),
 			on_save_draft = function(text)
 				drafts.set(key, text)
 				-- Refresh after the browser closes so the diff buffer (not the
@@ -839,7 +841,8 @@ local function create_browser(entries, issue_comments)
 	local function cancel_lower_with_confirm()
 		local key = lower_key_for_entry(current_entry(), browser.mode, browser.edit_target)
 		get_ui().confirm_close_with_draft(lower_buf, current_lower_original(), {
-			allow_draft = drafts.enabled(),
+			-- key is nil in local review mode; disable the no-op save-draft option.
+			allow_draft = key ~= nil and drafts.enabled(),
 			on_save_draft = function(text)
 				drafts.set(key, text)
 				vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
