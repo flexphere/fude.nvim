@@ -173,6 +173,19 @@ function M.get_head_sha()
 	return nil
 end
 
+--- Get the repository's empty-tree object hash. Used as a diff base for
+--- zero-commit repos (no HEAD), where diffing against the empty tree shows
+--- every tracked/staged file as added. Computed via `git hash-object` so it
+--- is correct for both SHA-1 and SHA-256 repositories.
+--- @return string|nil hash
+function M.get_empty_tree()
+	local result = vim.system({ "git", "hash-object", "-t", "tree", "/dev/null" }, { text = true }):wait()
+	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
+		return vim.trim(result.stdout)
+	end
+	return nil
+end
+
 --- Get the configured git user name (fallback: $USER).
 --- @return string user name
 function M.get_git_user()

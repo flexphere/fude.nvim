@@ -225,7 +225,7 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("Local: uncommitted", require("fude.scope").statusline())
 	end)
 
-	it("errors on a repo with no commits (no base, no HEAD)", function()
+	it("reviews a zero-commit repo against the empty tree", function()
 		mock_local_git({
 			get_default_branch = function()
 				return nil
@@ -233,9 +233,27 @@ describe("session lifecycle (start/reload/stop)", function()
 			get_head_sha = function()
 				return nil
 			end,
+			get_empty_tree = function()
+				return "emptytreehash"
+			end,
+			get_name_status = function(ref)
+				-- git diff <empty-tree> shows staged files as added
+				return (ref == "emptytreehash") and "A\tnew.py\n" or ""
+			end,
+			get_untracked = function()
+				return "loose.txt\n"
+			end,
 		})
 		session.start(nil)
-		assert.is_false(config.state.active)
+		assert.is_true(config.state.active)
+		assert.equals("uncommitted", config.state.local_session.scope)
+		assert.equals("emptytreehash", config.state.local_session.base_sha)
+		local paths = {}
+		for _, f in ipairs(config.state.changed_files) do
+			paths[f.path] = true
+		end
+		assert.is_true(paths["new.py"]) -- staged, via empty-tree diff
+		assert.is_true(paths["loose.txt"]) -- untracked
 	end)
 
 	it("start warns when already active", function()
@@ -414,10 +432,27 @@ describe("session.resolve_scope_base", function()
 		helpers.cleanup()
 	end)
 
-	it("uncommitted resolves to literal HEAD (both refs)", function()
+	it("uncommitted resolves to literal HEAD when HEAD exists", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_head_sha", function()
+			return "somesha"
+		end)
 		local diff_base, content_ref = session.resolve_scope_base("uncommitted", "main")
 		assert.equals("HEAD", diff_base)
 		assert.equals("HEAD", content_ref)
+	end)
+
+	it("uncommitted falls back to the empty tree when there is no HEAD", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_head_sha", function()
+			return nil
+		end)
+		helpers.mock(diff, "get_empty_tree", function()
+			return "emptyhash"
+		end)
+		local diff_base, content_ref = session.resolve_scope_base("uncommitted", "main")
+		assert.equals("emptyhash", diff_base)
+		assert.equals("emptyhash", content_ref)
 	end)
 
 	it("base resolves to the merge-base sha with the base branch as content ref", function()

@@ -256,7 +256,9 @@ happens in this mode:
     committed work.
   - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes.
   When no base branch can be found (a fresh, remote-less repo), the session
-  starts in the `uncommitted` scope instead of failing.
+  starts in the `uncommitted` scope instead of failing. In a repo with no
+  commits yet, the diff base is the empty tree, so staged and untracked files
+  are all reviewable.
 - Comments are stored in `.fude/reviews/<session-id>.jsonl` inside the
   worktree as an **append-only event log** (add `.fude/` to your
   `.gitignore`). `.fude/current.json` points to the active session, so the

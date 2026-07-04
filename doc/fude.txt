@@ -87,7 +87,9 @@ Using lazy.nvim: >lua
     then a local `main`/`master`. If none is found (e.g. a fresh,
     remote-less repo), the session starts in the `uncommitted` scope
     (diff against HEAD) instead of failing; switch to a base scope
-    with |:FudeReviewLocalScope| once a base exists.
+    with |:FudeReviewLocalScope| once a base exists. In a repo with no
+    commits yet, the diff base is the empty tree, so staged and
+    untracked files are all reviewable as additions.
 
 :FudeReviewLocalStop                               *:FudeReviewLocalStop*
     Stop local review mode and clear `.fude/current.json`. The

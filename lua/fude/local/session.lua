@@ -136,7 +136,9 @@ M.SCOPES = { "base", "uncommitted" }
 
 --- Resolve the diff base for a local review scope.
 ---   "base"        → merge-base with the base branch (the whole branch diff)
----   "uncommitted" → HEAD (only staged + unstaged working-tree changes)
+---   "uncommitted" → HEAD (only staged + unstaged working-tree changes), or
+---                   the empty tree when the repo has no commits yet (so a
+---                   fresh repo of agent work is still reviewable)
 --- `diff_base` is the ref passed to `git diff` (used for the changed-files
 --- list and per-file patches); `content_ref` is the ref passed to `git show`
 --- for the side-by-side preview's base pane.
@@ -146,9 +148,17 @@ M.SCOPES = { "base", "uncommitted" }
 function M.resolve_scope_base(scope, base_ref)
 	local diff_mod = require("fude.diff")
 	if scope == "uncommitted" then
-		-- Literal HEAD so the view always reflects the current commit, even
-		-- after the user commits mid-session.
-		return "HEAD", "HEAD"
+		if diff_mod.get_head_sha() then
+			-- Literal HEAD so the view always reflects the current commit, even
+			-- after the user commits mid-session.
+			return "HEAD", "HEAD"
+		end
+		-- Zero-commit repo: diff against the empty tree (all files show as added).
+		local empty = diff_mod.get_empty_tree()
+		if not empty then
+			return nil, nil
+		end
+		return empty, empty
 	end
 	local merge_base = diff_mod.get_merge_base(base_ref)
 	if not merge_base then
@@ -258,11 +268,6 @@ function M.start(base_arg)
 	if not base_ref and initial_scope == "base" then
 		initial_scope = "uncommitted"
 		no_base_fallback = true
-	end
-
-	if initial_scope == "uncommitted" and not head_sha then
-		vim.notify("fude.nvim: No commits yet — nothing to review", vim.log.levels.ERROR)
-		return
 	end
 
 	local base_sha, content_ref = M.resolve_scope_base(initial_scope, base_ref)
