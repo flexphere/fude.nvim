@@ -29,6 +29,31 @@ REPO="${2:?owner/repo required}"
 IDLE_LIMIT="${3:-900}"
 POLL="${4:-60}"
 
+# Minimum poll interval (rate-limit guard). SKILL.md documents >= 30s.
+POLL_MIN=30
+
+# Validate numeric args: a bad idle/poll (empty, non-numeric, 0) would break the
+# arithmetic / sleep or spin a tight loop, and too-small a poll invites API rate
+# limiting. Reject non-positive-integers, then floor the poll interval.
+for _pair in "IDLE_LIMIT=$IDLE_LIMIT" "POLL=$POLL"; do
+	_name="${_pair%%=*}"
+	_val="${_pair#*=}"
+	case "$_val" in
+	'' | *[!0-9]*)
+		echo "watch_pr.sh: $_name must be a positive integer (got '$_val')" >&2
+		exit 2
+		;;
+	esac
+	if [ "$_val" -le 0 ]; then
+		echo "watch_pr.sh: $_name must be greater than 0 (got '$_val')" >&2
+		exit 2
+	fi
+done
+if [ "$POLL" -lt "$POLL_MIN" ]; then
+	echo "watch_pr.sh: poll ${POLL}s is below the ${POLL_MIN}s minimum (rate-limit guard); using ${POLL_MIN}s" >&2
+	POLL="$POLL_MIN"
+fi
+
 # Emit one POLL_ERROR after this many consecutive failed polls, then re-arm.
 FAIL_ALERT=5
 
@@ -69,7 +94,11 @@ while true; do
 	poll_failed=0
 
 	# --- Inline review comments (line comments; Copilot inline findings) ---
-	if comments_json="$(gh api "repos/$REPO/pulls/$PR/comments" --paginate 2>/dev/null)"; then
+	# gh api AND jq must both succeed: a broken / unexpected JSON response (e.g. an
+	# error object instead of an array) makes jq fail, which must count as an outage
+	# rather than a silent "0 rows" that advances the idle timer toward Ready.
+	if comments_json="$(gh api "repos/$REPO/pulls/$PR/comments" --paginate 2>/dev/null)" &&
+		parsed="$(printf '%s' "$comments_json" | jq -r '.[] | [(.id|tostring), (.user.login // "?"), (.path // "?"), ((.line // .original_line) | tostring), (.html_url // "")] | @tsv' 2>/dev/null)"; then
 		while IFS=$'\t' read -r id author path line url; do
 			[ -n "$id" ] || continue
 			already_seen "$id" "$seen_comments" && continue
@@ -78,13 +107,14 @@ while true; do
 				emit "COMMENT $id ${path}:${line} @${author} ${url}"
 				activity=1
 			fi
-		done < <(printf '%s' "$comments_json" | jq -r '.[] | [(.id|tostring), (.user.login // "?"), (.path // "?"), ((.line // .original_line) | tostring), (.html_url // "")] | @tsv' 2>/dev/null)
+		done <<<"$parsed"
 	else
 		poll_failed=1
 	fi
 
 	# --- PR-level reviews (Copilot summary review, human APPROVE/CHANGES) ---
-	if reviews_json="$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate 2>/dev/null)"; then
+	if reviews_json="$(gh api "repos/$REPO/pulls/$PR/reviews" --paginate 2>/dev/null)" &&
+		parsed="$(printf '%s' "$reviews_json" | jq -r '.[] | select(.state != "PENDING") | [(.id|tostring), (.user.login // "?"), (.state // "?")] | @tsv' 2>/dev/null)"; then
 		while IFS=$'\t' read -r id author state; do
 			[ -n "$id" ] || continue
 			already_seen "$id" "$seen_reviews" && continue
@@ -93,13 +123,14 @@ while true; do
 				emit "REVIEW $id @${author} ${state}"
 				activity=1
 			fi
-		done < <(printf '%s' "$reviews_json" | jq -r '.[] | select(.state != "PENDING") | [(.id|tostring), (.user.login // "?"), (.state // "?")] | @tsv' 2>/dev/null)
+		done <<<"$parsed"
 	else
 		poll_failed=1
 	fi
 
 	# --- Conversation (issue) comments ---
-	if issues_json="$(gh api "repos/$REPO/issues/$PR/comments" --paginate 2>/dev/null)"; then
+	if issues_json="$(gh api "repos/$REPO/issues/$PR/comments" --paginate 2>/dev/null)" &&
+		parsed="$(printf '%s' "$issues_json" | jq -r '.[] | [(.id|tostring), (.user.login // "?"), (.html_url // "")] | @tsv' 2>/dev/null)"; then
 		while IFS=$'\t' read -r id author url; do
 			[ -n "$id" ] || continue
 			already_seen "$id" "$seen_issues" && continue
@@ -108,7 +139,7 @@ while true; do
 				emit "ISSUE $id @${author} ${url}"
 				activity=1
 			fi
-		done < <(printf '%s' "$issues_json" | jq -r '.[] | [(.id|tostring), (.user.login // "?"), (.html_url // "")] | @tsv' 2>/dev/null)
+		done <<<"$parsed"
 	else
 		poll_failed=1
 	fi
