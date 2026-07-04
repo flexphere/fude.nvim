@@ -23,6 +23,10 @@ vim.api.nvim_create_user_command("FudeReviewLocalStop", function()
 	require("fude.local.session").stop()
 end, { desc = "Stop local review mode" })
 
+vim.api.nvim_create_user_command("FudeReviewLocalToggle", function(opts)
+	require("fude.local.session").toggle(opts.args ~= "" and opts.args or nil)
+end, { desc = "Toggle local (pre-PR) review mode against a base ref", nargs = "?" })
+
 vim.api.nvim_create_user_command("FudeReviewLocalScope", function(opts)
 	local session = require("fude.local.session")
 	if opts.args ~= "" then

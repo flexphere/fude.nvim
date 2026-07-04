@@ -518,6 +518,23 @@ function M.stop()
 	vim.notify("fude.nvim: Local review stopped", vim.log.levels.INFO)
 end
 
+--- Toggle local review mode: stop when a local session is active, otherwise
+--- start one against `base_arg`. Refuses when a GitHub review is active (stop
+--- it first) so the two modes never clobber each other.
+--- @param base_arg string|nil base ref passed through to M.start
+function M.toggle(base_arg)
+	local state = config.state
+	if state.active then
+		if state.review_mode == "local" then
+			M.stop()
+		else
+			vim.notify("fude.nvim: A GitHub review is active — run :FudeReviewStop first", vim.log.levels.WARN)
+		end
+		return
+	end
+	M.start(base_arg)
+end
+
 --- Re-read the session JSONL and local git state (synchronous).
 --- Picks up events appended by external writers (AI agents).
 --- @param silent boolean|nil suppress completion notification when true

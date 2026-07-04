@@ -95,6 +95,12 @@ Using lazy.nvim: >lua
     Stop local review mode and clear `.fude/current.json`. The
     session's JSONL file is kept for later reference.
 
+:FudeReviewLocalToggle [{base}]              *:FudeReviewLocalToggle*
+    Toggle local review mode: stop when a local session is active,
+    otherwise start one against {base} (same resolution as
+    |:FudeReviewLocal|). Refuses to start while a GitHub review is
+    active (stop it with |:FudeReviewStop| first).
+
 :FudeReviewLocalScope [{scope}]                   *:FudeReviewLocalScope*
     Switch the local review scope (diff base). {scope} is `base`,
     `unpushed`, or `uncommitted`; with no argument, opens a picker of

@@ -417,6 +417,31 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_nil(store.read_current(tmp_repo))
 	end)
 
+	it("toggle starts when inactive and stops when a local session is active", function()
+		mock_local_git()
+		session.toggle(nil)
+		assert.is_true(config.state.active)
+		assert.equals("local", config.state.review_mode)
+
+		session.toggle(nil)
+		assert.is_false(config.state.active)
+	end)
+
+	it("toggle passes the base arg through to start", function()
+		mock_local_git()
+		session.toggle("develop")
+		assert.equals("develop", config.state.base_ref)
+	end)
+
+	it("toggle refuses to start while a GitHub review is active", function()
+		config.state.active = true
+		config.state.review_mode = "github"
+		session.toggle(nil)
+		-- unchanged: still the GitHub session, no local session created
+		assert.equals("github", config.state.review_mode)
+		assert.is_nil(config.state.local_session)
+	end)
+
 	it("statusline shows the local session label", function()
 		mock_local_git()
 		session.start(nil)

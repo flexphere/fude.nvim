@@ -129,6 +129,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeCreatePR` | Create draft PR from template |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalStop` | Stop local review mode |
+| `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
 | `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted`) |
 | `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
