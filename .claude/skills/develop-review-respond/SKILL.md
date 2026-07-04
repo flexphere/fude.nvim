@@ -1,5 +1,5 @@
 ---
-name: review-respond
+name: develop-review-respond
 description: PR レビューコメントへの対応ワークフロー。レビュー指摘の分析、コード修正、セルフレビュー、動作確認後の返信・push までを一貫して行う。
 argument-hint: [PR番号（省略時はカレントブランチのPR）]
 ---
@@ -100,7 +100,7 @@ Phase 1 で「修正する」と決まったコメントに対して:
 
 ### Phase 2.5: セルフレビュー [自律実行可]
 
-Phase 2 の修正完了後、`/self-review` スキルを呼び出してセルフレビューを実行する。
+Phase 2 の修正完了後、`/develop-self-review` スキルを呼び出してセルフレビューを実行する。
 
 セルフレビューの結果は Phase 3 の提示内容に含める。
 
