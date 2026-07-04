@@ -723,8 +723,12 @@ end
 
 --- Format the statusline label for a local review session.
 --- @param base_ref string|nil base ref of the local session
---- @return string label e.g. "Local: main"
-function M.format_local_scope_label(base_ref)
+--- @param scope string|nil "base" (default) or "uncommitted"
+--- @return string label e.g. "Local: main" or "Local: uncommitted"
+function M.format_local_scope_label(base_ref, scope)
+	if scope == "uncommitted" then
+		return "Local: uncommitted"
+	end
 	return string.format("Local: %s", base_ref or "?")
 end
 
@@ -736,7 +740,8 @@ function M.statusline()
 		return ""
 	end
 	if state.review_mode == "local" then
-		return M.format_local_scope_label(state.base_ref)
+		local scope = state.local_session and state.local_session.scope
+		return M.format_local_scope_label(state.base_ref, scope)
 	end
 	local total = #state.pr_commits
 	return M.format_scope_label(state.scope, state.scope_commit_index, total)

@@ -292,4 +292,107 @@ describe("session lifecycle (start/reload/stop)", function()
 		session.start(nil)
 		assert.equals("Local: main", require("fude.scope").statusline())
 	end)
+
+	it("starts in base scope with the branch base", function()
+		mock_local_git()
+		session.start(nil)
+		assert.equals("base", config.state.local_session.scope)
+		assert.equals("basesha", config.state.local_session.base_sha)
+		assert.equals("main", config.state.local_session.content_ref)
+	end)
+
+	it("set_scope switches the diff base to HEAD for uncommitted", function()
+		mock_local_git()
+		local diff = require("fude.diff")
+		local diffed_ref
+		helpers.mock(diff, "get_name_status", function(ref)
+			diffed_ref = ref
+			return "M\tf.lua\n"
+		end)
+		session.start(nil)
+
+		session.set_scope("uncommitted")
+		assert.equals("uncommitted", config.state.local_session.scope)
+		assert.equals("HEAD", config.state.local_session.base_sha)
+		assert.equals("HEAD", config.state.local_session.content_ref)
+		assert.equals("HEAD", diffed_ref)
+		assert.equals("Local: uncommitted", require("fude.scope").statusline())
+	end)
+
+	it("set_scope back to base restores the merge-base", function()
+		mock_local_git()
+		session.start(nil)
+		session.set_scope("uncommitted")
+		session.set_scope("base")
+		assert.equals("base", config.state.local_session.scope)
+		assert.equals("basesha", config.state.local_session.base_sha)
+		assert.equals("main", config.state.local_session.content_ref)
+	end)
+
+	it("set_scope rejects an unknown scope", function()
+		mock_local_git()
+		session.start(nil)
+		session.set_scope("bogus")
+		assert.equals("base", config.state.local_session.scope)
+	end)
+
+	it("set_scope preserves comments across a scope switch", function()
+		mock_local_git()
+		session.start(nil)
+		store.append_event(
+			config.state.local_session.file,
+			store.build_comment_event({ id = "c1", path = "f.lua", start_line = 1, end_line = 1, body = "keep me" })
+		)
+		session.reload(true)
+		assert.equals(1, #config.state.comments)
+
+		session.set_scope("uncommitted")
+		assert.equals(1, #config.state.comments)
+		assert.equals("keep me", config.state.comments[1].body)
+	end)
+end)
+
+describe("session.resolve_scope_base", function()
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("uncommitted resolves to literal HEAD (both refs)", function()
+		local diff_base, content_ref = session.resolve_scope_base("uncommitted", "main")
+		assert.equals("HEAD", diff_base)
+		assert.equals("HEAD", content_ref)
+	end)
+
+	it("base resolves to the merge-base sha with the base branch as content ref", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_merge_base", function(ref)
+			assert.equals("main", ref)
+			return "mergesha"
+		end)
+		local diff_base, content_ref = session.resolve_scope_base("base", "main")
+		assert.equals("mergesha", diff_base)
+		assert.equals("main", content_ref)
+	end)
+
+	it("returns nil when the merge-base cannot be resolved", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_merge_base", function()
+			return nil
+		end)
+		local diff_base = session.resolve_scope_base("base", "main")
+		assert.is_nil(diff_base)
+	end)
+end)
+
+describe("scope.format_local_scope_label", function()
+	local scope = require("fude.scope")
+
+	it("shows the base ref for base scope", function()
+		assert.equals("Local: main", scope.format_local_scope_label("main", "base"))
+		assert.equals("Local: main", scope.format_local_scope_label("main", nil))
+	end)
+
+	it("shows a neutral label for uncommitted scope", function()
+		assert.equals("Local: uncommitted", scope.format_local_scope_label("main", "uncommitted"))
+	end)
 end)

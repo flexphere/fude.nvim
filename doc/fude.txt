@@ -86,6 +86,13 @@ Using lazy.nvim: >lua
     Stop local review mode and clear `.fude/current.json`. The
     session's JSONL file is kept for later reference.
 
+:FudeReviewLocalScope [{scope}]                   *:FudeReviewLocalScope*
+    Switch the local review scope (diff base). {scope} is `base` or
+    `uncommitted`; with no argument, opens a picker. `base` (default)
+    diffs against the merge-base with the base branch (whole branch);
+    `uncommitted` diffs against HEAD (staged + unstaged changes only).
+    Comments are unaffected — they anchor to the working tree.
+
 :FudeReviewResolve                                   *:FudeReviewResolve*
     Toggle resolved status of the comment thread on the current line.
     Available in local review mode only. Resolved threads stay visible
@@ -867,8 +874,11 @@ remains as an audit trail).
 
 Behavior~
 
-  - Changed files come from the local git diff (merge-base with the base
-    ref) plus untracked files.
+  - Changed files come from the local git diff plus untracked files. The
+    diff base depends on the scope (|:FudeReviewLocalScope|): `base`
+    (default) uses the merge-base with the base ref (whole branch diff),
+    `uncommitted` uses HEAD (staged + unstaged changes only). The
+    statusline shows `Local: <base>` or `Local: uncommitted`.
   - Comments are saved immediately on `<CR>` — there is no pending review
     or submit step. |:FudeReviewSubmit| is not available in this mode.
   - Comment positions follow buffer edits via extmarks and are re-anchored

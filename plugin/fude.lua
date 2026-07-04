@@ -23,6 +23,21 @@ vim.api.nvim_create_user_command("FudeReviewLocalStop", function()
 	require("fude.local.session").stop()
 end, { desc = "Stop local review mode" })
 
+vim.api.nvim_create_user_command("FudeReviewLocalScope", function(opts)
+	local session = require("fude.local.session")
+	if opts.args ~= "" then
+		session.set_scope(opts.args)
+	else
+		session.select_scope()
+	end
+end, {
+	desc = "Select local review scope (base branch or uncommitted)",
+	nargs = "?",
+	complete = function()
+		return require("fude.local.session").SCOPES
+	end,
+})
+
 vim.api.nvim_create_user_command("FudeReviewComment", function(opts)
 	require("fude.comments").create_comment(opts.range > 0)
 end, { desc = "Create PR review comment", range = true })

@@ -129,6 +129,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeCreatePR` | Create draft PR from template |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalStop` | Stop local review mode |
+| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `uncommitted`) |
 | `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
 ## Configuration
@@ -248,8 +249,11 @@ drafts show as `[draft]` rows you can jump to. Disable with
 typically to review AI-agent-generated code locally. No GitHub interaction
 happens in this mode:
 
-- Changed files come from the local git diff (merge-base with `base`, default:
-  the repository's default branch), plus untracked files.
+- Changed files come from the local git diff, plus untracked files. The diff
+  base depends on the **scope** (switch with `:FudeReviewLocalScope`):
+  - `base` (default) — merge-base with `base` (default: the repository's
+    default branch): the whole branch diff, including committed work.
+  - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes.
 - Comments are stored in `.fude/reviews/<session-id>.jsonl` inside the
   worktree as an **append-only event log** (add `.fude/` to your
   `.gitignore`). `.fude/current.json` points to the active session, so the

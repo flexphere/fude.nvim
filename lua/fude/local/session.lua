@@ -120,6 +120,32 @@ end
 
 -- === Session helpers ===
 
+--- Scope labels understood by the local session.
+M.SCOPES = { "base", "uncommitted" }
+
+--- Resolve the diff base for a local review scope.
+---   "base"        → merge-base with the base branch (the whole branch diff)
+---   "uncommitted" → HEAD (only staged + unstaged working-tree changes)
+--- `diff_base` is the ref passed to `git diff` (used for the changed-files
+--- list and per-file patches); `content_ref` is the ref passed to `git show`
+--- for the side-by-side preview's base pane.
+--- @param scope string "base"|"uncommitted"
+--- @param base_ref string the session's base branch
+--- @return string|nil diff_base, string|nil content_ref
+function M.resolve_scope_base(scope, base_ref)
+	local diff_mod = require("fude.diff")
+	if scope == "uncommitted" then
+		-- Literal HEAD so the view always reflects the current commit, even
+		-- after the user commits mid-session.
+		return "HEAD", "HEAD"
+	end
+	local merge_base = diff_mod.get_merge_base(base_ref)
+	if not merge_base then
+		return nil, nil
+	end
+	return merge_base, base_ref
+end
+
 --- Refresh state.changed_files from local git.
 --- @param state table config.state
 local function load_changed_files_into_state(state)
@@ -266,6 +292,11 @@ function M.start(base_arg)
 		})
 	end
 
+	-- Default to the whole-branch diff; the session's diff base is derived from
+	-- the scope so :FudeReviewLocalScope can switch it later.
+	session.scope = session.scope or "base"
+	session.content_ref = base_ref
+
 	state.active = true
 	state.review_mode = "local"
 	state.local_session = session
@@ -401,6 +432,84 @@ function M.reload(silent)
 	if not silent then
 		vim.notify("fude.nvim: Reloaded local review data", vim.log.levels.INFO)
 	end
+end
+
+--- Switch the local review scope and refresh everything derived from the diff
+--- base (changed files, per-file patches, gitsigns base, side-by-side preview).
+--- Comments are unaffected — they anchor to the working tree, which does not
+--- change with the scope.
+--- @param scope string "base"|"uncommitted"
+function M.set_scope(scope)
+	local state = config.state
+	if not state.active or state.review_mode ~= "local" then
+		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
+		return
+	end
+	if not vim.tbl_contains(M.SCOPES, scope) then
+		vim.notify("fude.nvim: Unknown local scope: " .. tostring(scope), vim.log.levels.WARN)
+		return
+	end
+	local session = state.local_session
+	if session.scope == scope then
+		return
+	end
+
+	local diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref)
+	if not diff_base then
+		vim.notify("fude.nvim: Failed to resolve base for scope: " .. scope, vim.log.levels.ERROR)
+		return
+	end
+
+	session.scope = scope
+	session.base_sha = diff_base
+	session.content_ref = content_ref
+	state.merge_base_sha = diff_base
+
+	load_changed_files_into_state(state)
+	require("fude.comments.local_sync").load_comments(nil, { silent = true })
+	require("fude.ui.sidepanel").refresh()
+
+	-- Re-apply gitsigns base (local mode uses the full_pr code path with
+	-- merge_base_sha) and refresh an open side-by-side preview.
+	require("fude").restore_gitsigns_base()
+	local src = state.source_win
+	if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
+		require("fude.preview").close_preview()
+		if src and vim.api.nvim_win_is_valid(src) then
+			require("fude.preview").open_preview(src)
+		end
+	end
+
+	vim.notify("fude.nvim: Local scope → " .. scope, vim.log.levels.INFO)
+end
+
+--- Pick a local review scope via vim.ui.select.
+function M.select_scope()
+	local state = config.state
+	if not state.active or state.review_mode ~= "local" then
+		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
+		return
+	end
+	local current = state.local_session.scope
+	local labels = {
+		base = "Base branch (whole branch diff)",
+		uncommitted = "Uncommitted only (staged + unstaged)",
+	}
+	local items = {}
+	for _, scope in ipairs(M.SCOPES) do
+		table.insert(items, scope)
+	end
+	vim.ui.select(items, {
+		prompt = "Local review scope:",
+		format_item = function(scope)
+			local marker = scope == current and "▶ " or "  "
+			return marker .. (labels[scope] or scope)
+		end,
+	}, function(choice)
+		if choice then
+			M.set_scope(choice)
+		end
+	end)
 end
 
 return M
