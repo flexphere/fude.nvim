@@ -283,6 +283,17 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(second_id, config.state.local_session.id)
 	end)
 
+	it("surfaces a warning and keeps going when the pointer write fails", function()
+		mock_local_git()
+		helpers.mock(store, "write_current", function()
+			return false, "disk full"
+		end)
+		-- start must not crash on a failed pointer write; session still active.
+		session.start(nil)
+		assert.is_true(config.state.active)
+		assert.is_false(session.persist_current(config.state.local_session))
+	end)
+
 	it("persists the scope across a resume", function()
 		mock_local_git()
 		session.start(nil)

@@ -214,7 +214,7 @@ end
 --- table. Persists `scope` so a resume restores it.
 --- @param session table the active local session
 function M.persist_current(session)
-	store.write_current(session.worktree_root, {
+	local ok, err = store.write_current(session.worktree_root, {
 		id = session.id,
 		base_ref = session.base_ref,
 		base_sha = session.base_sha,
@@ -224,6 +224,14 @@ function M.persist_current(session)
 		created_at = session.created_at,
 		scope = session.scope,
 	})
+	if not ok then
+		-- Surface the failure: without the pointer the session can't be resumed.
+		vim.notify(
+			"fude.nvim: Failed to write .fude/current.json: " .. (err or "?") .. " — session may not resume",
+			vim.log.levels.WARN
+		)
+	end
+	return ok
 end
 
 -- === Lifecycle ===
