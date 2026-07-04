@@ -700,7 +700,7 @@ end
 --- `files.apply_viewed_toggle`, which routes to the GitHub GraphQL API or the
 --- local review JSONL store by review mode (so `<Tab>` works in local mode,
 --- not just GitHub), then refreshes the panel.
---- @param _panel table sidepanel state
+--- @param _panel table|nil sidepanel state (unused; kept for call-site symmetry)
 --- @param entry_info table { type, index, entry }
 function M.toggle_file_viewed(_panel, entry_info)
 	local path = entry_info.entry.path
