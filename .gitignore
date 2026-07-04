@@ -3,3 +3,6 @@ doc/tags
 .testenv/
 luacov.stats.out
 luacov.report.out
+
+# Local review mode store (per-worktree review comments)
+.fude/
