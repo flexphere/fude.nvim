@@ -278,6 +278,13 @@ describe("files.apply_viewed_toggle in local mode", function()
 		assert.equals("UNVIEWED", updated.viewed_state)
 		assert.equals("UNVIEWED", config.state.viewed_files["f.lua"])
 	end)
+
+	it("sidepanel <Tab> (toggle_file_viewed) routes to the local backend", function()
+		-- The panel's file-row <Tab> must not require pr_node_id in local mode.
+		local sidepanel = require("fude.ui.sidepanel")
+		sidepanel.toggle_file_viewed(nil, { entry = { path = "f.lua" } })
+		assert.equals("VIEWED", config.state.viewed_files["f.lua"])
+	end)
 end)
 
 describe("comments facade in local mode", function()

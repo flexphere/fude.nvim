@@ -696,47 +696,17 @@ function M.toggle_file_tree_mode(panel)
 	M.refresh()
 end
 
---- Toggle viewed state for a file entry.
---- @param panel table sidepanel state
+--- Toggle viewed state for a file entry. Delegates to the picker-agnostic
+--- `files.apply_viewed_toggle`, which routes to the GitHub GraphQL API or the
+--- local review JSONL store by review mode (so `<Tab>` works in local mode,
+--- not just GitHub), then refreshes the panel.
+--- @param _panel table sidepanel state
 --- @param entry_info table { type, index, entry }
 function M.toggle_file_viewed(_panel, entry_info)
-	local state = config.state
-	if not state.pr_node_id then
-		vim.notify("fude.nvim: PR node ID not available", vim.log.levels.WARN)
-		return
-	end
-
-	local entry = entry_info.entry
-	local path = entry.path
-	local current_state = state.viewed_files[path]
-	local gh_mod = get_gh()
-	local captured_state = config.state
-
-	if current_state == "VIEWED" then
-		gh_mod.unmark_file_viewed(state.pr_node_id, path, function(err)
-			if config.state ~= captured_state then
-				return
-			end
-			if err then
-				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-				return
-			end
-			state.viewed_files[path] = "UNVIEWED"
-			M.refresh()
-		end)
-	else
-		gh_mod.mark_file_viewed(state.pr_node_id, path, function(err)
-			if config.state ~= captured_state then
-				return
-			end
-			if err then
-				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-				return
-			end
-			state.viewed_files[path] = "VIEWED"
-			M.refresh()
-		end)
-	end
+	local path = entry_info.entry.path
+	get_files().apply_viewed_toggle(path, function()
+		M.refresh()
+	end)
 end
 
 return M
