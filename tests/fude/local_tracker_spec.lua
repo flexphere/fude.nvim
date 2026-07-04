@@ -5,6 +5,22 @@ local store = require("fude.local.store")
 local config = require("fude.config")
 local helpers = require("tests.helpers")
 
+describe("tracker.clamp_start_line", function()
+	it("clamps an underflowing start (range drifted near the top) to 1", function()
+		assert.equals(1, tracker.clamp_start_line(-3, 2))
+		assert.equals(1, tracker.clamp_start_line(0, 5))
+	end)
+
+	it("clamps a start past its end down to the end", function()
+		assert.equals(2, tracker.clamp_start_line(5, 2))
+	end)
+
+	it("leaves a valid start unchanged", function()
+		assert.equals(3, tracker.clamp_start_line(3, 8))
+		assert.equals(1, tracker.clamp_start_line(1, 1))
+	end)
+end)
+
 describe("store.materialize reply position inheritance", function()
 	it("replies inherit the root's path and line", function()
 		local result = store.materialize({

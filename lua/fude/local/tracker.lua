@@ -16,6 +16,17 @@ local ns = vim.api.nvim_create_namespace("fude_local_track")
 -- { [bufnr] = { [comment_id] = { end_id = number, start_id = number|nil } } }
 local registry = {}
 
+--- Clamp a reconstructed start line into a valid 1..new_end range. The span
+--- reconstruction (`new_end - old_span`) can underflow past line 1 when a range
+--- comment drifts near the top of the file (e.g. lines deleted above it);
+--- persisting a start_line < 1 would leave an invalid line number in the JSONL.
+--- @param new_start number
+--- @param new_end number
+--- @return number
+function M.clamp_start_line(new_start, new_end)
+	return math.max(1, math.min(new_start, new_end))
+end
+
 --- Root comments (non-reply, non-outdated) for a repo-relative path.
 --- @param rel_path string
 --- @return table[] comments
@@ -108,10 +119,7 @@ function M.collect_moves(buf)
 					new_start = (spos and #spos > 0) and (spos[1] + 1) or nil
 				end
 				-- Single-line comments (and lost start marks) keep the range span
-				new_start = new_start or (new_end - (old_end - old_start))
-				if new_start > new_end then
-					new_start = new_end
-				end
+				new_start = M.clamp_start_line(new_start or (new_end - (old_end - old_start)), new_end)
 				if new_end ~= old_end or new_start ~= old_start then
 					table.insert(moves, {
 						id = comment_id,
