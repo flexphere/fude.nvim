@@ -68,10 +68,12 @@ function M.load_comments(callback, opts)
 	end
 
 	local events = store.read_events(session.file)
-	local comments = store.materialize(events).comments
+	local result = store.materialize(events)
+	local comments = result.comments
 	store.apply_outdated(comments, get_line_counts(session.worktree_root, comment_paths(comments)))
 	state.comments = comments
 	state.comment_map = data.build_comment_map(comments)
+	state.viewed_files = result.viewed
 	require("fude.ui").refresh_extmarks()
 	require("fude.local.tracker").sync_all()
 
@@ -224,6 +226,29 @@ function M.move_comments(moves, callback)
 	end
 	M.load_comments(nil, { silent = true })
 	callback(nil)
+end
+
+--- Set the viewed state of a file (append-only; last write wins). Refreshes
+--- state.viewed_files. There is no GitHub round-trip in local review mode.
+--- @param path string repo-relative file path
+--- @param viewed boolean true = VIEWED, false = UNVIEWED
+--- @param callback fun(err: string|nil)
+function M.set_viewed(path, viewed, callback)
+	local state = config.state
+	if not state.active or not state.local_session then
+		callback("Not active")
+		return
+	end
+	append_and_refresh(
+		store.build_viewed_event({
+			id = store.generate_uuid(),
+			path = path,
+			viewed = viewed,
+			author = state.github_user,
+			created_at = now_iso(),
+		}),
+		callback
+	)
 end
 
 --- Toggle a thread's resolved status (resolve <-> reopen).

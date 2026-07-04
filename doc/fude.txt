@@ -878,8 +878,8 @@ Comments live in an append-only JSONL event log inside the worktree: >
 Add `.fude/` to your `.gitignore`. Event kinds: `session` (header),
 `comment` (thread root with path/start_line/end_line/body/author/
 author_type/context), `reply`, `edit`, `move` (line re-anchor), `resolve`,
-`reopen`, and `delete` (hides the comment from the view; the log line
-remains as an audit trail).
+`reopen`, `delete` (hides the comment from the view; the log line
+remains as an audit trail), and `viewed` (per-file viewed state).
 
 Behavior~
 
@@ -895,6 +895,9 @@ Behavior~
     line disappeared are shown as `[outdated]` in the comment browser.
   - |:FudeReviewResolve| toggles a thread's resolved state (`[resolved]`
     badge). Resolved threads stay visible.
+  - Viewed state works locally: |:FudeReviewViewed| / |:FudeReviewUnviewed|
+    and the side panel / picker `<Tab>` mark files viewed, persisted in
+    the JSONL. The panel's "Files (Reviewed: N/M)" count reflects it.
   - Comment drafts (|fude-drafts|) are disabled in local review mode
     (comments are saved locally anyway).
   - The statusline component (|fude-statusline|) shows `Local: <base>`.

@@ -141,6 +141,66 @@ describe("local_sync CRUD", function()
 		end)
 		assert.equals("Not active", err_result)
 	end)
+
+	it("set_viewed persists and updates state.viewed_files", function()
+		local_sync.set_viewed("f.lua", true, function() end)
+		assert.equals("VIEWED", config.state.viewed_files["f.lua"])
+
+		local events = store.read_events(config.state.local_session.file)
+		assert.equals("viewed", events[#events].event)
+		assert.is_true(events[#events].viewed)
+
+		local_sync.set_viewed("f.lua", false, function() end)
+		assert.equals("UNVIEWED", config.state.viewed_files["f.lua"])
+	end)
+
+	it("viewed state survives a reload from disk", function()
+		local_sync.set_viewed("f.lua", true, function() end)
+		session.reload(true)
+		assert.equals("VIEWED", config.state.viewed_files["f.lua"])
+	end)
+end)
+
+describe("files.apply_viewed_toggle in local mode", function()
+	local files = require("fude.files")
+	local tmp_store, tmp_repo
+
+	before_each(function()
+		tmp_store = vim.fn.tempname()
+		tmp_repo = vim.fn.tempname()
+		vim.fn.mkdir(tmp_store, "p")
+		vim.fn.mkdir(tmp_repo, "p")
+		vim.fn.writefile({ "l1", "l2" }, tmp_repo .. "/f.lua")
+		store._dir = tmp_store
+		config.setup({})
+		start_session(tmp_repo)
+	end)
+
+	after_each(function()
+		if config.state.active then
+			session.stop()
+		end
+		store._dir = nil
+		vim.fn.delete(tmp_store, "rf")
+		vim.fn.delete(tmp_repo, "rf")
+		helpers.cleanup()
+	end)
+
+	it("toggles viewed state via the local backend (no gh)", function()
+		local updated
+		files.apply_viewed_toggle("f.lua", function(u)
+			updated = u
+		end)
+		assert.is_not_nil(updated)
+		assert.equals("VIEWED", updated.viewed_state)
+		assert.equals("VIEWED", config.state.viewed_files["f.lua"])
+
+		files.apply_viewed_toggle("f.lua", function(u)
+			updated = u
+		end)
+		assert.equals("UNVIEWED", updated.viewed_state)
+		assert.equals("UNVIEWED", config.state.viewed_files["f.lua"])
+	end)
 end)
 
 describe("comments facade in local mode", function()

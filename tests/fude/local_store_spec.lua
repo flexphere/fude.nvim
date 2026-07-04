@@ -202,6 +202,33 @@ describe("store.materialize", function()
 	end)
 end)
 
+describe("store.materialize viewed events", function()
+	it("builds a viewed map with last-write-wins per path", function()
+		local result = store.materialize({
+			store.build_viewed_event({ id = "v1", path = "a.lua", viewed = true }),
+			store.build_viewed_event({ id = "v2", path = "b.lua", viewed = true }),
+			store.build_viewed_event({ id = "v3", path = "a.lua", viewed = false }),
+		})
+		assert.equals("UNVIEWED", result.viewed["a.lua"])
+		assert.equals("VIEWED", result.viewed["b.lua"])
+	end)
+
+	it("returns an empty viewed map when there are no viewed events", function()
+		local result = store.materialize({
+			store.build_comment_event({ id = "c1", path = "f", start_line = 1, end_line = 1, body = "x" }),
+		})
+		assert.same({}, result.viewed)
+	end)
+
+	it("round-trips a viewed event through parse", function()
+		local line = store.serialize_event(store.build_viewed_event({ id = "v1", path = "a.lua", viewed = true }))
+		local event = store.parse_event_line(line)
+		assert.equals("viewed", event.event)
+		assert.equals("a.lua", event.path)
+		assert.is_true(event.viewed)
+	end)
+end)
+
 describe("store.apply_outdated", function()
 	local function comments_fixture()
 		local result = store.materialize({

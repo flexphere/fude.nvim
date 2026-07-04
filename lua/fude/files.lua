@@ -455,19 +455,38 @@ end
 --- @param on_done fun(updated: { path: string, viewed_state: string, viewed_icon: string, viewed_hl: string })
 function M.apply_viewed_toggle(path, on_done)
 	local state = config.state
+	local viewed_sign = config.opts.signs.viewed or "✓"
+	local current_state = state.viewed_files[path]
+	local new_state = (current_state == "VIEWED") and "UNVIEWED" or "VIEWED"
+
+	local function finish()
+		local v_icon, v_hl = M.viewed_icon(new_state, viewed_sign)
+		on_done({
+			path = path,
+			viewed_state = new_state,
+			viewed_icon = v_icon,
+			viewed_hl = v_hl,
+		})
+	end
+
+	-- Local review: persist to the JSONL store (no GitHub round-trip).
 	if state.review_mode == "local" then
-		vim.notify("fude.nvim: Viewed state is not available in local review mode", vim.log.levels.WARN)
+		require("fude.comments.local_sync").set_viewed(path, new_state == "VIEWED", function(err)
+			if err then
+				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			finish()
+		end)
 		return
 	end
+
 	if not state.pr_node_id then
 		vim.notify("fude.nvim: PR node ID not available", vim.log.levels.WARN)
 		return
 	end
 
 	local gh_mod = require("fude.gh")
-	local viewed_sign = config.opts.signs.viewed or "✓"
-	local current_state = state.viewed_files[path]
-	local new_state = (current_state == "VIEWED") and "UNVIEWED" or "VIEWED"
 	local toggle_fn = (current_state == "VIEWED") and gh_mod.unmark_file_viewed or gh_mod.mark_file_viewed
 
 	toggle_fn(state.pr_node_id, path, function(err)
@@ -476,13 +495,7 @@ function M.apply_viewed_toggle(path, on_done)
 			return
 		end
 		state.viewed_files[path] = new_state
-		local v_icon, v_hl = M.viewed_icon(new_state, viewed_sign)
-		on_done({
-			path = path,
-			viewed_state = new_state,
-			viewed_icon = v_icon,
-			viewed_hl = v_hl,
-		})
+		finish()
 	end)
 end
 

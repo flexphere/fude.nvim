@@ -495,19 +495,26 @@ function M.mark_viewed()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
-	if state.review_mode == "local" then
-		vim.notify("fude.nvim: Viewed state is not available in local review mode", vim.log.levels.WARN)
-		return
-	end
-	if not state.pr_node_id then
-		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
-		return
-	end
-
 	local diff_mod = require("fude.diff")
 	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
 	if not rel_path then
 		vim.notify("fude.nvim: Cannot determine file path", vim.log.levels.ERROR)
+		return
+	end
+
+	if state.review_mode == "local" then
+		require("fude.comments.local_sync").set_viewed(rel_path, true, function(err)
+			if err then
+				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			vim.notify("fude.nvim: Marked as viewed: " .. rel_path, vim.log.levels.INFO)
+		end)
+		return
+	end
+
+	if not state.pr_node_id then
+		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
 		return
 	end
 
@@ -529,19 +536,26 @@ function M.unmark_viewed()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
-	if state.review_mode == "local" then
-		vim.notify("fude.nvim: Viewed state is not available in local review mode", vim.log.levels.WARN)
-		return
-	end
-	if not state.pr_node_id then
-		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
-		return
-	end
-
 	local diff_mod = require("fude.diff")
 	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
 	if not rel_path then
 		vim.notify("fude.nvim: Cannot determine file path", vim.log.levels.ERROR)
+		return
+	end
+
+	if state.review_mode == "local" then
+		require("fude.comments.local_sync").set_viewed(rel_path, false, function(err)
+			if err then
+				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			vim.notify("fude.nvim: Unmarked as viewed: " .. rel_path, vim.log.levels.INFO)
+		end)
+		return
+	end
+
+	if not state.pr_node_id then
+		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
 		return
 	end
 

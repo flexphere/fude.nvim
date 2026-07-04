@@ -16,6 +16,7 @@
 ---   resolve  — mark a thread resolved (thread_id = root comment id)
 ---   reopen   — reopen a resolved thread
 ---   delete   — remove a comment id from the materialized view (audit stays)
+---   viewed   — mark a file viewed/unviewed (path + viewed bool; last write wins)
 local M = {}
 local util = require("fude.util")
 local is_null = util.is_null
@@ -33,6 +34,7 @@ local EVENT_KINDS = {
 	resolve = true,
 	reopen = true,
 	delete = true,
+	viewed = true,
 }
 
 -- === Pure functions ===
@@ -135,13 +137,15 @@ end
 --- Events are applied in file order (append order). Unknown references
 --- (edit/move/resolve for missing ids) are ignored.
 --- @param events table[] parsed events
---- @return table result { session: table|nil, comments: table[], threads: table<string, table> }
----   threads values: { resolved: boolean, resolved_by: string|nil, resolved_at: string|nil }
+--- @return table result { session, comments, threads, viewed }
+---   threads: table<string, { resolved, resolved_by, resolved_at }>
+---   viewed: table<string, "VIEWED"|"UNVIEWED"> (last write wins per path)
 function M.materialize(events)
 	local session = nil
 	local comments = {}
 	local by_id = {}
 	local threads = {}
+	local viewed = {}
 
 	for _, event in ipairs(events or {}) do
 		local kind = event.event
@@ -184,6 +188,10 @@ function M.materialize(events)
 			if target then
 				target._deleted = true
 			end
+		elseif kind == "viewed" then
+			if type(event.path) == "string" then
+				viewed[event.path] = event.viewed and "VIEWED" or "UNVIEWED"
+			end
 		end
 	end
 
@@ -214,7 +222,7 @@ function M.materialize(events)
 		end
 	end
 
-	return { session = session, comments = comments, threads = threads }
+	return { session = session, comments = comments, threads = threads, viewed = viewed }
 end
 
 --- Mark comments whose anchor no longer fits the current file as outdated.
@@ -337,6 +345,20 @@ function M.build_delete_event(opts)
 	return {
 		event = "delete",
 		id = opts.id,
+		author = opts.author,
+		created_at = opts.created_at,
+	}
+end
+
+--- Build a viewed event (marks a file viewed/unviewed).
+--- @param opts table { id, path, viewed (boolean), author, created_at }
+--- @return table viewed event
+function M.build_viewed_event(opts)
+	return {
+		event = "viewed",
+		id = opts.id,
+		path = opts.path,
+		viewed = opts.viewed and true or false,
 		author = opts.author,
 		created_at = opts.created_at,
 	}

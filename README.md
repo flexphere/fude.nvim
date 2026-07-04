@@ -266,6 +266,8 @@ happens in this mode:
   preview. There is no submit step — comments are saved immediately.
 - `:FudeReviewResolve` toggles a thread's resolved state (shown as a
   `[resolved]` badge).
+- Viewed state works locally (`:FudeReviewViewed` / `<Tab>` in the panel or
+  picker), persisted in the JSONL instead of GitHub.
 - Comment positions follow your edits via extmarks and are re-anchored in the
   JSONL on save. Comments whose file/line disappeared are shown as
   `[outdated]` in the comment browser.
