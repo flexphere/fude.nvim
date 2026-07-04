@@ -546,49 +546,93 @@ function M.read_events(path)
 	return M.parse_events(text)
 end
 
---- Write the current-session pointer file.
+--- Map a branch name to a current-session map key. A detached HEAD (nil
+--- branch) shares one slot so it is still resumable.
+--- @param branch string|nil
+--- @return string
+local function branch_key(branch)
+	return branch or "__detached__"
+end
+
+--- Read the whole current-session pointer map (`{ [branch] = session }`).
+--- Migrates the pre-branch flat single-session format on read: an old pointer
+--- (a session object with a top-level `id`) is treated as the entry for its
+--- own branch. Returns {} when missing or malformed.
 --- @param repo_root string
---- @param session table { id, base_ref, base_sha, head_sha, branch, worktree_root, created_at }
+--- @return table<string, table>
+local function read_current_map(repo_root)
+	local path = M.current_file(repo_root)
+	if vim.fn.filereadable(path) == 0 then
+		return {}
+	end
+	local ok, lines = pcall(vim.fn.readfile, path)
+	if not ok then
+		return {}
+	end
+	local ok2, data = pcall(vim.json.decode, table.concat(lines, "\n"))
+	if not ok2 or type(data) ~= "table" then
+		return {}
+	end
+	-- Backward compat: a legacy single-session pointer (flat object with id).
+	if type(data.id) == "string" then
+		return { [branch_key(data.branch)] = data }
+	end
+	return data
+end
+
+--- Write the current-session pointer for a branch, preserving other branches'
+--- entries so reviews on different branches in the same worktree don't collide.
+--- @param repo_root string
+--- @param branch string|nil the session's branch
+--- @param session table { id, base_ref, base_sha, head_sha, branch, worktree_root, created_at, scope }
 --- @return boolean ok, string|nil err
-function M.write_current(repo_root, session)
+function M.write_current(repo_root, branch, session)
+	local map = read_current_map(repo_root)
+	map[branch_key(branch)] = session
 	local path = M.current_file(repo_root)
 	local dir = vim.fn.fnamemodify(path, ":h")
 	if vim.fn.isdirectory(dir) == 0 then
 		vim.fn.mkdir(dir, "p")
 	end
-	local ok, err = pcall(vim.fn.writefile, vim.split(vim.json.encode(session), "\n"), path)
+	local ok, err = pcall(vim.fn.writefile, vim.split(vim.json.encode(map), "\n"), path)
 	if not ok then
 		return false, tostring(err)
 	end
 	return true
 end
 
---- Read the current-session pointer. Returns nil when missing or malformed.
+--- Read the current-session pointer for a branch. Returns nil when there is no
+--- session for that branch or it is malformed.
 --- @param repo_root string
+--- @param branch string|nil
 --- @return table|nil session
-function M.read_current(repo_root)
-	local path = M.current_file(repo_root)
-	if vim.fn.filereadable(path) == 0 then
-		return nil
-	end
-	local ok, lines = pcall(vim.fn.readfile, path)
-	if not ok then
-		return nil
-	end
-	local ok2, session = pcall(vim.json.decode, table.concat(lines, "\n"))
-	if not ok2 or type(session) ~= "table" or type(session.id) ~= "string" then
+function M.read_current(repo_root, branch)
+	local session = read_current_map(repo_root)[branch_key(branch)]
+	if type(session) ~= "table" or type(session.id) ~= "string" then
 		return nil
 	end
 	return session
 end
 
---- Remove the current-session pointer (no-op when missing).
+--- Remove the current-session pointer for a branch (no-op when absent). Deletes
+--- the file once no branch entries remain.
 --- @param repo_root string
-function M.clear_current(repo_root)
-	local path = M.current_file(repo_root)
-	if vim.fn.filereadable(path) == 1 then
-		pcall(vim.fn.delete, path)
+--- @param branch string|nil
+function M.clear_current(repo_root, branch)
+	local map = read_current_map(repo_root)
+	local key = branch_key(branch)
+	if map[key] == nil then
+		return
 	end
+	map[key] = nil
+	local path = M.current_file(repo_root)
+	if vim.tbl_isempty(map) then
+		if vim.fn.filereadable(path) == 1 then
+			pcall(vim.fn.delete, path)
+		end
+		return
+	end
+	pcall(vim.fn.writefile, vim.split(vim.json.encode(map), "\n"), path)
 end
 
 return M
