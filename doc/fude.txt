@@ -79,8 +79,10 @@ Using lazy.nvim: >lua
     come from the local git diff (merge-base with {base}, plus
     untracked files) and review comments are stored in
     `.fude/reviews/<session-id>.jsonl` inside the worktree instead of
-    GitHub. Resumes the session recorded in `.fude/current.json` when
-    one exists.
+    GitHub. Resumes the session recorded for the current branch in
+    `.fude/current.json` when one exists (the pointer is keyed by
+    branch, so reviewing several branches in the same worktree keeps
+    separate sessions and comments).
 
     When {base} is omitted, the base ref is resolved in order: the
     remote default branch (origin/HEAD, origin/main, origin/master),
@@ -888,7 +890,7 @@ Data model~
 
 Comments live in an append-only JSONL event log inside the worktree: >
     .fude/reviews/<session-id>.jsonl    one JSON event per line
-    .fude/current.json                  pointer to the active session
+    .fude/current.json                  per-branch pointer map
 <
 Add `.fude/` to your `.gitignore`. Event kinds: `session` (header),
 `comment` (thread root with path/start_line/end_line/body/author/

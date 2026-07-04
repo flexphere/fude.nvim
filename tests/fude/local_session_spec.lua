@@ -196,7 +196,7 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(1, #state.changed_files)
 		assert.equals("f.lua", state.changed_files[1].path)
 
-		local current = store.read_current(tmp_repo)
+		local current = store.read_current(tmp_repo, "feat/x")
 		assert.is_not_nil(current)
 		assert.equals(state.local_session.id, current.id)
 
@@ -315,7 +315,7 @@ describe("session lifecycle (start/reload/stop)", function()
 		session.set_scope("uncommitted")
 
 		-- current.json should carry the scope
-		local current = store.read_current(tmp_repo)
+		local current = store.read_current(tmp_repo, "feat/x")
 		assert.equals("uncommitted", current.scope)
 
 		-- Restart (pointer left in place) → resumes at the persisted scope
@@ -336,6 +336,26 @@ describe("session lifecycle (start/reload/stop)", function()
 		session.start("develop")
 		assert.equals(sid, config.state.local_session.id)
 		assert.equals("main", config.state.base_ref)
+	end)
+
+	it("keeps separate sessions per branch in one worktree", function()
+		mock_local_git() -- branch feat/x
+		session.start(nil)
+		local id_x = config.state.local_session.id
+
+		-- Switch branch without stopping, then start again → a fresh session.
+		config.state.active = false
+		config.state.review_mode = nil
+		helpers.mock(require("fude.diff"), "get_current_branch", function()
+			return "feat/y"
+		end)
+		session.start(nil)
+		local id_y = config.state.local_session.id
+
+		assert.are_not.equal(id_x, id_y)
+		-- Both branches' pointers coexist in current.json (no collision).
+		assert.equals(id_x, store.read_current(tmp_repo, "feat/x").id)
+		assert.equals(id_y, store.read_current(tmp_repo, "feat/y").id)
 	end)
 
 	it("starts fresh when the pointed session file was deleted", function()
@@ -405,7 +425,7 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_false(config.state.active)
 		assert.is_nil(config.state.review_mode)
 		assert.is_nil(config.state.local_session)
-		assert.is_nil(store.read_current(tmp_repo))
+		assert.is_nil(store.read_current(tmp_repo, "feat/x"))
 		assert.equals(1, vim.fn.filereadable(file))
 	end)
 
@@ -414,7 +434,7 @@ describe("session lifecycle (start/reload/stop)", function()
 		session.start(nil)
 		require("fude").stop()
 		assert.is_false(config.state.active)
-		assert.is_nil(store.read_current(tmp_repo))
+		assert.is_nil(store.read_current(tmp_repo, "feat/x"))
 	end)
 
 	it("toggle starts when inactive and stops when a local session is active", function()

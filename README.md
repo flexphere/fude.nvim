@@ -267,7 +267,8 @@ happens in this mode:
   files are all reviewable.
 - Comments are stored in `.fude/reviews/<session-id>.jsonl` inside the
   worktree as an **append-only event log** (add `.fude/` to your
-  `.gitignore`). `.fude/current.json` points to the active session, so the
+  `.gitignore`). `.fude/current.json` is a per-branch pointer map (so reviewing
+  several branches in the same worktree keeps separate sessions), so the
   session survives Neovim restarts until `:FudeReviewLocalStop`.
 - The usual review UI works as-is: comments (`:FudeReviewComment`),
   suggestions, replies, edits, the comment browser, side panel, and diff

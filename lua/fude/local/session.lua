@@ -261,7 +261,7 @@ end
 --- table. Persists `scope` so a resume restores it.
 --- @param session table the active local session
 function M.persist_current(session)
-	local ok, err = store.write_current(session.worktree_root, {
+	local ok, err = store.write_current(session.worktree_root, session.branch, {
 		id = session.id,
 		base_ref = session.base_ref,
 		base_sha = session.base_sha,
@@ -301,7 +301,13 @@ function M.start(base_arg)
 		return
 	end
 
-	local existing = store.read_current(repo_root)
+	local head_sha = diff_mod.get_head_sha()
+	local branch = diff_mod.get_current_branch()
+	local now = os.time()
+
+	-- Resume the session for THIS branch only (current.json is keyed by branch),
+	-- so reviewing several branches in the same worktree does not collide.
+	local existing = store.read_current(repo_root, branch)
 	if existing and existing.worktree_root ~= repo_root then
 		existing = nil
 	end
@@ -326,10 +332,6 @@ function M.start(base_arg)
 		)
 		base_ref = existing.base_ref
 	end
-
-	local head_sha = diff_mod.get_head_sha()
-	local branch = diff_mod.get_current_branch()
-	local now = os.time()
 
 	-- Determine the initial scope. Default to "base" on a feature branch (a base
 	-- ref that differs from the current branch); otherwise the base scope is
@@ -511,7 +513,7 @@ function M.stop()
 
 	local session = state.local_session
 	if session and session.worktree_root then
-		store.clear_current(session.worktree_root)
+		store.clear_current(session.worktree_root, session.branch)
 	end
 
 	config.reset_state()
