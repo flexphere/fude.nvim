@@ -87,12 +87,6 @@ function M.parse_numstat(output)
 	return counts
 end
 
---- Build the changed_files array (same shape as the GitHub flow) from local
---- git output. Untracked files are appended as "added" with zero counts.
---- @param name_status_out string|nil `git diff --name-status -M` output
---- @param numstat_out string|nil `git diff --numstat -M` output
---- @param untracked_out string|nil `git ls-files --others --exclude-standard` output
---- @return table[] changed files { path, status, additions, deletions }
 --- Whether a repo-relative path is one of the plugin's own review-store
 --- artifacts (`.fude/...`), which must never appear as a reviewable change
 --- regardless of the repo's .gitignore.
@@ -102,6 +96,12 @@ function M.is_store_path(path)
 	return path == ".fude" or path:sub(1, 6) == ".fude/"
 end
 
+--- Build the changed_files array (same shape as the GitHub flow) from local
+--- git output. Untracked files are appended as "added" with zero counts.
+--- @param name_status_out string|nil `git diff --name-status -M` output
+--- @param numstat_out string|nil `git diff --numstat -M` output
+--- @param untracked_out string|nil `git ls-files --others --exclude-standard` output
+--- @return table[] changed files { path, status, additions, deletions }
 function M.build_changed_files(name_status_out, numstat_out, untracked_out)
 	local counts = M.parse_numstat(numstat_out)
 	local files = {}
@@ -210,6 +210,22 @@ local function start_reload_timer()
 	config.state.reload_timer = timer
 end
 
+--- Write the current-session pointer (`.fude/current.json`) from a session
+--- table. Persists `scope` so a resume restores it.
+--- @param session table the active local session
+function M.persist_current(session)
+	store.write_current(session.worktree_root, {
+		id = session.id,
+		base_ref = session.base_ref,
+		base_sha = session.base_sha,
+		head_sha = session.head_sha,
+		branch = session.branch,
+		worktree_root = session.worktree_root,
+		created_at = session.created_at,
+		scope = session.scope,
+	})
+end
+
 -- === Lifecycle ===
 
 --- Start a local review session against a base ref.
@@ -290,8 +306,8 @@ function M.start(base_arg)
 			head_sha = head_sha,
 			branch = branch,
 			worktree_root = repo_root,
+			created_at = os.date("!%Y-%m-%dT%H:%M:%SZ", now),
 		}
-		local created_at = os.date("!%Y-%m-%dT%H:%M:%SZ", now)
 		local ok, err = store.append_event(
 			session.file,
 			store.build_session_event({
@@ -301,22 +317,13 @@ function M.start(base_arg)
 				head_sha = head_sha,
 				branch = branch,
 				worktree_root = repo_root,
-				created_at = created_at,
+				created_at = session.created_at,
 			})
 		)
 		if not ok then
 			vim.notify("fude.nvim: Failed to create session file: " .. (err or "?"), vim.log.levels.ERROR)
 			return
 		end
-		store.write_current(repo_root, {
-			id = id,
-			base_ref = base_ref,
-			base_sha = base_sha,
-			head_sha = head_sha,
-			branch = branch,
-			worktree_root = repo_root,
-			created_at = created_at,
-		})
 	end
 
 	-- The session's diff base is derived from the scope so
@@ -325,6 +332,10 @@ function M.start(base_arg)
 	session.scope = initial_scope
 	session.base_sha = base_sha
 	session.content_ref = content_ref
+
+	-- Persist the current-session pointer (including scope, so a resume keeps
+	-- the chosen scope instead of reverting to base).
+	M.persist_current(session)
 
 	state.active = true
 	state.review_mode = "local"
@@ -501,6 +512,7 @@ function M.set_scope(scope)
 	session.base_sha = diff_base
 	session.content_ref = content_ref
 	state.merge_base_sha = diff_base
+	M.persist_current(session) -- remember the scope across restarts
 
 	load_changed_files_into_state(state)
 	require("fude.comments.local_sync").load_comments(nil, { silent = true })

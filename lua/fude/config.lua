@@ -103,7 +103,9 @@ M.defaults = {
 M.state = {
 	active = false,
 	review_mode = nil, -- nil (inactive) | "github" | "local"
-	local_session = nil, -- Local review session: { id, file, base_ref, base_sha, head_sha, branch, worktree_root }
+	-- Local review session: { id, file, base_ref, base_sha, head_sha, branch,
+	-- worktree_root, created_at, scope, content_ref }
+	local_session = nil,
 	pr_number = nil,
 	base_ref = nil,
 	head_ref = nil,

@@ -283,6 +283,35 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(second_id, config.state.local_session.id)
 	end)
 
+	it("persists the scope across a resume", function()
+		mock_local_git()
+		session.start(nil)
+		session.set_scope("uncommitted")
+
+		-- current.json should carry the scope
+		local current = store.read_current(tmp_repo)
+		assert.equals("uncommitted", current.scope)
+
+		-- Restart (pointer left in place) → resumes at the persisted scope
+		config.state.active = false
+		config.state.review_mode = nil
+		session.start(nil)
+		assert.equals("uncommitted", config.state.local_session.scope)
+	end)
+
+	it("resume with a different base arg keeps the existing session base", function()
+		mock_local_git()
+		session.start("main")
+		local sid = config.state.local_session.id
+
+		-- Restart with a different base arg; the resumed session wins.
+		config.state.active = false
+		config.state.review_mode = nil
+		session.start("develop")
+		assert.equals(sid, config.state.local_session.id)
+		assert.equals("main", config.state.base_ref)
+	end)
+
 	it("starts fresh when the pointed session file was deleted", function()
 		mock_local_git()
 		session.start(nil)

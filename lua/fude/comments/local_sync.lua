@@ -15,29 +15,34 @@ local function now_iso()
 	return os.date("!%Y-%m-%dT%H:%M:%SZ")
 end
 
---- Count lines of each commented file, preferring loaded buffer contents
---- (unsaved edits) over the on-disk file. Missing files get no entry, which
---- Read the current lines of each commented file, preferring loaded buffer
---- contents (unsaved edits) over the on-disk file. Missing files get no entry,
---- which `store.apply_outdated` treats as "file gone".
+--- Read the current lines of each commented file. Returns two maps:
+---   `lines`  — buffer contents when loaded (so an in-progress edit doesn't
+---              falsely mark a comment outdated), else the on-disk file. Used
+---              for outdated line-count checks.
+---   `closed` — on-disk lines for files NOT open in a loaded buffer only. Fed
+---              to `store.reanchor`, so re-anchoring (which persists `move`
+---              events) never acts on unsaved buffer content — open buffers are
+---              the extmark tracker's domain and persist on save.
+--- Missing files get no entry, which `store.apply_outdated` treats as "gone".
 --- @param repo_root string
 --- @param paths string[] repo-relative paths
---- @return table<string, string[]> path -> file lines
-local function get_file_lines(repo_root, paths)
-	local out = {}
+--- @return table<string, string[]> lines, table<string, string[]> closed
+local function read_commented_files(repo_root, paths)
+	local lines, closed = {}, {}
 	for _, path in ipairs(paths) do
 		local abs = repo_root .. "/" .. path
 		local bufnr = vim.fn.bufnr(abs)
 		if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-			out[path] = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+			lines[path] = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 		elseif vim.fn.filereadable(abs) == 1 then
-			local ok, lines = pcall(vim.fn.readfile, abs)
+			local ok, disk = pcall(vim.fn.readfile, abs)
 			if ok then
-				out[path] = lines
+				lines[path] = disk
+				closed[path] = disk
 			end
 		end
 	end
-	return out
+	return lines, closed
 end
 
 --- Derive per-path line counts from a path -> lines map.
@@ -84,11 +89,13 @@ function M.load_comments(callback, opts)
 	local result = store.materialize(events)
 	local comments = result.comments
 
-	-- Context-based re-anchor (layer 3): recover comments whose line drifted
-	-- while the buffer was closed (e.g. an external agent edit), then persist
-	-- the confident matches as move events so agents see the updated positions.
-	local file_lines = get_file_lines(session.worktree_root, comment_paths(comments))
-	local moves = store.reanchor(comments, file_lines)
+	-- Context-based re-anchor: recover comments whose line drifted while the
+	-- buffer was CLOSED (e.g. an external agent edit) and persist the confident
+	-- matches as move events so agents see the updated positions. Only closed
+	-- files are fed in, so unsaved edits in open buffers are never written back
+	-- here — the extmark tracker owns open buffers and persists on save.
+	local file_lines, closed_lines = read_commented_files(session.worktree_root, comment_paths(comments))
+	local moves = store.reanchor(comments, closed_lines)
 	if #moves > 0 then
 		local created = now_iso()
 		for _, mv in ipairs(moves) do

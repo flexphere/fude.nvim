@@ -21,6 +21,13 @@ local M = {}
 local util = require("fude.util")
 local is_null = util.is_null
 
+-- Seed the RNG once at load. Neovim does not seed math.random, so without this
+-- every fresh process emits the identical generate_uuid()/make_session_id()
+-- sequence — two sessions started in the same second would collide on the
+-- session file, and comment ids would repeat across sessions (breaking agents
+-- that aggregate multiple .fude/reviews/*.jsonl). hrtime gives per-process entropy.
+math.randomseed(vim.uv.hrtime())
+
 -- Directory override for tests (nil = "<repo_root>/.fude").
 M._dir = nil
 
@@ -198,7 +205,9 @@ function M.materialize(events)
 	end
 
 	-- Drop deleted comments from the materialized view (the events remain on
-	-- disk as an audit trail). Replies of a deleted root survive as orphans.
+	-- disk as an audit trail). A reply whose root was deleted has no position
+	-- of its own, so it is not re-anchored below and falls out of comment_map —
+	-- deleting a root effectively retires its whole thread from the view.
 	local visible = {}
 	for _, comment in ipairs(comments) do
 		if not comment._deleted then
@@ -287,6 +296,20 @@ local function unique_match(lines, ctx)
 	end
 	return (found == 1) and pos or nil
 end
+
+-- Comment position is maintained by three cooperating layers. A maintainer
+-- should read them together:
+--   1. `fude.local.tracker` — live extmark tracking for OPEN buffers; persists
+--      a `move` event on BufWritePost. Precise, owns open buffers.
+--   2. `M.reanchor` (below) — context-match re-anchor for CLOSED files only
+--      (external/agent edits the tracker can't see); persists a `move`. Its
+--      caller (`local_sync.load_comments`) feeds it disk content for closed
+--      files only, so it never writes back unsaved buffer positions.
+--   3. `M.apply_outdated` — marks `is_outdated` when a line is past EOF or its
+--      file is gone and neither layer above could recover it.
+-- The two `move` writers converge through append-only last-write materialize:
+-- after a re-anchor move, `lines_match` succeeds at the new line on the next
+-- load, so no further move is emitted (idempotent).
 
 --- Re-anchor comments whose stored line no longer matches their saved context.
 --- For each root comment carrying a `context` block, if the current file lines

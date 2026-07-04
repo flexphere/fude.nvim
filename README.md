@@ -297,7 +297,8 @@ Each line of `.fude/reviews/<session-id>.jsonl` is one JSON event:
 
 Other event kinds: `edit` (body replacement), `move` (line re-anchor),
 `reopen`, `delete` (hides the comment; the log line remains as an audit
-trail). Agents should **append only** — never rewrite existing lines.
+trail), and `viewed` (per-file viewed state). Agents should **append only**
+— never rewrite existing lines.
 
 For a resident Claude Code session, `contrib/skills/fude-watch/` provides a
 skill scaffold that tails the active session file and responds to new

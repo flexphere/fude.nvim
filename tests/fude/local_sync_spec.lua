@@ -192,6 +192,22 @@ describe("local_sync CRUD", function()
 		assert.is_true(config.state.comments[1].is_outdated)
 	end)
 
+	it("does not persist a re-anchor move from an unsaved open buffer", function()
+		-- Open f.lua in a loaded, MODIFIED buffer whose content differs from disk.
+		local buf =
+			helpers.create_buf({ "new1", "new2", "line1", "line2", "line3", "line4", "line5" }, tmp_repo .. "/f.lua")
+		vim.bo[buf].modified = true
+
+		local_sync.create_comment("f.lua", 3, 3, "note", "line3", function() end)
+		local before = #store.read_events(config.state.local_session.file)
+
+		-- Reload: disk still has the original file, the drift only exists in the
+		-- unsaved buffer. reanchor must not write a move from buffer content.
+		session.reload(true)
+		local after = #store.read_events(config.state.local_session.file)
+		assert.equals(before, after)
+	end)
+
 	it("keeps a comment anchored when only its line content changed", function()
 		-- Content edited in place (context gone) but the line still exists: the
 		-- comment stays put rather than being falsely marked outdated.
