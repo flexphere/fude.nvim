@@ -171,12 +171,18 @@ end
 --- @param state table config.state
 local function load_changed_files_into_state(state)
 	local diff_mod = require("fude.diff")
-	local base_sha = state.local_session and state.local_session.base_sha
+	local session = state.local_session
+	local base_sha = session and session.base_sha
 	if not base_sha then
 		return
 	end
-	state.changed_files =
-		M.build_changed_files(diff_mod.get_name_status(base_sha), diff_mod.get_numstat(base_sha), diff_mod.get_untracked())
+	-- Pass the worktree root as cwd so git paths resolve regardless of nvim's cwd.
+	local root = session.worktree_root
+	state.changed_files = M.build_changed_files(
+		diff_mod.get_name_status(base_sha, root),
+		diff_mod.get_numstat(base_sha, root),
+		diff_mod.get_untracked(root)
+	)
 end
 
 --- Stop the auto-reload timer if running.
@@ -410,7 +416,7 @@ function M.start(base_arg)
 		string.format(
 			"fude.nvim: Local review %s (%s <- %s, %d files, %d comments)",
 			existing and "resumed" or "started",
-			base_ref,
+			base_ref or "uncommitted", -- no base branch → uncommitted-scope fallback
 			state.head_ref,
 			#state.changed_files,
 			#state.comments

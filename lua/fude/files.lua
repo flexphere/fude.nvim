@@ -33,7 +33,8 @@ function M.resolve_patch(entry)
 	end
 	local state = config.state
 	if state.review_mode == "local" and state.local_session then
-		return diff.get_review_patch(state.local_session.base_sha, entry.path) or ""
+		local session = state.local_session
+		return diff.get_review_patch(session.base_sha, entry.path, session.worktree_root) or ""
 	end
 	return entry.patch or ""
 end

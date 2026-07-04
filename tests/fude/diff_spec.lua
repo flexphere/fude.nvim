@@ -198,6 +198,20 @@ describe("get_review_patch", function()
 		assert.equals("@@ tracked diff @@\n", diff.get_review_patch("basesha", "f.lua"))
 	end)
 
+	it("passes the repo root as cwd so pathspecs resolve from a subdir", function()
+		local seen_cwd
+		vim.system = function(_cmd, opts)
+			seen_cwd = opts.cwd
+			return {
+				wait = function()
+					return { code = 0, stdout = "@@ diff @@\n" }
+				end,
+			}
+		end
+		diff.get_review_patch("basesha", "sub/f.lua", "/repo/root")
+		assert.equals("/repo/root", seen_cwd)
+	end)
+
 	it("falls back to --no-index for an untracked file", function()
 		vim.system = function(cmd, _opts)
 			return {

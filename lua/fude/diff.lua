@@ -198,9 +198,10 @@ end
 
 --- Get name-status diff output between a ref and the working tree.
 --- @param ref string base commit SHA or ref
+--- @param cwd string|nil repo root (so output is correct when nvim's cwd is a subdir)
 --- @return string|nil output
-function M.get_name_status(ref)
-	local result = vim.system({ "git", "diff", "--name-status", "-M", ref }, { text = true }):wait()
+function M.get_name_status(ref, cwd)
+	local result = vim.system({ "git", "diff", "--name-status", "-M", ref }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return result.stdout
 	end
@@ -209,9 +210,10 @@ end
 
 --- Get numstat diff output between a ref and the working tree.
 --- @param ref string base commit SHA or ref
+--- @param cwd string|nil repo root
 --- @return string|nil output
-function M.get_numstat(ref)
-	local result = vim.system({ "git", "diff", "--numstat", "-M", ref }, { text = true }):wait()
+function M.get_numstat(ref, cwd)
+	local result = vim.system({ "git", "diff", "--numstat", "-M", ref }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return result.stdout
 	end
@@ -219,9 +221,13 @@ function M.get_numstat(ref)
 end
 
 --- Get untracked (non-ignored) files in the working tree.
+--- Runs in `cwd` (repo root) so it lists every untracked file with repo-relative
+--- paths — `git ls-files --others` is cwd-relative and limited to the cwd
+--- subtree otherwise.
+--- @param cwd string|nil repo root
 --- @return string|nil output newline-separated paths
-function M.get_untracked()
-	local result = vim.system({ "git", "ls-files", "--others", "--exclude-standard" }, { text = true }):wait()
+function M.get_untracked(cwd)
+	local result = vim.system({ "git", "ls-files", "--others", "--exclude-standard" }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return result.stdout
 	end
@@ -232,17 +238,21 @@ end
 --- local review file-list preview. Tries `git diff <base> -- <path>` (tracked
 --- changes) first, then falls back to `git diff --no-index` (untracked/new
 --- files, which don't appear in a normal diff). Returns nil when there is no
---- diff to show.
+--- diff to show. Runs in `cwd` (repo root) so the repo-relative pathspec
+--- resolves even when nvim's cwd is a subdirectory.
 --- @param base_sha string base commit SHA
 --- @param path string repo-relative file path
+--- @param cwd string|nil repo root
 --- @return string|nil patch text
-function M.get_review_patch(base_sha, path)
-	local result = vim.system({ "git", "diff", base_sha, "--", path }, { text = true }):wait()
+function M.get_review_patch(base_sha, path, cwd)
+	local result = vim.system({ "git", "diff", base_sha, "--", path }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 and result.stdout and result.stdout ~= "" then
 		return result.stdout
 	end
 	-- Untracked/new file: diff against /dev/null (exits 1 when they differ).
-	local untracked = vim.system({ "git", "diff", "--no-index", "--", "/dev/null", path }, { text = true }):wait()
+	local untracked = vim
+		.system({ "git", "diff", "--no-index", "--", "/dev/null", path }, { text = true, cwd = cwd })
+		:wait()
 	if untracked.stdout and untracked.stdout ~= "" then
 		return untracked.stdout
 	end
