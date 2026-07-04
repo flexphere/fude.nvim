@@ -109,7 +109,8 @@ end
 --- Build a GitHub-compatible comment object from a comment/reply event.
 --- The shape mirrors what `comments/data.lua` expects from the GitHub API:
 --- id, path, line, start_line, body, user.login, created_at, updated_at,
---- in_reply_to_id. Local-only extras: author_type, resolved.
+--- in_reply_to_id. Local-only extras: author_type, resolved, context (the
+--- source lines at creation, used for re-anchoring).
 --- @param event table comment or reply event
 --- @return table comment object
 local function comment_from_event(event)
@@ -125,6 +126,7 @@ local function comment_from_event(event)
 		updated_at = event.created_at,
 		in_reply_to_id = event.in_reply_to,
 		resolved = false,
+		context = type(event.context) == "string" and event.context or nil,
 	}
 	if event.start_line and event.end_line and event.start_line ~= event.end_line then
 		comment.start_line = event.start_line
@@ -244,6 +246,104 @@ function M.apply_outdated(comments, line_counts)
 		end
 	end
 	return comments
+end
+
+--- Whether the file `lines` contain `ctx` as a contiguous run starting at the
+--- 1-based `start` line.
+--- @param lines string[] file lines
+--- @param start number 1-based candidate start line
+--- @param ctx string[] context lines to match
+--- @return boolean
+local function lines_match(lines, start, ctx)
+	if start < 1 or start + #ctx - 1 > #lines then
+		return false
+	end
+	for i = 1, #ctx do
+		if lines[start + i - 1] ~= ctx[i] then
+			return false
+		end
+	end
+	return true
+end
+
+--- Find the unique 1-based start line where `ctx` occurs contiguously in
+--- `lines`. Returns nil when there is no match or more than one.
+--- @param lines string[]
+--- @param ctx string[]
+--- @return number|nil
+local function unique_match(lines, ctx)
+	if #ctx == 0 then
+		return nil
+	end
+	local found, pos = 0, nil
+	for s = 1, #lines - #ctx + 1 do
+		if lines_match(lines, s, ctx) then
+			found = found + 1
+			pos = s
+			if found > 1 then
+				return nil
+			end
+		end
+	end
+	return (found == 1) and pos or nil
+end
+
+--- Re-anchor comments whose stored line no longer matches their saved context.
+--- For each root comment carrying a `context` block, if the current file lines
+--- at its range don't match the context, search the file for a unique
+--- contiguous match and move the comment there. Ambiguous or missing matches
+--- are left as-is (apply_outdated handles genuinely-lost anchors). Mutates the
+--- passed comments (root lines + reply re-propagation) and returns the moves to
+--- persist. Pure w.r.t. the store (no IO).
+--- @param comments table[] materialized comments
+--- @param file_lines_map table<string, string[]> path -> current file lines (nil = missing)
+--- @return table[] moves { id, path, start_line, end_line }
+function M.reanchor(comments, file_lines_map)
+	file_lines_map = file_lines_map or {}
+	local moves = {}
+	local by_id = {}
+	for _, c in ipairs(comments or {}) do
+		by_id[c.id] = c
+	end
+
+	for _, c in ipairs(comments or {}) do
+		if not c.in_reply_to_id and type(c.context) == "string" and c.context ~= "" and type(c.path) == "string" then
+			local lines = file_lines_map[c.path]
+			local end_line = tonumber(c.line)
+			if lines and end_line then
+				local start_line = tonumber(c.start_line) or end_line
+				local ctx = vim.split(c.context, "\n", { plain = true })
+				if not lines_match(lines, start_line, ctx) then
+					local match = unique_match(lines, ctx)
+					if match then
+						local new_start, new_end = match, match + #ctx - 1
+						if new_start ~= start_line or new_end ~= end_line then
+							c.line = new_end
+							c.start_line = (new_start ~= new_end) and new_start or nil
+							table.insert(moves, { id = c.id, path = c.path, start_line = new_start, end_line = new_end })
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Replies inherit the (possibly re-anchored) root's position.
+	for _, c in ipairs(comments or {}) do
+		if c.in_reply_to_id then
+			local root = by_id[c.in_reply_to_id]
+			if root and not root._deleted then
+				c.path = root.path
+				c.line = root.line
+				c.start_line = root.start_line
+			end
+		end
+	end
+
+	table.sort(moves, function(a, b)
+		return a.id < b.id
+	end)
+	return moves
 end
 
 --- Build a session header event.

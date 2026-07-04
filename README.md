@@ -269,8 +269,10 @@ happens in this mode:
 - Viewed state works locally (`:FudeReviewViewed` / `<Tab>` in the panel or
   picker), persisted in the JSONL instead of GitHub.
 - Comment positions follow your edits via extmarks and are re-anchored in the
-  JSONL on save. Comments whose file/line disappeared are shown as
-  `[outdated]` in the comment browser.
+  JSONL on save. On reload, comments whose line drifted while the buffer was
+  closed (e.g. an external agent edit) are re-anchored by matching their saved
+  context. Comments whose file/line disappeared and can't be re-anchored are
+  shown as `[outdated]` in the comment browser.
 
 ### AI agent integration
 

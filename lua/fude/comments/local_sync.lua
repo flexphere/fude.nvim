@@ -17,23 +17,36 @@ end
 
 --- Count lines of each commented file, preferring loaded buffer contents
 --- (unsaved edits) over the on-disk file. Missing files get no entry, which
---- `store.apply_outdated` treats as "file gone".
+--- Read the current lines of each commented file, preferring loaded buffer
+--- contents (unsaved edits) over the on-disk file. Missing files get no entry,
+--- which `store.apply_outdated` treats as "file gone".
 --- @param repo_root string
 --- @param paths string[] repo-relative paths
---- @return table<string, number> path -> line count
-local function get_line_counts(repo_root, paths)
-	local counts = {}
+--- @return table<string, string[]> path -> file lines
+local function get_file_lines(repo_root, paths)
+	local out = {}
 	for _, path in ipairs(paths) do
 		local abs = repo_root .. "/" .. path
 		local bufnr = vim.fn.bufnr(abs)
 		if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-			counts[path] = vim.api.nvim_buf_line_count(bufnr)
+			out[path] = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 		elseif vim.fn.filereadable(abs) == 1 then
 			local ok, lines = pcall(vim.fn.readfile, abs)
 			if ok then
-				counts[path] = #lines
+				out[path] = lines
 			end
 		end
+	end
+	return out
+end
+
+--- Derive per-path line counts from a path -> lines map.
+--- @param file_lines table<string, string[]>
+--- @return table<string, number>
+local function line_counts_of(file_lines)
+	local counts = {}
+	for path, lines in pairs(file_lines) do
+		counts[path] = #lines
 	end
 	return counts
 end
@@ -70,7 +83,29 @@ function M.load_comments(callback, opts)
 	local events = store.read_events(session.file)
 	local result = store.materialize(events)
 	local comments = result.comments
-	store.apply_outdated(comments, get_line_counts(session.worktree_root, comment_paths(comments)))
+
+	-- Context-based re-anchor (layer 3): recover comments whose line drifted
+	-- while the buffer was closed (e.g. an external agent edit), then persist
+	-- the confident matches as move events so agents see the updated positions.
+	local file_lines = get_file_lines(session.worktree_root, comment_paths(comments))
+	local moves = store.reanchor(comments, file_lines)
+	if #moves > 0 then
+		local created = now_iso()
+		for _, mv in ipairs(moves) do
+			store.append_event(
+				session.file,
+				store.build_move_event({
+					id = mv.id,
+					path = mv.path,
+					start_line = mv.start_line,
+					end_line = mv.end_line,
+					created_at = created,
+				})
+			)
+		end
+	end
+
+	store.apply_outdated(comments, line_counts_of(file_lines))
 	state.comments = comments
 	state.comment_map = data.build_comment_map(comments)
 	state.viewed_files = result.viewed

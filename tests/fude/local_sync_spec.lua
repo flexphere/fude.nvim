@@ -159,6 +159,48 @@ describe("local_sync CRUD", function()
 		session.reload(true)
 		assert.equals("VIEWED", config.state.viewed_files["f.lua"])
 	end)
+
+	it("re-anchors a comment on reload when the file content shifts on disk", function()
+		-- f.lua initial content is line1..line5; comment anchors to line3 with
+		-- its content as context.
+		local_sync.create_comment("f.lua", 3, 3, "note", "line3", function() end)
+		local comment_id = config.state.comments[1].id
+		assert.equals(3, config.state.comments[1].line)
+
+		-- External edit: insert two lines at the top, shifting line3 -> line5.
+		vim.fn.writefile({ "new1", "new2", "line1", "line2", "line3", "line4", "line5" }, tmp_repo .. "/f.lua")
+
+		session.reload(true)
+		assert.equals(5, config.state.comments[1].line)
+		assert.is_nil(config.state.comments[1].is_outdated)
+		assert.is_not_nil(config.state.comment_map["f.lua"][5])
+
+		-- The re-anchor was persisted as a move event.
+		local events = store.read_events(config.state.local_session.file)
+		local last = events[#events]
+		assert.equals("move", last.event)
+		assert.equals(comment_id, last.id)
+		assert.equals(5, last.end_line)
+	end)
+
+	it("marks a comment outdated when its context vanished and its line is gone", function()
+		-- Context "line3" is unfindable and the file is now shorter than line 3,
+		-- so it cannot be re-anchored and falls through to outdated.
+		local_sync.create_comment("f.lua", 3, 3, "note", "line3", function() end)
+		vim.fn.writefile({ "only-one-line" }, tmp_repo .. "/f.lua")
+		session.reload(true)
+		assert.is_true(config.state.comments[1].is_outdated)
+	end)
+
+	it("keeps a comment anchored when only its line content changed", function()
+		-- Content edited in place (context gone) but the line still exists: the
+		-- comment stays put rather than being falsely marked outdated.
+		local_sync.create_comment("f.lua", 3, 3, "note", "line3", function() end)
+		vim.fn.writefile({ "line1", "line2", "line3-edited", "line4", "line5" }, tmp_repo .. "/f.lua")
+		session.reload(true)
+		assert.equals(3, config.state.comments[1].line)
+		assert.is_nil(config.state.comments[1].is_outdated)
+	end)
 end)
 
 describe("files.apply_viewed_toggle in local mode", function()

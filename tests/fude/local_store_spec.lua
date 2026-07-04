@@ -229,6 +229,82 @@ describe("store.materialize viewed events", function()
 	end)
 end)
 
+describe("store.reanchor", function()
+	local function comment_with_context(id, start_line, end_line, context)
+		return store.materialize({
+			store.build_comment_event({
+				id = id,
+				path = "f.lua",
+				start_line = start_line,
+				end_line = end_line,
+				body = "c",
+				context = context,
+			}),
+		}).comments
+	end
+
+	it("moves a comment to the unique new position of its context", function()
+		-- Context "b" was at line 2; two lines inserted above shift it to line 4.
+		local comments = comment_with_context("c1", 2, 2, "b")
+		local moves = store.reanchor(comments, { ["f.lua"] = { "x", "y", "a", "b", "c" } })
+		assert.equals(1, #moves)
+		assert.same({ id = "c1", path = "f.lua", start_line = 4, end_line = 4 }, moves[1])
+		assert.equals(4, comments[1].line)
+	end)
+
+	it("does nothing when the context still matches the stored line", function()
+		local comments = comment_with_context("c1", 2, 2, "b")
+		local moves = store.reanchor(comments, { ["f.lua"] = { "a", "b", "c" } })
+		assert.same({}, moves)
+		assert.equals(2, comments[1].line)
+	end)
+
+	it("re-anchors a multi-line range and keeps start_line", function()
+		local comments = comment_with_context("c1", 2, 3, "b\nc")
+		local moves = store.reanchor(comments, { ["f.lua"] = { "x", "y", "z", "b", "c" } })
+		assert.same({ id = "c1", path = "f.lua", start_line = 4, end_line = 5 }, moves[1])
+		assert.equals(4, comments[1].start_line)
+		assert.equals(5, comments[1].line)
+	end)
+
+	it("leaves ambiguous matches untouched", function()
+		local comments = comment_with_context("c1", 5, 5, "dup")
+		local moves = store.reanchor(comments, { ["f.lua"] = { "dup", "x", "dup", "y" } })
+		assert.same({}, moves)
+	end)
+
+	it("leaves comments untouched when the context is gone", function()
+		local comments = comment_with_context("c1", 2, 2, "vanished")
+		local moves = store.reanchor(comments, { ["f.lua"] = { "a", "b", "c" } })
+		assert.same({}, moves)
+	end)
+
+	it("skips comments without a context block", function()
+		local comments = store.materialize({
+			store.build_comment_event({ id = "c1", path = "f.lua", start_line = 2, end_line = 2, body = "c" }),
+		}).comments
+		local moves = store.reanchor(comments, { ["f.lua"] = { "x", "y", "z" } })
+		assert.same({}, moves)
+	end)
+
+	it("re-propagates a re-anchored root position to its replies", function()
+		local comments = store.materialize({
+			store.build_comment_event({
+				id = "c1",
+				path = "f.lua",
+				start_line = 2,
+				end_line = 2,
+				body = "root",
+				context = "b",
+			}),
+			store.build_reply_event({ id = "r1", thread_id = "c1", body = "reply" }),
+		}).comments
+		store.reanchor(comments, { ["f.lua"] = { "x", "y", "a", "b" } })
+		assert.equals(4, comments[1].line)
+		assert.equals(4, comments[2].line)
+	end)
+end)
+
 describe("store.apply_outdated", function()
 	local function comments_fixture()
 		local result = store.materialize({
