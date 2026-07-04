@@ -234,12 +234,8 @@ function M.start(base_arg)
 	if base_ref == nil or base_ref == "" then
 		base_ref = existing and existing.base_ref or diff_mod.get_default_branch()
 	end
-	if not base_ref then
-		vim.notify("fude.nvim: Cannot determine base ref (pass one: :FudeReviewLocal <base>)", vim.log.levels.ERROR)
-		return
-	end
 
-	if existing and existing.base_ref ~= base_ref then
+	if existing and base_ref and existing.base_ref ~= base_ref then
 		vim.notify(
 			string.format(
 				"fude.nvim: Resuming existing local session (base: %s). Run :FudeReviewLocalStop to start over.",
@@ -250,15 +246,30 @@ function M.start(base_arg)
 		base_ref = existing.base_ref
 	end
 
-	local base_sha = diff_mod.get_merge_base(base_ref)
-	if not base_sha then
-		vim.notify("fude.nvim: Cannot resolve merge-base for " .. base_ref, vim.log.levels.ERROR)
-		return
-	end
-
 	local head_sha = diff_mod.get_head_sha()
 	local branch = diff_mod.get_current_branch()
 	local now = os.time()
+
+	-- Determine the initial scope. When no base branch can be found (a fresh,
+	-- remote-less repo of agent work), fall back to reviewing the uncommitted
+	-- working-tree changes instead of failing.
+	local initial_scope = (existing and existing.scope) or "base"
+	local no_base_fallback = false
+	if not base_ref and initial_scope == "base" then
+		initial_scope = "uncommitted"
+		no_base_fallback = true
+	end
+
+	if initial_scope == "uncommitted" and not head_sha then
+		vim.notify("fude.nvim: No commits yet — nothing to review", vim.log.levels.ERROR)
+		return
+	end
+
+	local base_sha, content_ref = M.resolve_scope_base(initial_scope, base_ref)
+	if not base_sha then
+		vim.notify("fude.nvim: Cannot resolve base ref for " .. (base_ref or "?"), vim.log.levels.ERROR)
+		return
+	end
 
 	local session
 	if existing then
@@ -303,10 +314,12 @@ function M.start(base_arg)
 		})
 	end
 
-	-- Default to the whole-branch diff; the session's diff base is derived from
-	-- the scope so :FudeReviewLocalScope can switch it later.
-	session.scope = session.scope or "base"
-	session.content_ref = base_ref
+	-- The session's diff base is derived from the scope so
+	-- :FudeReviewLocalScope can switch it later. Refresh base_sha/content_ref on
+	-- resume too (a resumed session's stored base_sha may be stale).
+	session.scope = initial_scope
+	session.base_sha = base_sha
+	session.content_ref = content_ref
 
 	state.active = true
 	state.review_mode = "local"
@@ -315,6 +328,14 @@ function M.start(base_arg)
 	state.head_ref = branch or "HEAD"
 	state.merge_base_sha = base_sha
 	state.github_user = diff_mod.get_git_user()
+
+	if no_base_fallback then
+		vim.notify(
+			"fude.nvim: No base branch found — reviewing uncommitted changes. "
+				.. "Pass a base (:FudeReviewLocal <ref>) or switch scope in the panel.",
+			vim.log.levels.INFO
+		)
+	end
 
 	load_changed_files_into_state(state)
 	require("fude.comments.local_sync").load_comments(nil, { silent = true })

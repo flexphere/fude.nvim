@@ -75,12 +75,19 @@ Using lazy.nvim: >lua
     Toggle review session on or off.
 
 :FudeReviewLocal [{base}]                              *:FudeReviewLocal*
-    Start local (pre-PR) review mode against {base} (default: the
-    repository's default branch). Changed files come from the local
-    git diff (merge-base with {base}, plus untracked files) and review
-    comments are stored in `.fude/reviews/<session-id>.jsonl` inside
-    the worktree instead of GitHub. Resumes the session recorded in
-    `.fude/current.json` when one exists.
+    Start local (pre-PR) review mode against {base}. Changed files
+    come from the local git diff (merge-base with {base}, plus
+    untracked files) and review comments are stored in
+    `.fude/reviews/<session-id>.jsonl` inside the worktree instead of
+    GitHub. Resumes the session recorded in `.fude/current.json` when
+    one exists.
+
+    When {base} is omitted, the base ref is resolved in order: the
+    remote default branch (origin/HEAD, origin/main, origin/master),
+    then a local `main`/`master`. If none is found (e.g. a fresh,
+    remote-less repo), the session starts in the `uncommitted` scope
+    (diff against HEAD) instead of failing; switch to a base scope
+    with |:FudeReviewLocalScope| once a base exists.
 
 :FudeReviewLocalStop                               *:FudeReviewLocalStop*
     Stop local review mode and clear `.fude/current.json`. The

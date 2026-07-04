@@ -251,9 +251,12 @@ happens in this mode:
 
 - Changed files come from the local git diff, plus untracked files. The diff
   base depends on the **scope** (switch with `:FudeReviewLocalScope`):
-  - `base` (default) — merge-base with `base` (default: the repository's
-    default branch): the whole branch diff, including committed work.
+  - `base` (default) — merge-base with `base` (default: the remote default
+    branch, else a local `main`/`master`): the whole branch diff, including
+    committed work.
   - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes.
+  When no base branch can be found (a fresh, remote-less repo), the session
+  starts in the `uncommitted` scope instead of failing.
 - Comments are stored in `.fude/reviews/<session-id>.jsonl` inside the
   worktree as an **append-only event log** (add `.fude/` to your
   `.gitignore`). `.fude/current.json` points to the active session, so the

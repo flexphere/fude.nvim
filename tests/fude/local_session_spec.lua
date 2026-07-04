@@ -211,6 +211,33 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("develop", config.state.base_ref)
 	end)
 
+	it("falls back to uncommitted scope when no base branch is found", function()
+		mock_local_git({
+			get_default_branch = function()
+				return nil
+			end,
+		})
+		session.start(nil)
+		assert.is_true(config.state.active)
+		assert.equals("uncommitted", config.state.local_session.scope)
+		assert.equals("HEAD", config.state.local_session.base_sha)
+		assert.is_nil(config.state.base_ref)
+		assert.equals("Local: uncommitted", require("fude.scope").statusline())
+	end)
+
+	it("errors on a repo with no commits (no base, no HEAD)", function()
+		mock_local_git({
+			get_default_branch = function()
+				return nil
+			end,
+			get_head_sha = function()
+				return nil
+			end,
+		})
+		session.start(nil)
+		assert.is_false(config.state.active)
+	end)
+
 	it("start warns when already active", function()
 		mock_local_git()
 		session.start(nil)

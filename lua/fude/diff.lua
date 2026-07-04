@@ -134,9 +134,17 @@ function M.get_default_branch()
 		return (branch:gsub("^origin/", ""))
 	end
 
-	-- Fallback: check common default branch names
+	-- Fallback: check common default branch names on the remote
 	for _, name in ipairs({ "main", "master" }) do
 		local check = vim.system({ "git", "rev-parse", "--verify", "origin/" .. name }, { text = true }):wait()
+		if check.code == 0 then
+			return name
+		end
+	end
+
+	-- Fallback: local main/master (remote-less repos, e.g. pre-push agent work)
+	for _, name in ipairs({ "main", "master" }) do
+		local check = vim.system({ "git", "rev-parse", "--verify", name }, { text = true }):wait()
 		if check.code == 0 then
 			return name
 		end
