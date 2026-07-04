@@ -1,5 +1,34 @@
 local scope = require("fude.scope")
 
+describe("build_local_scope_entries", function()
+	it("returns base and uncommitted rows with the base branch label", function()
+		local entries = scope.build_local_scope_entries("base", "main")
+		assert.equals(2, #entries)
+		assert.equals("base", entries[1].local_scope)
+		assert.equals("base", entries[1].value)
+		assert.equals("Base branch (main)", entries[1].display_text)
+		assert.is_true(entries[1].is_current)
+		assert.equals("uncommitted", entries[2].local_scope)
+		assert.is_false(entries[2].is_current)
+	end)
+
+	it("marks the uncommitted row current when selected", function()
+		local entries = scope.build_local_scope_entries("uncommitted", "develop")
+		assert.is_false(entries[1].is_current)
+		assert.is_true(entries[2].is_current)
+	end)
+
+	it("defaults to base scope when nil", function()
+		local entries = scope.build_local_scope_entries(nil, "main")
+		assert.is_true(entries[1].is_current)
+	end)
+
+	it("tolerates a missing base ref", function()
+		local entries = scope.build_local_scope_entries("base", nil)
+		assert.equals("Base branch (?)", entries[1].display_text)
+	end)
+end)
+
 describe("build_scope_entries", function()
 	it("returns full PR entry first followed by commits", function()
 		local commits = {

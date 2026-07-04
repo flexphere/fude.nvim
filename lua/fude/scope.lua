@@ -62,6 +62,38 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 	return entries
 end
 
+--- Build scope entries for the sidepanel in local review mode.
+--- Same entry shape as `build_scope_entries` (so `format_scope_section` and the
+--- sidepanel selection handler work unchanged), but the two rows are the local
+--- diff scopes rather than PR / commits.
+--- @param current_scope string|nil "base" (default) or "uncommitted"
+--- @param base_ref string|nil session base branch
+--- @return table[] entries with a `local_scope` value field
+function M.build_local_scope_entries(current_scope, base_ref)
+	current_scope = current_scope or "base"
+	local rows = {
+		{ scope = "base", text = string.format("Base branch (%s)", base_ref or "?") },
+		{ scope = "uncommitted", text = "Uncommitted (staged + unstaged)" },
+	}
+	local entries = {}
+	for _, row in ipairs(rows) do
+		table.insert(entries, {
+			value = row.scope,
+			local_scope = row.scope,
+			display_text = row.text,
+			sha = nil,
+			is_full_pr = false,
+			reviewed = false,
+			reviewed_icon = " ",
+			reviewed_hl = "Comment",
+			index = nil,
+			total = #rows,
+			is_current = current_scope == row.scope,
+		})
+	end
+	return entries
+end
+
 --- Show the scope selection picker.
 function M.select_scope()
 	local state = config.state

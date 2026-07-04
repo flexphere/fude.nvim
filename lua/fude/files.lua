@@ -455,6 +455,10 @@ end
 --- @param on_done fun(updated: { path: string, viewed_state: string, viewed_icon: string, viewed_hl: string })
 function M.apply_viewed_toggle(path, on_done)
 	local state = config.state
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Viewed state is not available in local review mode", vim.log.levels.WARN)
+		return
+	end
 	if not state.pr_node_id then
 		vim.notify("fude.nvim: PR node ID not available", vim.log.levels.WARN)
 		return

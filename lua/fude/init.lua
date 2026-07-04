@@ -495,6 +495,10 @@ function M.mark_viewed()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Viewed state is not available in local review mode", vim.log.levels.WARN)
+		return
+	end
 	if not state.pr_node_id then
 		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
 		return
@@ -523,6 +527,10 @@ function M.unmark_viewed()
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if state.review_mode == "local" then
+		vim.notify("fude.nvim: Viewed state is not available in local review mode", vim.log.levels.WARN)
 		return
 	end
 	if not state.pr_node_id then

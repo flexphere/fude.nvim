@@ -366,9 +366,11 @@ Using lazy.nvim: >lua
     that shows two sections:
 
     Review Scope:~
-      Lists the PR's commit history with a "Full PR" option at the top.
-      The currently active scope is marked with `▶`. Reviewed commits
-      show a checkmark indicator.
+      In PR review, lists the PR's commit history with a "Full PR"
+      option at the top; reviewed commits show a checkmark indicator.
+      In local review (|fude-local-review|), lists the two local diff
+      scopes ("Base branch" and "Uncommitted"); `<CR>` or `<Tab>`
+      switches between them. The active scope is marked with `▶`.
 
     Files:~
       Lists all changed files in the current scope with status icons,
