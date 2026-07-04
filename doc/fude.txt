@@ -380,10 +380,12 @@ Using lazy.nvim: >lua
 
     Review Scope:~
       In PR review, lists the PR's commit history with a "Full PR"
-      option at the top; reviewed commits show a checkmark indicator.
-      In local review (|fude-local-review|), lists the two local diff
-      scopes ("Base branch" and "Uncommitted"); `<CR>` or `<Tab>`
-      switches between them. The active scope is marked with `▶`.
+      option at the top; reviewed commits show a checkmark indicator,
+      and `<Tab>` toggles a commit's reviewed state.
+      In local review (|fude-local-review|), lists the local diff scopes
+      available for the current git state ("Base branch", "Unpushed",
+      "Uncommitted" — see |:FudeReviewLocalScope|); here `<CR>` or `<Tab>`
+      switches scope. The active scope is marked with `▶`.
 
     Files:~
       Lists all changed files in the current scope with status icons,
@@ -391,10 +393,11 @@ Using lazy.nvim: >lua
       the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 
     Keymaps (panel):~
-      `<CR>`    Select scope entry or open file
-      `<Tab>`   Toggle reviewed (scope) / viewed (file)
+      `<CR>`    Select scope entry / switch local scope, or open file
+      `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
+                (local). On a file: toggle viewed.
       `t`       Toggle files between flat list and tree
-      `R`       Reload review data from GitHub
+      `R`       Reload review data
       `q`       Close panel
 
     When opening a file with `<CR>`, the cursor moves to a non-panel

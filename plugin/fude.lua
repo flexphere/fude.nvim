@@ -31,7 +31,7 @@ vim.api.nvim_create_user_command("FudeReviewLocalScope", function(opts)
 		session.select_scope()
 	end
 end, {
-	desc = "Select local review scope (base branch or uncommitted)",
+	desc = "Select local review scope (base / unpushed / uncommitted)",
 	nargs = "?",
 	complete = function()
 		return require("fude.local.session").SCOPES
