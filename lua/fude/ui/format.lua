@@ -230,7 +230,9 @@ function M.build_reviewers_list(review_requests, latest_reviews)
 
 	-- Add reviewers from latestReviews first (they have actual review state)
 	for _, review in ipairs(latest_reviews) do
-		local login = review.author and review.author.login
+		-- author can be JSON null, which decodes to truthy vim.NIL
+		local author = type(review.author) == "table" and review.author or nil
+		local login = author and author.login
 		if login and not seen[login] then
 			seen[login] = true
 			table.insert(reviewers, { login = login, state = review.state or "COMMENTED" })
@@ -271,8 +273,10 @@ function M.build_re_request_candidates(review_requests, latest_reviews, author_l
 	local candidates = {}
 	local seen = {}
 	for _, review in ipairs(latest_reviews) do
-		local login = review.author and review.author.login
-		local is_bot = review.author and review.author.is_bot
+		-- author can be JSON null, which decodes to truthy vim.NIL
+		local author = type(review.author) == "table" and review.author or nil
+		local login = author and author.login
+		local is_bot = author and author.is_bot
 		if login and not seen[login] and not requested[login] and login ~= author_login and not is_bot then
 			seen[login] = true
 			table.insert(candidates, { login = login, state = review.state or "COMMENTED" })
@@ -424,7 +428,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	local title = string.format("# PR #%d: %s", pr_info.number or 0, pr_info.title or "")
 	table.insert(lines, title)
 
-	local author = pr_info.author and pr_info.author.login or "unknown"
+	-- author can be JSON null, which decodes to truthy vim.NIL
+	local author = type(pr_info.author) == "table" and pr_info.author.login or "unknown"
 	table.insert(lines, string.format("State: %s    Author: @%s", pr_info.state or "UNKNOWN", author))
 
 	table.insert(lines, string.format("Base: %s <- %s", pr_info.baseRefName or "", pr_info.headRefName or ""))

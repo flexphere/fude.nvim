@@ -1292,6 +1292,12 @@ describe("build_reviewers_list", function()
 		assert.are.equal(0, #result)
 	end)
 
+	it("skips reviews whose author is vim.NIL (JSON null)", function()
+		local reviews = { { author = vim.NIL, state = "COMMENTED" } }
+		local result = ui.build_reviewers_list({}, reviews)
+		assert.are.equal(0, #result)
+	end)
+
 	it("sorts reviewers alphabetically by login", function()
 		local requests = { { login = "charlie" }, { login = "alice" } }
 		local reviews = { { author = { login = "bob" }, state = "APPROVED" } }
@@ -1339,6 +1345,12 @@ describe("build_re_request_candidates", function()
 
 	it("skips reviews with nil author", function()
 		local reviews = { { author = nil, state = "COMMENTED" } }
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(0, #result)
+	end)
+
+	it("skips reviews whose author is vim.NIL (JSON null)", function()
+		local reviews = { { author = vim.NIL, state = "COMMENTED" } }
 		local result = ui.build_re_request_candidates({}, reviews, nil)
 		assert.are.equal(0, #result)
 	end)

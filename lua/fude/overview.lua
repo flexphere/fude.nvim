@@ -65,7 +65,8 @@ function M.re_request_review(pr_info)
 	local candidates = ui.build_re_request_candidates(
 		pr_info.reviewRequests or {},
 		pr_info.latestReviews or {},
-		pr_info.author and pr_info.author.login
+		-- author can be JSON null, which decodes to truthy vim.NIL
+		type(pr_info.author) == "table" and pr_info.author.login or nil
 	)
 	if #candidates == 0 then
 		vim.notify("fude.nvim: No reviewers to re-request", vim.log.levels.INFO)
