@@ -129,6 +129,40 @@ describe("config", function()
 		end)
 	end)
 
+	describe("get_show_resolved", function()
+		it("defaults to visible", function()
+			config.setup({})
+			config.state.show_resolved = nil
+			assert.is_true(config.get_show_resolved())
+		end)
+
+		it("returns state override when set", function()
+			config.setup({})
+			config.state.show_resolved = false
+			assert.is_false(config.get_show_resolved())
+		end)
+	end)
+
+	describe("toggle_show_resolved", function()
+		it("toggles from visible to hidden and back", function()
+			config.setup({})
+			config.state.show_resolved = nil
+			assert.is_false(config.toggle_show_resolved())
+			assert.is_false(config.get_show_resolved())
+			assert.is_true(config.toggle_show_resolved())
+			assert.is_true(config.get_show_resolved())
+		end)
+	end)
+
+	describe("reset_state clears show_resolved", function()
+		it("clears show_resolved on reset", function()
+			config.setup({})
+			config.state.show_resolved = false
+			config.reset_state()
+			assert.is_nil(config.state.show_resolved)
+		end)
+	end)
+
 	describe("format_path", function()
 		it("returns path as-is when format_path option is nil", function()
 			config.setup({})
