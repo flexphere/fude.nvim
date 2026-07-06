@@ -9,6 +9,11 @@
 <!-- 差分 audit (2026-05-30) で PR #144 由来の全 4 エントリを pj-checklist へ統合済み (report 保存省略) -->
 <!-- formal audit (2026-05-29, .claude/audit-reports/audit-2026-05.md) で全 7 エントリを pj-checklist へ統合済み -->
 
+### エッジケース: latestReviewsには自分の未提出(PENDING)レビューが混じる (PR #154, 2026-07-06)
+- **問題**: 「レビュー提出済みユーザーのみ」という仕様を`latestReviews`由来であることだけで担保していたが、`gh pr view --json latestReviews`にはviewer自身の未提出（`state == "PENDING"`）レビューが含まれることがあり、未提出のレビュアーが候補に混じりうる
+- **対策**: `latestReviews`を「提出済みレビュー」として扱う処理では`state ~= "PENDING"`を明示的に確認する。docstringに書いた入力データの前提は、コード側の条件として保証する
+- **該当箇所**: lua/fude/ui/format.lua
+
 ### コード品質: 純粋モジュールでのvim.NIL安全なネスト参照 (PR #154, 2026-07-06)
 - **問題**: gh APIレスポンス由来のネストフィールド（`review.author.login`等）を`x and x.y`で参照していたが、JSON nullは`vim.NIL`（truthyなuserdata）にデコードされるためindexエラーになりうる。`util.is_null`は`vim.NIL`を参照するため、純粋性チェック対象モジュール（`*/format.lua`・`*/data.lua`）では使えない
 - **対策**: 純粋モジュールでは`type(x) == "table" and x.y or nil`でガードする。外部APIレスポンスのネスト参照を書くとき、既存の同パターン箇所（同ファイル内の類似関数）も同時に確認する
