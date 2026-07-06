@@ -434,7 +434,7 @@ end
 --- Show PR overview in a split-pane floating window.
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
---- @param opts table { on_new_comment: fun(), on_refresh: fun(), on_re_request: fun() }
+--- @param opts table { on_new_comment: fun()|nil, on_refresh: fun()|nil, on_re_request: fun()|nil }
 function M.show_overview_float(pr_info, issue_comments, opts)
 	local left_result = format.build_overview_left_lines(pr_info, issue_comments, config.format_date)
 	local right_result = format.build_overview_right_lines(pr_info)
