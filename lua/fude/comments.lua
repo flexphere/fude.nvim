@@ -55,6 +55,18 @@ local function has_review_target(state)
 	return state.active and (state.pr_number ~= nil or state.local_session ~= nil)
 end
 
+--- Toggle editor visibility of resolved comments.
+--- Rebuilds comment_map from state.comments so extmarks, navigation, and the
+--- comment viewer follow the new visibility. The comment browser
+--- (FudeReviewListComments) always shows resolved threads regardless.
+--- @return boolean the new visibility
+function M.toggle_resolved_visibility()
+	local visible = config.toggle_show_resolved()
+	config.state.comment_map = data.build_comment_map(config.state.comments, { hide_resolved = not visible })
+	ui.refresh_extmarks()
+	return visible
+end
+
 --- Get comments at a specific file and line.
 --- @param rel_path string repo-relative file path
 --- @param line number line number

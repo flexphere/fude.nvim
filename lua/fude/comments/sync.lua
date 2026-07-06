@@ -14,7 +14,7 @@ local is_null = require("fude.util").is_null
 --- also propagated to replies via in_reply_to_id.
 --- @param comments table[] array of comment objects
 --- @param thread_info_map table<number, table> { [root_comment_id] = { is_outdated, is_resolved, original_line } }
---- @param opts table { apply_outdated = boolean, apply_resolved = boolean }
+--- @param opts table { apply_outdated = boolean, apply_resolved = boolean, pending_review_id = number|nil }
 local function apply_thread_info(comments, thread_info_map, opts)
 	-- Fallback index for threads whose root comment was deleted on GitHub: the
 	-- GraphQL "root" is then the earliest surviving reply, whose in_reply_to_id
@@ -31,7 +31,11 @@ local function apply_thread_info(comments, thread_info_map, opts)
 		if opts.apply_outdated and info and info.is_outdated then
 			c.is_outdated = true
 		end
-		if opts.apply_resolved then
+		-- Never mark unsubmitted pending comments as resolved: the user's own
+		-- pending reply on a resolved thread still needs attention, so the line
+		-- must not render as fully resolved (nor be hidden by the visibility toggle).
+		local is_pending = opts.pending_review_id ~= nil and c.pull_request_review_id == opts.pending_review_id
+		if opts.apply_resolved and not is_pending then
 			local thread_info = info
 			if not thread_info and not is_null(c.in_reply_to_id) then
 				thread_info = thread_info_map[c.in_reply_to_id] or info_by_parent[c.in_reply_to_id]
@@ -62,7 +66,7 @@ local function fetch_comments(callback, opts)
 
 	local function apply(comments)
 		state.comments = comments
-		state.comment_map = data.build_comment_map(comments)
+		state.comment_map = data.build_comment_map(comments, { hide_resolved = not config.get_show_resolved() })
 		require("fude.ui").refresh_extmarks()
 		if not silent then
 			vim.notify(string.format("fude.nvim: Loaded %d comments", #comments), vim.log.levels.INFO)
@@ -107,6 +111,7 @@ local function fetch_comments(callback, opts)
 				apply_thread_info(comments, thread_info_map, {
 					apply_outdated = need_outdated,
 					apply_resolved = need_resolved,
+					pending_review_id = state.pending_review_id,
 				})
 			end
 			apply(comments)
@@ -330,7 +335,8 @@ function M.sync_pending_review(callback)
 						state.comments,
 						state.pending_comments,
 						state.pending_review_id,
-						state.github_user
+						state.github_user,
+						{ hide_resolved = not config.get_show_resolved() }
 					)
 					state.comments = merged
 					state.comment_map = merged_map

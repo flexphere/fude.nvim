@@ -98,7 +98,10 @@ function M.refresh_extmarks()
 	local comment_lines = comments_mod.get_comment_lines(rel_path)
 
 	local style = config.get_comment_style()
-	local inline_opts = config.opts.inline or {}
+	local inline_opts
+	if style == "inline" then
+		inline_opts = config.opts.inline or {}
+	end
 
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)
