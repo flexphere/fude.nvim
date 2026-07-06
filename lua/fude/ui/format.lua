@@ -256,7 +256,8 @@ function M.build_reviewers_list(review_requests, latest_reviews)
 end
 
 --- Build candidates for review re-request: users who already submitted a review,
---- excluding users with a pending re-request, the PR author, and bots.
+--- excluding users with a pending re-request, unsubmitted (PENDING) reviews,
+--- the PR author, and bots.
 --- @param review_requests table[] reviewRequests from gh pr view (each has login)
 --- @param latest_reviews table[] latestReviews from gh pr view (each has author.login, state)
 --- @param author_login string|nil PR author login (re-requesting from the author is rejected by the API)
@@ -277,9 +278,13 @@ function M.build_re_request_candidates(review_requests, latest_reviews, author_l
 		local author = type(review.author) == "table" and review.author or nil
 		local login = author and author.login
 		local is_bot = author and author.is_bot
-		if login and not seen[login] and not requested[login] and login ~= author_login and not is_bot then
+		-- PENDING means the review has not been submitted yet; only
+		-- submitted reviews qualify for a re-request
+		local state = review.state or "COMMENTED"
+		local submitted = state ~= "PENDING"
+		if login and submitted and not seen[login] and not requested[login] and login ~= author_login and not is_bot then
 			seen[login] = true
-			table.insert(candidates, { login = login, state = review.state or "COMMENTED" })
+			table.insert(candidates, { login = login, state = state })
 		end
 	end
 

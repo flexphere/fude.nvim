@@ -1355,6 +1355,16 @@ describe("build_re_request_candidates", function()
 		assert.are.equal(0, #result)
 	end)
 
+	it("excludes unsubmitted (PENDING) reviews", function()
+		local reviews = {
+			{ author = { login = "alice" }, state = "PENDING" },
+			{ author = { login = "bob" }, state = "APPROVED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("bob", result[1].login)
+	end)
+
 	it("excludes bot reviewers", function()
 		local reviews = {
 			{ author = { login = "copilot", is_bot = true }, state = "COMMENTED" },
