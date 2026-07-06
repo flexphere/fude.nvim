@@ -149,6 +149,40 @@ describe("overview re_request_review", function()
 		end))
 	end)
 
+	it("does not re-show the overview when the session was reset while the request was in flight", function()
+		select_choice = { login = "alice", state = "APPROVED" }
+		local pr_view_called = false
+		helpers.mock_gh({
+			[POST_KEY] = function(_args, callback)
+				vim.schedule(function()
+					-- Simulate stop() + start() of another session between the
+					-- request and its response: the state table identity changes
+					-- and the new session is active.
+					config.reset_state()
+					config.state.active = true
+					callback(nil, {})
+				end)
+			end,
+			["pr:view"] = function(_args, callback)
+				pr_view_called = true
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end,
+		})
+		config.state.active = true
+
+		overview.re_request_review(make_pr_info())
+
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("Re-requested review from @alice", vim.log.levels.INFO)
+		end))
+		vim.wait(100, function()
+			return pr_view_called
+		end)
+		assert.is_false(pr_view_called)
+	end)
+
 	it("does not re-show the overview when the session is no longer active", function()
 		select_choice = { login = "alice", state = "APPROVED" }
 		local pr_view_called = false
