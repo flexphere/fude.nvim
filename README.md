@@ -124,6 +124,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeCopyPRURL` | Copy PR URL to clipboard |
 | `:FudeReviewReload` | Reload review data from GitHub |
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
+| `:FudeReviewToggleResolved` | Toggle visibility of resolved comments in the editor |
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
@@ -217,6 +218,7 @@ require("fude").setup({
   -- comment browser, comment viewer, and virtual text with `label`. Inline
   -- comment boxes instead show a fixed "[resolved thread]" on the thread's
   -- head (oldest) comment only.
+  -- Editor visibility can be toggled at runtime with :FudeReviewToggleResolved.
   -- Set show = false to hide all resolved labels. (The review-threads fetch
   -- is shared with outdated detection; it is skipped only when outdated.show
   -- is also false and no pending review exists.)

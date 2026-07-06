@@ -388,6 +388,23 @@ Using lazy.nvim: >lua
     names. The hint disappears when the cursor moves to a non-comment line.
     Requires an active review session.
 
+:FudeReviewToggleResolved                *:FudeReviewToggleResolved*
+    Toggle visibility of resolved comments in the editor. When hidden,
+    resolved threads disappear from virtualText/inline indicators,
+    `]c` / `[c` navigation, and the comment viewer. The comment browser
+    (|:FudeReviewListComments|) always shows resolved threads with the
+    `[resolved]` label regardless of this toggle.
+
+    The visibility is stored in the session state, survives
+    |:FudeReviewReload| and auto-reloads, and resets to visible when
+    review mode is stopped.
+
+    Note: while resolved comments are hidden, reply/edit draft markers
+    that target them are hidden as well (the drafts themselves are
+    kept). When `resolved.show = false`, resolved state is not applied
+    at all and this command only shows a warning.
+    Requires an active review session.
+
 :FudeReviewPanel                                  *:FudeReviewPanel*
     Toggle the review side panel. The panel is a sidebar split window
     that shows two sections:
@@ -778,6 +795,8 @@ Options:
                   review-threads fetch is shared with outdated comment
                   detection, so it is skipped only when `outdated.show` is
                   also false and no pending review exists.
+                  Editor visibility of resolved comments can be toggled at
+                  runtime with |:FudeReviewToggleResolved|.
 
 `resolved.label`    Label text shown for resolved threads
                   (default: "[resolved]"). Appears in the comment browser
