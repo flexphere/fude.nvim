@@ -457,3 +457,24 @@ describe("parse_review_threads_response", function()
 		assert.are.equal("THREAD_D", thread_map[400])
 	end)
 end)
+
+describe("re_request_review", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("errors without calling the API when reviewers is empty", function()
+		local run_json_called = false
+		helpers.mock(gh, "run_json", function()
+			run_json_called = true
+		end)
+		local got_err
+		gh.re_request_review(42, {}, function(err, _)
+			got_err = err
+		end)
+		assert.is_false(run_json_called)
+		assert.truthy(got_err)
+	end)
+end)

@@ -531,9 +531,16 @@ end
 
 --- Re-request a review from users who have already reviewed.
 --- @param pr_number number
---- @param reviewers string[] logins to re-request (must be non-empty; an empty list encodes as a JSON object)
+--- @param reviewers string[] logins to re-request; an empty list yields an error callback
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.re_request_review(pr_number, reviewers, callback)
+	-- An empty Lua table encodes as a JSON object, not an array; reject it
+	-- instead of sending a malformed payload.
+	if #reviewers == 0 then
+		callback("reviewers must be non-empty", nil)
+		return
+	end
+
 	local json_payload = vim.json.encode({ reviewers = reviewers })
 
 	M.run_json({
