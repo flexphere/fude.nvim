@@ -179,6 +179,14 @@ local function goto_adjacent(direction)
 		return
 	end
 
+	local panel = state.sidepanel
+	if panel and panel.win == vim.api.nvim_get_current_win() then
+		local target_win = require("fude.ui.sidepanel").find_target_window(panel.win)
+		if target_win then
+			vim.api.nvim_set_current_win(target_win)
+		end
+	end
+
 	local current_path = diff.make_relative(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p"), repo_root)
 	local idx = M.find_adjacent_file_index(state.changed_files, current_path, direction)
 	if not idx then

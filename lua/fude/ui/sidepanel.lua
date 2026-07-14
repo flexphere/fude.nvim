@@ -534,20 +534,29 @@ end
 --- @param panel table sidepanel state
 function M.setup_keymaps(panel)
 	local buf = panel.buf
+	local keymaps = (config.opts.sidepanel and config.opts.sidepanel.keymaps) or {}
+
+	local function map(action, callback, desc)
+		local lhs = keymaps[action]
+		if type(lhs) ~= "string" or lhs == "" then
+			return
+		end
+		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
+	end
 
 	-- Close
-	vim.keymap.set("n", "q", function()
+	map("close", function()
 		M.close()
-	end, { buffer = buf, desc = "Close side panel" })
+	end, "Close side panel")
 
 	-- Refresh (reload from GitHub)
-	vim.keymap.set("n", "R", function()
+	map("reload", function()
 		local init_mod = require("fude.init")
 		init_mod.reload()
-	end, { buffer = buf, desc = "Reload review data" })
+	end, "Reload review data")
 
 	-- Select / Open
-	vim.keymap.set("n", "<CR>", function()
+	map("select", function()
 		local entry_info = M.get_current_entry(panel)
 		if not entry_info then
 			return
@@ -570,10 +579,10 @@ function M.setup_keymaps(panel)
 				vim.cmd("edit " .. vim.fn.fnameescape(filename))
 			end
 		end
-	end, { buffer = buf, desc = "Select scope or open file" })
+	end, "Select scope or open file")
 
-	-- Tab: toggle reviewed/viewed
-	vim.keymap.set("n", "<Tab>", function()
+	-- Toggle reviewed/viewed
+	map("toggle_reviewed", function()
 		local entry_info = M.get_current_entry(panel)
 		if not entry_info then
 			return
@@ -589,11 +598,11 @@ function M.setup_keymaps(panel)
 		elseif entry_info.type == "file" then
 			M.toggle_file_viewed(panel, entry_info)
 		end
-	end, { buffer = buf, desc = "Toggle reviewed/viewed" })
+	end, "Toggle reviewed/viewed")
 
-	vim.keymap.set("n", "t", function()
+	map("toggle_file_tree", function()
 		M.toggle_file_tree_mode(panel)
-	end, { buffer = buf, desc = "Toggle tree/flat file list" })
+	end, "Toggle tree/flat file list")
 end
 
 --- Get the entry under the cursor.

@@ -87,6 +87,13 @@ M.defaults = {
 		width = 40, -- Panel width in columns
 		position = "left", -- "left" or "right"
 		file_tree = "flat", -- "flat" or "tree"
+		keymaps = {
+			select = "<CR>",
+			toggle_reviewed = "<Tab>",
+			toggle_file_tree = "t",
+			reload = "R",
+			close = "q",
+		},
 	},
 	-- Callback invoked after review start completes (all data fetched).
 	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }
