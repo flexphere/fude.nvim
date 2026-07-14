@@ -83,6 +83,18 @@ describe("sidepanel integration", function()
 		assert.is_nil(lhs_by_desc["Reload review data"])
 	end)
 
+	it("open ignores non-table sidepanel keymaps", function()
+		for _, keymaps in ipairs({ false, "invalid", 42 }) do
+			config.setup({ sidepanel = { keymaps = keymaps } })
+			config.state.active = true
+
+			assert.has_no.errors(sidepanel.open)
+			local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")
+			assert.are.equal(0, #mappings)
+			sidepanel.close()
+		end
+	end)
+
 	it("open renders scope and files sections", function()
 		sidepanel.open()
 		local panel = config.state.sidepanel

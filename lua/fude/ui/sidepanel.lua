@@ -534,7 +534,10 @@ end
 --- @param panel table sidepanel state
 function M.setup_keymaps(panel)
 	local buf = panel.buf
-	local keymaps = (config.opts.sidepanel and config.opts.sidepanel.keymaps) or {}
+	local keymaps = config.opts.sidepanel and config.opts.sidepanel.keymaps
+	if type(keymaps) ~= "table" then
+		keymaps = {}
+	end
 
 	local function map(action, callback, desc)
 		local lhs = keymaps[action]

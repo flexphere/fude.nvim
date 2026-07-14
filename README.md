@@ -218,7 +218,7 @@ require("fude").setup({
     file_tree = "flat",  -- "flat" or "tree"
     keymaps = {
       select = "<CR>",
-      toggle_reviewed = "<Tab>", -- Scope reviewed / file viewed
+      toggle_reviewed = "<Tab>", -- PR scope reviewed / local scope switch / file viewed
       toggle_file_tree = "t",
       reload = "R",
       close = "q",
