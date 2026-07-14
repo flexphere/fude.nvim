@@ -400,7 +400,7 @@ Using lazy.nvim: >lua
       additions/deletions counts, and viewed state. The header shows
       the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 
-    Keymaps (panel):~
+    Keymaps (panel defaults):~
       `<CR>`    Select scope entry / switch local scope, or open file
       `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
                 (local). On a file: toggle viewed.
@@ -556,6 +556,13 @@ Default configuration: >lua
       width = 40,       -- Panel width in columns (minimum 20)
       position = "left", -- "left" or "right"
       file_tree = "flat", -- "flat" or "tree"
+      keymaps = {
+        select = "<CR>",
+        toggle_reviewed = "<Tab>",
+        toggle_file_tree = "t",
+        reload = "R",
+        close = "q",
+      },
     },
     -- Outdated comment display options
     outdated = {
@@ -727,6 +734,18 @@ Options:
                   (default: "flat"). The tree layout groups changed files
                   by directory and can be toggled for the current panel with
                   |:FudeReviewToggleFileTree| or `t` in the panel.
+
+`sidepanel.keymaps`
+                  Buffer-local mappings used only inside the side panel.
+                  Available actions and defaults:
+                  - `select`: "<CR>"
+                  - `toggle_reviewed`: "<Tab>" (toggles scope reviewed or
+                    file viewed state; switches scope in local review)
+                  - `toggle_file_tree`: "t"
+                  - `reload`: "R"
+                  - `close`: "q"
+                  Set an action to `false` or an empty string to disable its
+                  panel-local mapping and allow another mapping to apply.
 
 `outdated.show`     Show outdated comments (default: true).
                   Outdated comments are those whose position in the code

@@ -216,6 +216,13 @@ require("fude").setup({
     width = 40,          -- Panel width in columns
     position = "left",   -- "left" or "right"
     file_tree = "flat",  -- "flat" or "tree"
+    keymaps = {
+      select = "<CR>",
+      toggle_reviewed = "<Tab>", -- Scope reviewed / file viewed
+      toggle_file_tree = "t",
+      reload = "R",
+      close = "q",
+    },
   },
   -- Callback after review start completes (all data fetched)
   -- Receives: { pr_number, base_ref, head_ref, pr_url }
