@@ -47,6 +47,42 @@ describe("sidepanel integration", function()
 		assert.is_false(vim.wo[panel.win].wrap)
 	end)
 
+	it("open uses the default sidepanel keymaps", function()
+		sidepanel.open()
+		local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")
+		local lhs_by_desc = {}
+		for _, mapping in ipairs(mappings) do
+			lhs_by_desc[mapping.desc] = mapping.lhs
+		end
+
+		assert.are.equal("<CR>", lhs_by_desc["Select scope or open file"])
+		assert.are.equal("<Tab>", lhs_by_desc["Toggle reviewed/viewed"])
+		assert.are.equal("t", lhs_by_desc["Toggle tree/flat file list"])
+		assert.are.equal("R", lhs_by_desc["Reload review data"])
+		assert.are.equal("q", lhs_by_desc["Close side panel"])
+	end)
+
+	it("open uses customized sidepanel keymaps and allows disabling mappings", function()
+		config.setup({
+			sidepanel = {
+				keymaps = {
+					toggle_reviewed = "v",
+					reload = false,
+				},
+			},
+		})
+		config.state.active = true
+		sidepanel.open()
+		local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")
+		local lhs_by_desc = {}
+		for _, mapping in ipairs(mappings) do
+			lhs_by_desc[mapping.desc] = mapping.lhs
+		end
+
+		assert.are.equal("v", lhs_by_desc["Toggle reviewed/viewed"])
+		assert.is_nil(lhs_by_desc["Reload review data"])
+	end)
+
 	it("open renders scope and files sections", function()
 		sidepanel.open()
 		local panel = config.state.sidepanel
