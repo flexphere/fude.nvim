@@ -534,20 +534,32 @@ end
 --- @param panel table sidepanel state
 function M.setup_keymaps(panel)
 	local buf = panel.buf
+	local keymaps = config.opts.sidepanel and config.opts.sidepanel.keymaps
+	if type(keymaps) ~= "table" then
+		keymaps = {}
+	end
+
+	local function map(action, callback, desc)
+		local lhs = keymaps[action]
+		if type(lhs) ~= "string" or lhs == "" then
+			return
+		end
+		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
+	end
 
 	-- Close
-	vim.keymap.set("n", "q", function()
+	map("close", function()
 		M.close()
-	end, { buffer = buf, desc = "Close side panel" })
+	end, "Close side panel")
 
 	-- Refresh (reload from GitHub)
-	vim.keymap.set("n", "R", function()
+	map("reload", function()
 		local init_mod = require("fude.init")
 		init_mod.reload()
-	end, { buffer = buf, desc = "Reload review data" })
+	end, "Reload review data")
 
 	-- Select / Open
-	vim.keymap.set("n", "<CR>", function()
+	map("select", function()
 		local entry_info = M.get_current_entry(panel)
 		if not entry_info then
 			return
@@ -562,18 +574,13 @@ function M.setup_keymaps(panel)
 		elseif entry_info.type == "file" then
 			local filename = entry_info.entry.filename
 			if filename then
-				-- Move to a non-panel window before opening the file
-				local target_win = M.find_target_window(panel.win)
-				if target_win then
-					vim.api.nvim_set_current_win(target_win)
-				end
-				vim.cmd("edit " .. vim.fn.fnameescape(filename))
+				M.open_file(panel, filename)
 			end
 		end
-	end, { buffer = buf, desc = "Select scope or open file" })
+	end, "Select scope or open file")
 
-	-- Tab: toggle reviewed/viewed
-	vim.keymap.set("n", "<Tab>", function()
+	-- Toggle reviewed/viewed
+	map("toggle_reviewed", function()
 		local entry_info = M.get_current_entry(panel)
 		if not entry_info then
 			return
@@ -589,11 +596,24 @@ function M.setup_keymaps(panel)
 		elseif entry_info.type == "file" then
 			M.toggle_file_viewed(panel, entry_info)
 		end
-	end, { buffer = buf, desc = "Toggle reviewed/viewed" })
+	end, "Toggle reviewed/viewed")
 
-	vim.keymap.set("n", "t", function()
+	map("toggle_file_tree", function()
 		M.toggle_file_tree_mode(panel)
-	end, { buffer = buf, desc = "Toggle tree/flat file list" })
+	end, "Toggle tree/flat file list")
+end
+
+--- Open a file in a non-panel, non-preview window.
+--- @param panel table sidepanel state
+--- @param filename string absolute file path
+function M.open_file(panel, filename)
+	local target_win = M.find_target_window(panel.win)
+	if not target_win then
+		vim.notify("fude.nvim: No source window available", vim.log.levels.WARN)
+		return
+	end
+	vim.api.nvim_set_current_win(target_win)
+	vim.cmd("edit " .. vim.fn.fnameescape(filename))
 end
 
 --- Get the entry under the cursor.
@@ -643,7 +663,19 @@ end
 --- @return number|nil target window handle
 function M.find_target_window(panel_win)
 	local state = config.state
-	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+	local tab_wins = vim.api.nvim_tabpage_list_wins(0)
+	local source_win = state.source_win
+	if
+		source_win
+		and source_win ~= panel_win
+		and source_win ~= state.preview_win
+		and vim.api.nvim_win_is_valid(source_win)
+		and vim.tbl_contains(tab_wins, source_win)
+	then
+		return source_win
+	end
+
+	for _, win in ipairs(tab_wins) do
 		if win ~= panel_win and win ~= state.preview_win then
 			local buf = vim.api.nvim_win_get_buf(win)
 			if vim.bo[buf].buftype == "" then
@@ -651,9 +683,9 @@ function M.find_target_window(panel_win)
 			end
 		end
 	end
-	-- Fallback: any window that isn't the panel
-	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-		if win ~= panel_win then
+	-- Fallback: any window that isn't the panel or preview
+	for _, win in ipairs(tab_wins) do
+		if win ~= panel_win and win ~= state.preview_win then
 			return win
 		end
 	end

@@ -47,6 +47,54 @@ describe("sidepanel integration", function()
 		assert.is_false(vim.wo[panel.win].wrap)
 	end)
 
+	it("open uses the default sidepanel keymaps", function()
+		sidepanel.open()
+		local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")
+		local lhs_by_desc = {}
+		for _, mapping in ipairs(mappings) do
+			lhs_by_desc[mapping.desc] = mapping.lhs
+		end
+
+		assert.are.equal("<CR>", lhs_by_desc["Select scope or open file"])
+		assert.are.equal("<Tab>", lhs_by_desc["Toggle reviewed/viewed"])
+		assert.are.equal("t", lhs_by_desc["Toggle tree/flat file list"])
+		assert.are.equal("R", lhs_by_desc["Reload review data"])
+		assert.are.equal("q", lhs_by_desc["Close side panel"])
+	end)
+
+	it("open uses customized sidepanel keymaps and allows disabling mappings", function()
+		config.setup({
+			sidepanel = {
+				keymaps = {
+					toggle_reviewed = "v",
+					reload = false,
+				},
+			},
+		})
+		config.state.active = true
+		sidepanel.open()
+		local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")
+		local lhs_by_desc = {}
+		for _, mapping in ipairs(mappings) do
+			lhs_by_desc[mapping.desc] = mapping.lhs
+		end
+
+		assert.are.equal("v", lhs_by_desc["Toggle reviewed/viewed"])
+		assert.is_nil(lhs_by_desc["Reload review data"])
+	end)
+
+	it("open ignores non-table sidepanel keymaps", function()
+		for _, keymaps in ipairs({ false, "invalid", 42 }) do
+			config.setup({ sidepanel = { keymaps = keymaps } })
+			config.state.active = true
+
+			assert.has_no.errors(sidepanel.open)
+			local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")
+			assert.are.equal(0, #mappings)
+			sidepanel.close()
+		end
+	end)
+
 	it("open renders scope and files sections", function()
 		sidepanel.open()
 		local panel = config.state.sidepanel
@@ -186,6 +234,74 @@ describe("sidepanel integration", function()
 		assert.is_true(#panel.scope_entries >= 1)
 		-- One changed file
 		assert.are.equal(1, #panel.file_entries)
+	end)
+
+	it("find_target_window prefers the source window over the preview", function()
+		local source_win = vim.api.nvim_get_current_win()
+		local preview_buf = helpers.create_buf()
+		vim.cmd("vsplit")
+		local preview_win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(preview_win, preview_buf)
+		config.state.source_win = source_win
+		config.state.preview_win = preview_win
+		sidepanel.open()
+
+		assert.are.equal(source_win, sidepanel.find_target_window(config.state.sidepanel.win))
+	end)
+
+	it("find_target_window never falls back to the preview window", function()
+		local source_win = vim.api.nvim_get_current_win()
+		local preview_buf = helpers.create_buf()
+		vim.cmd("vsplit")
+		local preview_win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(preview_win, preview_buf)
+		config.state.source_win = source_win
+		config.state.preview_win = preview_win
+		sidepanel.open()
+		local panel_win = config.state.sidepanel.win
+		config.state.source_win = 999999
+		helpers.mock(vim.api, "nvim_tabpage_list_wins", function()
+			return { panel_win, preview_win }
+		end)
+
+		assert.is_nil(sidepanel.find_target_window(panel_win))
+	end)
+
+	it("find_target_window ignores a valid source window outside the current tab", function()
+		local source_win = vim.api.nvim_get_current_win()
+		local preview_buf = helpers.create_buf()
+		vim.cmd("vsplit")
+		local preview_win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(preview_win, preview_buf)
+		config.state.source_win = source_win
+		config.state.preview_win = preview_win
+		sidepanel.open()
+		local panel_win = config.state.sidepanel.win
+		helpers.mock(vim.api, "nvim_tabpage_list_wins", function()
+			return { panel_win, preview_win }
+		end)
+
+		assert.is_nil(sidepanel.find_target_window(panel_win))
+	end)
+
+	it("open_file keeps the panel when no target window is available", function()
+		local panel = { win = 10 }
+		helpers.mock(sidepanel, "find_target_window", function()
+			return nil
+		end)
+		local command
+		helpers.mock(vim, "cmd", function(cmd)
+			command = cmd
+		end)
+		local notification
+		helpers.mock(vim, "notify", function(msg)
+			notification = msg
+		end)
+
+		sidepanel.open_file(panel, "/repo/a.lua")
+
+		assert.is_nil(command)
+		assert.are.equal("fude.nvim: No source window available", notification)
 	end)
 
 	it("uses flat files by default", function()

@@ -619,4 +619,46 @@ describe("next_file / prev_file", function()
 		files.prev_file()
 		assert.are.equal("edit /repo/c.lua", last_cmd)
 	end)
+
+	it("opens from the source window when invoked in the sidepanel", function()
+		local sidepanel = require("fude.ui.sidepanel")
+		config.state.sidepanel = { win = 10 }
+		set_current_path("a.lua")
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return 10
+		end)
+		helpers.mock(sidepanel, "find_target_window", function(panel_win)
+			assert.are.equal(10, panel_win)
+			return 20
+		end)
+		local focused_win
+		helpers.mock(vim.api, "nvim_set_current_win", function(win)
+			focused_win = win
+		end)
+
+		files.next_file()
+
+		assert.are.equal(20, focused_win)
+		assert.are.equal("edit /repo/b.lua", last_cmd)
+	end)
+
+	it("keeps the sidepanel when no source window is available", function()
+		local sidepanel = require("fude.ui.sidepanel")
+		config.state.sidepanel = { win = 10 }
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return 10
+		end)
+		helpers.mock(sidepanel, "find_target_window", function()
+			return nil
+		end)
+		local notification
+		helpers.mock(vim, "notify", function(msg)
+			notification = msg
+		end)
+
+		files.next_file()
+
+		assert.is_nil(last_cmd)
+		assert.are.equal("fude.nvim: No source window available", notification)
+	end)
 end)
