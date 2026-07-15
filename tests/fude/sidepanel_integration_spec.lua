@@ -267,6 +267,23 @@ describe("sidepanel integration", function()
 		assert.is_nil(sidepanel.find_target_window(panel_win))
 	end)
 
+	it("find_target_window ignores a valid source window outside the current tab", function()
+		local source_win = vim.api.nvim_get_current_win()
+		local preview_buf = helpers.create_buf()
+		vim.cmd("vsplit")
+		local preview_win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(preview_win, preview_buf)
+		config.state.source_win = source_win
+		config.state.preview_win = preview_win
+		sidepanel.open()
+		local panel_win = config.state.sidepanel.win
+		helpers.mock(vim.api, "nvim_tabpage_list_wins", function()
+			return { panel_win, preview_win }
+		end)
+
+		assert.is_nil(sidepanel.find_target_window(panel_win))
+	end)
+
 	it("open_file keeps the panel when no target window is available", function()
 		local panel = { win = 10 }
 		helpers.mock(sidepanel, "find_target_window", function()

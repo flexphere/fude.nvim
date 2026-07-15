@@ -663,17 +663,19 @@ end
 --- @return number|nil target window handle
 function M.find_target_window(panel_win)
 	local state = config.state
+	local tab_wins = vim.api.nvim_tabpage_list_wins(0)
 	local source_win = state.source_win
 	if
 		source_win
 		and source_win ~= panel_win
 		and source_win ~= state.preview_win
 		and vim.api.nvim_win_is_valid(source_win)
+		and vim.tbl_contains(tab_wins, source_win)
 	then
 		return source_win
 	end
 
-	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+	for _, win in ipairs(tab_wins) do
 		if win ~= panel_win and win ~= state.preview_win then
 			local buf = vim.api.nvim_win_get_buf(win)
 			if vim.bo[buf].buftype == "" then
@@ -682,7 +684,7 @@ function M.find_target_window(panel_win)
 		end
 	end
 	-- Fallback: any window that isn't the panel or preview
-	for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+	for _, win in ipairs(tab_wins) do
 		if win ~= panel_win and win ~= state.preview_win then
 			return win
 		end
