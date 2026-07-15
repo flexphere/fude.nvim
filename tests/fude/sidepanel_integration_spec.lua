@@ -236,6 +236,37 @@ describe("sidepanel integration", function()
 		assert.are.equal(1, #panel.file_entries)
 	end)
 
+	it("find_target_window prefers the source window over the preview", function()
+		local source_win = vim.api.nvim_get_current_win()
+		local preview_buf = helpers.create_buf()
+		vim.cmd("vsplit")
+		local preview_win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(preview_win, preview_buf)
+		config.state.source_win = source_win
+		config.state.preview_win = preview_win
+		sidepanel.open()
+
+		assert.are.equal(source_win, sidepanel.find_target_window(config.state.sidepanel.win))
+	end)
+
+	it("find_target_window never falls back to the preview window", function()
+		local source_win = vim.api.nvim_get_current_win()
+		local preview_buf = helpers.create_buf()
+		vim.cmd("vsplit")
+		local preview_win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(preview_win, preview_buf)
+		config.state.source_win = source_win
+		config.state.preview_win = preview_win
+		sidepanel.open()
+		local panel_win = config.state.sidepanel.win
+		config.state.source_win = 999999
+		helpers.mock(vim.api, "nvim_tabpage_list_wins", function()
+			return { panel_win, preview_win }
+		end)
+
+		assert.is_nil(sidepanel.find_target_window(panel_win))
+	end)
+
 	it("uses flat files by default", function()
 		config.state.changed_files = {
 			{ path = "a/b.lua", status = "modified", additions = 1, deletions = 0 },

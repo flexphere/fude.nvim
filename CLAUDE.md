@@ -89,7 +89,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `viewed_files` | init, init(reload), files, comments/local_sync | files, ui/sidepanel |
 | `preview_win` | preview | init, preview, scope, ui/sidepanel, local/session |
 | `preview_buf` | preview | |
-| `source_win` | preview | preview, scope, local/session |
+| `source_win` | preview | preview, scope, ui/sidepanel, local/session |
 | `scope` | scope, init | scope, preview, init, ui/sidepanel |
 | `scope_commit_sha` | scope, init | scope, preview, init, ui/sidepanel |
 | `scope_commit_index` | scope, init | scope |
