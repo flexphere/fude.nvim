@@ -267,6 +267,26 @@ describe("sidepanel integration", function()
 		assert.is_nil(sidepanel.find_target_window(panel_win))
 	end)
 
+	it("open_file keeps the panel when no target window is available", function()
+		local panel = { win = 10 }
+		helpers.mock(sidepanel, "find_target_window", function()
+			return nil
+		end)
+		local command
+		helpers.mock(vim, "cmd", function(cmd)
+			command = cmd
+		end)
+		local notification
+		helpers.mock(vim, "notify", function(msg)
+			notification = msg
+		end)
+
+		sidepanel.open_file(panel, "/repo/a.lua")
+
+		assert.is_nil(command)
+		assert.are.equal("fude.nvim: No source window available", notification)
+	end)
+
 	it("uses flat files by default", function()
 		config.state.changed_files = {
 			{ path = "a/b.lua", status = "modified", additions = 1, deletions = 0 },

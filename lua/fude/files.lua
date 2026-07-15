@@ -182,9 +182,11 @@ local function goto_adjacent(direction)
 	local panel = state.sidepanel
 	if panel and panel.win == vim.api.nvim_get_current_win() then
 		local target_win = require("fude.ui.sidepanel").find_target_window(panel.win)
-		if target_win then
-			vim.api.nvim_set_current_win(target_win)
+		if not target_win then
+			vim.notify("fude.nvim: No source window available", vim.log.levels.WARN)
+			return
 		end
+		vim.api.nvim_set_current_win(target_win)
 	end
 
 	local current_path = diff.make_relative(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p"), repo_root)

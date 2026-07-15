@@ -574,12 +574,7 @@ function M.setup_keymaps(panel)
 		elseif entry_info.type == "file" then
 			local filename = entry_info.entry.filename
 			if filename then
-				-- Move to a non-panel window before opening the file
-				local target_win = M.find_target_window(panel.win)
-				if target_win then
-					vim.api.nvim_set_current_win(target_win)
-				end
-				vim.cmd("edit " .. vim.fn.fnameescape(filename))
+				M.open_file(panel, filename)
 			end
 		end
 	end, "Select scope or open file")
@@ -606,6 +601,19 @@ function M.setup_keymaps(panel)
 	map("toggle_file_tree", function()
 		M.toggle_file_tree_mode(panel)
 	end, "Toggle tree/flat file list")
+end
+
+--- Open a file in a non-panel, non-preview window.
+--- @param panel table sidepanel state
+--- @param filename string absolute file path
+function M.open_file(panel, filename)
+	local target_win = M.find_target_window(panel.win)
+	if not target_win then
+		vim.notify("fude.nvim: No source window available", vim.log.levels.WARN)
+		return
+	end
+	vim.api.nvim_set_current_win(target_win)
+	vim.cmd("edit " .. vim.fn.fnameescape(filename))
 end
 
 --- Get the entry under the cursor.
