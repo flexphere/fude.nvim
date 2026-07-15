@@ -733,7 +733,8 @@ Options:
                   Files section layout for the side panel: "flat" or "tree"
                   (default: "flat"). The tree layout groups changed files
                   by directory and can be toggled for the current panel with
-                  |:FudeReviewToggleFileTree| or `t` in the panel.
+                  |:FudeReviewToggleFileTree| or the
+                  `sidepanel.keymaps.toggle_file_tree` mapping (default: "t").
 
 `sidepanel.keymaps`
                   Buffer-local mappings used only inside the side panel.

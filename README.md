@@ -282,8 +282,9 @@ happens in this mode:
   preview. There is no submit step — comments are saved immediately.
 - `:FudeReviewResolve` toggles a thread's resolved state (shown as a
   `[resolved]` badge).
-- Viewed state works locally (`:FudeReviewViewed` / `<Tab>` in the panel or
-  picker), persisted in the JSONL instead of GitHub.
+- Viewed state works locally (`:FudeReviewViewed` / the configured
+  `sidepanel.keymaps.toggle_reviewed` mapping / `<Tab>` in the picker),
+  persisted in the JSONL instead of GitHub.
 - Comment positions follow your edits via extmarks and are re-anchored in the
   JSONL on save. On reload, comments whose line drifted while the buffer was
   closed (e.g. an external agent edit) are re-anchored by matching their saved
