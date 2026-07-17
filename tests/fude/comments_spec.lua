@@ -156,6 +156,16 @@ describe("build_comment_map", function()
 		local map = comments.build_comment_map(input, { hide_resolved = false })
 		assert.are.equal(1, #map["a.lua"][10])
 	end)
+
+	it("skips locally resolved comments (resolved field) when opts.hide_resolved is true", function()
+		local input = {
+			{ path = "a.lua", line = 10, body = "local resolved", resolved = true },
+			{ path = "a.lua", line = 20, body = "local open", resolved = false },
+		}
+		local map = comments.build_comment_map(input, { hide_resolved = true })
+		assert.is_nil(map["a.lua"][10])
+		assert.are.equal(1, #map["a.lua"][20])
+	end)
 end)
 
 describe("toggle_resolved_visibility", function()

@@ -49,14 +49,16 @@ end
 --- Outdated comments are excluded since they cannot be displayed at correct positions.
 --- @param comments table[] flat array of comment objects
 --- @param opts table|nil { hide_resolved = boolean } also exclude resolved comments
----   (used by the FudeReviewToggleResolved editor visibility toggle)
+---   (used by the FudeReviewToggleResolved editor visibility toggle). Covers both
+---   GitHub resolution (`is_resolved`, from review threads) and local review
+---   resolution (`resolved`, from the JSONL store).
 --- @return table<string, table<number, table[]>> map[path][line] = {comments}
 function M.build_comment_map(comments, opts)
 	local hide_resolved = opts and opts.hide_resolved
 	local map = {}
 	for _, c in ipairs(comments) do
 		-- Skip outdated comments (they have no valid line position)
-		if not c.is_outdated and not (hide_resolved and c.is_resolved) then
+		if not c.is_outdated and not (hide_resolved and (c.is_resolved or c.resolved)) then
 			local path = c.path
 			local line = (not is_null(c.line)) and c.line or c.original_line
 			if path and not is_null(line) then

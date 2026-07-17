@@ -395,6 +395,11 @@ Using lazy.nvim: >lua
     (|:FudeReviewListComments|) always shows resolved threads with the
     `[resolved]` label regardless of this toggle.
 
+    Covers threads resolved on GitHub ("Resolve conversation") and, in
+    local review mode, threads resolved with |:FudeReviewResolve|.
+    This command only changes visibility; use |:FudeReviewResolve| to
+    change a thread's resolved state (local review mode).
+
     The visibility is stored in the session state, survives
     |:FudeReviewReload| and auto-reloads, and resets to visible when
     review mode is stopped.

@@ -141,7 +141,7 @@ function M.load_comments(callback, opts)
 	end
 
 	state.comments = comments
-	state.comment_map = data.build_comment_map(comments)
+	state.comment_map = data.build_comment_map(comments, { hide_resolved = not config.get_show_resolved() })
 	state.viewed_files = result.viewed
 	require("fude.ui").refresh_extmarks()
 	require("fude.local.tracker").sync_all()
