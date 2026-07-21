@@ -1394,6 +1394,11 @@ describe("build_re_request_candidates", function()
 		}
 		local result = ui.build_re_request_candidates({}, reviews, nil)
 		assert.are.equal(2, #result)
+		-- Sorted by login: member < owner
+		assert.are.equal("member", result[1].login)
+		assert.are.equal("COMMENTED", result[1].state)
+		assert.are.equal("owner", result[2].login)
+		assert.are.equal("APPROVED", result[2].state)
 	end)
 
 	it("keeps reviewers when authorAssociation is missing (degrade to API 422)", function()
