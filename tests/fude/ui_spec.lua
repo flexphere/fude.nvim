@@ -1292,6 +1292,12 @@ describe("build_reviewers_list", function()
 		assert.are.equal(0, #result)
 	end)
 
+	it("skips reviews whose author is vim.NIL (JSON null)", function()
+		local reviews = { { author = vim.NIL, state = "COMMENTED" } }
+		local result = ui.build_reviewers_list({}, reviews)
+		assert.are.equal(0, #result)
+	end)
+
 	it("sorts reviewers alphabetically by login", function()
 		local requests = { { login = "charlie" }, { login = "alice" } }
 		local reviews = { { author = { login = "bob" }, state = "APPROVED" } }
@@ -1299,6 +1305,114 @@ describe("build_reviewers_list", function()
 		assert.are.equal("alice", result[1].login)
 		assert.are.equal("bob", result[2].login)
 		assert.are.equal("charlie", result[3].login)
+	end)
+end)
+
+describe("build_re_request_candidates", function()
+	it("returns users who already submitted a review with their state", function()
+		local reviews = {
+			{ author = { login = "alice" }, state = "APPROVED" },
+			{ author = { login = "bob" }, state = "CHANGES_REQUESTED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, "author")
+		assert.are.equal(2, #result)
+		assert.are.equal("alice", result[1].login)
+		assert.are.equal("APPROVED", result[1].state)
+		assert.are.equal("bob", result[2].login)
+		assert.are.equal("CHANGES_REQUESTED", result[2].state)
+	end)
+
+	it("excludes users already in reviewRequests", function()
+		local requests = { { login = "alice" } }
+		local reviews = {
+			{ author = { login = "alice" }, state = "APPROVED" },
+			{ author = { login = "bob" }, state = "COMMENTED" },
+		}
+		local result = ui.build_re_request_candidates(requests, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("bob", result[1].login)
+	end)
+
+	it("excludes the PR author", function()
+		local reviews = {
+			{ author = { login = "author" }, state = "COMMENTED" },
+			{ author = { login = "alice" }, state = "APPROVED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, "author")
+		assert.are.equal(1, #result)
+		assert.are.equal("alice", result[1].login)
+	end)
+
+	it("skips reviews with nil author", function()
+		local reviews = { { author = nil, state = "COMMENTED" } }
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(0, #result)
+	end)
+
+	it("skips reviews whose author is vim.NIL (JSON null)", function()
+		local reviews = { { author = vim.NIL, state = "COMMENTED" } }
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(0, #result)
+	end)
+
+	it("excludes unsubmitted (PENDING) reviews", function()
+		local reviews = {
+			{ author = { login = "alice" }, state = "PENDING" },
+			{ author = { login = "bob" }, state = "APPROVED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("bob", result[1].login)
+	end)
+
+	it("excludes bot reviewers", function()
+		local reviews = {
+			{ author = { login = "copilot", is_bot = true }, state = "COMMENTED" },
+			{ author = { login = "alice", is_bot = false }, state = "APPROVED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("alice", result[1].login)
+	end)
+
+	it("ignores team review requests without login", function()
+		local requests = { { slug = "some-team", name = "Some Team" } }
+		local reviews = { { author = { login = "alice" }, state = "APPROVED" } }
+		local result = ui.build_re_request_candidates(requests, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("alice", result[1].login)
+	end)
+
+	it("returns empty list for empty inputs", function()
+		assert.are.equal(0, #ui.build_re_request_candidates({}, {}, nil))
+	end)
+
+	it("sorts candidates alphabetically by login", function()
+		local reviews = {
+			{ author = { login = "charlie" }, state = "APPROVED" },
+			{ author = { login = "alice" }, state = "COMMENTED" },
+			{ author = { login = "bob" }, state = "DISMISSED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal("alice", result[1].login)
+		assert.are.equal("bob", result[2].login)
+		assert.are.equal("charlie", result[3].login)
+	end)
+
+	it("dedupes duplicate logins in latestReviews", function()
+		local reviews = {
+			{ author = { login = "alice" }, state = "CHANGES_REQUESTED" },
+			{ author = { login = "alice" }, state = "APPROVED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("CHANGES_REQUESTED", result[1].state)
+	end)
+
+	it("defaults state to COMMENTED when review state is nil", function()
+		local reviews = { { author = { login = "alice" } } }
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal("COMMENTED", result[1].state)
 	end)
 end)
 

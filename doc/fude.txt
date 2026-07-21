@@ -231,9 +231,13 @@ Using lazy.nvim: >lua
     independently. All folds are open by default.
     Section marks are set on the left pane: `'d` (description),
     `'c` (comments). Customizable via `overview.marks`.
-    Press `C` to write a new comment, `R` to refresh,
+    Press `C` to write a new comment, `r` to re-request a review
+    from a reviewer who has already reviewed, `R` to refresh,
     `<Tab>` to switch between panes, `]c`/`[c` to navigate
     review comments, `q` to close.
+    Re-requesting picks a reviewer via |vim.ui.select()| and excludes
+    reviewers with a pending request, the PR author, and bots. Team
+    reviewers are not supported.
 
 :FudeReviewSuggest                                  *:FudeReviewSuggest*
     Suggest a code change on the current line (normal mode) or
@@ -471,6 +475,7 @@ Suggested mappings:
   `e`           Edit comment (in |:FudeReviewViewComment| float, own comments only)
   `d`           Delete comment (in |:FudeReviewViewComment| float, own comments only)
   `gx`          Open GitHub reference or URL under cursor (in floats)
+  `r`           Re-request review (in |:FudeReviewOverview|)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
                 Toggle commit reviewed state (in |:FudeReviewScope| picker)
                 Switch between left/right panes (in |:FudeReviewOverview|)

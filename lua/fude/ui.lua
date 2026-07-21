@@ -16,6 +16,7 @@ M.sort_checks = format.sort_checks
 M.build_checks_summary = format.build_checks_summary
 M.format_review_status = format.format_review_status
 M.build_reviewers_list = format.build_reviewers_list
+M.build_re_request_candidates = format.build_re_request_candidates
 M.build_reviewers_summary = format.build_reviewers_summary
 M.calculate_overview_layout = format.calculate_overview_layout
 M.calculate_comments_height = format.calculate_comments_height
@@ -433,7 +434,7 @@ end
 --- Show PR overview in a split-pane floating window.
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
---- @param opts table { on_new_comment: fun(), on_refresh: fun() }
+--- @param opts table { on_new_comment: fun()|nil, on_refresh: fun()|nil, on_re_request: fun()|nil }
 function M.show_overview_float(pr_info, issue_comments, opts)
 	local left_result = format.build_overview_left_lines(pr_info, issue_comments, config.format_date)
 	local right_result = format.build_overview_right_lines(pr_info)
@@ -556,6 +557,13 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		end
 	end, { buffer = left_buf, desc = "Refresh PR overview" })
 
+	vim.keymap.set("n", "r", function()
+		close_both()
+		if opts.on_re_request then
+			opts.on_re_request()
+		end
+	end, { buffer = left_buf, desc = "Re-request review" })
+
 	-- Tab to switch between panes
 	vim.keymap.set("n", "<Tab>", function()
 		vim.api.nvim_set_current_win(right_win)
@@ -631,6 +639,13 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			opts.on_refresh()
 		end
 	end, { buffer = right_buf, desc = "Refresh PR overview" })
+
+	vim.keymap.set("n", "r", function()
+		close_both()
+		if opts.on_re_request then
+			opts.on_re_request()
+		end
+	end, { buffer = right_buf, desc = "Re-request review" })
 
 	-- GitHub refs for both panes
 	setup_github_refs(left_buf, get_repo_base_url(pr_info.url))

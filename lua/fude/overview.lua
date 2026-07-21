@@ -34,7 +34,65 @@ function M.show()
 				on_refresh = function()
 					M.show()
 				end,
+				on_re_request = function()
+					M.re_request_review(pr_info)
+				end,
 			})
+		end)
+	end)
+end
+
+--- Re-request a review from a reviewer who has already reviewed.
+--- @param pr_info table PR data from gh pr view (number, author, reviewRequests, latestReviews)
+function M.re_request_review(pr_info)
+	local ui = require("fude.ui")
+	local gh = require("fude.gh")
+
+	-- Capture state table identity to detect reset_state() across callbacks
+	local captured_state = config.state
+
+	-- The overview float is closed before this function runs, so every
+	-- terminal path reopens it. M.show() itself guards on state.active with
+	-- a WARN notify; guard here silently so a stop() racing the async flow
+	-- does not produce noise. The identity check also prevents reopening in
+	-- a different session started after a stop().
+	local function reopen()
+		if config.state == captured_state and config.state.active then
+			M.show()
+		end
+	end
+
+	local candidates = ui.build_re_request_candidates(
+		pr_info.reviewRequests or {},
+		pr_info.latestReviews or {},
+		-- author can be JSON null, which decodes to truthy vim.NIL
+		type(pr_info.author) == "table" and pr_info.author.login or nil
+	)
+	if #candidates == 0 then
+		vim.notify("fude.nvim: No reviewers to re-request", vim.log.levels.INFO)
+		reopen()
+		return
+	end
+
+	vim.ui.select(candidates, {
+		prompt = "Re-request review from:",
+		format_item = function(candidate)
+			return "@" .. candidate.login .. "  (" .. candidate.state:lower() .. ")"
+		end,
+	}, function(choice)
+		if not choice then
+			reopen()
+			return
+		end
+
+		gh.re_request_review(pr_info.number, { choice.login }, function(err, _)
+			if err then
+				vim.notify("fude.nvim: Failed to re-request review: " .. err, vim.log.levels.ERROR)
+				reopen()
+				return
+			end
+			vim.notify("fude.nvim: Re-requested review from @" .. choice.login, vim.log.levels.INFO)
+			reopen()
 		end)
 	end)
 end
