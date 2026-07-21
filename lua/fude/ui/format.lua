@@ -257,9 +257,10 @@ end
 
 --- Build candidates for review re-request: users who already submitted a review,
 --- excluding users with a pending re-request, unsubmitted (PENDING) reviews,
---- the PR author, and bots.
+--- the PR author, bots, and non-collaborators (the API only accepts
+--- re-requests for repository collaborators).
 --- @param review_requests table[] reviewRequests from gh pr view (each has login)
---- @param latest_reviews table[] latestReviews from gh pr view (each has author.login, state)
+--- @param latest_reviews table[] latestReviews from gh pr view (each has author.login, authorAssociation, state)
 --- @param author_login string|nil PR author login (re-requesting from the author is rejected by the API)
 --- @return table[] list of { login: string, state: string } sorted by login
 function M.build_re_request_candidates(review_requests, latest_reviews, author_login)
@@ -282,7 +283,26 @@ function M.build_re_request_candidates(review_requests, latest_reviews, author_l
 		-- submitted reviews qualify for a re-request
 		local state = review.state or "COMMENTED"
 		local submitted = state ~= "PENDING"
-		if login and submitted and not seen[login] and not requested[login] and login ~= author_login and not is_bot then
+		-- The API only accepts re-requests for collaborators; gh's
+		-- latestReviews.author does not export is_bot, so authorAssociation
+		-- is the practical signal (Copilot reviews show as CONTRIBUTOR).
+		-- A missing/non-string association is kept so an unexpected gh
+		-- output change degrades to the API's own 422 instead of silently
+		-- emptying the candidate list.
+		local association = review.authorAssociation
+		local non_collaborator = type(association) == "string"
+			and association ~= "OWNER"
+			and association ~= "MEMBER"
+			and association ~= "COLLABORATOR"
+		if
+			login
+			and submitted
+			and not non_collaborator
+			and not seen[login]
+			and not requested[login]
+			and login ~= author_login
+			and not is_bot
+		then
 			seen[login] = true
 			table.insert(candidates, { login = login, state = state })
 		end
