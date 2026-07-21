@@ -446,6 +446,14 @@ describe("sync integration", function()
 					callback(nil, { id = 200 })
 				end)
 			end)
+			-- sync_pending_review fetches real comment IDs after creating the
+			-- review; mock it so the test does not fall through to a real
+			-- `gh api` subprocess (which times out the callback in CI).
+			helpers.mock(gh, "get_review_comments", function(_, _, callback)
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end)
 
 			config.state.active = true
 			config.state.pr_number = 42
