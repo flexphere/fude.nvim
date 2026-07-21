@@ -98,7 +98,7 @@ function M.refresh_extmarks()
 	local comment_lines = comments_mod.get_comment_lines(rel_path)
 
 	local style = config.get_comment_style()
-	local inline_opts = vim.tbl_extend("force", {}, config.opts.inline or {}, { resolved = config.opts.resolved })
+	local inline_opts = config.opts.inline or {}
 
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)

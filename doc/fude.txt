@@ -781,9 +781,11 @@ Options:
 
 `resolved.label`    Label text shown for resolved threads
                   (default: "[resolved]"). Appears in the comment browser
-                  list, in the comment viewer title, in inline comment box
-                  borders, and as a virtualText indicator on lines whose
-                  threads are all resolved.
+                  list, in the comment viewer title, and as a virtualText
+                  indicator on lines whose threads are all resolved. Inline
+                  comment boxes instead show a fixed "[resolved thread]" on
+                  the thread's head (oldest) comment only, so it is not
+                  affected by this option.
 
 `resolved.hl_group` Highlight group for resolved labels
                   (default: "DiagnosticOk").

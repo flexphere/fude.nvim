@@ -214,13 +214,15 @@ require("fude").setup({
   },
   -- Resolved comment display options
   -- Threads resolved on GitHub ("Resolve conversation") are labeled in the
-  -- comment browser, comment viewer, inline borders, and virtual text.
+  -- comment browser, comment viewer, and virtual text with `label`. Inline
+  -- comment boxes instead show a fixed "[resolved thread]" on the thread's
+  -- head (oldest) comment only.
   -- Set show = false to hide all resolved labels. (The review-threads fetch
   -- is shared with outdated detection; it is skipped only when outdated.show
   -- is also false and no pending review exists.)
   resolved = {
     show = true,               -- Label resolved threads
-    label = "[resolved]",      -- Label string for resolved threads
+    label = "[resolved]",      -- Label string (comment browser / viewer / virtual text)
     hl_group = "DiagnosticOk", -- Highlight group for resolved labels
   },
   -- Side panel options

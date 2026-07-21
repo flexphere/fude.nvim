@@ -2233,20 +2233,50 @@ describe("format_comments_for_inline", function()
 		return false
 	end
 
-	it("includes resolved label in top border for resolved comments", function()
+	local function find_in_border_at(result, box_index, pattern)
+		-- Each comment box's top border is the line following the previous box.
+		-- Scan all virt_lines chunks belonging to the given box's top border by
+		-- matching the "╭─ Comment" prefix occurrence order.
+		local seen = 0
+		for _, vline in ipairs(result.virt_lines) do
+			local text = ""
+			for _, chunk in ipairs(vline) do
+				text = text .. chunk[1]
+			end
+			if text:find("╭") then
+				seen = seen + 1
+				if seen == box_index then
+					return text:find(pattern) ~= nil
+				end
+			end
+		end
+		return false
+	end
+
+	it("shows [resolved thread] on a resolved thread head (no in_reply_to_id)", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "done", is_resolved = true },
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
-		assert.is_true(find_in_top_border(result, "%[resolved%]"))
+		assert.is_true(find_in_top_border(result, "%[resolved thread%]"))
 	end)
 
-	it("uses custom resolved label from opts.resolved.label in top border", function()
+	it("shows [resolved thread] only on the head, not on resolved replies", function()
+		-- A resolved thread: root (oldest, no in_reply_to_id) + reply. is_resolved
+		-- is propagated to both, but only the head box should carry the label.
 		local comments = {
-			{ user = { login = "alice" }, created_at = "2024-01-01", body = "done", is_resolved = true },
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "root", is_resolved = true },
+			{
+				user = { login = "bob" },
+				created_at = "2024-01-02",
+				body = "reply",
+				is_resolved = true,
+				in_reply_to_id = 1,
+			},
 		}
-		local result = ui.format_comments_for_inline(comments, identity, { resolved = { label = "[DONE]" } })
-		assert.is_true(find_in_top_border(result, "%[DONE%]"))
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_true(find_in_border_at(result, 1, "%[resolved thread%]"), "head box should show the label")
+		assert.is_false(find_in_border_at(result, 2, "%[resolved thread%]"), "reply box should not show the label")
 	end)
 
 	it("prefers pending label over resolved label in top border", function()
@@ -2261,7 +2291,7 @@ describe("format_comments_for_inline", function()
 		}
 		local result = ui.format_comments_for_inline(comments, identity)
 		assert.is_true(find_in_top_border(result, "%[pending%]"))
-		assert.is_false(find_in_top_border(result, "%[resolved%]"))
+		assert.is_false(find_in_top_border(result, "%[resolved thread%]"))
 	end)
 
 	it("splits multiline body", function()
