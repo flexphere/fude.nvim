@@ -1,4 +1,5 @@
 local M = {}
+local util = require("fude.util")
 
 --- Normalize newlines by converting CRLF and CR to LF.
 --- @param s string|nil input string
@@ -10,6 +11,10 @@ end
 --- Build status badges for a comment header (" [agent]", " [resolved]").
 --- Local review comments carry author_type ("human"|"agent") and a
 --- thread-level resolved flag; GitHub comments have neither and get "".
+--- `resolved` is a thread-level state that materialize() propagates to every
+--- comment in the thread, so the `[resolved]` badge is shown only on the
+--- thread's head comment (the root, which has no `in_reply_to_id`) to mark a
+--- resolved thread once instead of repeating it on every reply.
 --- @param comment table comment object
 --- @return string badge suffix ("" when none apply)
 function M.comment_badges(comment)
@@ -17,7 +22,7 @@ function M.comment_badges(comment)
 	if comment.author_type == "agent" then
 		badges = badges .. " [agent]"
 	end
-	if comment.resolved then
+	if comment.resolved and util.is_null(comment.in_reply_to_id) then
 		badges = badges .. " [resolved]"
 	end
 	return badges

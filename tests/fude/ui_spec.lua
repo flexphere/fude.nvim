@@ -61,6 +61,30 @@ describe("calculate_float_dimensions", function()
 	end)
 end)
 
+describe("comment_badges", function()
+	it("returns empty string for a plain GitHub comment", function()
+		assert.are.equal("", format.comment_badges({ user = { login = "a" } }))
+	end)
+
+	it("adds [agent] for agent-authored comments regardless of reply depth", function()
+		assert.are.equal(" [agent]", format.comment_badges({ author_type = "agent" }))
+		assert.are.equal(" [agent]", format.comment_badges({ author_type = "agent", in_reply_to_id = 1 }))
+	end)
+
+	it("adds [resolved] on a resolved thread root (no in_reply_to_id)", function()
+		assert.are.equal(" [resolved]", format.comment_badges({ resolved = true }))
+		assert.are.equal(" [resolved]", format.comment_badges({ resolved = true, in_reply_to_id = vim.NIL }))
+	end)
+
+	it("omits [resolved] on a resolved reply (has in_reply_to_id)", function()
+		assert.are.equal("", format.comment_badges({ resolved = true, in_reply_to_id = 42 }))
+	end)
+
+	it("combines [agent] and [resolved] on a resolved agent root", function()
+		assert.are.equal(" [agent] [resolved]", format.comment_badges({ author_type = "agent", resolved = true }))
+	end)
+end)
+
 describe("format_comments_for_display", function()
 	local identity = function(s)
 		return s or ""
