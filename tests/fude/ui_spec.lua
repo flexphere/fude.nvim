@@ -1375,6 +1375,36 @@ describe("build_re_request_candidates", function()
 		assert.are.equal("alice", result[1].login)
 	end)
 
+	it("excludes non-collaborator reviewers by authorAssociation", function()
+		-- Copilot reviews report authorAssociation "CONTRIBUTOR"; the API
+		-- rejects re-requests for non-collaborators (HTTP 422).
+		local reviews = {
+			{ author = { login = "copilot" }, authorAssociation = "CONTRIBUTOR", state = "COMMENTED" },
+			{ author = { login = "alice" }, authorAssociation = "COLLABORATOR", state = "APPROVED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("alice", result[1].login)
+	end)
+
+	it("includes OWNER and MEMBER associations", function()
+		local reviews = {
+			{ author = { login = "owner" }, authorAssociation = "OWNER", state = "APPROVED" },
+			{ author = { login = "member" }, authorAssociation = "MEMBER", state = "COMMENTED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(2, #result)
+	end)
+
+	it("keeps reviewers when authorAssociation is missing (degrade to API 422)", function()
+		-- If gh stops exporting authorAssociation, fall back to showing the
+		-- candidate rather than silently emptying the list.
+		local reviews = { { author = { login = "alice" }, state = "APPROVED" } }
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.are.equal("alice", result[1].login)
+	end)
+
 	it("ignores team review requests without login", function()
 		local requests = { { slug = "some-team", name = "Some Team" } }
 		local reviews = { { author = { login = "alice" }, state = "APPROVED" } }
