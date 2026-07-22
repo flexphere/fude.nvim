@@ -674,6 +674,16 @@ function M.apply_commit_scope(sha)
 			gitsigns.change_base(sha .. "^", true)
 		end
 
+		-- Overwrite per-buffer bases left over from full PR scope: a buffer-local
+		-- base (set via change_base(_, false)) takes precedence over the global one,
+		-- so without this loop already-open buffers keep showing the PR-wide diff.
+		local init_mod = require("fude.init")
+		for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+			if vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].buftype == "" then
+				init_mod.apply_gitsigns_base_for_buffer(bufnr)
+			end
+		end
+
 		-- Refresh preview and sidepanel if open
 		M.refresh_preview()
 		require("fude.ui.sidepanel").refresh()
