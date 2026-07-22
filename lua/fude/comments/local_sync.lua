@@ -129,6 +129,17 @@ function M.load_comments(callback, opts)
 	end
 
 	store.apply_outdated(comments, line_counts_of(file_lines))
+
+	-- Normalize the local `resolved` flag onto the display-facing `is_resolved`,
+	-- gated by `resolved.show`. This mirrors how `sync.lua` only sets
+	-- `is_resolved` at fetch time when `resolved.show` is enabled, so the whole
+	-- display layer (util/format/inline/extmarks) can read `is_resolved` alone.
+	-- `resolved` is kept as the toggle source of truth (see comments.lua).
+	local show_resolved = not (config.opts.resolved and config.opts.resolved.show == false)
+	for _, c in ipairs(comments) do
+		c.is_resolved = (show_resolved and c.resolved) or nil
+	end
+
 	state.comments = comments
 	state.comment_map = data.build_comment_map(comments)
 	state.viewed_files = result.viewed

@@ -8,18 +8,18 @@ function M.normalize_newlines(s)
 	return (s or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 end
 
---- Build status badges for a comment header (" [agent]", " [resolved]").
---- Local review comments carry author_type ("human"|"agent") and a
---- thread-level resolved flag; GitHub comments have neither and get "".
+--- Build status badges for a comment header (currently " [agent]").
+--- Local review comments carry author_type ("human"|"agent"); GitHub comments
+--- get "". Resolved state is intentionally NOT badged per comment: it is a
+--- thread-level flag propagated to every comment, so it is shown once on the
+--- thread head (the inline border label `[resolved thread]`) and in the comment
+--- viewer title, not repeated on each header.
 --- @param comment table comment object
 --- @return string badge suffix ("" when none apply)
 function M.comment_badges(comment)
 	local badges = ""
 	if comment.author_type == "agent" then
 		badges = badges .. " [agent]"
-	end
-	if comment.resolved then
-		badges = badges .. " [resolved]"
 	end
 	return badges
 end

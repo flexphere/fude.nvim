@@ -133,6 +133,34 @@ describe("local_sync CRUD", function()
 		assert.is_false(config.state.comments[1].resolved)
 	end)
 
+	it("load_comments normalizes resolved onto is_resolved for the whole thread", function()
+		local root = create_comment("resolve me")
+		local_sync.reply_to_comment(root.id, "a reply", function() end)
+		local_sync.toggle_resolved(root.id, false, function() end)
+
+		-- The display layer reads is_resolved; local review must populate it from
+		-- the thread-level `resolved` flag, propagated to the reply as well.
+		for _, c in ipairs(config.state.comments) do
+			assert.is_true(c.is_resolved)
+		end
+
+		local_sync.toggle_resolved(root.id, true, function() end)
+		for _, c in ipairs(config.state.comments) do
+			assert.is_falsy(c.is_resolved)
+		end
+	end)
+
+	it("resolved.show = false suppresses is_resolved normalization", function()
+		config.opts.resolved.show = false
+		local root = create_comment("resolve me")
+		local_sync.toggle_resolved(root.id, false, function() end)
+
+		-- The toggle source of truth (`resolved`) is still updated, but the
+		-- display-facing is_resolved stays unset so nothing renders.
+		assert.is_true(config.state.comments[1].resolved)
+		assert.is_falsy(config.state.comments[1].is_resolved)
+	end)
+
 	it("operations fail with an error when no session is active", function()
 		session.stop()
 		local err_result
@@ -372,12 +400,16 @@ describe("format.comment_badges", function()
 		assert.equals(" [agent]", format.comment_badges({ author_type = "agent" }))
 	end)
 
-	it("labels resolved threads", function()
-		assert.equals(" [resolved]", format.comment_badges({ resolved = true }))
+	it("does not badge resolved state per comment (shown once on the thread head)", function()
+		-- Resolved is thread-level and propagated to every comment, so it is
+		-- indicated once via the inline border label / viewer title, not repeated
+		-- as a per-comment header badge.
+		assert.equals("", format.comment_badges({ is_resolved = true }))
+		assert.equals("", format.comment_badges({ resolved = true }))
 	end)
 
-	it("combines both badges", function()
-		assert.equals(" [agent] [resolved]", format.comment_badges({ author_type = "agent", resolved = true }))
+	it("keeps only the agent badge even when the thread is resolved", function()
+		assert.equals(" [agent]", format.comment_badges({ author_type = "agent", is_resolved = true }))
 	end)
 
 	it("does not label human authors", function()
