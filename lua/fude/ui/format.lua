@@ -1,4 +1,5 @@
 local M = {}
+local util = require("fude.util")
 
 --- Normalize newlines by converting CRLF and CR to LF.
 --- @param s string|nil input string
@@ -7,18 +8,18 @@ function M.normalize_newlines(s)
 	return (s or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 end
 
---- Build status badges for a comment header (" [agent]", " [resolved]").
---- Local review comments carry author_type ("human"|"agent") and a
---- thread-level resolved flag; GitHub comments have neither and get "".
+--- Build status badges for a comment header (currently " [agent]").
+--- Local review comments carry author_type ("human"|"agent"); GitHub comments
+--- get "". Resolved state is intentionally NOT badged per comment: it is a
+--- thread-level flag propagated to every comment, so it is shown once on the
+--- thread head (the inline border label `[resolved thread]`) and in the comment
+--- viewer title, not repeated on each header.
 --- @param comment table comment object
 --- @return string badge suffix ("" when none apply)
 function M.comment_badges(comment)
 	local badges = ""
 	if comment.author_type == "agent" then
 		badges = badges .. " [agent]"
-	end
-	if comment.resolved then
-		badges = badges .. " [resolved]"
 	end
 	return badges
 end
@@ -64,6 +65,19 @@ function M.format_comments_for_display(comments, format_date_fn)
 		end
 	end
 	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges }
+end
+
+--- Build the title for the comment viewer float.
+--- Appends the resolved label when every comment shown is resolved.
+--- @param comments table[] list of comment objects
+--- @param resolved_opts table|nil { label: string } (see config.defaults.resolved)
+--- @return string title
+function M.build_comments_float_title(comments, resolved_opts)
+	if util.all_comments_resolved(comments) then
+		local label = (resolved_opts and resolved_opts.label) or "[resolved]"
+		return string.format(" Comments (%d) %s ", #comments, label)
+	end
+	return string.format(" Comments (%d) ", #comments)
 end
 
 --- Normalize check fields into a consistent (status, conclusion) pair.
@@ -653,8 +667,9 @@ end
 --- @param format_date_fn fun(s: string): string
 --- @param outdated_opts table|nil { show: boolean, label: string, hl_group: string }
 --- @param format_path_fn fun(s: string): string|nil formats repo-relative path for display (nil = identity)
+--- @param resolved_opts table|nil { label: string, hl_group: string } for the trailing resolved marker
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, format_path_fn)
+function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, format_path_fn, resolved_opts)
 	local lines = {}
 	local hl_ranges = {}
 
@@ -666,6 +681,8 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 	local outdated_show = outdated_opts == nil or outdated_opts.show ~= false
 	local outdated_label = (outdated_opts and outdated_opts.label) or "[outdated]"
 	local outdated_hl = (outdated_opts and outdated_opts.hl_group) or "Comment"
+	local resolved_label = (resolved_opts and resolved_opts.label) or "[resolved]"
+	local resolved_hl = (resolved_opts and resolved_opts.hl_group) or "DiagnosticOk"
 
 	for i, entry in ipairs(entries) do
 		local line_idx = i - 1 -- 0-indexed for highlights
@@ -751,6 +768,14 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 				local author_end = author_start + 1 + #entry.author -- "@" + name
 				table.insert(hl_ranges, { line = line_idx, col_start = author_start, col_end = author_end, hl = "Title" })
 			end
+		end
+
+		-- Mark resolved threads with a trailing label so it composes with the
+		-- pending/outdated variants above (a thread can be outdated and resolved).
+		if entry.type ~= "draft" and entry.type ~= "issue" and entry.is_resolved then
+			local col = #text
+			text = text .. "  " .. resolved_label
+			table.insert(hl_ranges, { line = line_idx, col_start = col, col_end = #text, hl = resolved_hl })
 		end
 
 		-- Mark existing entries that also have an unsubmitted local draft.

@@ -747,6 +747,7 @@ query {
         nodes {
           id
           isOutdated
+          isResolved
           comments(first: 1) {
             nodes { databaseId path originalLine }
           }
@@ -762,9 +763,9 @@ query {
 	)
 end
 
---- Parse review threads from GraphQL response into outdated_map and thread_map.
+--- Parse review threads from GraphQL response into thread_info_map and thread_map.
 --- @param data table GraphQL response data
---- @return table<number, table> outdated_map { [id] = { is_outdated, original_line } }
+--- @return table<number, table> thread_info_map { [id] = { is_outdated, is_resolved, original_line } }
 --- @return table<number, string> thread_map { [comment_id] = thread_node_id }
 --- @return boolean has_next
 --- @return string|nil end_cursor
@@ -773,19 +774,21 @@ function M.parse_review_threads_response(data)
 	if not pr then
 		return {}, {}, false, nil
 	end
-	local outdated_map = {}
+	local thread_info_map = {}
 	local thread_map = {}
 	local threads = pr.reviewThreads
 	if threads and threads.nodes then
 		for _, thread in ipairs(threads.nodes) do
 			local is_outdated = thread.isOutdated or false
+			local is_resolved = thread.isResolved or false
 			local thread_id = thread.id
 			local comments = thread.comments and thread.comments.nodes
 			if comments then
 				for _, c in ipairs(comments) do
 					if c.databaseId then
-						outdated_map[c.databaseId] = {
+						thread_info_map[c.databaseId] = {
 							is_outdated = is_outdated,
+							is_resolved = is_resolved,
 							original_line = c.originalLine,
 						}
 						if thread_id then
@@ -797,20 +800,20 @@ function M.parse_review_threads_response(data)
 		end
 	end
 	local page_info = threads and threads.pageInfo or {}
-	return outdated_map, thread_map, page_info.hasNextPage or false, page_info.endCursor
+	return thread_info_map, thread_map, page_info.hasNextPage or false, page_info.endCursor
 end
 
 --- Fetch review threads for a PR (with pagination).
---- Returns outdated info and a comment_id → thread_node_id mapping.
+--- Returns per-thread info (outdated/resolved) and a comment_id → thread_node_id mapping.
 --- @param pr_number number
---- @param callback fun(err: string|nil, outdated_map: table<number, table>|nil, thread_map: table<number, string>|nil)
+--- @param callback fun(err: string|nil, thread_info_map: table|nil, thread_map: table<number, string>|nil)
 function M.get_review_threads(pr_number, callback)
 	M.get_repo_owner(function(owner_err, owner, repo)
 		if owner_err then
 			return callback(owner_err, nil, nil)
 		end
 
-		local all_outdated = {}
+		local all_infos = {}
 		local all_threads = {}
 
 		local function fetch_page(cursor)
@@ -819,9 +822,9 @@ function M.get_review_threads(pr_number, callback)
 				if err then
 					return callback(err, nil, nil)
 				end
-				local outdated_map, thread_map, has_next, end_cursor = M.parse_review_threads_response(response_data)
-				for id, info in pairs(outdated_map) do
-					all_outdated[id] = info
+				local thread_info_map, thread_map, has_next, end_cursor = M.parse_review_threads_response(response_data)
+				for id, info in pairs(thread_info_map) do
+					all_infos[id] = info
 				end
 				for id, tid in pairs(thread_map) do
 					all_threads[id] = tid
@@ -829,7 +832,7 @@ function M.get_review_threads(pr_number, callback)
 				if has_next and end_cursor then
 					fetch_page(end_cursor)
 				else
-					callback(nil, all_outdated, all_threads)
+					callback(nil, all_infos, all_threads)
 				end
 			end)
 		end

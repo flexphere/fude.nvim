@@ -9,6 +9,7 @@ local ref_ns = vim.api.nvim_create_namespace("fude_refs")
 -- Re-export format functions (facade)
 M.calculate_float_dimensions = format.calculate_float_dimensions
 M.format_comments_for_display = format.format_comments_for_display
+M.build_comments_float_title = format.build_comments_float_title
 M.normalize_check = format.normalize_check
 M.format_check_status = format.format_check_status
 M.deduplicate_checks = format.deduplicate_checks
@@ -347,7 +348,7 @@ function M.show_comments_float(comments, opts)
 		height = dim.height,
 		style = "minimal",
 		border = config.opts.float.border,
-		title = string.format(" Comments (%d) ", #comments),
+		title = format.build_comments_float_title(comments, config.opts.resolved),
 		title_pos = "center",
 		footer = " r reply | e edit | d delete | q close ",
 		footer_pos = "center",

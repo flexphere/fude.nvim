@@ -1,6 +1,7 @@
 local M = {}
 local config = require("fude.config")
 local drafts = require("fude.drafts")
+local util = require("fude.util")
 
 --- Get the namespace ID for flash/highlight extmarks.
 --- Uses config.state.ns_id so existing cleanup paths (clear_extmarks, clear_all_extmarks) cover these.
@@ -97,6 +98,7 @@ function M.refresh_extmarks()
 	local comment_lines = comments_mod.get_comment_lines(rel_path)
 
 	local style = config.get_comment_style()
+	local inline_opts = config.opts.inline or {}
 
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)
@@ -117,7 +119,6 @@ function M.refresh_extmarks()
 
 			if #all_comments_for_display > 0 then
 				local inline = require("fude.ui.inline")
-				local inline_opts = config.opts.inline or {}
 				local result = inline.format_comments_for_inline(all_comments_for_display, config.format_date, inline_opts)
 				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
 					virt_lines = result.virt_lines,
@@ -130,6 +131,7 @@ function M.refresh_extmarks()
 			-- Only compute counts, avoid building arrays
 			local submitted_count = 0
 			local has_pending = false
+			local all_resolved = util.all_comments_resolved(comments)
 			for _, c in ipairs(comments) do
 				if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
 					has_pending = true
@@ -154,6 +156,18 @@ function M.refresh_extmarks()
 					},
 					virt_text_pos = "eol",
 					priority = 45,
+				})
+			end
+			-- Resolved indicator: only when every thread on the line is resolved
+			-- (a partially resolved line still needs attention).
+			if all_resolved then
+				local resolved_opts = config.opts.resolved or {}
+				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+					virt_text = {
+						{ " " .. (resolved_opts.label or "[resolved]"), resolved_opts.hl_group or "DiagnosticOk" },
+					},
+					virt_text_pos = "eol",
+					priority = 43,
 				})
 			end
 		end

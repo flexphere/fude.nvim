@@ -1,6 +1,7 @@
 local M = {}
 
 local format = require("fude.ui.format")
+local util = require("fude.util")
 
 --- Wrap a line to fit within max_width (display cells).
 --- @param line string input line
@@ -77,7 +78,18 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 
 		-- Top border: ╭─ Comment ─────────────────────╮
 		-- Use strdisplaywidth for correct UTF-8 width calculation
-		local label = is_pending and " Comment [pending] " or " Comment "
+		-- Pending takes precedence, but the two states are effectively exclusive:
+		-- an unsubmitted thread cannot be resolved on GitHub.
+		-- `is_resolved` is a thread-level state applied to every comment in the
+		-- thread, so the `[resolved thread]` label is shown only on the thread's
+		-- head comment (the oldest one, which has no in_reply_to_id) instead of
+		-- repeating on every reply box.
+		local label = " Comment "
+		if is_pending then
+			label = " Comment [pending] "
+		elseif comment.is_resolved and util.is_null(comment.in_reply_to_id) then
+			label = " Comment [resolved thread] "
+		end
 		local corner_width = 2 -- ╭ and ╮ are 1 cell each
 		local left_dash_width = 1 -- ─ after ╭
 		local label_display_width = vim.fn.strdisplaywidth(label)

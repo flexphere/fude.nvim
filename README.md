@@ -11,6 +11,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **PR comments** - Create, view, reply, edit, and delete review comments on specific lines
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
 - **Virtual text** - Comment and pending indicators on lines with existing comments
+- **Resolved labels** - Threads resolved on GitHub are labeled `[resolved]` in the comment browser, comment viewer, and editor indicators
 - **Pending review** - Comments are saved as GitHub pending review (visible on PR page)
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
@@ -210,6 +211,19 @@ require("fude").setup({
     show = true,           -- Show outdated comments
     label = "[outdated]",  -- Label string for outdated comments
     hl_group = "Comment",  -- Highlight group for outdated label in comment browser
+  },
+  -- Resolved comment display options
+  -- Threads resolved on GitHub ("Resolve conversation") are labeled in the
+  -- comment browser, comment viewer, and virtual text with `label`. Inline
+  -- comment boxes instead show a fixed "[resolved thread]" on the thread's
+  -- head (oldest) comment only.
+  -- Set show = false to hide all resolved labels. (The review-threads fetch
+  -- is shared with outdated detection; it is skipped only when outdated.show
+  -- is also false and no pending review exists.)
+  resolved = {
+    show = true,               -- Label resolved threads
+    label = "[resolved]",      -- Label string (comment browser / viewer / virtual text)
+    hl_group = "DiagnosticOk", -- Highlight group for resolved labels
   },
   -- Side panel options
   sidepanel = {

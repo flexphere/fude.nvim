@@ -449,6 +449,9 @@ function M.build_comment_browser_entries(
 					break
 				end
 			end
+			-- Resolved only when every comment is resolved: an entry can group multiple
+			-- threads on the same path:line, and a partially resolved line is not resolved.
+			local is_resolved = util.all_comments_resolved(comments)
 			local author = first.user and first.user.login or "unknown"
 			local last_ts = last.created_at or ""
 			local last_date = format_date_fn(last_ts)
@@ -466,6 +469,7 @@ function M.build_comment_browser_entries(
 				is_pending = is_pending,
 				is_own = is_own,
 				is_outdated = is_outdated,
+				is_resolved = is_resolved,
 			})
 		end
 	end
@@ -506,6 +510,7 @@ function M.build_comment_browser_entries(
 					is_pending = is_pending or false,
 					is_own = is_own,
 					is_outdated = true,
+					is_resolved = c.is_resolved or false,
 				})
 				seen_ids[c.id] = true
 			end

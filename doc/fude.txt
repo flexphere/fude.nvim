@@ -257,6 +257,8 @@ Using lazy.nvim: >lua
       - Review comments: `date  @author  path:line`
       - PR-level comments: `date  PR Comment`
       - Pending comments: `date  [pending]  path:line`
+      - Resolved threads additionally show a trailing `[resolved]`
+        label (see `resolved` options).
     Right upper: thread display for the selected comment.
     Right lower: input area for reply/edit/new comment.
       For review comments, defaults to Reply mode.
@@ -575,6 +577,12 @@ Default configuration: >lua
       label = "[outdated]",  -- Label string
       hl_group = "Comment",  -- Highlight group for outdated label in comment browser
     },
+    -- Resolved comment display options
+    resolved = {
+      show = true,               -- Fetch and label resolved threads
+      label = "[resolved]",      -- Label string
+      hl_group = "DiagnosticOk", -- Highlight group for resolved labels
+    },
   })
 <
 
@@ -762,6 +770,25 @@ Options:
 
 `outdated.hl_group` Highlight group for outdated indicator in virtualText mode
                   (default: "Comment").
+
+`resolved.show`     Label resolved review threads (default: true).
+                  Resolution state comes from GitHub review threads
+                  ("Resolve conversation" on the web UI). When false, no
+                  resolved labels are shown anywhere. The underlying
+                  review-threads fetch is shared with outdated comment
+                  detection, so it is skipped only when `outdated.show` is
+                  also false and no pending review exists.
+
+`resolved.label`    Label text shown for resolved threads
+                  (default: "[resolved]"). Appears in the comment browser
+                  list, in the comment viewer title, and as a virtualText
+                  indicator on lines whose threads are all resolved. Inline
+                  comment boxes instead show a fixed "[resolved thread]" on
+                  the thread's head (oldest) comment only, so it is not
+                  affected by this option.
+
+`resolved.hl_group` Highlight group for resolved labels
+                  (default: "DiagnosticOk").
 
 `auto_reload.enabled`
                   Enable automatic periodic reload of review data
