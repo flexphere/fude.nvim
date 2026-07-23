@@ -229,7 +229,7 @@ HARNESS.md §1 (Guides) と §2 (Sensors) の現状から、12 関心領域 × 4
 
 - コミットメッセージ例: `docs: ハーネス点検結果を反映 (audit <YYYY-MM-DD>)`
 - ブランチ運用は通常通り `docs/harness-audit-<YYYY-MM>` 等を推奨。skill 自体は PR 作成までは
-  自動化しない（更新規模が小さい場合は main への直接 PR を `/pr` 経由で行う）
+  自動化しない（更新規模が小さい場合は main への直接 PR を `/develop-pr` 経由で行う）
 
 ## 注意事項
 

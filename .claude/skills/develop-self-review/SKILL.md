@@ -1,12 +1,12 @@
 ---
-name: self-review
+name: develop-self-review
 description: 3ラウンドのセルフレビュー。プロジェクト固有チェックリスト（2ラウンド）と /review 汎用レビュー（1ラウンド）で変更品質を検証する。
 ---
 
 # セルフレビュー
 
 実装済みの変更に対して3ラウンドのセルフレビューを行い、品質を検証する。
-`/develop` の Phase 6 や `/review-respond` の Phase 2.5 から呼び出される。単体でも使用可能。
+`/develop` の Phase 6 や `/develop-review-respond` の Phase 2.5 から呼び出される。単体でも使用可能。
 
 ## プロジェクトチェックリストの読み込み
 
