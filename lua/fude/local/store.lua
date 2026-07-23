@@ -421,7 +421,7 @@ function M.build_reply_event(opts)
 end
 
 --- Build an edit event.
---- @param opts table { id, body, author, created_at }
+--- @param opts table { id, body, author, author_type, created_at }
 --- @return table edit event
 function M.build_edit_event(opts)
 	return {
@@ -429,12 +429,13 @@ function M.build_edit_event(opts)
 		id = opts.id,
 		body = opts.body,
 		author = opts.author,
+		author_type = opts.author_type or "human",
 		created_at = opts.created_at,
 	}
 end
 
 --- Build a move (line re-anchor) event.
---- @param opts table { id, path, start_line, end_line, created_at }
+--- @param opts table { id, path, start_line, end_line, author_type, created_at }
 --- @return table move event
 function M.build_move_event(opts)
 	return {
@@ -443,13 +444,14 @@ function M.build_move_event(opts)
 		path = opts.path,
 		start_line = opts.start_line,
 		end_line = opts.end_line,
+		author_type = opts.author_type or "human",
 		created_at = opts.created_at,
 	}
 end
 
 --- Build a resolve or reopen event.
 --- @param kind string "resolve"|"reopen"
---- @param opts table { id, thread_id, author, created_at }
+--- @param opts table { id, thread_id, author, author_type, created_at }
 --- @return table event
 function M.build_status_event(kind, opts)
 	return {
@@ -457,24 +459,26 @@ function M.build_status_event(kind, opts)
 		id = opts.id,
 		thread_id = opts.thread_id,
 		author = opts.author,
+		author_type = opts.author_type or "human",
 		created_at = opts.created_at,
 	}
 end
 
 --- Build a delete event (removes a comment from the materialized view).
---- @param opts table { id, author, created_at }
+--- @param opts table { id, author, author_type, created_at }
 --- @return table delete event
 function M.build_delete_event(opts)
 	return {
 		event = "delete",
 		id = opts.id,
 		author = opts.author,
+		author_type = opts.author_type or "human",
 		created_at = opts.created_at,
 	}
 end
 
 --- Build a viewed event (marks a file viewed/unviewed).
---- @param opts table { id, path, viewed (boolean), author, created_at }
+--- @param opts table { id, path, viewed (boolean), author, author_type, created_at }
 --- @return table viewed event
 function M.build_viewed_event(opts)
 	return {
@@ -483,6 +487,7 @@ function M.build_viewed_event(opts)
 		path = opts.path,
 		viewed = opts.viewed and true or false,
 		author = opts.author,
+		author_type = opts.author_type or "human",
 		created_at = opts.created_at,
 	}
 end
