@@ -7,7 +7,7 @@
 # serialized with jq -c, which guarantees a single compact (no-space) line —
 # the format fude.nvim's line-based parser and fude-watch-filter.sh both
 # rely on. On success the appended line is printed to stdout.
-set -eu
+set -euo pipefail
 
 review_file=$1
 thread_id=$2

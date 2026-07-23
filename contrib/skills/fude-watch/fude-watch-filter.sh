@@ -8,6 +8,11 @@
 # Fields are extracted with jq rather than string-matched, so formatting
 # (spaces) and free-text fields (e.g. a comment body that happens to contain
 # the literal text `"event":"comment"`) can't cause a false match.
+command -v jq >/dev/null 2>&1 || {
+	echo 'fude-watch-filter: jq is required but not found in PATH' >&2
+	exit 1
+}
+
 while IFS= read -r line; do
 	event=$(printf '%s' "$line" | jq -r '.event // empty' 2>/dev/null) || continue
 	author_type=$(printf '%s' "$line" | jq -r '.author_type // empty' 2>/dev/null)
