@@ -310,6 +310,39 @@ describe("extmarks integration", function()
 			assert.is_true(has_virt_lines(buf, 2), "unresolved comment should keep its inline box")
 		end)
 
+		it("inline mode: no resolved fallback on a mixed line (unresolved + resolved)", function()
+			-- Two threads anchored to the same line: one resolved, one not. With
+			-- show_resolved off the unresolved one keeps its box, and the line must
+			-- NOT get a [resolved] EOL fallback (that would contradict virtualText
+			-- mode, which labels a line resolved only when every comment is).
+			local buf = helpers.create_buf({ "line1", "line2" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+
+			config.state.active = true
+			config.state.current_comment_style = "inline"
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = {
+						{
+							id = 1,
+							body = "resolved",
+							is_resolved = true,
+							user = { login = "t" },
+							created_at = "2024-01-01T00:00:00Z",
+						},
+						{ id = 2, body = "open", user = { login = "t" }, created_at = "2024-01-01T00:00:00Z" },
+					},
+				},
+			}
+			config.state.pending_comments = {}
+			config.state.show_resolved = false
+
+			extmarks.refresh_extmarks()
+
+			assert.is_true(has_virt_lines(buf, 1), "unresolved comment should still render an inline box")
+			assert.is_false(find_virt_text(buf, 1, "%[resolved%]"), "mixed line must not show the [resolved] fallback")
+		end)
+
 		it("marks pending comments with is_pending flag in inline mode", function()
 			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
 			vim.api.nvim_set_current_buf(buf)

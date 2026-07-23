@@ -161,10 +161,10 @@ function M.refresh_extmarks()
 		if style == "inline" then
 			-- Inline mode: display full comment content below the line.
 			-- When FudeReviewToggleResolved is off, resolved comments do not get an
-			-- inline box; instead they fall back to the same EOL virtualText
-			-- indicator the virtualText style would show (e.g. `[resolved] 🗒️1`),
-			-- so the line stays marked. Pending comments are never resolved, so they
-			-- always keep their inline box.
+			-- inline box. If that leaves the line with nothing to show, it falls back
+			-- to the same EOL virtualText indicator the virtualText style would show
+			-- (e.g. `[resolved] 🗒️1`) so the line stays marked. Pending comments are
+			-- never resolved, so they always keep their inline box.
 			local show_resolved = config.get_show_resolved()
 			local box_comments = {}
 			local hidden_resolved = {}
@@ -173,7 +173,10 @@ function M.refresh_extmarks()
 					local pc = vim.tbl_extend("force", {}, c)
 					pc.is_pending = true
 					table.insert(box_comments, pc)
-				elseif show_resolved or not (c.is_resolved or c.resolved) then
+				elseif show_resolved or not c.is_resolved then
+					-- Read `is_resolved` alone (local mode normalizes `resolved` onto it,
+					-- gated by resolved.show), matching util.all_comments_resolved so the
+					-- box/fallback split and the `[resolved]` label never disagree.
 					table.insert(box_comments, c)
 				else
 					table.insert(hidden_resolved, c)
@@ -188,8 +191,13 @@ function M.refresh_extmarks()
 					virt_lines_above = false,
 					priority = 50,
 				})
-			end
-			if #hidden_resolved > 0 then
+			elseif #hidden_resolved > 0 then
+				-- Only reached when the line has no box to show, i.e. every comment on
+				-- it is a hidden resolved one. hidden_resolved therefore equals the
+				-- whole line, so render_virt_text_indicators judges the count and the
+				-- `[resolved]` label over all of the line's comments (matching the
+				-- virtualText style). On a mixed line the box above already marks it,
+				-- so no fallback is rendered.
 				render_virt_text_indicators(buf, line, hidden_resolved)
 			end
 		else
