@@ -41,15 +41,22 @@ REVIEW_FILE = .fude/reviews/<ID>.jsonl
 `comment` が thread root、`reply` は `in_reply_to` で root を指す。`resolve` 済みの
 thread は対応不要）。未対応の open コメントがあれば、この時点で Step 4 の対応を行う。
 
-### 3. Monitor を張る
+### 3. 同梱フィルタを挟んで Monitor を張る
 
-Monitor ツールで新規イベントを待ち受ける:
+tail の生出力には agent 自身が追記した行や `viewed` / `move` などの非対象イベントも
+流れてくる。これらを LLM の判断で無視するのではなく、スキルに同梱の
+`fude-watch-filter.sh`（この SKILL.md と同じディレクトリ。スキル起動時に通知される
+base directory 配下）をパイプに挟んで機械的に落とす:
 
-- command: `tail -n 0 -f <REVIEW_FILE の絶対パス>`
+- command: `tail -n 0 -f <REVIEW_FILE の絶対パス> | bash <スキルの base directory>/fude-watch-filter.sh`
 - description: `fude local review comments`
 - persistent: true
 
-各 stdout 行が 1 イベントとして通知される。
+通知される stdout 行は「human が書いた comment / reply / resolve / reopen」だけになる。
+`viewed` / `move` / `edit` / `delete` / `session` の各イベントと、`author_type` が
+`agent` の行（自分の追記の echo）はフィルタで落ちる。fude.nvim は全アクション
+イベントに `author_type`（デフォルト `"human"`）を付与するので、この2軸
+（イベント種別・書き手）のフィルタで過不足なく絞れる。
 
 ### 4. イベントへの対応
 
@@ -62,20 +69,23 @@ Monitor ツールで新規イベントを待ち受ける:
 - **`reply`**（人間からの追い返信）: スレッド文脈を読み直して同様に対応する
 - **`reopen`**: そのスレッドの対応を再開する
 - **`resolve`**: そのスレッドはクローズ。対応中なら打ち切ってよい
-- 自分（agent）が追記したイベントの echo は無視する（`author_type` が `agent`）
+- 上記以外のイベント（`viewed` / `move` / `edit` / `delete` / `session`）や
+  `author_type` が `agent` の行は Step 3 のフィルタで届かないはずだが、
+  万一届いた場合は黙って無視する（返信も報告もしない）
 
-### 5. 返信の追記ルール
+### 5. 返信の追記
 
-`REVIEW_FILE` に **1行の JSON を append する**（既存行の書き換え禁止）:
+返信は同梱の `fude-watch-reply.sh` で `REVIEW_FILE` に append する（既存行の
+書き換え禁止）。UUID・タイムスタンプ・`author_type: "agent"` の付与、1行の
+compact JSON への正規化（Step 3 のフィルタが echo を遮断できる形式）、
+追記後の検証はスクリプトが保証する:
 
-```json
-{"event":"reply","id":"<新規UUID>","thread_id":"<rootコメントのid>","in_reply_to":"<rootコメントのid>","body":"対応内容の説明","author":"claude","author_type":"agent","created_at":"<UTC ISO-8601>"}
-```
-
-- `id` は新規 UUID v4 を生成する
-- `thread_id` / `in_reply_to` は **root コメントの id**（reply への reply でも root を指す）
-- `author_type` は必ず `"agent"`
-- 追記は `printf '%s\n' '<json>' >> <REVIEW_FILE>` のようにアトミックな1行 append で行う
+1. 返信本文だけを scratchpad のテキストファイルに Write する（Markdown 可）
+2. `bash <スキルの base directory>/fude-watch-reply.sh <REVIEW_FILE> <rootコメントのid> <本文ファイル>` を実行する
+   - 第2引数は **root コメントの id**（reply への reply でも root を指す）
+   - 成功すると追記したイベントの 1 行 JSON を stdout に出力する。非 0 で
+     終了した場合は追記が壊れている可能性があるので、REVIEW_FILE の末尾を
+     確認してユーザーに報告する
 
 コード修正を伴う場合は、修正 → テスト/lint 確認 → reply 追記の順で行い、
 reply の body には何をどう変えたかを簡潔に書く。
