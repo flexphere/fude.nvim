@@ -23,15 +23,47 @@ end)
 describe("store event builders author_type", function()
 	it("defaults author_type to human when not given", function()
 		assert.equals("human", store.build_edit_event({ id = "c1", body = "x" }).author_type)
-		assert.equals("human", store.build_move_event({ id = "c1", end_line = 1 }).author_type)
-		assert.equals("human", store.build_status_event("resolve", { id = "e1", thread_id = "c1" }).author_type)
-		assert.equals("human", store.build_delete_event({ id = "c1" }).author_type)
+		assert.equals(
+			"human",
+			store.build_move_event({ id = "c1", path = "a.lua", start_line = 1, end_line = 1 }).author_type
+		)
+		assert.equals(
+			"human",
+			store.build_status_event("resolve", { id = "e1", thread_id = "c1", author = "shusann" }).author_type
+		)
+		assert.equals("human", store.build_delete_event({ id = "c1", author = "shusann" }).author_type)
 		assert.equals("human", store.build_viewed_event({ id = "v1", path = "a.lua", viewed = true }).author_type)
 	end)
 
 	it("passes through an explicit author_type", function()
-		local event = store.build_viewed_event({ id = "v1", path = "a.lua", viewed = true, author_type = "agent" })
-		assert.equals("agent", event.author_type)
+		assert.equals("agent", store.build_edit_event({ id = "c1", body = "x", author_type = "agent" }).author_type)
+		assert.equals(
+			"agent",
+			store.build_move_event({
+				id = "c1",
+				path = "a.lua",
+				start_line = 1,
+				end_line = 1,
+				author_type = "agent",
+			}).author_type
+		)
+		assert.equals(
+			"agent",
+			store.build_status_event("resolve", {
+				id = "e1",
+				thread_id = "c1",
+				author = "claude",
+				author_type = "agent",
+			}).author_type
+		)
+		assert.equals(
+			"agent",
+			store.build_delete_event({ id = "c1", author = "claude", author_type = "agent" }).author_type
+		)
+		assert.equals(
+			"agent",
+			store.build_viewed_event({ id = "v1", path = "a.lua", viewed = true, author_type = "agent" }).author_type
+		)
 	end)
 end)
 
