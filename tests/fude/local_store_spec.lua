@@ -74,6 +74,72 @@ describe("store.parse_events", function()
 		assert.same({}, store.parse_events(nil))
 		assert.same({}, store.parse_events(""))
 	end)
+
+	it("recovers a pretty-printed multi-line record between single-line records", function()
+		local text = table.concat({
+			vim.json.encode({ event = "comment", id = "c1", body = "root" }),
+			"{",
+			'  "event": "reply",',
+			'  "id": "r1",',
+			'  "in_reply_to": "c1",',
+			'  "body": "multi-line record"',
+			"}",
+			vim.json.encode({ event = "viewed", id = "v1", path = "f.lua", viewed = true }),
+		}, "\n")
+		local events = store.parse_events(text)
+		assert.equals(3, #events)
+		assert.equals("comment", events[1].event)
+		assert.equals("reply", events[2].event)
+		assert.equals("r1", events[2].id)
+		assert.equals("multi-line record", events[2].body)
+		assert.equals("viewed", events[3].event)
+	end)
+
+	it("recovers consecutive pretty-printed multi-line records", function()
+		local text = table.concat({
+			"{",
+			'  "event": "reply",',
+			'  "id": "r1",',
+			'  "in_reply_to": "c1",',
+			'  "body": "first"',
+			"}",
+			"{",
+			'  "event": "reply",',
+			'  "id": "r2",',
+			'  "in_reply_to": "c1",',
+			'  "body": "second"',
+			"}",
+		}, "\n")
+		local events = store.parse_events(text)
+		assert.equals(2, #events)
+		assert.equals("r1", events[1].id)
+		assert.equals("r2", events[2].id)
+	end)
+
+	it("discards an unterminated multi-line block when a single-line record follows", function()
+		local text = table.concat({
+			"{",
+			'  "event": "reply",',
+			'  "id": "r1",',
+			vim.json.encode({ event = "comment", id = "c1", body = "survives" }),
+		}, "\n")
+		local events = store.parse_events(text)
+		assert.equals(1, #events)
+		assert.equals("c1", events[1].id)
+	end)
+
+	it("skips a multi-line record whose event kind is unknown", function()
+		local text = table.concat({
+			"{",
+			'  "event": "explode",',
+			'  "id": "x1"',
+			"}",
+			vim.json.encode({ event = "comment", id = "c1", body = "ok" }),
+		}, "\n")
+		local events = store.parse_events(text)
+		assert.equals(1, #events)
+		assert.equals("c1", events[1].id)
+	end)
 end)
 
 describe("store.materialize", function()
