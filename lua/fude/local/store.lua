@@ -73,18 +73,13 @@ function M.serialize_event(event)
 	return vim.json.encode(event)
 end
 
---- Parse one JSONL line into an event table. Returns nil for blank or
---- malformed lines (a corrupt line never breaks the whole file) and for
---- events whose `event` kind is unknown or whose `id` is missing (except
---- `session`, which is keyed by `session_id`).
---- @param line string|nil
+--- Validate a decoded JSON value as an event table. Returns nil for values
+--- that are not events, whose `event` kind is unknown, or whose `id` is
+--- missing (except `session`, which is keyed by `session_id`).
+--- @param event any decoded JSON value
 --- @return table|nil
-function M.parse_event_line(line)
-	if not line or vim.trim(line) == "" then
-		return nil
-	end
-	local ok, event = pcall(vim.json.decode, line)
-	if not ok or type(event) ~= "table" or type(event.event) ~= "string" then
+local function validate_event(event)
+	if type(event) ~= "table" or type(event.event) ~= "string" then
 		return nil
 	end
 	if not EVENT_KINDS[event.event] then
@@ -96,7 +91,28 @@ function M.parse_event_line(line)
 	return event
 end
 
---- Parse a whole JSONL document into an array of events (malformed lines skipped).
+--- Parse one JSONL line into an event table. Returns nil for blank or
+--- malformed lines (a corrupt line never breaks the whole file) and for
+--- events that fail validation (unknown kind / missing id).
+--- @param line string|nil
+--- @return table|nil
+function M.parse_event_line(line)
+	if not line or vim.trim(line) == "" then
+		return nil
+	end
+	local ok, event = pcall(vim.json.decode, line)
+	if not ok then
+		return nil
+	end
+	return validate_event(event)
+end
+
+--- Parse a whole JSONL document into an array of events (malformed lines
+--- skipped). Also recovers pretty-printed multi-line records: an external
+--- writer (agent) may accidentally append a formatted JSON object spanning
+--- several lines, so lines that don't parse on their own are accumulated
+--- until the buffer forms valid JSON. A complete single-line record discards
+--- any unfinished buffer, so a truncated block never swallows later events.
 --- @param text string|nil
 --- @return table[] events
 function M.parse_events(text)
@@ -104,10 +120,22 @@ function M.parse_events(text)
 	if not text or text == "" then
 		return events
 	end
+	local pending = nil
 	for line in (text .. "\n"):gmatch("(.-)\n") do
 		local event = M.parse_event_line(line)
 		if event then
+			pending = nil
 			table.insert(events, event)
+		elseif pending or vim.trim(line) ~= "" then
+			pending = pending and (pending .. "\n" .. line) or line
+			local ok, decoded = pcall(vim.json.decode, pending)
+			if ok then
+				local recovered = validate_event(decoded)
+				if recovered then
+					table.insert(events, recovered)
+				end
+				pending = nil
+			end
 		end
 	end
 	return events
