@@ -261,6 +261,55 @@ describe("extmarks integration", function()
 			assert.is_true(find_virt_text(buf, 0, "%[DONE%]"), "Should use custom resolved label")
 		end)
 
+		local function has_virt_lines(buf, line0)
+			local marks = vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })
+			for _, mark in ipairs(marks) do
+				if mark[2] == line0 and mark[4].virt_lines and #mark[4].virt_lines > 0 then
+					return true
+				end
+			end
+			return false
+		end
+
+		it("inline mode: hides resolved box and shows virtualText fallback when show_resolved is off", function()
+			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+
+			config.state.active = true
+			config.state.current_comment_style = "inline"
+			config.state.comment_map = {
+				["test.lua"] = {
+					[2] = {
+						{
+							id = 1,
+							body = "resolved",
+							is_resolved = true,
+							user = { login = "t" },
+							created_at = "2024-01-01T00:00:00Z",
+						},
+					},
+					[3] = {
+						{ id = 2, body = "open", user = { login = "t" }, created_at = "2024-01-01T00:00:00Z" },
+					},
+				},
+			}
+			config.state.pending_comments = {}
+
+			-- show_resolved on: the resolved comment renders as an inline box
+			config.state.show_resolved = nil
+			extmarks.refresh_extmarks()
+			assert.is_true(has_virt_lines(buf, 1), "resolved comment should have an inline box when show_resolved is on")
+
+			-- show_resolved off: box hidden, EOL virtualText fallback shown instead
+			config.state.show_resolved = false
+			extmarks.refresh_extmarks()
+			assert.is_false(has_virt_lines(buf, 1), "resolved inline box should be hidden when show_resolved is off")
+			assert.is_true(find_virt_text(buf, 1, "%[resolved%]"), "resolved line should show the [resolved] fallback")
+			assert.is_true(find_virt_text(buf, 1, "#1"), "fallback should include the comment count sign")
+			-- the unresolved comment keeps its inline box regardless
+			assert.is_true(has_virt_lines(buf, 2), "unresolved comment should keep its inline box")
+		end)
+
 		it("marks pending comments with is_pending flag in inline mode", function()
 			local buf = helpers.create_buf({ "line1", "line2", "line3" }, "test.lua")
 			vim.api.nvim_set_current_buf(buf)

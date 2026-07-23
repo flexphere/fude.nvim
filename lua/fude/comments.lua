@@ -56,13 +56,14 @@ local function has_review_target(state)
 end
 
 --- Toggle editor visibility of resolved comments.
---- Rebuilds comment_map from state.comments so extmarks, navigation, and the
---- comment viewer follow the new visibility. The comment browser
---- (FudeReviewListComments) always shows resolved threads regardless.
+--- Only affects inline comment boxes (the virt_lines rendered in "inline"
+--- comment style): refresh_extmarks skips resolved comments when hidden.
+--- comment_map is left intact, so navigation, the comment viewer, virtualText
+--- indicators, and the comment browser (FudeReviewListComments) always show
+--- resolved threads regardless of this toggle.
 --- @return boolean the new visibility
 function M.toggle_resolved_visibility()
 	local visible = config.toggle_show_resolved()
-	config.state.comment_map = data.build_comment_map(config.state.comments, { hide_resolved = not visible })
 	ui.refresh_extmarks()
 	return visible
 end

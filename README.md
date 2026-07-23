@@ -218,7 +218,8 @@ require("fude").setup({
   -- comment browser, comment viewer, and virtual text with `label`. Inline
   -- comment boxes instead show a fixed "[resolved thread]" on the thread's
   -- head (oldest) comment only.
-  -- Editor visibility can be toggled at runtime with :FudeReviewToggleResolved.
+  -- :FudeReviewToggleResolved hides resolved comments' inline boxes at runtime;
+  -- hidden ones fall back to the virtual text indicator (e.g. "[resolved] #1").
   -- Set show = false to hide all resolved labels. (The review-threads fetch
   -- is shared with outdated detection; it is skipped only when outdated.show
   -- is also false and no pending review exists.)

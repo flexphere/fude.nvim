@@ -355,7 +355,10 @@ describe("sync integration", function()
 			assert.is_nil(by_id[2].is_resolved, "unsubmitted pending reply must not be marked resolved")
 		end)
 
-		it("keeps resolved comments hidden from comment_map across reloads", function()
+		it("keeps resolved comments in comment_map across reloads even when show_resolved is off", function()
+			-- The resolved-visibility toggle only hides inline comment boxes at
+			-- render time; comment_map always keeps resolved comments so navigation,
+			-- the viewer, and the comment browser stay unaffected.
 			local gh = require("fude.gh")
 			helpers.mock(gh, "get_review_threads", function(_, callback)
 				vim.schedule(function()
@@ -386,7 +389,7 @@ describe("sync integration", function()
 			end)
 			assert.is_true(ok)
 			assert.are.equal(2, #config.state.comments, "resolved comments stay in state.comments")
-			assert.is_nil(config.state.comment_map["foo.lua"][10], "resolved comment hidden from comment_map")
+			assert.is_not_nil(config.state.comment_map["foo.lua"][10], "resolved comment stays in comment_map")
 			assert.is_not_nil(config.state.comment_map["foo.lua"][20])
 		end)
 

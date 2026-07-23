@@ -138,32 +138,14 @@ describe("build_comment_map", function()
 		assert.are.equal(1, #map["a.lua"][10])
 	end)
 
-	it("skips resolved comments when opts.hide_resolved is true", function()
+	it("keeps resolved comments in the map (visibility is handled at render time)", function()
 		local input = {
 			{ path = "a.lua", line = 10, body = "resolved", is_resolved = true },
 			{ path = "a.lua", line = 10, body = "resolved reply", is_resolved = true },
-			{ path = "a.lua", line = 20, body = "unresolved" },
+			{ path = "a.lua", line = 20, body = "local resolved", resolved = true },
 		}
-		local map = comments.build_comment_map(input, { hide_resolved = true })
-		assert.is_nil(map["a.lua"][10])
-		assert.are.equal(1, #map["a.lua"][20])
-	end)
-
-	it("keeps resolved comments when opts.hide_resolved is false", function()
-		local input = {
-			{ path = "a.lua", line = 10, body = "resolved", is_resolved = true },
-		}
-		local map = comments.build_comment_map(input, { hide_resolved = false })
-		assert.are.equal(1, #map["a.lua"][10])
-	end)
-
-	it("skips locally resolved comments (resolved field) when opts.hide_resolved is true", function()
-		local input = {
-			{ path = "a.lua", line = 10, body = "local resolved", resolved = true },
-			{ path = "a.lua", line = 20, body = "local open", resolved = false },
-		}
-		local map = comments.build_comment_map(input, { hide_resolved = true })
-		assert.is_nil(map["a.lua"][10])
+		local map = comments.build_comment_map(input)
+		assert.are.equal(2, #map["a.lua"][10])
 		assert.are.equal(1, #map["a.lua"][20])
 	end)
 end)
@@ -185,10 +167,13 @@ describe("toggle_resolved_visibility", function()
 		config.state.comment_map = {}
 	end)
 
-	it("hides resolved comments from comment_map, then shows them again", function()
+	it("flips visibility without removing resolved comments from comment_map", function()
+		-- The toggle only affects inline comment boxes (rendered in refresh_extmarks).
+		-- comment_map keeps resolved comments so navigation, the viewer, and the
+		-- comment browser stay unaffected.
 		local visible = comments.toggle_resolved_visibility()
 		assert.is_false(visible)
-		assert.is_nil(config.state.comment_map["a.lua"][10])
+		assert.are.equal(1, #config.state.comment_map["a.lua"][10])
 		assert.are.equal(1, #config.state.comment_map["a.lua"][20])
 
 		visible = comments.toggle_resolved_visibility()
@@ -1537,26 +1522,19 @@ describe("merge_pending_into_comments", function()
 		assert.is_not_nil(map["b.lua"][2])
 	end)
 
-	it("passes opts.hide_resolved through to the merged comment_map", function()
+	it("keeps resolved comments in the merged comment_map", function()
+		-- Resolved comments are never dropped from the map; the resolved-visibility
+		-- toggle only hides their inline boxes at render time.
 		local existing = {
 			{ id = 1, path = "foo.lua", line = 10, body = "resolved", is_resolved = true },
 		}
 		local pending = {
 			["bar.lua:5:5"] = { path = "bar.lua", body = "pending", line = 5, side = "RIGHT" },
 		}
-		local merged, map = data.merge_pending_into_comments(existing, pending, 100, "user1", { hide_resolved = true })
-		-- The resolved comment stays in the merged array but is hidden from the map
+		local merged, map = data.merge_pending_into_comments(existing, pending, 100, "user1")
 		assert.are.equal(2, #merged)
-		assert.is_nil(map["foo.lua"])
+		assert.is_not_nil(map["foo.lua"][10])
 		assert.is_not_nil(map["bar.lua"][5])
-	end)
-
-	it("passes opts.hide_resolved through when pending_review_id is nil", function()
-		local existing = {
-			{ id = 1, path = "foo.lua", line = 10, body = "resolved", is_resolved = true },
-		}
-		local _, map = data.merge_pending_into_comments(existing, {}, nil, "user1", { hide_resolved = true })
-		assert.is_nil(map["foo.lua"])
 	end)
 
 	it("deduplicates by removing existing comments with same pending_review_id", function()

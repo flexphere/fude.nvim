@@ -48,17 +48,12 @@ end
 --- Build a nested lookup map from a flat array of comments.
 --- Outdated comments are excluded since they cannot be displayed at correct positions.
 --- @param comments table[] flat array of comment objects
---- @param opts table|nil { hide_resolved = boolean } also exclude resolved comments
----   (used by the FudeReviewToggleResolved editor visibility toggle). Covers both
----   GitHub resolution (`is_resolved`, from review threads) and local review
----   resolution (`resolved`, from the JSONL store).
 --- @return table<string, table<number, table[]>> map[path][line] = {comments}
-function M.build_comment_map(comments, opts)
-	local hide_resolved = opts and opts.hide_resolved
+function M.build_comment_map(comments)
 	local map = {}
 	for _, c in ipairs(comments) do
 		-- Skip outdated comments (they have no valid line position)
-		if not c.is_outdated and not (hide_resolved and (c.is_resolved or c.resolved)) then
+		if not c.is_outdated then
 			local path = c.path
 			local line = (not is_null(c.line)) and c.line or c.original_line
 			if path and not is_null(line) then
@@ -241,13 +236,12 @@ end
 --- @param pending_comments table<string, table> state.pending_comments map
 --- @param pending_review_id number|nil the current pending review ID
 --- @param github_user string|nil authenticated GitHub username
---- @param opts table|nil passed through to build_comment_map ({ hide_resolved = boolean })
 --- @return table[] merged_comments
 --- @return table<string, table<number, table[]>> merged_comment_map
-function M.merge_pending_into_comments(existing_comments, pending_comments, pending_review_id, github_user, opts)
+function M.merge_pending_into_comments(existing_comments, pending_comments, pending_review_id, github_user)
 	existing_comments = existing_comments or {}
 	if not pending_review_id or not pending_comments or vim.tbl_isempty(pending_comments) then
-		return existing_comments, M.build_comment_map(existing_comments, opts)
+		return existing_comments, M.build_comment_map(existing_comments)
 	end
 
 	-- Filter out existing comments from the same pending review (avoid duplicates)
@@ -285,7 +279,7 @@ function M.merge_pending_into_comments(existing_comments, pending_comments, pend
 		end
 	end
 
-	return filtered, M.build_comment_map(filtered, opts)
+	return filtered, M.build_comment_map(filtered)
 end
 
 --- Convert pending_comments table to array of review comment objects.

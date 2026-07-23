@@ -66,7 +66,7 @@ local function fetch_comments(callback, opts)
 
 	local function apply(comments)
 		state.comments = comments
-		state.comment_map = data.build_comment_map(comments, { hide_resolved = not config.get_show_resolved() })
+		state.comment_map = data.build_comment_map(comments)
 		require("fude.ui").refresh_extmarks()
 		if not silent then
 			vim.notify(string.format("fude.nvim: Loaded %d comments", #comments), vim.log.levels.INFO)
@@ -335,8 +335,7 @@ function M.sync_pending_review(callback)
 						state.comments,
 						state.pending_comments,
 						state.pending_review_id,
-						state.github_user,
-						{ hide_resolved = not config.get_show_resolved() }
+						state.github_user
 					)
 					state.comments = merged
 					state.comment_map = merged_map
