@@ -6,9 +6,7 @@
 # The body is passed as a file to avoid shell quoting issues. The event is
 # serialized with jq -c, which guarantees a single compact (no-space) line —
 # the format fude.nvim's line-based parser and fude-watch-filter.sh both
-# rely on. After appending, the last line of the review file is compared to
-# the generated event; on mismatch the script exits non-zero.
-# On success the appended line is printed to stdout.
+# rely on. On success the appended line is printed to stdout.
 set -eu
 
 review_file=$1
@@ -26,11 +24,5 @@ line=$(jq -cn \
 	'{event:"reply",id:$id,thread_id:$thread,in_reply_to:$thread,body:($body|sub("\n+$";"")),author:"claude",author_type:"agent",created_at:$ts}')
 
 printf '%s\n' "$line" >> "$review_file"
-
-last=$(tail -n 1 "$review_file")
-if [ "$last" != "$line" ]; then
-	echo 'fude-watch-reply: append verification failed (last line differs)' >&2
-	exit 1
-fi
 
 printf '%s\n' "$line"

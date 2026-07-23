@@ -77,14 +77,14 @@ base directory 配下）をパイプに挟んで機械的に落とす:
 
 返信は同梱の `fude-watch-reply.sh` で `REVIEW_FILE` に append する（既存行の
 書き換え禁止）。UUID・タイムスタンプ・`author_type: "agent"` の付与、1行の
-compact JSON への正規化（Step 3 のフィルタが echo を遮断できる形式）、
-追記後の検証はスクリプトが保証する:
+compact JSON への正規化（Step 3 のフィルタが echo を遮断できる形式）は
+スクリプトが保証する:
 
 1. 返信本文だけを scratchpad のテキストファイルに Write する（Markdown 可）
 2. `bash <スキルの base directory>/fude-watch-reply.sh <REVIEW_FILE> <rootコメントのid> <本文ファイル>` を実行する
    - 第2引数は **root コメントの id**（reply への reply でも root を指す）
    - 成功すると追記したイベントの 1 行 JSON を stdout に出力する。非 0 で
-     終了した場合は追記が壊れている可能性があるので、REVIEW_FILE の末尾を
+     終了した場合は追記が行われていない可能性が高いので、REVIEW_FILE の末尾を
      確認してユーザーに報告する
 
 コード修正を伴う場合は、修正 → テスト/lint 確認 → reply 追記の順で行い、
