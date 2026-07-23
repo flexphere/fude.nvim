@@ -55,6 +55,19 @@ local function has_review_target(state)
 	return state.active and (state.pr_number ~= nil or state.local_session ~= nil)
 end
 
+--- Toggle editor visibility of resolved comments.
+--- Only affects inline comment boxes (the virt_lines rendered in "inline"
+--- comment style): refresh_extmarks skips resolved comments when hidden.
+--- comment_map is left intact, so navigation, the comment viewer, virtualText
+--- indicators, and the comment browser (FudeReviewListComments) always show
+--- resolved threads regardless of this toggle.
+--- @return boolean the new visibility
+function M.toggle_resolved_visibility()
+	local visible = config.toggle_show_resolved()
+	ui.refresh_extmarks()
+	return visible
+end
+
 --- Get comments at a specific file and line.
 --- @param rel_path string repo-relative file path
 --- @param line number line number

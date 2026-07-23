@@ -153,6 +153,7 @@ M.state = {
 	github_user = nil, -- Authenticated GitHub username (for ownership check)
 	comment_browser = nil, -- 3-pane comment browser window state
 	current_comment_style = nil, -- Runtime override for comment_style (nil = use opts.comment_style)
+	show_resolved = nil, -- Runtime override for resolved comment visibility in the editor (nil = visible)
 	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
 	reloading = false, -- Guard flag to prevent concurrent reloads
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
@@ -209,6 +210,7 @@ function M.reset_state()
 		github_user = nil,
 		comment_browser = nil,
 		current_comment_style = nil,
+		show_resolved = nil,
 		reload_timer = nil,
 		reloading = false,
 		gitsigns_reset = false,
@@ -271,6 +273,24 @@ function M.toggle_comment_style()
 	local new_style = current == "virtualText" and "inline" or "virtualText"
 	M.state.current_comment_style = new_style
 	return new_style
+end
+
+--- Get whether resolved comments are currently visible in the editor.
+--- Returns the runtime override if set, otherwise defaults to visible.
+--- Editor-only: the comment browser always shows resolved threads.
+--- @return boolean
+function M.get_show_resolved()
+	if M.state.show_resolved ~= nil then
+		return M.state.show_resolved
+	end
+	return true
+end
+
+--- Toggle editor visibility of resolved comments.
+--- @return boolean the new visibility
+function M.toggle_show_resolved()
+	M.state.show_resolved = not M.get_show_resolved()
+	return M.state.show_resolved
 end
 
 return M

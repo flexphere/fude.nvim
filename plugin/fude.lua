@@ -196,6 +196,20 @@ vim.api.nvim_create_user_command("FudeReviewToggleCommentStyle", function()
 	require("fude.ui").refresh_extmarks()
 end, { desc = "Toggle comment display style (virtualText/inline)" })
 
+vim.api.nvim_create_user_command("FudeReviewToggleResolved", function()
+	local config = require("fude.config")
+	if not config.state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if config.opts.resolved and config.opts.resolved.show == false then
+		vim.notify("fude.nvim: Resolved display is disabled (resolved.show = false)", vim.log.levels.WARN)
+		return
+	end
+	local visible = require("fude.comments").toggle_resolved_visibility()
+	vim.notify("fude.nvim: Resolved comments: " .. (visible and "shown" or "hidden"), vim.log.levels.INFO)
+end, { desc = "Toggle visibility of resolved comments in the editor" })
+
 vim.api.nvim_create_user_command("FudeReviewToggleGitsigns", function()
 	require("fude").toggle_gitsigns()
 end, { desc = "Toggle gitsigns between PR base and HEAD" })

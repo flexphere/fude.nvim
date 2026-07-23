@@ -308,6 +308,91 @@ describe("sync integration", function()
 			assert.is_true(by_id[3].is_resolved, "sibling should inherit is_resolved via the shared deleted-root id")
 		end)
 
+		it("does not mark unsubmitted pending replies on a resolved thread as resolved", function()
+			local gh = require("fude.gh")
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				vim.schedule(function()
+					callback(nil, {
+						[1] = { is_outdated = false, is_resolved = true, original_line = 10 },
+					}, {})
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {
+					{ id = 99, state = "PENDING" },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "resolved root", in_reply_to_id = vim.NIL },
+				},
+				["api:repos/{owner}/{repo}/pulls/42/reviews/99/comments"] = {
+					{
+						id = 2,
+						path = "foo.lua",
+						line = 10,
+						body = "unsubmitted pending reply",
+						side = "RIGHT",
+						in_reply_to_id = 1,
+						pull_request_review_id = 99,
+					},
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+
+			sync.load_comments()
+
+			local ok = helpers.wait_for(function()
+				return #config.state.comments > 0
+			end)
+			assert.is_true(ok, "Should have fetched comments")
+
+			local by_id = {}
+			for _, c in ipairs(config.state.comments) do
+				by_id[c.id] = c
+			end
+			assert.is_true(by_id[1].is_resolved)
+			assert.is_nil(by_id[2].is_resolved, "unsubmitted pending reply must not be marked resolved")
+		end)
+
+		it("keeps resolved comments in comment_map across reloads even when show_resolved is off", function()
+			-- The resolved-visibility toggle only hides inline comment boxes at
+			-- render time; comment_map always keeps resolved comments so navigation,
+			-- the viewer, and the comment browser stay unaffected.
+			local gh = require("fude.gh")
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				vim.schedule(function()
+					callback(nil, {
+						[1] = { is_outdated = false, is_resolved = true, original_line = 10 },
+					}, {})
+				end)
+			end)
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/reviews"] = {},
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = {
+					{ id = 1, path = "foo.lua", line = 10, body = "resolved", in_reply_to_id = vim.NIL },
+					{ id = 2, path = "foo.lua", line = 20, body = "open", in_reply_to_id = vim.NIL },
+				},
+			})
+
+			config.state.pr_number = 42
+			config.state.active = true
+			config.state.show_resolved = false -- user toggled resolved comments off
+
+			local cb_called = false
+			sync.load_comments(function()
+				cb_called = true
+			end)
+
+			local ok = helpers.wait_for(function()
+				return cb_called
+			end)
+			assert.is_true(ok)
+			assert.are.equal(2, #config.state.comments, "resolved comments stay in state.comments")
+			assert.is_not_nil(config.state.comment_map["foo.lua"][10], "resolved comment stays in comment_map")
+			assert.is_not_nil(config.state.comment_map["foo.lua"][20])
+		end)
+
 		it("applies only is_resolved when outdated disabled but resolved enabled", function()
 			config.setup({ outdated = { show = false } })
 

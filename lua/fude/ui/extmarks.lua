@@ -77,6 +77,58 @@ function M.clear_comment_line_highlight()
 	comment_line_highlight.extmark_ids = {}
 end
 
+--- Render end-of-line virtualText indicators (comment count, pending, resolved)
+--- for a set of comments on a line. Shared by the virtualText comment style and
+--- by the inline style's fallback for resolved comments whose box is hidden by
+--- FudeReviewToggleResolved, so both paths produce an identical indicator.
+--- @param buf number buffer handle
+--- @param line number 1-indexed line number
+--- @param comments table[] comments on the line
+local function render_virt_text_indicators(buf, line, comments)
+	local state = config.state
+	local submitted_count = 0
+	local has_pending = false
+	local all_resolved = util.all_comments_resolved(comments)
+	for _, c in ipairs(comments) do
+		if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
+			has_pending = true
+		else
+			submitted_count = submitted_count + 1
+		end
+	end
+
+	if submitted_count > 0 then
+		pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+			virt_text = {
+				{ string.format(" %s%d", config.opts.signs.comment, submitted_count), config.opts.signs.comment_hl },
+			},
+			virt_text_pos = "eol",
+			priority = 50,
+		})
+	end
+	if has_pending then
+		pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+			virt_text = {
+				{ " " .. config.opts.signs.pending, config.opts.signs.pending_hl },
+			},
+			virt_text_pos = "eol",
+			priority = 45,
+		})
+	end
+	-- Resolved indicator: only when every thread on the line is resolved
+	-- (a partially resolved line still needs attention).
+	if all_resolved then
+		local resolved_opts = config.opts.resolved or {}
+		pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
+			virt_text = {
+				{ " " .. (resolved_opts.label or "[resolved]"), resolved_opts.hl_group or "DiagnosticOk" },
+			},
+			virt_text_pos = "eol",
+			priority = 43,
+		})
+	end
+end
+
 --- Refresh extmarks (virtual text) for the current buffer.
 function M.refresh_extmarks()
 	local state = config.state
@@ -98,78 +150,59 @@ function M.refresh_extmarks()
 	local comment_lines = comments_mod.get_comment_lines(rel_path)
 
 	local style = config.get_comment_style()
-	local inline_opts = config.opts.inline or {}
+	local inline_opts
+	if style == "inline" then
+		inline_opts = config.opts.inline or {}
+	end
 
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)
 
 		if style == "inline" then
-			-- Inline mode: display full comment content below the line
-			-- Build arrays only when needed for inline display
-			local all_comments_for_display = {}
+			-- Inline mode: display full comment content below the line.
+			-- When FudeReviewToggleResolved is off, resolved comments do not get an
+			-- inline box. If that leaves the line with nothing to show, it falls back
+			-- to the same EOL virtualText indicator the virtualText style would show
+			-- (e.g. `[resolved] 🗒️1`) so the line stays marked. Pending comments are
+			-- never resolved, so they always keep their inline box.
+			local show_resolved = config.get_show_resolved()
+			local box_comments = {}
+			local hidden_resolved = {}
 			for _, c in ipairs(comments) do
 				if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
 					local pc = vim.tbl_extend("force", {}, c)
 					pc.is_pending = true
-					table.insert(all_comments_for_display, pc)
+					table.insert(box_comments, pc)
+				elseif show_resolved or not c.is_resolved then
+					-- Read `is_resolved` alone (local mode normalizes `resolved` onto it,
+					-- gated by resolved.show), matching util.all_comments_resolved so the
+					-- box/fallback split and the `[resolved]` label never disagree.
+					table.insert(box_comments, c)
 				else
-					table.insert(all_comments_for_display, c)
+					table.insert(hidden_resolved, c)
 				end
 			end
 
-			if #all_comments_for_display > 0 then
+			if #box_comments > 0 then
 				local inline = require("fude.ui.inline")
-				local result = inline.format_comments_for_inline(all_comments_for_display, config.format_date, inline_opts)
+				local result = inline.format_comments_for_inline(box_comments, config.format_date, inline_opts)
 				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
 					virt_lines = result.virt_lines,
 					virt_lines_above = false,
 					priority = 50,
 				})
+			elseif #hidden_resolved > 0 then
+				-- Only reached when the line has no box to show, i.e. every comment on
+				-- it is a hidden resolved one. hidden_resolved therefore equals the
+				-- whole line, so render_virt_text_indicators judges the count and the
+				-- `[resolved]` label over all of the line's comments (matching the
+				-- virtualText style). On a mixed line the box above already marks it,
+				-- so no fallback is rendered.
+				render_virt_text_indicators(buf, line, hidden_resolved)
 			end
 		else
 			-- virtualText mode: display indicators at end of line (original behavior)
-			-- Only compute counts, avoid building arrays
-			local submitted_count = 0
-			local has_pending = false
-			local all_resolved = util.all_comments_resolved(comments)
-			for _, c in ipairs(comments) do
-				if state.pending_review_id and c.pull_request_review_id == state.pending_review_id then
-					has_pending = true
-				else
-					submitted_count = submitted_count + 1
-				end
-			end
-
-			if submitted_count > 0 then
-				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
-					virt_text = {
-						{ string.format(" %s%d", config.opts.signs.comment, submitted_count), config.opts.signs.comment_hl },
-					},
-					virt_text_pos = "eol",
-					priority = 50,
-				})
-			end
-			if has_pending then
-				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
-					virt_text = {
-						{ " " .. config.opts.signs.pending, config.opts.signs.pending_hl },
-					},
-					virt_text_pos = "eol",
-					priority = 45,
-				})
-			end
-			-- Resolved indicator: only when every thread on the line is resolved
-			-- (a partially resolved line still needs attention).
-			if all_resolved then
-				local resolved_opts = config.opts.resolved or {}
-				pcall(vim.api.nvim_buf_set_extmark, buf, state.ns_id, line - 1, 0, {
-					virt_text = {
-						{ " " .. (resolved_opts.label or "[resolved]"), resolved_opts.hl_group or "DiagnosticOk" },
-					},
-					virt_text_pos = "eol",
-					priority = 43,
-				})
-			end
+			render_virt_text_indicators(buf, line, comments)
 		end
 	end
 
