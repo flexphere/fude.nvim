@@ -76,6 +76,13 @@ Monitor ツールで新規イベントを待ち受ける:
 - `thread_id` / `in_reply_to` は **root コメントの id**（reply への reply でも root を指す）
 - `author_type` は必ず `"agent"`
 - 追記は `printf '%s\n' '<json>' >> <REVIEW_FILE>` のようにアトミックな1行 append で行う
+- ハーネスの制約等で JSON を一時ファイルに書いてから追記する場合は、
+  `jq -c . <一時ファイル> >> <REVIEW_FILE>` で追記する。**`cat` での追記は禁止** —
+  エディタや post-edit フックが一時ファイルを pretty-print（複数行化）することがあり、
+  そのまま `cat` すると複数行 JSON が JSONL に混入する。`jq -c` は追記の瞬間に
+  必ず 1 行へ正規化するので、この事故を構造的に防げる
+- 追記後に `tail -n 1 <REVIEW_FILE>` が追記したイベント全体（`{...}` の完全な 1 行）に
+  なっていることを確認する。`}` だけ等の断片が見えたら複数行で追記されている
 
 コード修正を伴う場合は、修正 → テスト/lint 確認 → reply 追記の順で行い、
 reply の body には何をどう変えたかを簡潔に書く。

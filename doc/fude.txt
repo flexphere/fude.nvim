@@ -982,8 +982,11 @@ The JSONL file is the only contract. An agent reads the events and appends
 replies with `author_type: "agent"` (shown with an `[agent]` badge). Enable
 `auto_reload` (see |fude-configuration|) to pick up agent replies
 automatically. Agents must append whole lines only — never rewrite existing
-lines. A skill scaffold for a resident Claude Code session is provided at
-`contrib/skills/fude-watch/` in the repository.
+lines — writing each event as one compact JSON line (e.g. via `jq -c`). As
+a safety net the parser also recovers records accidentally appended as
+pretty-printed multi-line JSON (e.g. reformatted by an editor hook), so
+such replies still show up. A skill scaffold for a resident Claude Code
+session is provided at `contrib/skills/fude-watch/` in the repository.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:

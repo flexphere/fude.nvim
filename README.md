@@ -327,7 +327,11 @@ Each line of `.fude/reviews/<session-id>.jsonl` is one JSON event:
 Other event kinds: `edit` (body replacement), `move` (line re-anchor),
 `reopen`, `delete` (hides the comment; the log line remains as an audit
 trail), and `viewed` (per-file viewed state). Agents should **append only**
-— never rewrite existing lines.
+— never rewrite existing lines — and must write each event as a single
+line (compact JSON, e.g. via `jq -c`). As a safety net, the parser also
+recovers records that were accidentally appended pretty-printed across
+multiple lines (e.g. by an editor formatter hook), so such replies still
+show up instead of being silently dropped.
 
 For a resident Claude Code session, `contrib/skills/fude-watch/` provides a
 skill scaffold that tails the active session file and responds to new
