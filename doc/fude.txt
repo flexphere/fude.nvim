@@ -973,7 +973,11 @@ Add `.fude/` to your `.gitignore`. Event kinds: `session` (header),
 `comment` (thread root with path/start_line/end_line/body/author/
 author_type/context), `reply`, `edit`, `move` (line re-anchor), `resolve`,
 `reopen`, `delete` (hides the comment from the view; the log line
-remains as an audit trail), and `viewed` (per-file viewed state).
+remains as an audit trail), and `viewed` (per-file viewed state). Every
+action event (`comment`/`reply`/`edit`/`move`/`resolve`/`reopen`/`delete`/
+`viewed`) carries `author_type` (`"human"` or `"agent"`, default `"human"`)
+so consumers can filter events by writer; the `session` header is metadata,
+not a user action, and has no `author_type`.
 
 Behavior~
 
