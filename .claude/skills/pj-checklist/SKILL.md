@@ -5,8 +5,8 @@ description: fude.nvim プロジェクト固有の実装・レビューチェッ
 
 # fude.nvim プロジェクトチェックリスト
 
-このスキルは `/self-review` から読み込まれ、fude.nvim 固有のチェック項目を提供する。
-`/develop` Phase 3（実装）や `/self-review` のラウンド1〜2（レビュー）で参照される。
+このスキルは `/develop-self-review` から読み込まれ、fude.nvim 固有のチェック項目を提供する。
+`/develop` Phase 3（実装）や `/develop-self-review` のラウンド1〜2（レビュー）で参照される。
 
 ## 実装チェックリスト
 

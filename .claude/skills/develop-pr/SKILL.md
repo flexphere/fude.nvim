@@ -1,5 +1,5 @@
 ---
-name: pr
+name: develop-pr
 description: コミット分割、コミット実行、draft PR 作成を行う。
 argument-hint: ["(引数不要 — カレントブランチの変更をPRにする)"]
 ---

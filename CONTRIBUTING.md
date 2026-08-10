@@ -95,16 +95,17 @@ nvim --headless -c "helptags doc/" -c q
 本リポジトリには開発フローを補助する Claude Code スキルが `.claude/skills/` に同梱されています。以下が推奨フローです:
 
 1. **実装**: `/develop` にやりたいことを伝え、対話しながら計画・実装・テスト・セルフレビュー・ドキュメント更新・PR 作成までを進めます。
-2. **レビュー対応**: レビュー指摘があれば `/review-respond` で対応してください。コード修正、セルフレビュー、動作確認、返信・push まで一貫して行います。
+2. **レビュー対応**: レビュー指摘があれば `/develop-review-respond` で対応してください。コード修正、セルフレビュー、動作確認、返信・push まで一貫して行います。
 
 各スキルの詳細:
 
 | スキル | 役割 |
 |--------|------|
 | `/develop` | 計画 → 実装 → テスト → ドキュメント → セルフレビュー → PR 作成 |
-| `/self-review` | 3 ラウンドセルフレビュー（pj-checklist 2 ラウンド + `/review` 1 ラウンド） |
-| `/pr` | コミット分割 → コミット → draft PR 作成 |
-| `/review-respond` | レビュー対応 → 修正 → セルフレビュー → 返信・push |
+| `/develop-self-review` | 3 ラウンドセルフレビュー（pj-checklist 2 ラウンド + `/review` 1 ラウンド） |
+| `/develop-pr` | コミット分割 → コミット → draft PR 作成 |
+| `/develop-review-respond` | レビュー対応 → 修正 → セルフレビュー → 返信・push |
+| `/develop-review-watch` | PR 作成後のレビュー待受ループ（指摘検知 → `/develop-review-respond` → 無音で Ready 化） |
 | `/pj-checklist` | fude.nvim 固有の実装・レビューチェックリスト |
 
 Claude Code を使わない場合も、上記と同等のチェック（`make all` 実行、テスト追加、ドキュメント更新、セルフレビュー）を通していただければ問題ありません。
