@@ -347,10 +347,11 @@ Using lazy.nvim: >lua
     extension (png/jpg/jpeg/gif/svg/webp/mp4/mov/webm); anything else
     pastes as-is.
 
-    Limitations: only the inline `](file://...)` form is recognized —
-    HTML `<img>` tags and reference-style definitions are not. Paths
-    may contain spaces, but not `)` or `#` (gh treats `#` as the alt
-    text separator).
+    Limitations: only inline `](file://...)` / `](<file://...>)` forms
+    are recognized — HTML `<img>` tags and reference-style definitions
+    are not. Paths may contain spaces (the destination is rewritten in
+    the CommonMark `<...>` form so gh can match it), but not `)` or
+    `#` (gh treats `#` as the alt text separator).
 
     Does not require an active review session. Works in any git
     repository with a branch that can create a PR.

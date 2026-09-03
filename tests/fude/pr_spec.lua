@@ -294,10 +294,18 @@ describe("parse_body_attachments", function()
 		assert.are.same({}, result.attachments)
 	end)
 
-	it("captures paths containing spaces", function()
+	it("captures paths containing spaces and rewrites them in angle-bracket form", function()
+		-- gh parses the body as CommonMark: a bare destination with spaces is
+		-- not a link, so gh would append the upload instead of rewriting it
 		local result = pr.parse_body_attachments("![shot](file://./Screen Shot 2026-09-03.png)")
-		assert.are.equal("![shot](./Screen Shot 2026-09-03.png)", result.body)
+		assert.are.equal("![shot](<./Screen Shot 2026-09-03.png>)", result.body)
 		assert.are.same({ "./Screen Shot 2026-09-03.png" }, result.attachments)
+	end)
+
+	it("accepts the angle-bracket input form", function()
+		local result = pr.parse_body_attachments("![shot](<file://./a b.png>)")
+		assert.are.equal("![shot](<./a b.png>)", result.body)
+		assert.are.same({ "./a b.png" }, result.attachments)
 	end)
 
 	it("rewrites different spellings of the same file to the first-seen spelling", function()
@@ -399,9 +407,9 @@ describe("transform_media_paste", function()
 		assert.are.same({ "![](file:///tmp/shot.png)" }, result)
 	end)
 
-	it("strips Finder quotes before wrapping", function()
+	it("strips Finder quotes and uses angle-bracket form for spaced paths", function()
 		local result = pr.transform_media_paste({ "'/tmp/Screen Shot.png'" }, "")
-		assert.are.same({ "![](file:///tmp/Screen Shot.png)" }, result)
+		assert.are.same({ "![](<file:///tmp/Screen Shot.png>)" }, result)
 	end)
 
 	it("inserts only the bare path when cursor is right after file://", function()

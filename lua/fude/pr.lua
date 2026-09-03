@@ -59,15 +59,29 @@ local function expand_home(path)
 	return path
 end
 
+--- Format a link destination for the rewritten body. gh parses the body as
+--- CommonMark, where a bare destination cannot contain whitespace — such a
+--- reference is not recognized and gh appends the upload instead of rewriting
+--- it — so a path with whitespace is written in the angle-bracket form.
+--- @param path string
+--- @return string
+local function format_attachment_destination(path)
+	if path:find("%s") then
+		return "<" .. path .. ">"
+	end
+	return path
+end
+
 --- Extract local attachment paths (file:// scheme) from a PR body.
---- Only inline markdown link/image destinations `](file://...)` are treated as
---- attachments; lines inside fenced code blocks (``` or ~~~) are skipped
---- (inline code spans are not recognized). Paths may contain spaces but not
---- `)`. The file:// prefix is stripped from the body so the remaining path
---- matches the --attach argument (gh rewrites matching body references to the
---- uploaded URL). Different spellings of the same file (e.g. "./x.png" and
---- "x.png") are rewritten to the first-seen spelling so gh receives a single
---- --attach flag that still matches every reference.
+--- Only inline markdown link/image destinations — `](file://...)` or the
+--- angle-bracket form `](<file://...>)` — are treated as attachments; lines
+--- inside fenced code blocks (``` or ~~~) are skipped (inline code spans are
+--- not recognized). Paths may contain spaces (the destination is rewritten in
+--- the CommonMark `<...>` form) but not `)`. The file:// prefix is stripped
+--- from the body so the remaining path matches the --attach argument (gh
+--- rewrites matching body references to the uploaded URL). Different
+--- spellings of the same file (e.g. "./x.png" and "x.png") are rewritten to
+--- the first-seen spelling so gh receives a single --attach flag.
 --- @param body string PR body
 --- @param expand_fn nil|fun(path: string): string path expansion applied to each extracted path (e.g. "~" expansion)
 --- @return table { body: string, attachments: string[] } rewritten body and deduplicated attachment paths
@@ -77,6 +91,19 @@ function M.parse_body_attachments(body, expand_fn)
 	end
 	local attachments = {}
 	local canonical = {} -- normalized key -> first-seen spelling
+	local function collect(pre, path, post)
+		path = vim.trim(path)
+		if path == "" then
+			return nil -- keep the original text
+		end
+		local expanded = expand_fn(path)
+		local key = (expanded:gsub("^%./", ""))
+		if not canonical[key] then
+			canonical[key] = expanded
+			table.insert(attachments, expanded)
+		end
+		return pre .. format_attachment_destination(canonical[key]) .. post
+	end
 	local fence = nil -- opening fence marker ("```" or "~~~") while inside a fenced block
 	local out_lines = {}
 	for _, line in ipairs(vim.split(body, "\n", { plain = true })) do
@@ -88,19 +115,8 @@ function M.parse_body_attachments(body, expand_fn)
 		elseif marker then
 			fence = marker
 		else
-			line = line:gsub("(%]%()file://([^%)]*)(%))", function(pre, path, post)
-				path = vim.trim(path)
-				if path == "" then
-					return nil -- keep the original text
-				end
-				local expanded = expand_fn(path)
-				local key = (expanded:gsub("^%./", ""))
-				if not canonical[key] then
-					canonical[key] = expanded
-					table.insert(attachments, expanded)
-				end
-				return pre .. canonical[key] .. post
-			end)
+			line = line:gsub("(%]%()<file://([^>]*)>(%))", collect)
+			line = line:gsub("(%]%()file://([^%)]*)(%))", collect)
 		end
 		table.insert(out_lines, line)
 	end
@@ -182,9 +198,9 @@ function M.transform_media_paste(lines, before_cursor)
 		return { path }
 	end
 	if before_cursor:sub(-2) == "](" then
-		return { "file://" .. path }
+		return { format_attachment_destination("file://" .. path) }
 	end
-	return { "![](file://" .. path .. ")" }
+	return { "![](" .. format_attachment_destination("file://" .. path) .. ")" }
 end
 
 --- Build the attachment-count suffix for success notifications.
