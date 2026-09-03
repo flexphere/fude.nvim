@@ -321,6 +321,37 @@ describe("parse_body_attachments", function()
 		assert.are.same({}, result.attachments)
 	end)
 
+	it("keeps angle-bracket form for paths containing parentheses", function()
+		local result = pr.parse_body_attachments("![s](<file://./shot(1).png>)")
+		assert.are.equal("![s](<./shot(1).png>)", result.body)
+		assert.are.same({ "./shot(1).png" }, result.attachments)
+	end)
+
+	it("rewrites a bare path containing '(' in angle-bracket form", function()
+		local result = pr.parse_body_attachments("![s](file://./shot(1.png)")
+		assert.are.equal("![s](<./shot(1.png>)", result.body)
+		assert.are.same({ "./shot(1.png" }, result.attachments)
+	end)
+
+	it("leaves paths containing '<' untouched", function()
+		local body = "![s](file://./a<b.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("does not close a fence with an info-string line inside it", function()
+		local body = "```\n```lua\n![s](file://./x.png)\n```\n![b](file://./out.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.same({ "./out.png" }, result.attachments)
+	end)
+
+	it("closes a fence with a longer marker run", function()
+		local body = "```\ncode\n`````\n![b](file://./out.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.same({ "./out.png" }, result.attachments)
+	end)
+
 	it("leaves paths containing '#' untouched (gh's alt text separator)", function()
 		local body = "![s](file://./issue#12.png)"
 		local result = pr.parse_body_attachments(body)
@@ -417,6 +448,11 @@ describe("is_local_media_path", function()
 	it("rejects paths containing '#' (unattachable via gh --attach)", function()
 		assert.is_false(pr.is_local_media_path("/tmp/issue#12.png"))
 	end)
+
+	it("rejects paths containing '<' or '>' (break the angle-bracket destination)", function()
+		assert.is_false(pr.is_local_media_path("/tmp/a<b.png"))
+		assert.is_false(pr.is_local_media_path("/tmp/a>b.png"))
+	end)
 end)
 
 describe("transform_media_paste", function()
@@ -452,6 +488,11 @@ describe("transform_media_paste", function()
 	it("returns nil for non-media pastes", function()
 		assert.is_nil(pr.transform_media_paste({ "plain text" }, ""))
 		assert.is_nil(pr.transform_media_paste({ "/tmp/notes.txt" }, ""))
+	end)
+
+	it("uses angle-bracket form for paths containing parentheses", function()
+		local result = pr.transform_media_paste({ "/tmp/shot(1).png" }, "")
+		assert.are.same({ "![](<file:///tmp/shot(1).png>)" }, result)
 	end)
 end)
 

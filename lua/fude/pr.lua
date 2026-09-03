@@ -60,13 +60,14 @@ local function expand_home(path)
 end
 
 --- Format a link destination for the rewritten body. gh parses the body as
---- CommonMark, where a bare destination cannot contain whitespace — such a
---- reference is not recognized and gh appends the upload instead of rewriting
---- it — so a path with whitespace is written in the angle-bracket form.
+--- CommonMark, where a bare destination cannot contain whitespace or
+--- unbalanced parentheses — such a reference is not recognized and gh appends
+--- the upload instead of rewriting it — so a path with whitespace or
+--- parentheses is written in the angle-bracket form.
 --- @param path string
 --- @return string
 local function format_attachment_destination(path)
-	if path:find("%s") then
+	if path:find("[%s%(%)]") then
 		return "<" .. path .. ">"
 	end
 	return path
@@ -82,9 +83,11 @@ end
 --- rewrites matching body references to the uploaded URL). Different
 --- spellings of the same file (e.g. "./x.png" and "x.png") are rewritten to
 --- the first-seen spelling so gh receives a single --attach flag. A path
---- containing "#" is not supported (gh treats "#" as the alt text separator
---- in --attach arguments): such a reference is left untouched — not attached
---- and not rewritten.
+--- containing "#" (gh treats it as the alt text separator in --attach
+--- arguments) or "<"/">" (not representable in an angle-bracket destination)
+--- is not supported: such a reference is left untouched — not attached and
+--- not rewritten. Paths with spaces or parentheses are supported and written
+--- in the angle-bracket destination form.
 --- @param body string PR body
 --- @param expand_fn nil|fun(path: string): string path expansion applied to each extracted path (e.g. "~" expansion)
 --- @return table { body: string, attachments: string[] } rewritten body and deduplicated attachment paths
@@ -97,8 +100,9 @@ function M.parse_body_attachments(body, expand_fn)
 	local function collect(pre, path, post)
 		path = vim.trim(path)
 		-- "#" would be split as the alt text separator by gh's --attach
-		-- parsing, attaching the wrong file; leave such references untouched
-		if path == "" or path:find("#", 1, true) then
+		-- parsing, attaching the wrong file; "<"/">" cannot survive the
+		-- angle-bracket destination form. Leave such references untouched
+		if path == "" or path:find("[#<>]") then
 			return nil -- keep the original text
 		end
 		local expanded = expand_fn(path)
@@ -114,7 +118,9 @@ function M.parse_body_attachments(body, expand_fn)
 	for _, line in ipairs(vim.split(body, "\n", { plain = true })) do
 		local marker = line:match("^%s*(```)") or line:match("^%s*(~~~)")
 		if fence then
-			if marker == fence then
+			-- A closing fence carries no info string (CommonMark), so a line
+			-- like ```lua inside a fence is content, not a close
+			if marker == fence and line:match("^%s*" .. fence .. "+%s*$") then
 				fence = nil
 			end
 		elseif marker then
@@ -168,16 +174,17 @@ function M.clean_pasted_path(text)
 end
 
 --- Whether a cleaned path looks like a local media file (image/video).
---- Paths containing "#" are rejected — parse_body_attachments cannot attach
---- them (gh treats "#" as the alt text separator), so converting such a paste
---- would only produce a dead file:// reference.
+--- Paths containing "#" or "<"/">" are rejected — parse_body_attachments
+--- cannot attach them (gh treats "#" as the alt text separator; "<"/">" break
+--- the angle-bracket destination form), so converting such a paste would only
+--- produce a dead file:// reference.
 --- @param path string
 --- @return boolean
 function M.is_local_media_path(path)
 	if not (path:match("^/") or path:match("^~/") or path:match("^%./") or path:match("^%.%./")) then
 		return false
 	end
-	if path:find("#", 1, true) then
+	if path:find("[#<>]") then
 		return false
 	end
 	local ext = path:match("%.(%w+)$")
