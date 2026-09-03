@@ -43,6 +43,94 @@ function M.clear_draft()
 	draft = nil
 end
 
+--- Expand a leading "~/" (or a bare "~") in an attachment path to the home
+--- directory. Deliberately not vim.fn.expand(), which also runs backtick
+--- expressions as shell commands and expands globs/braces — attachment paths
+--- can come from pasted or templated text and must be treated as data.
+--- gh matches body references against --attach paths literally, so the same
+--- expanded path must be used in both the body and the --attach argument.
+--- @param path string
+--- @return string
+local function expand_home(path)
+	local home = vim.uv.os_homedir()
+	if home and (path == "~" or vim.startswith(path, "~/")) then
+		return home .. path:sub(2)
+	end
+	return path
+end
+
+--- Extract local attachment paths (file:// scheme) from a PR body.
+--- Only inline markdown link/image destinations `](file://...)` are treated as
+--- attachments; lines inside fenced code blocks (``` or ~~~) are skipped
+--- (inline code spans are not recognized). Paths may contain spaces but not
+--- `)`. The file:// prefix is stripped from the body so the remaining path
+--- matches the --attach argument (gh rewrites matching body references to the
+--- uploaded URL). Different spellings of the same file (e.g. "./x.png" and
+--- "x.png") are rewritten to the first-seen spelling so gh receives a single
+--- --attach flag that still matches every reference.
+--- @param body string PR body
+--- @param expand_fn nil|fun(path: string): string path expansion applied to each extracted path (e.g. "~" expansion)
+--- @return table { body: string, attachments: string[] } rewritten body and deduplicated attachment paths
+function M.parse_body_attachments(body, expand_fn)
+	expand_fn = expand_fn or function(path)
+		return path
+	end
+	local attachments = {}
+	local canonical = {} -- normalized key -> first-seen spelling
+	local fence = nil -- opening fence marker ("```" or "~~~") while inside a fenced block
+	local out_lines = {}
+	for _, line in ipairs(vim.split(body, "\n", { plain = true })) do
+		local marker = line:match("^%s*(```)") or line:match("^%s*(~~~)")
+		if fence then
+			if marker == fence then
+				fence = nil
+			end
+		elseif marker then
+			fence = marker
+		else
+			line = line:gsub("(%]%()file://([^%)]*)(%))", function(pre, path, post)
+				path = vim.trim(path)
+				if path == "" then
+					return nil -- keep the original text
+				end
+				local expanded = expand_fn(path)
+				local key = (expanded:gsub("^%./", ""))
+				if not canonical[key] then
+					canonical[key] = expanded
+					table.insert(attachments, expanded)
+				end
+				return pre .. canonical[key] .. post
+			end)
+		end
+		table.insert(out_lines, line)
+	end
+	return { body = table.concat(out_lines, "\n"), attachments = attachments }
+end
+
+--- Replace the unknown-flag usage dump with a concise upgrade hint when gh
+--- doesn't support --attach (added in gh 2.99.0). gh answers an unknown flag
+--- with its full multi-line usage text, which would bury the actionable part.
+--- @param err string error message from gh
+--- @return string
+function M.format_attach_error(err)
+	if err:find("unknown flag: --attach", 1, true) then
+		return "PR body attachments (--attach) require gh >= 2.99.0; please update GitHub CLI"
+	end
+	return err
+end
+
+--- Build the attachment-count suffix for success notifications.
+--- Gives feedback that extraction actually happened (e.g. 0 when a reference
+--- sat inside an unclosed code fence and was skipped).
+--- @param count number number of attached files
+--- @return string "" when count is 0, otherwise e.g. " (2 files attached)"
+function M.format_attach_suffix(count)
+	if count == 0 then
+		return ""
+	end
+	return " (" .. count .. (count == 1 and " file" or " files") .. " attached)"
+end
+
 --- Build the list of paths to search for PR templates.
 --- @param repo_root string repository root directory
 --- @return table { dirs: string[], files: string[] }
@@ -249,15 +337,17 @@ function M.open_pr_float(title_lines, body_lines, opts)
 
 		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 
-		gh.create_draft_pr(parsed.title, parsed.body, function(err, data)
+		local extracted = M.parse_body_attachments(parsed.body, expand_home)
+		gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, function(err, data)
 			if err then
-				vim.notify("fude.nvim: " .. err .. " (draft saved)", vim.log.levels.ERROR)
+				vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
 				return
 			end
 			-- Success: clear the draft
 			M.clear_draft()
 			local url = data and data.url or ""
-			vim.notify("fude.nvim: Draft PR created: " .. url, vim.log.levels.INFO)
+			local suffix = M.format_attach_suffix(#extracted.attachments)
+			vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
 		end)
 	end
 
@@ -510,13 +600,15 @@ function M.edit()
 					footer = " <CR> update | q cancel ",
 					on_submit = function(title, body, close_float)
 						vim.notify("fude.nvim: Updating PR...", vim.log.levels.INFO)
-						gh.edit_pr(num, title, body, function(edit_err)
+						local extracted = M.parse_body_attachments(body, expand_home)
+						gh.edit_pr(num, title, extracted.body, extracted.attachments, function(edit_err)
 							vim.schedule(function()
 								if edit_err then
-									vim.notify("fude.nvim: " .. edit_err, vim.log.levels.ERROR)
+									vim.notify("fude.nvim: " .. M.format_attach_error(edit_err), vim.log.levels.ERROR)
 								else
 									close_float()
-									vim.notify("fude.nvim: PR updated", vim.log.levels.INFO)
+									local suffix = M.format_attach_suffix(#extracted.attachments)
+									vim.notify("fude.nvim: PR updated" .. suffix, vim.log.levels.INFO)
 								end
 							end)
 						end)
