@@ -81,7 +81,10 @@ end
 --- from the body so the remaining path matches the --attach argument (gh
 --- rewrites matching body references to the uploaded URL). Different
 --- spellings of the same file (e.g. "./x.png" and "x.png") are rewritten to
---- the first-seen spelling so gh receives a single --attach flag.
+--- the first-seen spelling so gh receives a single --attach flag. A path
+--- containing "#" is not supported (gh treats "#" as the alt text separator
+--- in --attach arguments): such a reference is left untouched — not attached
+--- and not rewritten.
 --- @param body string PR body
 --- @param expand_fn nil|fun(path: string): string path expansion applied to each extracted path (e.g. "~" expansion)
 --- @return table { body: string, attachments: string[] } rewritten body and deduplicated attachment paths
@@ -93,7 +96,9 @@ function M.parse_body_attachments(body, expand_fn)
 	local canonical = {} -- normalized key -> first-seen spelling
 	local function collect(pre, path, post)
 		path = vim.trim(path)
-		if path == "" then
+		-- "#" would be split as the alt text separator by gh's --attach
+		-- parsing, attaching the wrong file; leave such references untouched
+		if path == "" or path:find("#", 1, true) then
 			return nil -- keep the original text
 		end
 		local expanded = expand_fn(path)
@@ -163,10 +168,16 @@ function M.clean_pasted_path(text)
 end
 
 --- Whether a cleaned path looks like a local media file (image/video).
+--- Paths containing "#" are rejected — parse_body_attachments cannot attach
+--- them (gh treats "#" as the alt text separator), so converting such a paste
+--- would only produce a dead file:// reference.
 --- @param path string
 --- @return boolean
 function M.is_local_media_path(path)
 	if not (path:match("^/") or path:match("^~/") or path:match("^%./") or path:match("^%.%./")) then
+		return false
+	end
+	if path:find("#", 1, true) then
 		return false
 	end
 	local ext = path:match("%.(%w+)$")

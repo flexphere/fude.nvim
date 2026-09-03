@@ -321,6 +321,20 @@ describe("parse_body_attachments", function()
 		assert.are.same({}, result.attachments)
 	end)
 
+	it("leaves paths containing '#' untouched (gh's alt text separator)", function()
+		local body = "![s](file://./issue#12.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("leaves angle-bracket paths containing '#' untouched", function()
+		local body = "![s](<file://./issue #12.png>)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
 	it("ignores file:// with no path", function()
 		local body = "![empty](file://)"
 		local result = pr.parse_body_attachments(body)
@@ -398,6 +412,10 @@ describe("is_local_media_path", function()
 	it("rejects bare relative paths and URLs", function()
 		assert.is_false(pr.is_local_media_path("img/shot.png"))
 		assert.is_false(pr.is_local_media_path("https://example.com/shot.png"))
+	end)
+
+	it("rejects paths containing '#' (unattachable via gh --attach)", function()
+		assert.is_false(pr.is_local_media_path("/tmp/issue#12.png"))
 	end)
 end)
 
