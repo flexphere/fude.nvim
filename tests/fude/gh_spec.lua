@@ -465,6 +465,58 @@ describe("parse_review_threads_response", function()
 	end)
 end)
 
+describe("create_draft_pr / edit_pr --attach args", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("create_draft_pr appends one --attach pair per attachment", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "https://github.com/o/r/pull/1\n")
+		end)
+		gh.create_draft_pr("t", "b", { "./a.png", "./b.mp4" }, function() end)
+		assert.are.same({
+			"pr",
+			"create",
+			"--draft",
+			"--title",
+			"t",
+			"--body",
+			"b",
+			"--attach",
+			"./a.png",
+			"--attach",
+			"./b.mp4",
+		}, captured_args)
+	end)
+
+	it("create_draft_pr omits --attach when attachments is nil or empty", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		gh.create_draft_pr("t", "b", nil, function() end)
+		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
+		gh.create_draft_pr("t", "b", {}, function() end)
+		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
+	end)
+
+	it("edit_pr inserts the PR number before flags and appends --attach pairs", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		gh.edit_pr(42, "t", "b", { "./a.png" }, function() end)
+		assert.are.same({ "pr", "edit", "42", "--title", "t", "--body", "b", "--attach", "./a.png" }, captured_args)
+	end)
+end)
+
 describe("re_request_review", function()
 	local helpers = require("tests.helpers")
 
