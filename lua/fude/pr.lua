@@ -119,6 +119,74 @@ function M.format_attach_error(err)
 	return err
 end
 
+--- File extensions treated as attachable media when pasted as a local path.
+local MEDIA_EXTENSIONS = {
+	png = true,
+	jpg = true,
+	jpeg = true,
+	gif = true,
+	svg = true,
+	webp = true,
+	mp4 = true,
+	mov = true,
+	webm = true,
+}
+
+--- Clean a pasted chunk into a local path candidate.
+--- Strips surrounding whitespace, matching quotes (Finder/terminals wrap
+--- copied paths in ' or "), and shell-escaped spaces ("\ ").
+--- @param text string
+--- @return string cleaned
+function M.clean_pasted_path(text)
+	local cleaned = vim.trim(text)
+	local quote = cleaned:sub(1, 1)
+	if (quote == "'" or quote == '"') and #cleaned >= 2 and cleaned:sub(-1) == quote then
+		cleaned = cleaned:sub(2, -2)
+	end
+	return (cleaned:gsub("\\ ", " "))
+end
+
+--- Whether a cleaned path looks like a local media file (image/video).
+--- @param path string
+--- @return boolean
+function M.is_local_media_path(path)
+	if not (path:match("^/") or path:match("^~/") or path:match("^%./") or path:match("^%.%./")) then
+		return false
+	end
+	local ext = path:match("%.(%w+)$")
+	return ext ~= nil and MEDIA_EXTENSIONS[ext:lower()] == true
+end
+
+--- Build replacement lines for a paste into the PR body, or nil to fall back
+--- to the default paste. A pasted local image/video path becomes a markdown
+--- `![](file://path)` reference; when the cursor already sits inside a
+--- `](file://` or `](` destination, only the (prefixed) path is inserted.
+--- @param lines string[] pasted lines
+--- @param before_cursor string text on the current line before the cursor
+--- @return string[]|nil
+function M.transform_media_paste(lines, before_cursor)
+	local content = {}
+	for _, l in ipairs(lines) do
+		if vim.trim(l) ~= "" then
+			table.insert(content, l)
+		end
+	end
+	if #content ~= 1 then
+		return nil
+	end
+	local path = M.clean_pasted_path(content[1])
+	if not M.is_local_media_path(path) then
+		return nil
+	end
+	if before_cursor:sub(-7) == "file://" then
+		return { path }
+	end
+	if before_cursor:sub(-2) == "](" then
+		return { "file://" .. path }
+	end
+	return { "![](file://" .. path .. ")" }
+end
+
 --- Build the attachment-count suffix for success notifications.
 --- Gives feedback that extraction actually happened (e.g. 0 when a reference
 --- sat inside an unclosed code fence and was skipped).
@@ -294,6 +362,60 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	})
 	vim.wo[body_win].wrap = true
 
+	-- Paste interception: convert a pasted local media path in the body pane
+	-- into a ![](file://...) reference. vim.paste is the only hook for
+	-- terminal (bracketed) paste — there is no dedicated autocmd event — so
+	-- wrap it while the float is open and restore it on close. Streamed
+	-- pastes (phase 1..3) are accumulated so the decision sees the full text.
+	local original_paste = vim.paste
+	local paste_chunks = nil
+	local intercepting = false
+	local function handle_body_paste(lines)
+		local col = vim.api.nvim_win_get_cursor(0)[2]
+		-- vim.paste inserts before the cursor in insert mode but after the
+		-- cursor character in normal mode; compute the text left of the
+		-- actual insertion point
+		if vim.api.nvim_get_mode().mode:sub(1, 1) ~= "i" then
+			col = col + 1
+		end
+		local before_cursor = vim.api.nvim_get_current_line():sub(1, col)
+		local replacement = M.transform_media_paste(lines, before_cursor)
+		return original_paste(replacement or lines, -1)
+	end
+	---@diagnostic disable-next-line: duplicate-set-field
+	vim.paste = function(lines, phase)
+		if phase == -1 then
+			if vim.api.nvim_get_current_buf() == body_buf then
+				return handle_body_paste(lines)
+			end
+			return original_paste(lines, phase)
+		end
+		if phase == 1 then
+			intercepting = vim.api.nvim_get_current_buf() == body_buf
+			if intercepting then
+				paste_chunks = { unpack(lines) }
+				return true
+			end
+			return original_paste(lines, phase)
+		end
+		if not intercepting then
+			return original_paste(lines, phase)
+		end
+		-- phase 2/3 of an intercepted stream: merge (chunk boundaries are
+		-- arbitrary, so the first line continues the previous last line)
+		paste_chunks[#paste_chunks] = paste_chunks[#paste_chunks] .. (lines[1] or "")
+		for i = 2, #lines do
+			table.insert(paste_chunks, lines[i])
+		end
+		if phase == 3 then
+			local chunks = paste_chunks
+			paste_chunks = nil
+			intercepting = false
+			return handle_body_paste(chunks)
+		end
+		return true
+	end
+
 	-- Close helper
 	local closing = false
 	local function close_all()
@@ -301,6 +423,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 			return
 		end
 		closing = true
+		vim.paste = original_paste
 		pcall(vim.api.nvim_win_close, title_win, true)
 		pcall(vim.api.nvim_win_close, body_win, true)
 	end

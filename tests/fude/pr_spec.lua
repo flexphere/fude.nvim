@@ -348,6 +348,87 @@ describe("format_attach_error", function()
 	end)
 end)
 
+describe("clean_pasted_path", function()
+	it("strips surrounding single quotes", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path("'/tmp/shot.png'"))
+	end)
+
+	it("strips surrounding double quotes", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path('"/tmp/shot.png"'))
+	end)
+
+	it("strips surrounding whitespace and trailing newline", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path("  /tmp/shot.png\n"))
+	end)
+
+	it("unescapes shell-escaped spaces", function()
+		assert.are.equal("/tmp/Screen Shot.png", pr.clean_pasted_path("/tmp/Screen\\ Shot.png"))
+	end)
+
+	it("keeps unquoted text unchanged", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path("/tmp/shot.png"))
+	end)
+
+	it("does not strip mismatched quotes", function()
+		assert.are.equal("'/tmp/shot.png", pr.clean_pasted_path("'/tmp/shot.png"))
+	end)
+end)
+
+describe("is_local_media_path", function()
+	it("accepts absolute, home-relative, and dot-relative media paths", function()
+		assert.is_true(pr.is_local_media_path("/tmp/shot.png"))
+		assert.is_true(pr.is_local_media_path("~/Movies/demo.mp4"))
+		assert.is_true(pr.is_local_media_path("./img/shot.JPG"))
+		assert.is_true(pr.is_local_media_path("../shot.webp"))
+	end)
+
+	it("rejects non-media extensions", function()
+		assert.is_false(pr.is_local_media_path("/tmp/notes.txt"))
+		assert.is_false(pr.is_local_media_path("/tmp/archive"))
+	end)
+
+	it("rejects bare relative paths and URLs", function()
+		assert.is_false(pr.is_local_media_path("img/shot.png"))
+		assert.is_false(pr.is_local_media_path("https://example.com/shot.png"))
+	end)
+end)
+
+describe("transform_media_paste", function()
+	it("wraps a pasted media path in markdown image syntax with file://", function()
+		local result = pr.transform_media_paste({ "/tmp/shot.png" }, "")
+		assert.are.same({ "![](file:///tmp/shot.png)" }, result)
+	end)
+
+	it("strips Finder quotes before wrapping", function()
+		local result = pr.transform_media_paste({ "'/tmp/Screen Shot.png'" }, "")
+		assert.are.same({ "![](file:///tmp/Screen Shot.png)" }, result)
+	end)
+
+	it("inserts only the bare path when cursor is right after file://", function()
+		local result = pr.transform_media_paste({ "'/tmp/shot.png'" }, "![](file://")
+		assert.are.same({ "/tmp/shot.png" }, result)
+	end)
+
+	it("inserts file:// plus path when cursor is right after ](", function()
+		local result = pr.transform_media_paste({ "/tmp/shot.png" }, "![](")
+		assert.are.same({ "file:///tmp/shot.png" }, result)
+	end)
+
+	it("ignores a trailing empty line from the paste", function()
+		local result = pr.transform_media_paste({ "/tmp/shot.png", "" }, "")
+		assert.are.same({ "![](file:///tmp/shot.png)" }, result)
+	end)
+
+	it("returns nil for multi-line pastes", function()
+		assert.is_nil(pr.transform_media_paste({ "/tmp/a.png", "/tmp/b.png" }, ""))
+	end)
+
+	it("returns nil for non-media pastes", function()
+		assert.is_nil(pr.transform_media_paste({ "plain text" }, ""))
+		assert.is_nil(pr.transform_media_paste({ "/tmp/notes.txt" }, ""))
+	end)
+end)
+
 describe("format_attach_suffix", function()
 	it("returns empty string for zero attachments", function()
 		assert.are.equal("", pr.format_attach_suffix(0))

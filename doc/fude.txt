@@ -338,6 +338,15 @@ Using lazy.nvim: >lua
     (e.g. images committed to the repo) are left untouched. References
     inside fenced code blocks (``` or ~~~) are ignored.
 
+    Pasting a local image/video path into the body pane (e.g. a file
+    copied in Finder, pasted with the terminal paste shortcut) inserts
+    it as `![](file://path)` automatically. Surrounding quotes and
+    shell-escaped spaces are cleaned up, and pasting right after a
+    typed `](` or `](file://` inserts only the missing part. Paths
+    must start with `/`, `~/`, `./` or `../` and end with a media
+    extension (png/jpg/jpeg/gif/svg/webp/mp4/mov/webm); anything else
+    pastes as-is.
+
     Limitations: only the inline `](file://...)` form is recognized —
     HTML `<img>` tags and reference-style definitions are not. Paths
     may contain spaces, but not `)` or `#` (gh treats `#` as the alt
