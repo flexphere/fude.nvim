@@ -43,6 +43,196 @@ function M.clear_draft()
 	draft = nil
 end
 
+--- Expand a leading "~/" (or a bare "~") in an attachment path to the home
+--- directory. Deliberately not vim.fn.expand(), which also runs backtick
+--- expressions as shell commands and expands globs/braces — attachment paths
+--- can come from pasted or templated text and must be treated as data.
+--- gh matches body references against --attach paths literally, so the same
+--- expanded path must be used in both the body and the --attach argument.
+--- @param path string
+--- @return string
+local function expand_home(path)
+	local home = vim.uv.os_homedir()
+	if home and (path == "~" or vim.startswith(path, "~/")) then
+		return home .. path:sub(2)
+	end
+	return path
+end
+
+--- Format a link destination for the rewritten body. gh parses the body as
+--- CommonMark, where a bare destination cannot contain whitespace or
+--- unbalanced parentheses — such a reference is not recognized and gh appends
+--- the upload instead of rewriting it — so a path with whitespace or
+--- parentheses is written in the angle-bracket form.
+--- @param path string
+--- @return string
+local function format_attachment_destination(path)
+	if path:find("[%s%(%)]") then
+		return "<" .. path .. ">"
+	end
+	return path
+end
+
+--- Extract local attachment paths (file:// scheme) from a PR body.
+--- Only inline markdown link/image destinations — `](file://...)` or the
+--- angle-bracket form `](<file://...>)` — are treated as attachments; lines
+--- inside fenced code blocks (``` or ~~~) are skipped (inline code spans are
+--- not recognized). Paths may contain spaces (the destination is rewritten in
+--- the CommonMark `<...>` form) but not `)`. The file:// prefix is stripped
+--- from the body so the remaining path matches the --attach argument (gh
+--- rewrites matching body references to the uploaded URL). Different
+--- spellings of the same file (e.g. "./x.png" and "x.png") are rewritten to
+--- the first-seen spelling so gh receives a single --attach flag. A path
+--- containing "#" (gh treats it as the alt text separator in --attach
+--- arguments) or "<"/">" (not representable in an angle-bracket destination)
+--- is not supported: such a reference is left untouched — not attached and
+--- not rewritten. Paths with spaces or parentheses are supported and written
+--- in the angle-bracket destination form.
+--- @param body string PR body
+--- @param expand_fn nil|fun(path: string): string path expansion applied to each extracted path (e.g. "~" expansion)
+--- @return table { body: string, attachments: string[] } rewritten body and deduplicated attachment paths
+function M.parse_body_attachments(body, expand_fn)
+	expand_fn = expand_fn or function(path)
+		return path
+	end
+	local attachments = {}
+	local canonical = {} -- normalized key -> first-seen spelling
+	local function collect(pre, path, post)
+		path = vim.trim(path)
+		-- "#" would be split as the alt text separator by gh's --attach
+		-- parsing, attaching the wrong file; "<"/">" cannot survive the
+		-- angle-bracket destination form. Leave such references untouched
+		if path == "" or path:find("[#<>]") then
+			return nil -- keep the original text
+		end
+		local expanded = expand_fn(path)
+		local key = (expanded:gsub("^%./", ""))
+		if not canonical[key] then
+			canonical[key] = expanded
+			table.insert(attachments, expanded)
+		end
+		return pre .. format_attachment_destination(canonical[key]) .. post
+	end
+	local fence = nil -- opening fence marker ("```" or "~~~") while inside a fenced block
+	local out_lines = {}
+	for _, line in ipairs(vim.split(body, "\n", { plain = true })) do
+		local marker = line:match("^%s*(```)") or line:match("^%s*(~~~)")
+		if fence then
+			-- A closing fence carries no info string (CommonMark), so a line
+			-- like ```lua inside a fence is content, not a close
+			if marker == fence and line:match("^%s*" .. fence .. "+%s*$") then
+				fence = nil
+			end
+		elseif marker then
+			fence = marker
+		else
+			line = line:gsub("(%]%()<file://([^>]*)>(%))", collect)
+			line = line:gsub("(%]%()file://([^%)]*)(%))", collect)
+		end
+		table.insert(out_lines, line)
+	end
+	return { body = table.concat(out_lines, "\n"), attachments = attachments }
+end
+
+--- Replace the unknown-flag usage dump with a concise upgrade hint when gh
+--- doesn't support --attach (added in gh 2.99.0). gh answers an unknown flag
+--- with its full multi-line usage text, which would bury the actionable part.
+--- @param err string error message from gh
+--- @return string
+function M.format_attach_error(err)
+	if err:find("unknown flag: --attach", 1, true) then
+		return "PR body attachments (--attach) require gh >= 2.99.0; please update GitHub CLI"
+	end
+	return err
+end
+
+--- File extensions treated as attachable media when pasted as a local path.
+local MEDIA_EXTENSIONS = {
+	png = true,
+	jpg = true,
+	jpeg = true,
+	gif = true,
+	svg = true,
+	webp = true,
+	mp4 = true,
+	mov = true,
+	webm = true,
+}
+
+--- Clean a pasted chunk into a local path candidate.
+--- Strips surrounding whitespace, matching quotes (Finder/terminals wrap
+--- copied paths in ' or "), and shell-escaped spaces ("\ ").
+--- @param text string
+--- @return string cleaned
+function M.clean_pasted_path(text)
+	local cleaned = vim.trim(text)
+	local quote = cleaned:sub(1, 1)
+	if (quote == "'" or quote == '"') and #cleaned >= 2 and cleaned:sub(-1) == quote then
+		cleaned = cleaned:sub(2, -2)
+	end
+	return (cleaned:gsub("\\ ", " "))
+end
+
+--- Whether a cleaned path looks like a local media file (image/video).
+--- Paths containing "#" or "<"/">" are rejected — parse_body_attachments
+--- cannot attach them (gh treats "#" as the alt text separator; "<"/">" break
+--- the angle-bracket destination form), so converting such a paste would only
+--- produce a dead file:// reference.
+--- @param path string
+--- @return boolean
+function M.is_local_media_path(path)
+	if not (path:match("^/") or path:match("^~/") or path:match("^%./") or path:match("^%.%./")) then
+		return false
+	end
+	if path:find("[#<>]") then
+		return false
+	end
+	local ext = path:match("%.(%w+)$")
+	return ext ~= nil and MEDIA_EXTENSIONS[ext:lower()] == true
+end
+
+--- Build replacement lines for a paste into the PR body, or nil to fall back
+--- to the default paste. A pasted local image/video path becomes a markdown
+--- `![](file://path)` reference; when the cursor already sits inside a
+--- `](file://` or `](` destination, only the (prefixed) path is inserted.
+--- @param lines string[] pasted lines
+--- @param before_cursor string text on the current line before the cursor
+--- @return string[]|nil
+function M.transform_media_paste(lines, before_cursor)
+	local content = {}
+	for _, l in ipairs(lines) do
+		if vim.trim(l) ~= "" then
+			table.insert(content, l)
+		end
+	end
+	if #content ~= 1 then
+		return nil
+	end
+	local path = M.clean_pasted_path(content[1])
+	if not M.is_local_media_path(path) then
+		return nil
+	end
+	if before_cursor:sub(-7) == "file://" then
+		return { path }
+	end
+	if before_cursor:sub(-2) == "](" then
+		return { format_attachment_destination("file://" .. path) }
+	end
+	return { "![](" .. format_attachment_destination("file://" .. path) .. ")" }
+end
+
+--- Build the attachment-count suffix for success notifications.
+--- Gives feedback that extraction actually happened (e.g. 0 when a reference
+--- sat inside an unclosed code fence and was skipped).
+--- @param count number number of attached files
+--- @return string "" when count is 0, otherwise e.g. " (2 files attached)"
+function M.format_attach_suffix(count)
+	if count == 0 then
+		return ""
+	end
+	return " (" .. count .. (count == 1 and " file" or " files") .. " attached)"
+end
+
 --- Build the list of paths to search for PR templates.
 --- @param repo_root string repository root directory
 --- @return table { dirs: string[], files: string[] }
@@ -206,6 +396,60 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	})
 	vim.wo[body_win].wrap = true
 
+	-- Paste interception: convert a pasted local media path in the body pane
+	-- into a ![](file://...) reference. vim.paste is the only hook for
+	-- terminal (bracketed) paste — there is no dedicated autocmd event — so
+	-- wrap it while the float is open and restore it on close. Streamed
+	-- pastes (phase 1..3) are accumulated so the decision sees the full text.
+	local original_paste = vim.paste
+	local paste_chunks = nil
+	local intercepting = false
+	local function handle_body_paste(lines)
+		local col = vim.api.nvim_win_get_cursor(0)[2]
+		-- vim.paste inserts before the cursor in insert mode but after the
+		-- cursor character in normal mode; compute the text left of the
+		-- actual insertion point
+		if vim.api.nvim_get_mode().mode:sub(1, 1) ~= "i" then
+			col = col + 1
+		end
+		local before_cursor = vim.api.nvim_get_current_line():sub(1, col)
+		local replacement = M.transform_media_paste(lines, before_cursor)
+		return original_paste(replacement or lines, -1)
+	end
+	---@diagnostic disable-next-line: duplicate-set-field
+	vim.paste = function(lines, phase)
+		if phase == -1 then
+			if vim.api.nvim_get_current_buf() == body_buf then
+				return handle_body_paste(lines)
+			end
+			return original_paste(lines, phase)
+		end
+		if phase == 1 then
+			intercepting = vim.api.nvim_get_current_buf() == body_buf
+			if intercepting then
+				paste_chunks = { unpack(lines) }
+				return true
+			end
+			return original_paste(lines, phase)
+		end
+		if not intercepting then
+			return original_paste(lines, phase)
+		end
+		-- phase 2/3 of an intercepted stream: merge (chunk boundaries are
+		-- arbitrary, so the first line continues the previous last line)
+		paste_chunks[#paste_chunks] = paste_chunks[#paste_chunks] .. (lines[1] or "")
+		for i = 2, #lines do
+			table.insert(paste_chunks, lines[i])
+		end
+		if phase == 3 then
+			local chunks = paste_chunks
+			paste_chunks = nil
+			intercepting = false
+			return handle_body_paste(chunks)
+		end
+		return true
+	end
+
 	-- Close helper
 	local closing = false
 	local function close_all()
@@ -213,6 +457,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 			return
 		end
 		closing = true
+		vim.paste = original_paste
 		pcall(vim.api.nvim_win_close, title_win, true)
 		pcall(vim.api.nvim_win_close, body_win, true)
 	end
@@ -249,15 +494,17 @@ function M.open_pr_float(title_lines, body_lines, opts)
 
 		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 
-		gh.create_draft_pr(parsed.title, parsed.body, function(err, data)
+		local extracted = M.parse_body_attachments(parsed.body, expand_home)
+		gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, function(err, data)
 			if err then
-				vim.notify("fude.nvim: " .. err .. " (draft saved)", vim.log.levels.ERROR)
+				vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
 				return
 			end
 			-- Success: clear the draft
 			M.clear_draft()
 			local url = data and data.url or ""
-			vim.notify("fude.nvim: Draft PR created: " .. url, vim.log.levels.INFO)
+			local suffix = M.format_attach_suffix(#extracted.attachments)
+			vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
 		end)
 	end
 
@@ -510,13 +757,15 @@ function M.edit()
 					footer = " <CR> update | q cancel ",
 					on_submit = function(title, body, close_float)
 						vim.notify("fude.nvim: Updating PR...", vim.log.levels.INFO)
-						gh.edit_pr(num, title, body, function(edit_err)
+						local extracted = M.parse_body_attachments(body, expand_home)
+						gh.edit_pr(num, title, extracted.body, extracted.attachments, function(edit_err)
 							vim.schedule(function()
 								if edit_err then
-									vim.notify("fude.nvim: " .. edit_err, vim.log.levels.ERROR)
+									vim.notify("fude.nvim: " .. M.format_attach_error(edit_err), vim.log.levels.ERROR)
 								else
 									close_float()
-									vim.notify("fude.nvim: PR updated", vim.log.levels.INFO)
+									local suffix = M.format_attach_suffix(#extracted.attachments)
+									vim.notify("fude.nvim: PR updated" .. suffix, vim.log.levels.INFO)
 								end
 							end)
 						end)

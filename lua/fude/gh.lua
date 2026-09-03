@@ -609,17 +609,14 @@ end
 --- Create a draft PR on the current branch.
 --- @param title string PR title
 --- @param body string PR body
+--- @param attachments string[]|nil local file paths to upload via --attach (requires gh >= 2.99.0)
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.create_draft_pr(title, body, callback)
-	M.run({
-		"pr",
-		"create",
-		"--draft",
-		"--title",
-		title,
-		"--body",
-		body,
-	}, function(err, stdout)
+function M.create_draft_pr(title, body, attachments, callback)
+	local args = { "pr", "create", "--draft", "--title", title, "--body", body }
+	for _, path in ipairs(attachments or {}) do
+		vim.list_extend(args, { "--attach", path })
+	end
+	M.run(args, function(err, stdout)
 		if err then
 			callback(err, nil)
 			return
@@ -700,11 +697,15 @@ end
 --- @param pr_number number|nil PR number (nil to use current branch's PR)
 --- @param title string
 --- @param body string
+--- @param attachments string[]|nil local file paths to upload via --attach (requires gh >= 2.99.0)
 --- @param callback fun(err: string|nil)
-function M.edit_pr(pr_number, title, body, callback)
+function M.edit_pr(pr_number, title, body, attachments, callback)
 	local args = { "pr", "edit", "--title", title, "--body", body }
 	if pr_number then
 		table.insert(args, 3, tostring(pr_number))
+	end
+	for _, path in ipairs(attachments or {}) do
+		vim.list_extend(args, { "--attach", path })
 	end
 	M.run(args, function(err, _)
 		callback(err)

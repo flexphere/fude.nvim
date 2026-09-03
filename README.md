@@ -28,7 +28,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 ## Requirements
 
 - Neovim >= 0.10
-- [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
+- [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (gh >= 2.99.0 for PR body attachments via `--attach`)
 - Optional: [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) for picker UI (changed files and review scope)
 - Optional: [snacks.nvim](https://github.com/folke/snacks.nvim) for picker UI (alternative to telescope, used when `file_list_mode = "snacks"` for changed files and review scope)
 - Optional: [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim) for diff base switching
@@ -49,7 +49,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
-    "FudeReviewToggleFileTree", "FudeCreatePR",
+    "FudeReviewToggleFileTree", "FudeCreatePR", "FudeEditPR",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
@@ -128,7 +128,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
-| `:FudeCreatePR` | Create draft PR from template |
+| `:FudeCreatePR` | Create draft PR from template (body `file://` images/videos are uploaded via `gh --attach`) |
+| `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalStop` | Stop local review mode |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |

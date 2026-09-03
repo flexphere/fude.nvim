@@ -236,6 +236,280 @@ describe("parse_pr_buffer", function()
 	end)
 end)
 
+describe("parse_body_attachments", function()
+	it("extracts image references with file:// scheme and strips the prefix", function()
+		local result = pr.parse_body_attachments("before\n![shot](file://./img/shot.png)\nafter")
+		assert.are.equal("before\n![shot](./img/shot.png)\nafter", result.body)
+		assert.are.same({ "./img/shot.png" }, result.attachments)
+	end)
+
+	it("extracts link references with file:// scheme", function()
+		local result = pr.parse_body_attachments("[demo video](file:///tmp/demo.mp4)")
+		assert.are.equal("[demo video](/tmp/demo.mp4)", result.body)
+		assert.are.same({ "/tmp/demo.mp4" }, result.attachments)
+	end)
+
+	it("returns body unchanged and empty attachments when no file:// reference exists", function()
+		local body = "![repo image](./docs/logo.png)\nplain text"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("deduplicates multiple references to the same file", function()
+		local result = pr.parse_body_attachments("![a](file://./x.png)\n![b](file://./x.png)")
+		assert.are.equal("![a](./x.png)\n![b](./x.png)", result.body)
+		assert.are.same({ "./x.png" }, result.attachments)
+	end)
+
+	it("collects multiple distinct attachments in order of appearance", function()
+		local result = pr.parse_body_attachments("![a](file://./a.png) ![b](file://./b.png)")
+		assert.are.same({ "./a.png", "./b.png" }, result.attachments)
+	end)
+
+	it("skips references inside fenced code blocks", function()
+		local body = "```\n![a](file://./in-fence.png)\n```\n![b](file://./out.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal("```\n![a](file://./in-fence.png)\n```\n![b](./out.png)", result.body)
+		assert.are.same({ "./out.png" }, result.attachments)
+	end)
+
+	it("skips references inside ~~~ fenced code blocks", function()
+		local body = "~~~\n![a](file://./in-fence.png)\n~~~\n![b](file://./out.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal("~~~\n![a](file://./in-fence.png)\n~~~\n![b](./out.png)", result.body)
+		assert.are.same({ "./out.png" }, result.attachments)
+	end)
+
+	it("does not close a ``` fence with a ~~~ line", function()
+		local body = "```\n~~~\n![a](file://./still-in-fence.png)\n```\n![b](file://./out.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.same({ "./out.png" }, result.attachments)
+	end)
+
+	it("skips everything after an unclosed fence (documented limitation)", function()
+		local body = "```lua\ncode\n![s](file://./x.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("captures paths containing spaces and rewrites them in angle-bracket form", function()
+		-- gh parses the body as CommonMark: a bare destination with spaces is
+		-- not a link, so gh would append the upload instead of rewriting it
+		local result = pr.parse_body_attachments("![shot](file://./Screen Shot 2026-09-03.png)")
+		assert.are.equal("![shot](<./Screen Shot 2026-09-03.png>)", result.body)
+		assert.are.same({ "./Screen Shot 2026-09-03.png" }, result.attachments)
+	end)
+
+	it("accepts the angle-bracket input form", function()
+		local result = pr.parse_body_attachments("![shot](<file://./a b.png>)")
+		assert.are.equal("![shot](<./a b.png>)", result.body)
+		assert.are.same({ "./a b.png" }, result.attachments)
+	end)
+
+	it("rewrites different spellings of the same file to the first-seen spelling", function()
+		local result = pr.parse_body_attachments("![a](file://./img/x.png)\n![b](file://img/x.png)")
+		assert.are.equal("![a](./img/x.png)\n![b](./img/x.png)", result.body)
+		assert.are.same({ "./img/x.png" }, result.attachments)
+	end)
+
+	it("ignores bare file:// URLs outside markdown link syntax", function()
+		local body = "see file://./x.png for details"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("keeps angle-bracket form for paths containing parentheses", function()
+		local result = pr.parse_body_attachments("![s](<file://./shot(1).png>)")
+		assert.are.equal("![s](<./shot(1).png>)", result.body)
+		assert.are.same({ "./shot(1).png" }, result.attachments)
+	end)
+
+	it("rewrites a bare path containing '(' in angle-bracket form", function()
+		local result = pr.parse_body_attachments("![s](file://./shot(1.png)")
+		assert.are.equal("![s](<./shot(1.png>)", result.body)
+		assert.are.same({ "./shot(1.png" }, result.attachments)
+	end)
+
+	it("leaves paths containing '<' untouched", function()
+		local body = "![s](file://./a<b.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("does not close a fence with an info-string line inside it", function()
+		local body = "```\n```lua\n![s](file://./x.png)\n```\n![b](file://./out.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.same({ "./out.png" }, result.attachments)
+	end)
+
+	it("closes a fence with a longer marker run", function()
+		local body = "```\ncode\n`````\n![b](file://./out.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.same({ "./out.png" }, result.attachments)
+	end)
+
+	it("leaves paths containing '#' untouched (gh's alt text separator)", function()
+		local body = "![s](file://./issue#12.png)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("leaves angle-bracket paths containing '#' untouched", function()
+		local body = "![s](<file://./issue #12.png>)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("ignores file:// with no path", function()
+		local body = "![empty](file://)"
+		local result = pr.parse_body_attachments(body)
+		assert.are.equal(body, result.body)
+		assert.are.same({}, result.attachments)
+	end)
+
+	it("applies expand_fn to both body and attachments", function()
+		local result = pr.parse_body_attachments("![a](file://~/shot.png)", function(path)
+			return (path:gsub("^~", "/home/user"))
+		end)
+		assert.are.equal("![a](/home/user/shot.png)", result.body)
+		assert.are.same({ "/home/user/shot.png" }, result.attachments)
+	end)
+
+	it("deduplicates by expanded path when spellings differ", function()
+		local result = pr.parse_body_attachments("![a](file://~/x.png) ![b](file:///home/user/x.png)", function(path)
+			return (path:gsub("^~", "/home/user"))
+		end)
+		assert.are.same({ "/home/user/x.png" }, result.attachments)
+	end)
+end)
+
+describe("format_attach_error", function()
+	it("replaces unknown --attach flag errors with a concise upgrade hint", function()
+		local result = pr.format_attach_error("unknown flag: --attach\n\nUsage:  gh pr create [flags]\n...")
+		assert.are.equal("PR body attachments (--attach) require gh >= 2.99.0; please update GitHub CLI", result)
+	end)
+
+	it("returns other errors unchanged", function()
+		local result = pr.format_attach_error("gh command failed")
+		assert.are.equal("gh command failed", result)
+	end)
+end)
+
+describe("clean_pasted_path", function()
+	it("strips surrounding single quotes", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path("'/tmp/shot.png'"))
+	end)
+
+	it("strips surrounding double quotes", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path('"/tmp/shot.png"'))
+	end)
+
+	it("strips surrounding whitespace and trailing newline", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path("  /tmp/shot.png\n"))
+	end)
+
+	it("unescapes shell-escaped spaces", function()
+		assert.are.equal("/tmp/Screen Shot.png", pr.clean_pasted_path("/tmp/Screen\\ Shot.png"))
+	end)
+
+	it("keeps unquoted text unchanged", function()
+		assert.are.equal("/tmp/shot.png", pr.clean_pasted_path("/tmp/shot.png"))
+	end)
+
+	it("does not strip mismatched quotes", function()
+		assert.are.equal("'/tmp/shot.png", pr.clean_pasted_path("'/tmp/shot.png"))
+	end)
+end)
+
+describe("is_local_media_path", function()
+	it("accepts absolute, home-relative, and dot-relative media paths", function()
+		assert.is_true(pr.is_local_media_path("/tmp/shot.png"))
+		assert.is_true(pr.is_local_media_path("~/Movies/demo.mp4"))
+		assert.is_true(pr.is_local_media_path("./img/shot.JPG"))
+		assert.is_true(pr.is_local_media_path("../shot.webp"))
+	end)
+
+	it("rejects non-media extensions", function()
+		assert.is_false(pr.is_local_media_path("/tmp/notes.txt"))
+		assert.is_false(pr.is_local_media_path("/tmp/archive"))
+	end)
+
+	it("rejects bare relative paths and URLs", function()
+		assert.is_false(pr.is_local_media_path("img/shot.png"))
+		assert.is_false(pr.is_local_media_path("https://example.com/shot.png"))
+	end)
+
+	it("rejects paths containing '#' (unattachable via gh --attach)", function()
+		assert.is_false(pr.is_local_media_path("/tmp/issue#12.png"))
+	end)
+
+	it("rejects paths containing '<' or '>' (break the angle-bracket destination)", function()
+		assert.is_false(pr.is_local_media_path("/tmp/a<b.png"))
+		assert.is_false(pr.is_local_media_path("/tmp/a>b.png"))
+	end)
+end)
+
+describe("transform_media_paste", function()
+	it("wraps a pasted media path in markdown image syntax with file://", function()
+		local result = pr.transform_media_paste({ "/tmp/shot.png" }, "")
+		assert.are.same({ "![](file:///tmp/shot.png)" }, result)
+	end)
+
+	it("strips Finder quotes and uses angle-bracket form for spaced paths", function()
+		local result = pr.transform_media_paste({ "'/tmp/Screen Shot.png'" }, "")
+		assert.are.same({ "![](<file:///tmp/Screen Shot.png>)" }, result)
+	end)
+
+	it("inserts only the bare path when cursor is right after file://", function()
+		local result = pr.transform_media_paste({ "'/tmp/shot.png'" }, "![](file://")
+		assert.are.same({ "/tmp/shot.png" }, result)
+	end)
+
+	it("inserts file:// plus path when cursor is right after ](", function()
+		local result = pr.transform_media_paste({ "/tmp/shot.png" }, "![](")
+		assert.are.same({ "file:///tmp/shot.png" }, result)
+	end)
+
+	it("ignores a trailing empty line from the paste", function()
+		local result = pr.transform_media_paste({ "/tmp/shot.png", "" }, "")
+		assert.are.same({ "![](file:///tmp/shot.png)" }, result)
+	end)
+
+	it("returns nil for multi-line pastes", function()
+		assert.is_nil(pr.transform_media_paste({ "/tmp/a.png", "/tmp/b.png" }, ""))
+	end)
+
+	it("returns nil for non-media pastes", function()
+		assert.is_nil(pr.transform_media_paste({ "plain text" }, ""))
+		assert.is_nil(pr.transform_media_paste({ "/tmp/notes.txt" }, ""))
+	end)
+
+	it("uses angle-bracket form for paths containing parentheses", function()
+		local result = pr.transform_media_paste({ "/tmp/shot(1).png" }, "")
+		assert.are.same({ "![](<file:///tmp/shot(1).png>)" }, result)
+	end)
+end)
+
+describe("format_attach_suffix", function()
+	it("returns empty string for zero attachments", function()
+		assert.are.equal("", pr.format_attach_suffix(0))
+	end)
+
+	it("uses singular for one attachment", function()
+		assert.are.equal(" (1 file attached)", pr.format_attach_suffix(1))
+	end)
+
+	it("uses plural for multiple attachments", function()
+		assert.are.equal(" (3 files attached)", pr.format_attach_suffix(3))
+	end)
+end)
+
 describe("draft management", function()
 	before_each(function()
 		pr.clear_draft()
@@ -378,8 +652,8 @@ describe("edit", function()
 			end)
 		end)
 
-		helpers.mock(gh, "edit_pr", function(pr_num, title, body, callback)
-			edit_called_with = { pr_number = pr_num, title = title, body = body }
+		helpers.mock(gh, "edit_pr", function(pr_num, title, body, attachments, callback)
+			edit_called_with = { pr_number = pr_num, title = title, body = body, attachments = attachments }
 			vim.schedule(function()
 				callback(nil)
 			end)
@@ -402,11 +676,45 @@ describe("edit", function()
 		assert.are.equal(123, edit_called_with.pr_number)
 		assert.are.equal("New Title", edit_called_with.title)
 		assert.are.equal("New Body", edit_called_with.body)
+		assert.are.same({}, edit_called_with.attachments)
 
 		-- close_float should be called on success
 		helpers.wait_for(function()
 			return close_float_called
 		end)
 		assert.is_true(close_float_called)
+	end)
+
+	it("on_submit extracts file:// attachments and passes stripped body to gh.edit_pr", function()
+		config.state.active = true
+		config.state.pr_number = 123
+
+		local edit_called_with = nil
+
+		helpers.mock(gh, "get_pr_title_body", function(_, callback)
+			vim.schedule(function()
+				callback(nil, { title = "Original", body = "Body" })
+			end)
+		end)
+
+		helpers.mock(gh, "edit_pr", function(_, _, body, attachments, callback)
+			edit_called_with = { body = body, attachments = attachments }
+			vim.schedule(function()
+				callback(nil)
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil and captured_opts.on_submit ~= nil
+		end)
+
+		captured_opts.on_submit("Title", "intro\n![shot](file://./img.png)", function() end)
+		helpers.wait_for(function()
+			return edit_called_with ~= nil
+		end)
+
+		assert.are.equal("intro\n![shot](./img.png)", edit_called_with.body)
+		assert.are.same({ "./img.png" }, edit_called_with.attachments)
 	end)
 end)

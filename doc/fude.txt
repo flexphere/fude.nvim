@@ -41,6 +41,7 @@ in the editor. It provides:
 
 - Neovim >= 0.10
 - GitHub CLI (`gh`) installed and authenticated
+  (gh >= 2.99.0 for PR body attachments via `--attach`)
 - Git repository with a PR on the current branch
 
 Optional:
@@ -325,6 +326,33 @@ Using lazy.nvim: >lua
     Press `<CR>` to create a draft PR.
     Press `q` to cancel.
 
+    Local images and videos referenced from inline markdown image/link
+    destinations with the `file://` scheme are uploaded via `gh`'s
+    `--attach` flag (requires gh >= 2.99.0), and the body references
+    are rewritten to the uploaded URLs by gh: >
+        ![screenshot](file://./shot.png)
+        ![demo](file:///tmp/demo.mp4)
+<
+    Relative paths resolve from Neovim's current working directory and
+    a leading `~` is expanded. References without the `file://` scheme
+    (e.g. images committed to the repo) are left untouched. References
+    inside fenced code blocks (``` or ~~~) are ignored.
+
+    Pasting a local image/video path into the body pane (e.g. a file
+    copied in Finder, pasted with the terminal paste shortcut) inserts
+    it as `![](file://path)` automatically. Surrounding quotes and
+    shell-escaped spaces are cleaned up, and pasting right after a
+    typed `](` or `](file://` inserts only the missing part. Paths
+    must start with `/`, `~/`, `./` or `../` and end with a media
+    extension (png/jpg/jpeg/gif/svg/webp/mp4/mov/webm); anything else
+    pastes as-is.
+
+    Limitations: only inline `](file://...)` / `](<file://...>)` forms
+    are recognized — HTML `<img>` tags and reference-style definitions
+    are not. Paths may contain spaces and parentheses (the destination
+    is rewritten in the CommonMark `<...>` form so gh can match it),
+    but not `#` (gh treats it as the alt text separator) or `<`/`>`.
+
     Does not require an active review session. Works in any git
     repository with a branch that can create a PR.
 
@@ -337,6 +365,10 @@ Using lazy.nvim: >lua
     Press `<Tab>` to switch between panes.
     Press `<CR>` to update the PR.
     Press `q` to cancel.
+
+    Local images and videos referenced with the `file://` scheme in
+    the body are uploaded via `gh`'s `--attach` flag, same as
+    |:FudeCreatePR|.
 
     When review mode is active, uses the PR from the current session.
     Otherwise, detects the PR from the current branch using `gh pr view`.
