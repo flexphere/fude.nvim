@@ -5,7 +5,7 @@ M.defaults = {
 	file_list_mode = "telescope",
 	-- Diff filler character (nil to keep user's default)
 	diff_filler_char = nil,
-	-- Additional diffopt values applied during review (nil to keep user's default).
+	-- Additional diffopt values applied during review ({} to apply none and keep your own diffopt).
 	-- "followwrap" keeps the user's 'wrap' setting: without it, :diffthis forces nowrap.
 	diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic", "followwrap" },
 	signs = {

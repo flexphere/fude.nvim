@@ -144,7 +144,7 @@ require("fude").setup({
   file_list_mode = "telescope",
   -- Diff filler character (nil to keep user's default)
   diff_filler_char = nil,
-  -- Additional diffopt values applied during review
+  -- Additional diffopt values applied during review ({} to apply none and keep your own diffopt)
   diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic", "followwrap" },
   signs = {
     comment = "#",
