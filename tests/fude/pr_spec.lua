@@ -496,6 +496,53 @@ describe("transform_media_paste", function()
 	end)
 end)
 
+describe("open_pr_float paste interception", function()
+	local original_paste
+
+	before_each(function()
+		original_paste = vim.paste
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+		vim.paste = original_paste
+	end)
+
+	-- Open the PR float and focus the body window; return the body buffer.
+	local function open_and_focus_body()
+		pr.open_pr_float({ "title" }, { "" }, {})
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			local buf = vim.api.nvim_win_get_buf(win)
+			if vim.bo[buf].filetype == "markdown" then
+				vim.api.nvim_set_current_win(win)
+				return buf
+			end
+		end
+		error("body window not found")
+	end
+
+	it("merges streamed chunks across arbitrary boundaries", function()
+		local buf = open_and_focus_body()
+		vim.paste({ "he" }, 1)
+		vim.paste({ "llo", "world" }, 2)
+		vim.paste({ "!" }, 3)
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		assert.are.same("hello\nworld!", table.concat(lines, "\n"))
+	end)
+
+	it("handles a streamed paste whose first chunk is empty", function()
+		local buf = open_and_focus_body()
+		-- nvim_paste can deliver an empty first chunk (chunk boundaries are
+		-- arbitrary, e.g. bracketed paste through tmux); this used to crash
+		-- with "attempt to concatenate a nil value"
+		vim.paste({}, 1)
+		vim.paste({ "foo", "bar" }, 2)
+		vim.paste({ "baz" }, 3)
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		assert.are.same("foo\nbarbaz", table.concat(lines, "\n"))
+	end)
+end)
+
 describe("format_attach_suffix", function()
 	it("returns empty string for zero attachments", function()
 		assert.are.equal("", pr.format_attach_suffix(0))
