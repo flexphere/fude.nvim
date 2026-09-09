@@ -72,6 +72,7 @@ function M.open_preview(source_win)
 
 	state.preview_win = preview_win
 	state.preview_buf = preview_buf
+	state.preview_source_buf = source_buf
 	state.source_win = source_win
 
 	-- Enable diff mode on both windows
@@ -128,6 +129,7 @@ function M.close_preview()
 
 	state.preview_win = nil
 	state.preview_buf = nil
+	state.preview_source_buf = nil
 end
 
 --- Determine whether the preview should be opened for the given context.
@@ -154,13 +156,37 @@ function M.should_open_preview(active, is_opening, win, preview_win, buftype, fi
 	return true
 end
 
+--- Determine whether the existing preview already shows the given source window/buffer.
+--- Used to skip rebuilding the preview on BufEnter for the same file: rebuilding runs
+--- `diffoff!`/`diffthis`, which resets fold state (`foldenable`/`foldlevel`) and the
+--- preview window's options, discarding the user's changes.
+--- @param preview_win number|nil handle of the existing preview window
+--- @param preview_win_valid boolean whether preview_win is a valid window
+--- @param source_win number|nil window the preview was opened for
+--- @param preview_source_buf number|nil buffer the preview was opened for
+--- @param win number current window handle
+--- @param buf number current buffer handle
+--- @return boolean
+function M.is_preview_current(preview_win, preview_win_valid, source_win, preview_source_buf, win, buf)
+	if not preview_win or not preview_win_valid then
+		return false
+	end
+	if source_win ~= win then
+		return false
+	end
+	if preview_source_buf == nil or preview_source_buf ~= buf then
+		return false
+	end
+	return true
+end
+
 --- BufEnter handler: update the preview for the newly entered buffer.
 function M.on_buf_enter()
 	local state = config.state
 	local win = vim.api.nvim_get_current_win()
 	local buf = vim.api.nvim_get_current_buf()
 	if
-		M.should_open_preview(
+		not M.should_open_preview(
 			state.active,
 			opening,
 			win,
@@ -169,8 +195,13 @@ function M.on_buf_enter()
 			vim.api.nvim_buf_get_name(buf)
 		)
 	then
-		M.open_preview(win)
+		return
 	end
+	local preview_valid = state.preview_win ~= nil and vim.api.nvim_win_is_valid(state.preview_win)
+	if M.is_preview_current(state.preview_win, preview_valid, state.source_win, state.preview_source_buf, win, buf) then
+		return
+	end
+	M.open_preview(win)
 end
 
 return M

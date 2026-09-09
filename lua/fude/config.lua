@@ -139,6 +139,7 @@ M.state = {
 	viewed_files = {}, -- { [path] = "VIEWED" | "UNVIEWED" | "DISMISSED" }
 	preview_win = nil,
 	preview_buf = nil,
+	preview_source_buf = nil, -- buffer the current preview was built for (skip rebuild on same-buffer BufEnter)
 	source_win = nil,
 	augroup = nil,
 	ns_id = nil,
@@ -196,6 +197,7 @@ function M.reset_state()
 		viewed_files = {},
 		preview_win = nil,
 		preview_buf = nil,
+		preview_source_buf = nil,
 		source_win = nil,
 		augroup = nil,
 		ns_id = ns,
