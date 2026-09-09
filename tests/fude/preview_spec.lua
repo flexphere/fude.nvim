@@ -33,3 +33,29 @@ describe("should_open_preview", function()
 		assert.is_false(preview.should_open_preview(false, true, 1, 2, "", "/path/to/file.lua"))
 	end)
 end)
+
+describe("is_preview_current", function()
+	it("returns true when preview is valid for the same window and buffer", function()
+		assert.is_true(preview.is_preview_current(10, true, 1, 20, 1, 20))
+	end)
+
+	it("returns false when preview_win is nil", function()
+		assert.is_false(preview.is_preview_current(nil, false, 1, 20, 1, 20))
+	end)
+
+	it("returns false when preview window is no longer valid", function()
+		assert.is_false(preview.is_preview_current(10, false, 1, 20, 1, 20))
+	end)
+
+	it("returns false when entering a different window", function()
+		assert.is_false(preview.is_preview_current(10, true, 1, 20, 2, 20))
+	end)
+
+	it("returns false when the source window shows a different buffer", function()
+		assert.is_false(preview.is_preview_current(10, true, 1, 20, 1, 21))
+	end)
+
+	it("returns false when preview_source_buf is unknown", function()
+		assert.is_false(preview.is_preview_current(10, true, 1, nil, 1, 20))
+	end)
+end)

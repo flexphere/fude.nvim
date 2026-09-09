@@ -5,8 +5,9 @@ M.defaults = {
 	file_list_mode = "telescope",
 	-- Diff filler character (nil to keep user's default)
 	diff_filler_char = nil,
-	-- Additional diffopt values applied during review (nil to keep user's default)
-	diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic" },
+	-- Additional diffopt values applied during review ({} to apply none and keep your own diffopt).
+	-- "followwrap" keeps the user's 'wrap' setting: without it, :diffthis forces nowrap.
+	diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic", "followwrap" },
 	signs = {
 		comment = "#",
 		comment_hl = "DiagnosticInfo",
@@ -138,6 +139,7 @@ M.state = {
 	viewed_files = {}, -- { [path] = "VIEWED" | "UNVIEWED" | "DISMISSED" }
 	preview_win = nil,
 	preview_buf = nil,
+	preview_source_buf = nil, -- buffer the current preview was built for (skip rebuild on same-buffer BufEnter)
 	source_win = nil,
 	augroup = nil,
 	ns_id = nil,
@@ -195,6 +197,7 @@ function M.reset_state()
 		viewed_files = {},
 		preview_win = nil,
 		preview_buf = nil,
+		preview_source_buf = nil,
 		source_win = nil,
 		augroup = nil,
 		ns_id = ns,

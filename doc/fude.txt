@@ -553,8 +553,8 @@ Default configuration: >lua
     file_list_mode = "telescope",
     -- Diff filler character (nil to keep user's default)
     diff_filler_char = nil,
-    -- Additional diffopt values applied during review
-    diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic" },
+    -- Additional diffopt values applied during review ({} to apply none and keep your own diffopt)
+    diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic", "followwrap" },
     signs = {
       comment = "#",
       comment_hl = "DiagnosticInfo",
@@ -654,7 +654,12 @@ Options:
                   Set to " " to hide the filler indicators.
 
 `diffopt`           Table of diffopt values appended during review.
-                  Set to nil to keep your existing diffopt settings.
+                  Set to {} to keep your existing diffopt settings
+                  (nil cannot be used: a nil key is dropped from the
+                  table and the default is applied).
+                  The default includes "followwrap" so that the diff
+                  preview follows your 'wrap' setting; without it,
+                  |:diffthis| forces 'nowrap' in both diff windows.
 
 `signs.comment`     Character shown in virtual text for comment indicators.
 
