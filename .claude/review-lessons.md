@@ -55,3 +55,8 @@
 - **対策**: 検証コードを書く前に「この検証は、依存しているプリミティブ（jqのフォーマット保証、`set -e`のfail-fast等）が既にカバーしていない失敗モードを捕捉しているか」を確認する。捕捉対象が存在しないなら、検証の精度を上げる（マッチ窓を広げる等）のではなく検証自体を削除する
 - **該当箇所**: contrib/skills/fude-watch/fude-watch-reply.sh
 
+
+### ドキュメント: 非nilデフォルトのオプションを「nilで無効化」と案内していた (PR #176, 2026-09-09)
+- **問題**: `diffopt`のコメントとhelpで「nil to keep user's default」と案内していたが、`setup()`は`vim.tbl_deep_extend("force", defaults, user_opts)`でマージするため、`setup({ diffopt = nil })`はキー自体が落ちてデフォルトが適用される。デフォルトが非nilのオプションではnilによる無効化は不可能で、案内どおりに設定したユーザーは無効化できない
+- **対策**: 「無効化の方法」を書くときは、デフォルト値がnilか非nilかを確認する。非nilデフォルト（table/文字列/数値）のオプションでは`{}`/`false`など実際にマージ後に残る値で案内し、実装側の分岐（`if opts.x then` / `ipairs(opts.x)`）がその値で意図どおりスキップされることを確認する。同じ既定値ブロックがREADME/doc/config.luaに複製されているので、文言変更時は3箇所をgrepする
+- **該当箇所**: lua/fude/config.lua, doc/fude.txt, README.md
