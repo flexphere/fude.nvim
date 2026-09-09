@@ -145,7 +145,7 @@ require("fude").setup({
   -- Diff filler character (nil to keep user's default)
   diff_filler_char = nil,
   -- Additional diffopt values applied during review
-  diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic" },
+  diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic", "followwrap" },
   signs = {
     comment = "#",
     comment_hl = "DiagnosticInfo",
