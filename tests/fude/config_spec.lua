@@ -32,6 +32,10 @@ describe("config", function()
 			assert.are.equal("!", config.opts.signs.comment)
 			assert.are.equal("DiagnosticInfo", config.opts.signs.comment_hl)
 		end)
+
+		it("includes followwrap in the default diffopt so :diffthis keeps the user's wrap", function()
+			assert.is_true(vim.tbl_contains(config.opts.diffopt, "followwrap"))
+		end)
 	end)
 
 	describe("reset_state", function()
