@@ -436,8 +436,13 @@ function M.open_pr_float(title_lines, body_lines, opts)
 			return original_paste(lines, phase)
 		end
 		-- phase 2/3 of an intercepted stream: merge (chunk boundaries are
-		-- arbitrary, so the first line continues the previous last line)
-		paste_chunks[#paste_chunks] = paste_chunks[#paste_chunks] .. (lines[1] or "")
+		-- arbitrary, so the first line continues the previous last line;
+		-- phase 1 may deliver an empty chunk, leaving paste_chunks empty)
+		if #paste_chunks == 0 then
+			paste_chunks[1] = lines[1] or ""
+		else
+			paste_chunks[#paste_chunks] = paste_chunks[#paste_chunks] .. (lines[1] or "")
+		end
 		for i = 2, #lines do
 			table.insert(paste_chunks, lines[i])
 		end
