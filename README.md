@@ -269,6 +269,12 @@ comment's line. Drafts also appear in the comment browser
 drafts show as `[draft]` rows you can jump to. Disable with
 `drafts.enabled = false`.
 
+Cancelling `:FudeEditPR` with unsaved title/body changes offers the same 3-way
+choice; the draft is stored per repo + PR and restored the next time you edit
+that PR (removed after a successful update). `:FudeCreatePR` drafts are kept
+in memory for the current Neovim session and offered as a `(draft)` entry on
+the next `:FudeCreatePR`.
+
 ## Local review mode (pre-PR)
 
 `:FudeReviewLocal [base]` reviews your working tree **before a PR exists** —
