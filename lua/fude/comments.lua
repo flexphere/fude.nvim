@@ -604,8 +604,11 @@ function M.suggest_change(is_visual)
 	elseif existing then
 		initial_lines = vim.split(format.normalize_newlines(existing.body), "\n")
 	end
-	-- Place the cursor below the ```suggestion fence only for a fresh suggestion.
-	local cursor_pos = (draft_body or existing) and nil or { 2, 0 }
+	-- Open in normal mode with the cursor below the ```suggestion fence
+	-- (clamped for a single-line restored draft). cursor_pos doubles as the
+	-- stopinsert trigger in open_comment_input: without it the float starts
+	-- in insert mode at {1,0}, where the first keystroke breaks the fence.
+	local cursor_pos = { math.min(2, #initial_lines), 0 }
 
 	ui.open_comment_input(function(comment_body, action)
 		if action == "draft" then

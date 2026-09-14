@@ -50,6 +50,32 @@ describe("comments local draft wiring", function()
 		assert.is_true(captured.allow_draft)
 	end)
 
+	it("suggest_change opens in normal mode below the fence, clamped for short drafts", function()
+		focus_test_buf()
+		local captured
+		helpers.mock(ui, "open_comment_input", function(_callback, opts)
+			captured = opts
+		end)
+
+		comments.suggest_change(false)
+		assert.same({ 2, 0 }, captured.cursor_pos)
+
+		-- restored multi-line draft: same position (cursor_pos also forces
+		-- normal mode, protecting the fence from the first keystroke)
+		drafts.set(drafts.current_key("suggest", "draft_test.lua", 1, 1), "```suggestion\nsaved\n```")
+		captured = nil
+		comments.suggest_change(false)
+		assert.same({ "```suggestion", "saved", "```" }, captured.initial_lines)
+		assert.same({ 2, 0 }, captured.cursor_pos)
+
+		-- single-line restored draft: clamped so nvim_win_set_cursor stays valid
+		drafts.set(drafts.current_key("suggest", "draft_test.lua", 1, 1), "one liner")
+		captured = nil
+		comments.suggest_change(false)
+		assert.same({ "one liner" }, captured.initial_lines)
+		assert.same({ 1, 0 }, captured.cursor_pos)
+	end)
+
 	it("create_comment with action 'draft' saves the typed text", function()
 		focus_test_buf()
 		local key = drafts.current_key("line", "draft_test.lua", 1, 1)
