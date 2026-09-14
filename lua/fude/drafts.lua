@@ -21,7 +21,7 @@ M._dir = nil
 --- Build an opaque draft storage key.
 --- @param repo string "owner/repo"
 --- @param pr_number number|string PR number
---- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"
+--- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"pr_edit"
 --- @param ... string|number additional discriminators (path, line range, ids)
 --- @return string
 function M.make_draft_key(repo, pr_number, kind, ...)
@@ -93,7 +93,7 @@ end
 
 --- Build a draft key for the active review session, deriving repo / PR number
 --- from `config.state`. Returns nil when there is no active PR.
---- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"
+--- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"pr_edit"
 --- @param ... string|number additional discriminators
 --- @return string|nil
 function M.current_key(kind, ...)
@@ -159,9 +159,15 @@ local function saved_at_iso(saved_at)
 	return ""
 end
 
+--- Draft kinds surfaced in the comment browser. `pr_edit` is deliberately
+--- absent: PR edit drafts are restored by :FudeEditPR itself and have no
+--- comment thread / diff line to show.
+local BROWSER_KINDS = { line = true, suggest = true, issue = true, reply = true, edit = true }
+
 --- List the active PR's drafts as structured descriptors for the comment
---- browser. Skips entries whose body is not a string. saved_at is normalized to
---- a UTC ISO-8601 string.
+--- browser. Only browser-facing kinds (BROWSER_KINDS) are included. Skips
+--- entries whose body is not a string. saved_at is normalized to a UTC
+--- ISO-8601 string.
 --- @return table[] { key, kind, body, saved_at, path?, start_line?, end_line?, comment_id? }
 function M.list_drafts()
 	local out = {}
@@ -178,17 +184,19 @@ function M.list_drafts()
 		if type(entry) == "table" and type(entry.body) == "string" and key:sub(1, #prefix) == prefix then
 			local rest = key:sub(#prefix + 1)
 			local kind = rest:match("^([^:]+)")
-			local desc = { key = key, kind = kind, body = entry.body, saved_at = saved_at_iso(entry.saved_at) }
-			if kind == "line" or kind == "suggest" then
-				local path, sl, el = rest:match("^[^:]+:(.+):(%d+):(%d+)$")
-				desc.path = path
-				desc.start_line = tonumber(sl)
-				desc.end_line = tonumber(el)
-			elseif kind == "reply" or kind == "edit" then
-				local id = rest:match("^[^:]+:(.+)$")
-				desc.comment_id = tonumber(id) or id
+			if BROWSER_KINDS[kind] then
+				local desc = { key = key, kind = kind, body = entry.body, saved_at = saved_at_iso(entry.saved_at) }
+				if kind == "line" or kind == "suggest" then
+					local path, sl, el = rest:match("^[^:]+:(.+):(%d+):(%d+)$")
+					desc.path = path
+					desc.start_line = tonumber(sl)
+					desc.end_line = tonumber(el)
+				elseif kind == "reply" or kind == "edit" then
+					local id = rest:match("^[^:]+:(.+)$")
+					desc.comment_id = tonumber(id) or id
+				end
+				table.insert(out, desc)
 			end
-			table.insert(out, desc)
 		end
 	end
 	return out
