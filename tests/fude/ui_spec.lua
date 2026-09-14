@@ -2704,6 +2704,55 @@ describe("confirm_close_with_draft", function()
 	end)
 end)
 
+describe("prompt_close_decision", function()
+	local orig_select
+	local captured
+
+	before_each(function()
+		orig_select = vim.ui.select
+		vim.ui.select = function(items, sopts, on_choice)
+			captured = { items = items, prompt = sopts and sopts.prompt, on_choice = on_choice }
+		end
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+		captured = nil
+	end)
+
+	it("uses the comment prompts by default", function()
+		ui.prompt_close_decision(true, function() end, function() end)
+		assert.are.equal("Unsaved comment:", captured.prompt)
+		ui.prompt_close_decision(false, function() end, function() end)
+		assert.are.equal("Discard comment?", captured.prompt)
+	end)
+
+	it("uses a custom unsaved prompt for the 3-way choice", function()
+		ui.prompt_close_decision(true, function() end, function() end, { unsaved = "Unsaved PR:" })
+		assert.are.equal("Unsaved PR:", captured.prompt)
+		assert.are.same({ "Save draft & close", "Discard & close", "Keep editing" }, captured.items)
+	end)
+
+	it("uses a custom discard prompt for the Yes/No fallback", function()
+		ui.prompt_close_decision(false, function() end, function() end, { discard = "Discard changes?" })
+		assert.are.equal("Discard changes?", captured.prompt)
+		assert.are.same({ "Yes", "No" }, captured.items)
+	end)
+
+	it("routes the chosen action to the matching handler", function()
+		local saved, discarded = false, false
+		ui.prompt_close_decision(true, function()
+			saved = true
+		end, function()
+			discarded = true
+		end)
+		captured.on_choice("Save draft & close")
+		assert.is_true(saved)
+		captured.on_choice("Discard & close")
+		assert.is_true(discarded)
+	end)
+end)
+
 describe("open_comment_input keymaps", function()
 	local config = require("fude.config")
 

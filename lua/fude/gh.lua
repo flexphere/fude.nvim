@@ -1,4 +1,5 @@
 local M = {}
+local util = require("fude.util")
 
 --- Run a gh command asynchronously.
 --- @param args string[] arguments to pass to `gh`
@@ -655,11 +656,13 @@ end
 --- Get PR title and body for editing.
 --- When pr_number is nil, detects detached HEAD and resolves PR number first
 --- to avoid `gh pr view` hanging without a branch.
+--- Includes the PR url so callers can derive the repo slug without an active
+--- review session (state.pr_url only exists while a review is active).
 --- @param pr_number number|nil PR number (nil to use current branch's PR)
---- @param callback fun(err: string|nil, data: table|nil)
+--- @param callback fun(err: string|nil, data: table|nil) data = { title, body, url }
 function M.get_pr_title_body(pr_number, callback)
 	local function fetch(num)
-		local args = { "pr", "view", "--json", "title,body" }
+		local args = { "pr", "view", "--json", "title,body,url" }
 		if num then
 			table.insert(args, 3, tostring(num))
 		end
@@ -667,7 +670,13 @@ function M.get_pr_title_body(pr_number, callback)
 			if err then
 				return callback(err, nil)
 			end
-			callback(nil, { title = data.title or "", body = data.body or "" })
+			-- JSON null decodes to vim.NIL (truthy userdata), which would slip
+			-- through `or ""` and crash string consumers (repo_slug, vim.split)
+			callback(nil, {
+				title = util.null_to(data.title, ""),
+				body = util.null_to(data.body, ""),
+				url = util.null_to(data.url),
+			})
 		end)
 	end
 

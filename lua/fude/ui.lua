@@ -63,15 +63,19 @@ end
 --- local drafts are enabled.
 local DRAFT_CLOSE_CHOICES = { "Save draft & close", "Discard & close", "Keep editing" }
 
---- Prompt for how to close a dirty comment buffer and route the decision.
+--- Prompt for how to close a dirty input buffer and route the decision.
 --- When `allow_draft` is true a 3-way choice (save draft / discard / keep) is
 --- shown; otherwise a plain Yes/No discard confirmation (the pre-draft UX).
+--- Prompt texts default to the comment wording; callers for other content
+--- (e.g. the PR float) pass their own via `prompts`.
 --- @param allow_draft boolean
 --- @param on_save fun() chosen "save draft & close"
 --- @param on_discard fun() chosen "discard & close"
-local function prompt_close_decision(allow_draft, on_save, on_discard)
+--- @param prompts { unsaved?: string, discard?: string }|nil prompt overrides
+function M.prompt_close_decision(allow_draft, on_save, on_discard, prompts)
+	prompts = prompts or {}
 	if allow_draft then
-		vim.ui.select(DRAFT_CLOSE_CHOICES, { prompt = "Unsaved comment:" }, function(choice)
+		vim.ui.select(DRAFT_CLOSE_CHOICES, { prompt = prompts.unsaved or "Unsaved comment:" }, function(choice)
 			if choice == DRAFT_CLOSE_CHOICES[1] then
 				on_save()
 			elseif choice == DRAFT_CLOSE_CHOICES[2] then
@@ -79,7 +83,7 @@ local function prompt_close_decision(allow_draft, on_save, on_discard)
 			end
 		end)
 	else
-		vim.ui.select({ "Yes", "No" }, { prompt = "Discard comment?" }, function(choice)
+		vim.ui.select({ "Yes", "No" }, { prompt = prompts.discard or "Discard comment?" }, function(choice)
 			if choice == "Yes" then
 				on_discard()
 			end
@@ -110,7 +114,7 @@ function M.confirm_close_with_draft(buf, original_lines, opts)
 		close()
 		return
 	end
-	prompt_close_decision(opts.allow_draft, function()
+	M.prompt_close_decision(opts.allow_draft, function()
 		if opts.on_save_draft then
 			opts.on_save_draft(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"))
 		end
@@ -308,7 +312,7 @@ function M.open_comment_input(callback, opts)
 			finish("cancel")
 			return
 		end
-		prompt_close_decision(opts.allow_draft, function()
+		M.prompt_close_decision(opts.allow_draft, function()
 			finish("draft")
 		end, function()
 			finish("discard")

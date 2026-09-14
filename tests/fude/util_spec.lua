@@ -34,6 +34,27 @@ describe("is_null", function()
 	end)
 end)
 
+describe("null_to", function()
+	it("replaces nil with the default", function()
+		assert.are.equal("", util.null_to(nil, ""))
+	end)
+
+	it("replaces vim.NIL with the default", function()
+		assert.are.equal("", util.null_to(vim.NIL, ""))
+	end)
+
+	it("can map null to nil (unlike the and-or idiom)", function()
+		assert.is_nil(util.null_to(vim.NIL))
+		assert.is_nil(util.null_to(nil))
+	end)
+
+	it("returns non-null values unchanged, including false and 0", function()
+		assert.are.equal("x", util.null_to("x", ""))
+		assert.are.equal(0, util.null_to(0, 99))
+		assert.is_false(util.null_to(false, true))
+	end)
+end)
+
 describe("all_comments_resolved", function()
 	it("returns false for an empty list", function()
 		assert.is_false(util.all_comments_resolved({}))

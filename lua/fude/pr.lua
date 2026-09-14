@@ -43,6 +43,30 @@ function M.clear_draft()
 	draft = nil
 end
 
+--- Serialize PR edit content into a single string for drafts.json storage.
+--- Line 1 holds the title, the remaining lines hold the body verbatim, so
+--- parse_edit_draft can split them back apart. Normalization is delegated to
+--- parse_pr_buffer so a restored draft always matches what submit would send.
+--- @param title_lines string[]
+--- @param body_lines string[]
+--- @return string
+function M.serialize_edit_draft(title_lines, body_lines)
+	local parsed = M.parse_pr_buffer(title_lines or {}, body_lines or {}, { trim_body = false })
+	return parsed.title .. "\n" .. parsed.body
+end
+
+--- Parse a serialized PR edit draft back into title/body lines.
+--- @param text string
+--- @return table { title_lines: string[], body_lines: string[] }
+function M.parse_edit_draft(text)
+	local lines = vim.split(text or "", "\n", { plain = true })
+	local title = table.remove(lines, 1) or ""
+	if #lines == 0 then
+		lines = { "" }
+	end
+	return { title_lines = { title }, body_lines = lines }
+end
+
 --- Expand a leading "~/" (or a bare "~") in an attachment path to the home
 --- directory. Deliberately not vim.fn.expand(), which also runs backtick
 --- expressions as shell commands and expands globs/braces — attachment paths
@@ -318,7 +342,8 @@ end
 --- Open the PR float with explicit title and body content.
 --- @param title_lines string[]|nil initial title lines (default: {""})
 --- @param body_lines string[]|nil initial body lines (default: {""})
---- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...) }
+--- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...),
+---   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun() }
 function M.open_pr_float(title_lines, body_lines, opts)
 	title_lines = title_lines or { "" }
 	body_lines = body_lines or { "" }
@@ -358,7 +383,9 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	-- Determine footer text
 	local footer_text = opts.footer
 	if not footer_text then
-		if is_edit then
+		if is_edit and opts.from_draft then
+			footer_text = " <CR> update | q cancel (draft restored) "
+		elseif is_edit then
 			footer_text = " <CR> update | q cancel "
 		elseif opts.from_draft then
 			footer_text = " <CR> create draft | q cancel (draft restored) "
@@ -496,6 +523,9 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		-- Default: create draft PR
 		-- Save draft before attempting to create PR
 		M.save_draft(t_lines, b_lines)
+		-- save_draft stores a fresh table, so a reference compare below tells
+		-- whether the draft was replaced while the request was in flight
+		local draft_at_submit = M.get_draft()
 
 		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 
@@ -505,17 +535,64 @@ function M.open_pr_float(title_lines, body_lines, opts)
 				vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
 				return
 			end
-			-- Success: clear the draft
-			M.clear_draft()
+			-- Success: clear the draft, unless a newer one was saved while
+			-- the request was in flight (e.g. the user reopened :FudePR)
+			if M.get_draft() == draft_at_submit then
+				M.clear_draft()
+			end
 			local url = data and data.url or ""
 			local suffix = M.format_attach_suffix(#extracted.attachments)
 			vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
 		end)
 	end
 
-	-- Cancel handler
+	-- Draft-save wiring for the cancel confirmation. create mode always saves
+	-- to the session-local draft; edit mode saves only when the caller wires a
+	-- drafts.json handler, otherwise the plain Yes/No confirmation is shown.
+	local allow_draft = opts.allow_draft
+	if allow_draft == nil then
+		allow_draft = not is_edit
+	end
+	local on_save_draft = opts.on_save_draft
+	if not on_save_draft and not is_edit then
+		on_save_draft = function(t_lines, b_lines)
+			M.save_draft(t_lines, b_lines)
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+		end
+	end
+	if not on_save_draft then
+		allow_draft = false
+	end
+
+	-- Cancel handler: confirm before discarding unsaved changes, mirroring the
+	-- comment input close flow. The baseline is the lines the float opened
+	-- with (a restored draft included), so an unedited buffer closes silently.
+	-- Only the q keymap goes through here — closing a window directly (:q
+	-- etc.) fires WinClosed and still discards without confirmation.
 	local function cancel()
-		close_all()
+		-- Either buffer can be wiped while its window survives (e.g. :e in a
+		-- pane replaces the nofile buffer); nothing is left to confirm then
+		if not (vim.api.nvim_buf_is_valid(title_buf) and vim.api.nvim_buf_is_valid(body_buf)) then
+			close_all()
+			return
+		end
+		local ui = require("fude.ui")
+		local t_cur = vim.api.nvim_buf_get_lines(title_buf, 0, -1, false)
+		local b_cur = vim.api.nvim_buf_get_lines(body_buf, 0, -1, false)
+		local dirty = ui.should_confirm_discard(t_cur, title_lines) or ui.should_confirm_discard(b_cur, body_lines)
+		if not dirty then
+			close_all()
+			return
+		end
+		ui.prompt_close_decision(allow_draft, function()
+			on_save_draft(t_cur, b_cur)
+			close_all()
+		end, function()
+			if opts.on_discard_draft then
+				opts.on_discard_draft()
+			end
+			close_all()
+		end, { unsaved = "Unsaved PR:", discard = "Discard changes?" })
 	end
 
 	-- Helper to scroll body window from title
@@ -585,7 +662,10 @@ end
 local function open_from_draft()
 	local d = M.get_draft()
 	if d then
-		M.open_pr_float(d.title_lines, d.body_lines, { from_draft = true })
+		-- "Discard & close" deletes the stored draft too, matching the edit
+		-- mode and comment input semantics. Opening from a template instead
+		-- leaves an unrelated stored draft alone (no on_discard_draft there).
+		M.open_pr_float(d.title_lines, d.body_lines, { from_draft = true, on_discard_draft = M.clear_draft })
 	end
 end
 
@@ -756,12 +836,54 @@ function M.edit()
 					return
 				end
 
+				local drafts = require("fude.drafts")
+				-- Derive the draft key from the PR url, not config.state:
+				-- FudeEditPR also works without an active review session. No
+				-- slug means no persistent draft (Yes/No fallback on cancel).
+				local slug = drafts.repo_slug(data.url)
+				local draft_key = slug and drafts.make_draft_key(slug, num, "pr_edit") or nil
+
+				local title_lines = { data.title }
 				local body_lines = vim.split(format.normalize_newlines(data.body), "\n", { plain = true })
-				M.open_pr_float({ data.title }, body_lines, {
+				local saved = drafts.get(draft_key)
+				local from_draft = false
+				if saved then
+					local restored = M.parse_edit_draft(format.normalize_newlines(saved))
+					title_lines = restored.title_lines
+					body_lines = restored.body_lines
+					from_draft = true
+				end
+
+				-- The float stays open until an update request finishes, so a
+				-- draft explicitly saved while one is in flight (q -> "Save
+				-- draft & close") is newer user intent: the success cleanup
+				-- must not delete it. A flag beats comparing stored content,
+				-- which would misfire when the re-saved draft happens to
+				-- serialize identically to the pre-submit one.
+				local draft_saved_in_flight = false
+
+				M.open_pr_float(title_lines, body_lines, {
 					mode = "edit",
-					footer = " <CR> update | q cancel ",
+					from_draft = from_draft,
+					allow_draft = draft_key ~= nil and drafts.enabled(),
+					on_save_draft = function(t_lines, b_lines)
+						local serialized = M.serialize_edit_draft(t_lines, b_lines)
+						-- drafts.set removes the entry for empty input, so
+						-- don't claim a draft was saved in that case
+						drafts.set(draft_key, serialized)
+						draft_saved_in_flight = true
+						if vim.trim(serialized) == "" then
+							vim.notify("fude.nvim: Empty input — draft cleared", vim.log.levels.INFO)
+						else
+							vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+						end
+					end,
+					on_discard_draft = function()
+						drafts.remove(draft_key)
+					end,
 					on_submit = function(title, body, close_float)
 						vim.notify("fude.nvim: Updating PR...", vim.log.levels.INFO)
+						draft_saved_in_flight = false
 						local extracted = M.parse_body_attachments(body, expand_home)
 						gh.edit_pr(num, title, extracted.body, extracted.attachments, function(edit_err)
 							vim.schedule(function()
@@ -769,6 +891,9 @@ function M.edit()
 									vim.notify("fude.nvim: " .. M.format_attach_error(edit_err), vim.log.levels.ERROR)
 								else
 									close_float()
+									if not draft_saved_in_flight then
+										drafts.remove(draft_key)
+									end
 									local suffix = M.format_attach_suffix(#extracted.attachments)
 									vim.notify("fude.nvim: PR updated" .. suffix, vim.log.levels.INFO)
 								end

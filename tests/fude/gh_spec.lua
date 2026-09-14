@@ -517,6 +517,57 @@ describe("create_draft_pr / edit_pr --attach args", function()
 	end)
 end)
 
+describe("get_pr_title_body", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("normalizes JSON null title/body/url (vim.NIL) to safe values", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback(nil, { title = vim.NIL, body = vim.NIL, url = vim.NIL })
+		end)
+		local result
+		gh.get_pr_title_body(50, function(err, data)
+			result = { err = err, data = data }
+		end)
+		assert.is_nil(result.err)
+		assert.are.equal("", result.data.title)
+		assert.are.equal("", result.data.body)
+		assert.is_nil(result.data.url)
+	end)
+
+	it("normalizes absent fields the same way", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback(nil, {})
+		end)
+		local result
+		gh.get_pr_title_body(50, function(_, data)
+			result = data
+		end)
+		assert.are.equal("", result.title)
+		assert.are.equal("", result.body)
+		assert.is_nil(result.url)
+	end)
+
+	it("passes through regular values and requests the url field", function()
+		local captured_args
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, { title = "T", body = "B", url = "https://github.com/o/r/pull/50" })
+		end)
+		local result
+		gh.get_pr_title_body(50, function(_, data)
+			result = data
+		end)
+		assert.are.same({ "pr", "view", "50", "--json", "title,body,url" }, captured_args)
+		assert.are.equal("T", result.title)
+		assert.are.equal("B", result.body)
+		assert.are.equal("https://github.com/o/r/pull/50", result.url)
+	end)
+end)
+
 describe("re_request_review", function()
 	local helpers = require("tests.helpers")
 

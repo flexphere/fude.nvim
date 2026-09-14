@@ -324,7 +324,11 @@ Using lazy.nvim: >lua
 
     Press `<Tab>` to switch between title and body panes.
     Press `<CR>` to create a draft PR.
-    Press `q` to cancel.
+    Press `q` to cancel. If the title or body has unsaved changes, a
+    3-way prompt (Save draft & close / Discard & close / Keep editing)
+    is shown; the saved draft is kept in memory for the current Neovim
+    session and offered as a `(draft)` entry the next time you run
+    |:FudeCreatePR|.
 
     Local images and videos referenced from inline markdown image/link
     destinations with the `file://` scheme are uploaded via `gh`'s
@@ -364,7 +368,13 @@ Using lazy.nvim: >lua
 
     Press `<Tab>` to switch between panes.
     Press `<CR>` to update the PR.
-    Press `q` to cancel.
+    Press `q` to cancel. If the title or body has unsaved changes, a
+    3-way prompt (Save draft & close / Discard & close / Keep editing)
+    is shown. The draft is persisted to `drafts.json` (see
+    |fude-drafts|) keyed per repo + PR, restored the next time
+    you run |:FudeEditPR| (the footer shows "draft restored"), and
+    removed after a successful update. When drafts are disabled a
+    plain Yes/No discard confirmation is shown instead.
 
     Local images and videos referenced with the `file://` scheme in
     the body are uploaded via `gh`'s `--attach` flag, same as
@@ -975,6 +985,13 @@ repository, PR number, and target, so drafts for different locations and
 different PRs are kept independently and never collide. A draft is removed once
 its comment is submitted, or when you explicitly discard it.
 
+|:FudeEditPR| uses the same store: cancelling with unsaved title/body changes
+offers the same 3-way choice, and the saved draft (keyed per repo + PR) is
+restored the next time you edit that PR. It is not shown in the comment
+browser. |:FudeCreatePR| drafts are session-local instead (no PR number exists
+yet) and are offered as a `(draft)` template entry within the same Neovim
+session.
+
 Lines that have a saved draft show a `draft` indicator in the diff (configurable
 via `signs.draft` / `signs.draft_hl`), similar to the `pending` indicator. Line
 and suggestion drafts mark their own line; reply and edit drafts mark the line of
@@ -999,6 +1016,9 @@ Limitations:
     will not be restored at the new position (same as pending comments).
   - The draft file is written with last-write-wins semantics, so running
     multiple Neovim instances against the same draft store may drop a draft.
+  - The close confirmation triggers only via the plugin's close keymaps
+    (`q` / `<Esc>`); closing an input window directly (e.g. with `:q`)
+    discards the text without prompting or saving a draft.
 
 ==============================================================================
 10. LOCAL REVIEW                                      *fude-local-review*
