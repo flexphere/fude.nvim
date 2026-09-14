@@ -126,7 +126,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
 | `:FudeReviewToggleResolved` | Toggle visibility of resolved comments in the editor |
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
-| `:FudeReviewPanel` | Toggle review side panel |
+| `:FudeReviewPanel` | Toggle review side panel (focus it when open, close it when focused) |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template (body `file://` images/videos are uploaded via `gh --attach`) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
