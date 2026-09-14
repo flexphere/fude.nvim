@@ -673,9 +673,9 @@ function M.get_pr_title_body(pr_number, callback)
 			-- JSON null decodes to vim.NIL (truthy userdata), which would slip
 			-- through `or ""` and crash string consumers (repo_slug, vim.split)
 			callback(nil, {
-				title = util.is_null(data.title) and "" or data.title,
-				body = util.is_null(data.body) and "" or data.body,
-				url = util.is_null(data.url) and nil or data.url,
+				title = util.null_to(data.title, ""),
+				body = util.null_to(data.body, ""),
+				url = util.null_to(data.url),
 			})
 		end)
 	end
