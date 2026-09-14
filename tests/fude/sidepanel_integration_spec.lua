@@ -47,6 +47,41 @@ describe("sidepanel integration", function()
 		assert.is_false(vim.wo[panel.win].wrap)
 	end)
 
+	it("open places the panel at the far left even when a right window is focused", function()
+		-- Simulate the diff layout [preview][source] with the right window focused
+		vim.cmd("vsplit")
+		vim.cmd("wincmd l")
+
+		sidepanel.open()
+
+		local panel = config.state.sidepanel
+		local layout = vim.fn.winlayout()
+		assert.are.equal("row", layout[1])
+		-- 3 leaves: a 2-window row would also pass the leftmost check even
+		-- without the top-level split, hiding a regression
+		assert.are.equal(3, #layout[2])
+		local leftmost = layout[2][1]
+		assert.are.equal("leaf", leftmost[1])
+		assert.are.equal(panel.win, leftmost[2])
+	end)
+
+	it("open places the panel at the far right when position is right", function()
+		config.setup({ sidepanel = { position = "right" } })
+		-- Simulate the diff layout [preview][source]; vsplit leaves the new
+		-- left window focused (splitright is off by default)
+		vim.cmd("vsplit")
+
+		sidepanel.open()
+
+		local panel = config.state.sidepanel
+		local layout = vim.fn.winlayout()
+		assert.are.equal("row", layout[1])
+		assert.are.equal(3, #layout[2])
+		local rightmost = layout[2][#layout[2]]
+		assert.are.equal("leaf", rightmost[1])
+		assert.are.equal(panel.win, rightmost[2])
+	end)
+
 	it("open uses the default sidepanel keymaps", function()
 		sidepanel.open()
 		local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")
@@ -130,17 +165,78 @@ describe("sidepanel integration", function()
 		assert.is_nil(config.state.sidepanel)
 	end)
 
-	it("toggle opens when closed and closes when open", function()
+	it("toggle opens when closed and closes when the panel is focused", function()
 		assert.is_nil(config.state.sidepanel)
 
 		sidepanel.toggle()
 		assert.is_not_nil(config.state.sidepanel)
 		local win = config.state.sidepanel.win
 		assert.is_true(vim.api.nvim_win_is_valid(win))
+		-- open() enters the panel window, so the next toggle closes it
+		assert.are.equal(win, vim.api.nvim_get_current_win())
 
 		sidepanel.toggle()
 		assert.is_nil(config.state.sidepanel)
 		assert.is_false(vim.api.nvim_win_is_valid(win))
+	end)
+
+	it("toggle focuses the panel when open but another window is focused", function()
+		sidepanel.toggle()
+		local panel_win = config.state.sidepanel.win
+		vim.cmd("wincmd l")
+		assert.are_not.equal(panel_win, vim.api.nvim_get_current_win())
+
+		sidepanel.toggle()
+
+		assert.are.equal(panel_win, vim.api.nvim_get_current_win())
+		assert.is_not_nil(config.state.sidepanel)
+		assert.is_true(vim.api.nvim_win_is_valid(panel_win))
+	end)
+
+	it("closing the focused panel returns focus to the window it was opened from", function()
+		local original = vim.api.nvim_get_current_win()
+		sidepanel.open()
+		assert.are_not.equal(original, vim.api.nvim_get_current_win())
+
+		sidepanel.close()
+
+		assert.are.equal(original, vim.api.nvim_get_current_win())
+	end)
+
+	it("toggle-close returns focus to the window that last focused the panel", function()
+		sidepanel.open()
+		vim.cmd("wincmd l")
+		local file_win = vim.api.nvim_get_current_win()
+
+		sidepanel.toggle() -- focus the panel
+		sidepanel.toggle() -- close it
+
+		assert.are.equal(file_win, vim.api.nvim_get_current_win())
+	end)
+
+	it("close from another window leaves focus untouched", function()
+		sidepanel.open()
+		vim.cmd("wincmd l")
+		local other = vim.api.nvim_get_current_win()
+
+		sidepanel.close()
+
+		assert.are.equal(other, vim.api.nvim_get_current_win())
+	end)
+
+	it("toggle reopens the panel in the current tab when it lives in another tab", function()
+		sidepanel.open()
+		local first_panel_win = config.state.sidepanel.win
+		vim.cmd("tabnew")
+
+		sidepanel.toggle()
+
+		local panel = config.state.sidepanel
+		assert.is_not_nil(panel)
+		assert.are_not.equal(first_panel_win, panel.win)
+		assert.are.equal(vim.api.nvim_get_current_tabpage(), vim.api.nvim_win_get_tabpage(panel.win))
+		assert.is_false(vim.api.nvim_win_is_valid(first_panel_win))
+		vim.cmd("tabonly")
 	end)
 
 	it("open does nothing when not active", function()
