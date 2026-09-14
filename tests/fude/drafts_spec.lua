@@ -313,4 +313,12 @@ describe("drafts.list_drafts", function()
 		config.state.pr_number = nil
 		assert.same({}, drafts.list_drafts())
 	end)
+
+	it("excludes pr_edit drafts (restored by :FudeEditPR, not the browser)", function()
+		drafts.set(drafts.current_key("pr_edit"), "title\nbody")
+		drafts.set(drafts.current_key("issue"), "is")
+		local list = drafts.list_drafts()
+		assert.are.equal(1, #list)
+		assert.are.equal("issue", list[1].kind)
+	end)
 end)

@@ -79,6 +79,20 @@ describe("create passes default title to open_pr_float", function()
 		assert.are.same({ "Template body line 1", "Template body line 2" }, captured_body_lines)
 	end)
 
+	it("wires on_discard_draft to clear the session draft when opened from the draft", function()
+		pr.save_draft({ "Draft title" }, { "Draft body" })
+		local captured_opts
+		helpers.mock(pr, "open_pr_float", function(_, _, opts)
+			captured_opts = opts
+		end)
+
+		pr.create()
+
+		assert.is_true(captured_opts.from_draft)
+		captured_opts.on_discard_draft()
+		assert.is_nil(pr.get_draft())
+	end)
+
 	it("does not fetch default title when only draft exists", function()
 		local get_first_commit_called = false
 		helpers.mock(diff, "get_first_commit_subject", function(_)
@@ -543,6 +557,200 @@ describe("open_pr_float paste interception", function()
 	end)
 end)
 
+describe("serialize_edit_draft / parse_edit_draft", function()
+	it("round-trips title and multi-line body", function()
+		local text = pr.serialize_edit_draft({ "My Title" }, { "line1", "", "line3" })
+		assert.are.equal("My Title\nline1\n\nline3", text)
+		local parsed = pr.parse_edit_draft(text)
+		assert.are.same({ "My Title" }, parsed.title_lines)
+		assert.are.same({ "line1", "", "line3" }, parsed.body_lines)
+	end)
+
+	it("joins multi-line titles with spaces like parse_pr_buffer", function()
+		assert.are.equal("a b\nbody", pr.serialize_edit_draft({ "a", "b" }, { "body" }))
+	end)
+
+	it("round-trips an empty title", function()
+		local parsed = pr.parse_edit_draft(pr.serialize_edit_draft({ "" }, { "body" }))
+		assert.are.same({ "" }, parsed.title_lines)
+		assert.are.same({ "body" }, parsed.body_lines)
+	end)
+
+	it("parses a title-only draft with an empty body", function()
+		local parsed = pr.parse_edit_draft("only title")
+		assert.are.same({ "only title" }, parsed.title_lines)
+		assert.are.same({ "" }, parsed.body_lines)
+	end)
+end)
+
+describe("open_pr_float cancel confirmation", function()
+	local orig_select
+	local orig_paste
+	local select_choice
+	local select_calls
+
+	local function get_q_callback(buf)
+		for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			if map.lhs == "q" then
+				return map.callback
+			end
+		end
+		error("q mapping not found for buffer " .. buf)
+	end
+
+	-- Open the float and return title/body buffer and window handles.
+	local function open_float(title_lines, body_lines, opts)
+		pr.open_pr_float(title_lines, body_lines, opts or {})
+		local title_win = vim.api.nvim_get_current_win()
+		local title_buf = vim.api.nvim_get_current_buf()
+		local body_win, body_buf
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			local buf = vim.api.nvim_win_get_buf(win)
+			if vim.bo[buf].filetype == "markdown" then
+				body_win, body_buf = win, buf
+			end
+		end
+		assert.is_not_nil(body_buf)
+		return { title_win = title_win, title_buf = title_buf, body_win = body_win, body_buf = body_buf }
+	end
+
+	before_each(function()
+		pr.clear_draft()
+		orig_select = vim.ui.select
+		orig_paste = vim.paste
+		select_calls = {}
+		vim.ui.select = function(items, sopts, on_choice)
+			table.insert(select_calls, { items = items, prompt = sopts and sopts.prompt })
+			on_choice(select_choice, nil)
+		end
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+		select_choice = nil
+		vim.cmd("stopinsert")
+		helpers.cleanup()
+		vim.paste = orig_paste
+		pr.clear_draft()
+	end)
+
+	it("closes immediately without prompting when nothing changed", function()
+		select_choice = "should-not-be-used"
+		local h = open_float({ "t" }, { "b" }, {})
+		get_q_callback(h.title_buf)()
+		assert.are.equal(0, #select_calls)
+		assert.is_false(vim.api.nvim_win_is_valid(h.title_win))
+		assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
+	end)
+
+	it("prompts when only the title changed", function()
+		select_choice = nil -- keep editing
+		local h = open_float({ "t" }, { "b" }, {})
+		vim.api.nvim_buf_set_lines(h.title_buf, 0, -1, false, { "changed" })
+		get_q_callback(h.title_buf)()
+		assert.are.equal(1, #select_calls)
+		assert.are.equal("Unsaved PR:", select_calls[1].prompt)
+		assert.is_true(vim.api.nvim_win_is_valid(h.title_win))
+	end)
+
+	it("prompts when only the body changed", function()
+		select_choice = nil -- keep editing
+		local h = open_float({ "t" }, { "b" }, {})
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "changed" })
+		get_q_callback(h.body_buf)()
+		assert.are.equal(1, #select_calls)
+		assert.is_true(vim.api.nvim_win_is_valid(h.body_win))
+	end)
+
+	it("saves a create draft and closes when 'Save draft & close' chosen", function()
+		select_choice = "Save draft & close"
+		local h = open_float({ "t" }, { "b" }, {})
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "edited body" })
+		get_q_callback(h.body_buf)()
+		local d = pr.get_draft()
+		assert.is_not_nil(d)
+		assert.are.same({ "t" }, d.title_lines)
+		assert.are.same({ "edited body" }, d.body_lines)
+		assert.is_false(vim.api.nvim_win_is_valid(h.title_win))
+		assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
+	end)
+
+	it("closes without saving when 'Discard & close' chosen", function()
+		select_choice = "Discard & close"
+		local h = open_float({ "t" }, { "b" }, {})
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "edited body" })
+		get_q_callback(h.body_buf)()
+		assert.is_nil(pr.get_draft())
+		assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
+	end)
+
+	it("keeps the float open when 'Keep editing' chosen", function()
+		select_choice = nil
+		local h = open_float({ "t" }, { "b" }, {})
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "edited body" })
+		get_q_callback(h.body_buf)()
+		assert.is_true(vim.api.nvim_win_is_valid(h.title_win))
+		assert.is_true(vim.api.nvim_win_is_valid(h.body_win))
+		assert.is_nil(pr.get_draft())
+	end)
+
+	it("routes edit-mode save to the caller's draft handler", function()
+		local saved
+		select_choice = "Save draft & close"
+		local h = open_float({ "t" }, { "b" }, {
+			mode = "edit",
+			allow_draft = true,
+			on_save_draft = function(t_lines, b_lines)
+				saved = { t = t_lines, b = b_lines }
+			end,
+		})
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "x" })
+		get_q_callback(h.body_buf)()
+		assert.are.same({ "t" }, saved.t)
+		assert.are.same({ "x" }, saved.b)
+		-- the built-in create draft must not be touched in edit mode
+		assert.is_nil(pr.get_draft())
+	end)
+
+	it("routes edit-mode discard to the caller's draft handler", function()
+		local discarded = false
+		select_choice = "Discard & close"
+		local h = open_float({ "t" }, { "b" }, {
+			mode = "edit",
+			allow_draft = true,
+			on_save_draft = function() end,
+			on_discard_draft = function()
+				discarded = true
+			end,
+		})
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "x" })
+		get_q_callback(h.body_buf)()
+		assert.is_true(discarded)
+		assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
+	end)
+
+	it("falls back to Yes/No confirmation in edit mode without a draft handler", function()
+		select_choice = "Yes"
+		local h = open_float({ "t" }, { "b" }, { mode = "edit" })
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "x" })
+		get_q_callback(h.body_buf)()
+		assert.are.equal(1, #select_calls)
+		assert.are.equal("Discard changes?", select_calls[1].prompt)
+		assert.are.same({ "Yes", "No" }, select_calls[1].items)
+		assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
+	end)
+
+	it("shows the draft-restored footer in edit mode opened from a draft", function()
+		local h = open_float({ "t" }, { "b" }, { mode = "edit", from_draft = true })
+		local cfg = vim.api.nvim_win_get_config(h.body_win)
+		local text = ""
+		for _, chunk in ipairs(cfg.footer or {}) do
+			text = text .. chunk[1]
+		end
+		assert.are.equal(" <CR> update | q cancel (draft restored) ", text)
+	end)
+end)
+
 describe("format_attach_suffix", function()
 	it("returns empty string for zero attachments", function()
 		assert.are.equal("", pr.format_attach_suffix(0))
@@ -683,7 +891,11 @@ describe("edit", function()
 		assert.are.same({ "Existing Title" }, captured_title_lines)
 		assert.are.same({ "Line 1", "Line 2" }, captured_body_lines)
 		assert.are.equal("edit", captured_opts.mode)
-		assert.are.equal(" <CR> update | q cancel ", captured_opts.footer)
+		-- footer is no longer passed: open_pr_float derives it from mode/from_draft
+		assert.is_nil(captured_opts.footer)
+		assert.is_false(captured_opts.from_draft)
+		-- no url in the mocked response -> no draft key -> drafts disabled
+		assert.is_false(captured_opts.allow_draft)
 		assert.is_not_nil(captured_opts.on_submit)
 	end)
 
@@ -763,5 +975,172 @@ describe("edit", function()
 
 		assert.are.equal("intro\n![shot](./img.png)", edit_called_with.body)
 		assert.are.same({ "./img.png" }, edit_called_with.attachments)
+	end)
+end)
+
+describe("edit draft persistence", function()
+	local gh = require("fude.gh")
+	local config = require("fude.config")
+	local drafts = require("fude.drafts")
+	local captured_title_lines
+	local captured_body_lines
+	local captured_opts
+	local key
+
+	before_each(function()
+		captured_title_lines = nil
+		captured_body_lines = nil
+		captured_opts = nil
+		config.reset_state()
+		drafts._dir = vim.fn.tempname()
+		key = drafts.make_draft_key("owner/repo", 77, "pr_edit")
+		config.state.active = true
+		config.state.pr_number = 77
+
+		helpers.mock(pr, "open_pr_float", function(title_lines, body_lines, opts)
+			captured_title_lines = title_lines
+			captured_body_lines = body_lines
+			captured_opts = opts
+		end)
+		helpers.mock(gh, "get_pr_title_body", function(_, callback)
+			vim.schedule(function()
+				callback(nil, {
+					title = "API Title",
+					body = "api body",
+					url = "https://github.com/owner/repo/pull/77",
+				})
+			end)
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+		drafts._dir = nil
+	end)
+
+	it("enables draft saving and wires handlers when the PR url is available", function()
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		assert.is_true(captured_opts.allow_draft)
+		assert.is_false(captured_opts.from_draft)
+		assert.are.same({ "API Title" }, captured_title_lines)
+		assert.are.same({ "api body" }, captured_body_lines)
+
+		captured_opts.on_save_draft({ "new title" }, { "new body", "l2" })
+		assert.are.equal("new title\nnew body\nl2", drafts.get(key))
+
+		captured_opts.on_discard_draft()
+		assert.is_nil(drafts.get(key))
+	end)
+
+	it("prefills from a saved draft and marks the float as from_draft", function()
+		drafts.set(key, "draft title\ndraft body")
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		assert.are.same({ "draft title" }, captured_title_lines)
+		assert.are.same({ "draft body" }, captured_body_lines)
+		assert.is_true(captured_opts.from_draft)
+		assert.is_true(captured_opts.allow_draft)
+	end)
+
+	it("removes the draft after a successful submit", function()
+		drafts.set(key, "draft title\ndraft body")
+		helpers.mock(gh, "edit_pr", function(_, _, _, _, callback)
+			vim.schedule(function()
+				callback(nil)
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		local closed = false
+		captured_opts.on_submit("T", "B", function()
+			closed = true
+		end)
+		helpers.wait_for(function()
+			return closed
+		end)
+
+		assert.is_nil(drafts.get(key))
+	end)
+
+	it("keeps the draft when submit fails", function()
+		drafts.set(key, "draft title\ndraft body")
+		local edit_called = false
+		helpers.mock(gh, "edit_pr", function(_, _, _, _, callback)
+			edit_called = true
+			vim.schedule(function()
+				callback("boom")
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		captured_opts.on_submit("T", "B", function() end)
+		helpers.wait_for(function()
+			return edit_called
+		end)
+		-- the error path runs one scheduled tick after the callback; give it
+		-- time to (not) remove the draft
+		vim.wait(100, function()
+			return false
+		end)
+
+		assert.are.equal("draft title\ndraft body", drafts.get(key))
+	end)
+
+	it("disables draft saving when drafts.enabled is false", function()
+		local orig_drafts_opt = config.opts.drafts
+		config.opts.drafts = { enabled = false }
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		local allow_draft = captured_opts.allow_draft
+		config.opts.drafts = orig_drafts_opt
+		assert.is_false(allow_draft)
+	end)
+
+	it("clears the draft instead of claiming a save for empty input", function()
+		drafts.set(key, "old title\nold body")
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		captured_opts.on_save_draft({ "" }, { "" })
+		assert.is_nil(drafts.get(key))
+	end)
+
+	it("disables draft saving when the PR url yields no repo slug", function()
+		helpers.mock(gh, "get_pr_title_body", function(_, callback)
+			vim.schedule(function()
+				callback(nil, { title = "API Title", body = "api body", url = nil })
+			end)
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		assert.is_false(captured_opts.allow_draft)
+		assert.is_false(captured_opts.from_draft)
 	end)
 end)
