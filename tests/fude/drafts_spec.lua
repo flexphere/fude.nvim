@@ -322,3 +322,41 @@ describe("drafts.list_drafts", function()
 		assert.are.equal("issue", list[1].kind)
 	end)
 end)
+
+describe("drafts.remove_if_unchanged", function()
+	local tmp
+
+	before_each(function()
+		config.setup({})
+		tmp = vim.fn.tempname()
+		vim.fn.mkdir(tmp, "p")
+		drafts._dir = tmp
+	end)
+
+	after_each(function()
+		drafts._dir = nil
+		vim.fn.delete(tmp, "rf")
+	end)
+
+	it("removes the draft when the stored body still equals the snapshot", function()
+		drafts.set("k", "body")
+		drafts.remove_if_unchanged("k", "body")
+		assert.is_nil(drafts.get("k"))
+	end)
+
+	it("keeps a draft that changed after the snapshot was taken", function()
+		drafts.set("k", "newer body")
+		drafts.remove_if_unchanged("k", "old body")
+		assert.are.equal("newer body", drafts.get("k"))
+	end)
+
+	it("keeps a draft created after a nil snapshot", function()
+		drafts.set("k", "saved in flight")
+		drafts.remove_if_unchanged("k", nil)
+		assert.are.equal("saved in flight", drafts.get("k"))
+	end)
+
+	it("is a no-op for a nil key", function()
+		drafts.remove_if_unchanged(nil, nil)
+	end)
+end)

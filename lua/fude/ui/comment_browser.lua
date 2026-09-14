@@ -427,15 +427,19 @@ local function create_browser(entries, issue_comments)
 		end)
 	end
 
-	-- Local draft key captured when submit starts; cleared once submit succeeds.
+	-- Local draft key + stored body captured when submit starts; the pane stays
+	-- editable while the request runs, so on success the draft is removed only
+	-- if it wasn't re-saved in the meantime (a mid-flight save is newer intent).
 	local pending_submit_key
+	local pending_submit_snapshot
 
 	-- Restore lower pane to default state after successful submit
 	local function restore_lower_after_submit()
 		vim.schedule(function()
 			if pending_submit_key then
-				drafts.remove(pending_submit_key)
+				drafts.remove_if_unchanged(pending_submit_key, pending_submit_snapshot)
 				pending_submit_key = nil
+				pending_submit_snapshot = nil
 			end
 			if vim.api.nvim_buf_is_valid(lower_buf) then
 				vim.api.nvim_buf_set_lines(lower_buf, 0, -1, false, { "" })
@@ -491,6 +495,7 @@ local function create_browser(entries, issue_comments)
 
 		-- Capture the draft key now (mode/edit_target are reset after success)
 		pending_submit_key = lower_key_for_entry(entry, browser.mode, browser.edit_target)
+		pending_submit_snapshot = drafts.get(pending_submit_key)
 
 		-- Save text for error recovery
 		local saved_lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)

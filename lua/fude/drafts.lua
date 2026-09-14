@@ -291,6 +291,20 @@ function M.set(key, body)
 	M.save(drafts)
 end
 
+--- Remove a draft only when its stored body still equals `snapshot` (the body
+--- read when an async submit started; nil = no draft existed then). A draft
+--- saved while the request was in flight is newer user intent and is kept.
+--- @param key string|nil
+--- @param snapshot string|nil
+function M.remove_if_unchanged(key, snapshot)
+	if not key then
+		return
+	end
+	if M.get(key) == snapshot then
+		M.remove(key)
+	end
+end
+
 --- Remove a draft by key (no-op when absent / disabled).
 --- @param key string|nil
 function M.remove(key)

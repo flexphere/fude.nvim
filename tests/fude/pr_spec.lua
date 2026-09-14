@@ -751,6 +751,66 @@ describe("open_pr_float cancel confirmation", function()
 	end)
 end)
 
+describe("create submit draft cleanup", function()
+	local gh = require("fude.gh")
+	local orig_paste
+
+	local function get_cr_callback(buf)
+		for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			if map.lhs == "<CR>" then
+				return map.callback
+			end
+		end
+		error("<CR> mapping not found for buffer " .. buf)
+	end
+
+	before_each(function()
+		pr.clear_draft()
+		orig_paste = vim.paste
+	end)
+
+	after_each(function()
+		vim.cmd("stopinsert")
+		helpers.cleanup()
+		vim.paste = orig_paste
+		pr.clear_draft()
+	end)
+
+	it("keeps a session draft saved while the create request is in flight", function()
+		local finish_create
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, callback)
+			finish_create = callback
+		end)
+
+		pr.open_pr_float({ "t" }, { "b" }, {})
+		local title_buf = vim.api.nvim_get_current_buf()
+		get_cr_callback(title_buf)() -- submit: closes the float, starts the request
+
+		-- the user reopens :FudePR and saves a newer draft mid-flight
+		pr.save_draft({ "newer" }, { "newer body" })
+
+		finish_create(nil, { url = "https://github.com/o/r/pull/1" })
+
+		local d = pr.get_draft()
+		assert.is_not_nil(d)
+		assert.are.same({ "newer" }, d.title_lines)
+	end)
+
+	it("clears the draft after success when nothing was saved in flight", function()
+		local finish_create
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, callback)
+			finish_create = callback
+		end)
+
+		pr.open_pr_float({ "t" }, { "b" }, {})
+		local title_buf = vim.api.nvim_get_current_buf()
+		get_cr_callback(title_buf)()
+
+		finish_create(nil, { url = "https://github.com/o/r/pull/1" })
+		assert.is_nil(pr.get_draft())
+	end)
+end)
+
 describe("format_attach_suffix", function()
 	it("returns empty string for zero attachments", function()
 		assert.are.equal("", pr.format_attach_suffix(0))
@@ -1072,6 +1132,60 @@ describe("edit draft persistence", function()
 		end)
 
 		assert.is_nil(drafts.get(key))
+	end)
+
+	it("keeps a draft saved while the update request is in flight", function()
+		drafts.set(key, "before title\nbefore body")
+		local finish_edit
+		helpers.mock(gh, "edit_pr", function(_, _, _, _, callback)
+			finish_edit = callback
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		local closed = false
+		captured_opts.on_submit("T", "B", function()
+			closed = true
+		end)
+		-- the float stays open until the request finishes; the user saves a
+		-- newer draft in the meantime
+		captured_opts.on_save_draft({ "newer title" }, { "newer body" })
+		finish_edit(nil)
+		helpers.wait_for(function()
+			return closed
+		end)
+
+		assert.are.equal("newer title\nnewer body", drafts.get(key))
+	end)
+
+	it("keeps an in-flight draft even when its content matches the pre-submit one", function()
+		drafts.set(key, "same title\nsame body")
+		local finish_edit
+		helpers.mock(gh, "edit_pr", function(_, _, _, _, callback)
+			finish_edit = callback
+		end)
+
+		pr.edit()
+		helpers.wait_for(function()
+			return captured_opts ~= nil
+		end)
+
+		local closed = false
+		captured_opts.on_submit("T", "B", function()
+			closed = true
+		end)
+		-- re-saving identical content mid-flight is still an explicit save; a
+		-- stored-content comparison would wrongly delete it on success
+		captured_opts.on_save_draft({ "same title" }, { "same body" })
+		finish_edit(nil)
+		helpers.wait_for(function()
+			return closed
+		end)
+
+		assert.are.equal("same title\nsame body", drafts.get(key))
 	end)
 
 	it("keeps the draft when submit fails", function()

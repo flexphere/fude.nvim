@@ -523,6 +523,9 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		-- Default: create draft PR
 		-- Save draft before attempting to create PR
 		M.save_draft(t_lines, b_lines)
+		-- save_draft stores a fresh table, so a reference compare below tells
+		-- whether the draft was replaced while the request was in flight
+		local draft_at_submit = M.get_draft()
 
 		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 
@@ -532,8 +535,11 @@ function M.open_pr_float(title_lines, body_lines, opts)
 				vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
 				return
 			end
-			-- Success: clear the draft
-			M.clear_draft()
+			-- Success: clear the draft, unless a newer one was saved while
+			-- the request was in flight (e.g. the user reopened :FudePR)
+			if M.get_draft() == draft_at_submit then
+				M.clear_draft()
+			end
 			local url = data and data.url or ""
 			local suffix = M.format_attach_suffix(#extracted.attachments)
 			vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
@@ -848,6 +854,14 @@ function M.edit()
 					from_draft = true
 				end
 
+				-- The float stays open until an update request finishes, so a
+				-- draft explicitly saved while one is in flight (q -> "Save
+				-- draft & close") is newer user intent: the success cleanup
+				-- must not delete it. A flag beats comparing stored content,
+				-- which would misfire when the re-saved draft happens to
+				-- serialize identically to the pre-submit one.
+				local draft_saved_in_flight = false
+
 				M.open_pr_float(title_lines, body_lines, {
 					mode = "edit",
 					from_draft = from_draft,
@@ -857,6 +871,7 @@ function M.edit()
 						-- drafts.set removes the entry for empty input, so
 						-- don't claim a draft was saved in that case
 						drafts.set(draft_key, serialized)
+						draft_saved_in_flight = true
 						if vim.trim(serialized) == "" then
 							vim.notify("fude.nvim: Empty input — draft cleared", vim.log.levels.INFO)
 						else
@@ -868,6 +883,7 @@ function M.edit()
 					end,
 					on_submit = function(title, body, close_float)
 						vim.notify("fude.nvim: Updating PR...", vim.log.levels.INFO)
+						draft_saved_in_flight = false
 						local extracted = M.parse_body_attachments(body, expand_home)
 						gh.edit_pr(num, title, extracted.body, extracted.attachments, function(edit_err)
 							vim.schedule(function()
@@ -875,7 +891,9 @@ function M.edit()
 									vim.notify("fude.nvim: " .. M.format_attach_error(edit_err), vim.log.levels.ERROR)
 								else
 									close_float()
-									drafts.remove(draft_key)
+									if not draft_saved_in_flight then
+										drafts.remove(draft_key)
+									end
 									local suffix = M.format_attach_suffix(#extracted.attachments)
 									vim.notify("fude.nvim: PR updated" .. suffix, vim.log.levels.INFO)
 								end
