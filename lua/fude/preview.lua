@@ -15,6 +15,17 @@ function M.open_preview(source_win)
 	opening = true
 
 	local source_buf = vim.api.nvim_win_get_buf(source_win)
+
+	-- Only regular file buffers can be diffed against the base. Without this
+	-- guard, running :FudeReviewDiff from a nofile window (e.g. the side
+	-- panel) would vsplit that window and wedge state.source_win to it —
+	-- to_repo_relative can't reject its name ("[fude] Panel" resolves to a
+	-- repo-relative path when cwd is inside the repo).
+	if vim.bo[source_buf].buftype ~= "" then
+		opening = false
+		return
+	end
+
 	local filepath = vim.api.nvim_buf_get_name(source_buf)
 	local rel_path = diff.to_repo_relative(filepath)
 
