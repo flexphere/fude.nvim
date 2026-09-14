@@ -444,8 +444,15 @@ Using lazy.nvim: >lua
     Requires an active review session.
 
 :FudeReviewPanel                                  *:FudeReviewPanel*
-    Toggle the review side panel. The panel is a sidebar split window
-    that shows two sections:
+    Toggle the review side panel: opens it when closed, focuses it when
+    it is open but another window is focused, and closes it when it is
+    the current window. The panel always opens at the editor edge
+    (`sidepanel.position`), regardless of which window is focused.
+    Closing the focused panel (with this command or `q`) returns focus
+    to the window the panel was opened or focused from. When the panel
+    lives in another tabpage, this command reopens it in the current
+    tabpage instead of jumping tabs.
+    The panel is a sidebar split window that shows two sections:
 
     Review Scope:~
       In PR review, lists the PR's commit history with a "Full PR"

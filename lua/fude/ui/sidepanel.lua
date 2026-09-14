@@ -248,7 +248,10 @@ function M.resolve_entry_at_cursor(cursor_line, section_map)
 	return nil
 end
 
---- Close the sidepanel and clean up state.
+--- Close the sidepanel and clean up state. When the panel is the current
+--- window, focus returns to the window it was opened/focused from
+--- (`panel.prev_win`); when the panel is closed from elsewhere (teardown,
+--- reload), focus is left untouched.
 function M.close()
 	local state = config.state
 	local panel = state.sidepanel
@@ -260,6 +263,8 @@ function M.close()
 		pcall(vim.api.nvim_del_augroup_by_id, panel.augroup)
 	end
 
+	local was_focused = panel.win ~= nil and vim.api.nvim_get_current_win() == panel.win
+
 	if panel.win and vim.api.nvim_win_is_valid(panel.win) then
 		local ok, err = pcall(vim.cmd, "noautocmd call nvim_win_close(" .. panel.win .. ", v:true)")
 		if not ok and type(err) == "string" and err:find("Cannot close last window") then
@@ -268,6 +273,12 @@ function M.close()
 	end
 
 	state.sidepanel = nil
+
+	-- Restore focus without noautocmd so BufEnter fires and the plugin's
+	-- extmark/keymap/preview state follows the newly-focused window.
+	if was_focused and panel.prev_win and vim.api.nvim_win_is_valid(panel.prev_win) then
+		pcall(vim.api.nvim_set_current_win, panel.prev_win)
+	end
 end
 
 --- Render the sidepanel content into the buffer.
@@ -452,6 +463,7 @@ function M.open()
 	-- Close existing panel
 	M.close()
 
+	local prev_win = vim.api.nvim_get_current_win()
 	local sp_opts = config.opts.sidepanel or {}
 	local width = math.max(20, sp_opts.width or 40)
 	local position = sp_opts.position or "left"
@@ -466,6 +478,9 @@ function M.open()
 	local split_dir = position == "right" and "right" or "left"
 	local win = vim.api.nvim_open_win(buf, true, {
 		split = split_dir,
+		-- Top-level split: keep the panel at the tabpage edge regardless of
+		-- which window is focused (e.g. the right pane of a diff layout).
+		win = -1,
 		width = width,
 	})
 
@@ -492,6 +507,7 @@ function M.open()
 		augroup = nil,
 		file_tree_mode = sp_opts.file_tree or "flat",
 		repo_root = get_diff().get_repo_root(),
+		prev_win = prev_win,
 	}
 	state.sidepanel = panel
 
@@ -520,11 +536,21 @@ function M.open()
 	M.setup_keymaps(panel)
 end
 
---- Toggle the sidepanel open or closed.
+--- Toggle the sidepanel: open it when closed, focus it when open but
+--- unfocused, and close it when it is the current window. A panel living
+--- in another tabpage is reopened in the current one instead of focused
+--- (nvim_set_current_win would otherwise switch tabs).
 function M.toggle()
 	local panel = config.state.sidepanel
 	if panel and panel.win and vim.api.nvim_win_is_valid(panel.win) then
-		M.close()
+		if vim.api.nvim_win_get_tabpage(panel.win) ~= vim.api.nvim_get_current_tabpage() then
+			M.open() -- closes the panel in the other tab, then opens one here
+		elseif vim.api.nvim_get_current_win() == panel.win then
+			M.close()
+		else
+			panel.prev_win = vim.api.nvim_get_current_win()
+			vim.api.nvim_set_current_win(panel.win)
+		end
 	else
 		M.open()
 	end

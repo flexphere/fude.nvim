@@ -134,6 +134,13 @@ end
 
 --- Clean up all test state: buffers, windows, mocks, config state.
 function M.cleanup()
+	-- Close the sidepanel first: it is a far-left top-level split, so the
+	-- window pruning below would keep it as wins[1] and leak its window,
+	-- "[fude] Panel" buffer, and WinClosed augroup into the next test.
+	pcall(function()
+		require("fude.ui.sidepanel").close()
+	end)
+
 	-- Close any extra windows (keep only one)
 	local wins = vim.api.nvim_list_wins()
 	for i = 2, #wins do

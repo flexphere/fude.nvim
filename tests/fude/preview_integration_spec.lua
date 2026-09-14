@@ -51,7 +51,7 @@ describe("preview integration", function()
 
 	describe("open_preview", function()
 		it("creates a preview window", function()
-			local buf = helpers.create_buf({ "current line 1", "current line 2" }, "source.lua")
+			local buf = create_file_buf({ "current line 1", "current line 2" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -66,7 +66,7 @@ describe("preview integration", function()
 		end)
 
 		it("displays base content in preview buffer", function()
-			local buf = helpers.create_buf({ "current line 1", "current line 2" }, "source.lua")
+			local buf = create_file_buf({ "current line 1", "current line 2" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -87,7 +87,7 @@ describe("preview integration", function()
 		it("handles base content without trailing newline", function()
 			helpers.mock_base_content("no trailing newline")
 
-			local buf = helpers.create_buf({ "current line 1" }, "source.lua")
+			local buf = create_file_buf({ "current line 1" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -105,7 +105,7 @@ describe("preview integration", function()
 		it("preserves trailing blank lines in base content", function()
 			helpers.mock_base_content("line 1\n\n")
 
-			local buf = helpers.create_buf({ "current line 1" }, "source.lua")
+			local buf = create_file_buf({ "current line 1" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -122,7 +122,7 @@ describe("preview integration", function()
 		end)
 
 		it("enables diff mode on both windows", function()
-			local buf = helpers.create_buf({ "line 1", "line 2" }, "source.lua")
+			local buf = create_file_buf({ "line 1", "line 2" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -139,7 +139,7 @@ describe("preview integration", function()
 		it("shows placeholder for new file when base content is nil", function()
 			helpers.mock_base_content(nil)
 
-			local buf = helpers.create_buf({ "new file content" }, "source.lua")
+			local buf = create_file_buf({ "new file content" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -172,7 +172,7 @@ describe("preview integration", function()
 		end)
 
 		it("does nothing when not active", function()
-			local buf = helpers.create_buf({ "line 1" }, "source.lua")
+			local buf = create_file_buf({ "line 1" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -181,6 +181,24 @@ describe("preview integration", function()
 			preview.open_preview(source_win)
 
 			assert.is_nil(config.state.preview_win)
+		end)
+
+		it("does nothing when the source window holds a nofile buffer", function()
+			-- e.g. :FudeReviewDiff while the side panel is focused must not
+			-- vsplit the panel or wedge state.source_win to it
+			local buf = helpers.create_buf({ "panel content" }, "[fude] Panel")
+			local source_win = vim.api.nvim_get_current_win()
+			vim.api.nvim_win_set_buf(source_win, buf)
+
+			config.state.active = true
+			config.state.base_ref = "main"
+			config.state.scope = "full_pr"
+
+			preview.open_preview(source_win)
+
+			assert.is_nil(config.state.preview_win)
+			assert.is_nil(config.state.source_win)
+			assert.are.equal(1, #vim.api.nvim_tabpage_list_wins(0))
 		end)
 	end)
 
@@ -240,7 +258,7 @@ describe("preview integration", function()
 		end)
 
 		it("closes preview window and clears state", function()
-			local buf = helpers.create_buf({ "line 1", "line 2" }, "source.lua")
+			local buf = create_file_buf({ "line 1", "line 2" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
@@ -260,7 +278,7 @@ describe("preview integration", function()
 		end)
 
 		it("disables diff mode on source window", function()
-			local buf = helpers.create_buf({ "line 1", "line 2" }, "source.lua")
+			local buf = create_file_buf({ "line 1", "line 2" }, "source.lua")
 			local source_win = vim.api.nvim_get_current_win()
 			vim.api.nvim_win_set_buf(source_win, buf)
 
