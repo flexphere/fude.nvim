@@ -56,6 +56,21 @@
 - **該当箇所**: contrib/skills/fude-watch/fude-watch-reply.sh
 
 
+### コード品質: Luaのand-orイディオムはnilを返せない (PR #179, 2026-09-14)
+- **問題**: `cond and nil or fallback` / `is_null(x) and nil or x` は、中間値がnil/falseだと必ずfallback側に落ちるため「条件成立時にnilを返す」意図を表現できない。gh APIレスポンスのnull正規化（新規）とsuggest入力のcursor_pos分岐（既存）の2箇所で実バグ化しており、後者は数ヶ月間気づかれなかった
+- **対策**: 三項演算子のつもりでand-orを書くとき、真側の値がnil/falseになり得るなら明示的なif文か`util.null_to(v, default)`を使う。レビュー時は`and nil or`・`and false or`をGrepして機械的に検出できる
+- **該当箇所**: lua/fude/gh.lua, lua/fude/comments.lua, lua/fude/util.lua (null_to)
+
+### エッジケース: 非同期submit成功後のdraft削除が送信中の保存を消す (PR #179, 2026-09-14)
+- **問題**: 「API成功後に削除」の原則を守っていても、削除対象（draft等の永続データ）がリクエスト往復中にユーザー操作で更新され得る場合、成功callbackの無条件削除が新しい保存を消す。PR editフロート・comment browser下ペインのように入力UIがリクエスト中も開いたまま操作可能な設計では特に到達しやすい
+- **対策**: 非同期成功後にユーザーデータを削除するときは「送信時点の対象と同一か」を確認する。同一クロージャ内で完結するなら保存ハンドラでフラグを立てる方式（内容一致のエッジも塞げる）、クロージャをまたぐならsnapshot比較（`drafts.remove_if_unchanged`）を使う。修正時は同パターンの全サイト（`drafts.remove`等の成功後削除）をGrepで列挙し、UIが開いたままのサイトを優先する
+- **該当箇所**: lua/fude/pr.lua, lua/fude/ui/comment_browser.lua, lua/fude/drafts.lua
+
+### コード品質: オプション値が別の副作用のトリガーを兼ねている場合の修正 (PR #179, 2026-09-14)
+- **問題**: `open_comment_input`の`cursor_pos`はカーソル位置指定と同時にstopinsert（normalモード開始）のトリガーを兼ねていた。and-orバグの「値」だけを直してnilを渡すと、insertモード開始という隠れた挙動変化が起き、suggestフェンスが1打目で壊れるリスクを新規に生んだ
+- **対策**: パラメータの値を変更する前に、受け側実装でそのパラメータが何をゲートしているか（nil/非nilで分岐する副作用）を確認する。テストも値の比較だけでなく、ゲートされる副作用（モード、フォーカス等）の観点で書けないか検討する
+- **該当箇所**: lua/fude/comments.lua, lua/fude/ui.lua
+
 ### ドキュメント: 非nilデフォルトのオプションを「nilで無効化」と案内していた (PR #176, 2026-09-09)
 - **問題**: `diffopt`のコメントとhelpで「nil to keep user's default」と案内していたが、`setup()`は`vim.tbl_deep_extend("force", defaults, user_opts)`でマージするため、`setup({ diffopt = nil })`はキー自体が落ちてデフォルトが適用される。デフォルトが非nilのオプションではnilによる無効化は不可能で、案内どおりに設定したユーザーは無効化できない
 - **対策**: 「無効化の方法」を書くときは、デフォルト値がnilか非nilかを確認する。非nilデフォルト（table/文字列/数値）のオプションでは`{}`/`false`など実際にマージ後に残る値で案内し、実装側の分岐（`if opts.x then` / `ipairs(opts.x)`）がその値で意図どおりスキップされることを確認する。同じ既定値ブロックがREADME/doc/config.luaに複製されているので、文言変更時は3箇所をgrepする
