@@ -237,6 +237,8 @@ require("fude").setup({
     keymaps = {
       select = "<CR>",           -- scope: switch & open the first file / file: open
       toggle_reviewed = "<Tab>", -- PR scope reviewed / local scope switch / file viewed
+      next_entry = "j",          -- jump to next selectable entry (skips headers/directories)
+      prev_entry = "k",          -- jump to previous selectable entry
       toggle_file_tree = "t",
       reload = "R",
       close = "q",
