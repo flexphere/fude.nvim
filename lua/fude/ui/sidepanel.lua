@@ -593,9 +593,11 @@ function M.setup_keymaps(panel)
 
 		if entry_info.type == "scope" then
 			if config.state.review_mode == "local" then
-				require("fude.local.session").set_scope(entry_info.entry.local_scope)
+				if require("fude.local.session").set_scope(entry_info.entry.local_scope) then
+					M.open_first_file()
+				end
 			else
-				get_scope().apply_scope(entry_info.entry)
+				get_scope().apply_scope(entry_info.entry, M.open_first_file)
 			end
 		elseif entry_info.type == "file" then
 			local filename = entry_info.entry.filename
@@ -640,6 +642,106 @@ function M.open_file(panel, filename)
 	end
 	vim.api.nvim_set_current_win(target_win)
 	vim.cmd("edit " .. vim.fn.fnameescape(filename))
+end
+
+--- Find the first openable file entry in the Files section (display order).
+--- In tree mode the leading entries can be directory rows, so the first
+--- non-directory entry's file is returned. Files with status "removed" are
+--- skipped — they no longer exist on disk, so opening one would create a
+--- phantom empty buffer.
+--- @param file_entries table[]|nil flat file entries
+--- @param tree_entries table[]|nil tree entries (takes precedence when non-nil)
+--- @return table|nil file entry
+function M.find_first_file_entry(file_entries, tree_entries)
+	if tree_entries then
+		for _, entry in ipairs(tree_entries) do
+			if entry.type ~= "directory" and entry.file and entry.file.status ~= "removed" then
+				return entry.file
+			end
+		end
+		return nil
+	end
+	for _, entry in ipairs(file_entries or {}) do
+		if entry.status ~= "removed" then
+			return entry
+		end
+	end
+	return nil
+end
+
+--- Parse the new-file start line of the first hunk header in a diff patch.
+--- Accepts both a GitHub API `patch` (starts at the first `@@` header) and
+--- raw `git diff` output (headers before the first hunk are skipped).
+--- @param patch string|nil unified diff text
+--- @return number|nil line 1-based new-file line of the first hunk
+---   (0 for a leading pure-deletion hunk — clamp before use)
+function M.parse_first_hunk_line(patch)
+	if type(patch) ~= "string" then
+		return nil
+	end
+	for line in patch:gmatch("[^\n]+") do
+		local lnum = line:match("^@@%s+%-%d+,?%d*%s+%+(%d+)")
+		if lnum then
+			return tonumber(lnum)
+		end
+	end
+	return nil
+end
+
+--- Move the cursor in `win` to the first diff hunk of `entry` and center it.
+--- No-ops when the entry has no patch (or no hunk header).
+--- @param win number window handle showing the entry's file
+--- @param entry table file entry (patch resolved via files.resolve_patch)
+function M.center_first_hunk(win, entry)
+	local line = M.parse_first_hunk_line(get_files().resolve_patch(entry))
+	if not line then
+		return
+	end
+	if not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+	local last = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win))
+	pcall(vim.api.nvim_win_set_cursor, win, { math.max(1, math.min(line, last)), 0 })
+	vim.api.nvim_win_call(win, function()
+		vim.cmd("normal! zz")
+	end)
+end
+
+--- Open the first file of the Files section (used after a scope switch).
+--- Reads the panel from config.state at call time (not a captured table) so a
+--- panel closed and reopened while an async scope switch was in flight is
+--- still found. Safe to call from async callbacks: no-ops when the session
+--- has ended, the panel is gone, the user has moved focus away from the panel
+--- while the switch was in flight, or no window is available to open into
+--- (the scope switch itself succeeded, so no warning is shown).
+function M.open_first_file()
+	if not config.state.active then
+		return
+	end
+	local panel = config.state.sidepanel
+	if not panel or not panel.win or not vim.api.nvim_win_is_valid(panel.win) then
+		return
+	end
+	-- Staleness guard: auto-open only while the user is still in the panel.
+	if vim.api.nvim_get_current_win() ~= panel.win then
+		return
+	end
+	if not M.find_target_window(panel.win) then
+		return
+	end
+	local entry = M.find_first_file_entry(panel.file_entries, panel.tree_entries)
+	if entry and entry.filename then
+		-- pcall: :edit can fail (e.g. E37 with 'nohidden' + modified buffer);
+		-- on the GitHub path this runs inside a gh callback, where an
+		-- uncaught error would surface as a bare stack trace.
+		local ok, err = pcall(M.open_file, panel, entry.filename)
+		if not ok then
+			vim.notify("fude.nvim: Could not open " .. entry.filename .. ": " .. tostring(err), vim.log.levels.WARN)
+			return
+		end
+		-- open_file focused the target window; land on the first change.
+		M.center_first_hunk(vim.api.nvim_get_current_win(), entry)
+	end
 end
 
 --- Get the entry under the cursor.

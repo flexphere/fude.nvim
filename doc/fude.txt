@@ -479,7 +479,8 @@ Using lazy.nvim: >lua
       the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 
     Keymaps (panel defaults):~
-      `<CR>`    Select scope entry / switch local scope, or open file
+      `<CR>`    On a scope: switch to it and open the first file
+                listed in the new scope. On a file: open it.
       `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
                 (local). On a file: toggle viewed.
       `t`       Toggle files between flat list and tree
@@ -488,6 +489,13 @@ Using lazy.nvim: >lua
 
     When opening a file with `<CR>`, the cursor moves to a non-panel
     window before opening the file. The panel stays open.
+    Switching scope with `<CR>` also opens the first file listed in
+    the new scope's Files section (deleted files are skipped) and
+    moves focus to it, placing the cursor on the file's first diff
+    hunk centered in the window (`zz`). Nothing is opened when the
+    scope did not change (already selected, or the switch failed),
+    when the new scope has no openable files, or when focus has left
+    the panel before an asynchronous switch completed.
     The panel auto-refreshes when the scope changes, data is reloaded,
     viewed/reviewed state is toggled, or the current buffer changes.
     The currently open file is marked with `▶` in the Files section,

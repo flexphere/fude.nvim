@@ -574,19 +574,20 @@ end
 --- Comments are unaffected — they anchor to the working tree, which does not
 --- change with the scope.
 --- @param scope string "base"|"unpushed"|"uncommitted"
+--- @return boolean changed true when the scope was actually switched
 function M.set_scope(scope)
 	local state = config.state
 	if not state.active or state.review_mode ~= "local" then
 		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
-		return
+		return false
 	end
 	if not vim.tbl_contains(M.SCOPES, scope) then
 		vim.notify("fude.nvim: Unknown local scope: " .. tostring(scope), vim.log.levels.WARN)
-		return
+		return false
 	end
 	local session = state.local_session
 	if session.scope == scope then
-		return
+		return false
 	end
 
 	local diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root)
@@ -597,7 +598,7 @@ function M.set_scope(scope)
 			or (scope == "unpushed") and "this branch has no upstream (nothing pushed)"
 			or ("cannot resolve base for " .. scope)
 		vim.notify("fude.nvim: Cannot switch to " .. scope .. " scope — " .. why, vim.log.levels.WARN)
-		return
+		return false
 	end
 
 	session.scope = scope
@@ -611,17 +612,14 @@ function M.set_scope(scope)
 	require("fude.ui.sidepanel").refresh()
 
 	-- Re-apply gitsigns base (local mode uses the full_pr code path with
-	-- merge_base_sha) and refresh an open side-by-side preview.
+	-- merge_base_sha) and refresh an open side-by-side preview
+	-- (refresh_preview restores the caller's focus, so the sidepanel's
+	-- post-switch auto-open still sees the cursor in the panel).
 	require("fude").restore_gitsigns_base()
-	local src = state.source_win
-	if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
-		require("fude.preview").close_preview()
-		if src and vim.api.nvim_win_is_valid(src) then
-			require("fude.preview").open_preview(src)
-		end
-	end
+	require("fude.scope").refresh_preview()
 
 	vim.notify("fude.nvim: Local scope → " .. scope, vim.log.levels.INFO)
+	return true
 end
 
 --- Pick a local review scope via vim.ui.select.

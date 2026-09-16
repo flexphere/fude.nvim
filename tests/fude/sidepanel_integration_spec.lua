@@ -400,6 +400,144 @@ describe("sidepanel integration", function()
 		assert.are.equal("fude.nvim: No source window available", notification)
 	end)
 
+	-- Open the panel, focus it, and stub open_file; returns the panel and a
+	-- getter for the captured filename.
+	local function setup_open_first_file(file_entries)
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		panel.file_entries = file_entries
+		panel.tree_entries = nil
+		vim.api.nvim_set_current_win(panel.win)
+		local captured = {}
+		helpers.mock(sidepanel, "open_file", function(_, filename)
+			captured.opened = filename
+		end)
+		return panel, captured
+	end
+
+	it("open_first_file opens the first flat entry", function()
+		local _, captured = setup_open_first_file({
+			{ path = "a.lua", filename = "/mock/repo/a.lua", status = "modified" },
+			{ path = "b.lua", filename = "/mock/repo/b.lua", status = "modified" },
+		})
+
+		sidepanel.open_first_file()
+
+		assert.are.equal("/mock/repo/a.lua", captured.opened)
+	end)
+
+	it("open_first_file skips a removed file at the top of the list", function()
+		local _, captured = setup_open_first_file({
+			{ path = "gone.lua", filename = "/mock/repo/gone.lua", status = "removed" },
+			{ path = "b.lua", filename = "/mock/repo/b.lua", status = "modified" },
+		})
+
+		sidepanel.open_first_file()
+
+		assert.are.equal("/mock/repo/b.lua", captured.opened)
+	end)
+
+	it("open_first_file does nothing when there are no file entries", function()
+		local _, captured = setup_open_first_file({})
+
+		sidepanel.open_first_file()
+
+		assert.is_nil(captured.opened)
+	end)
+
+	it("open_first_file does nothing when focus has left the panel", function()
+		local panel, captured = setup_open_first_file({
+			{ path = "a.lua", filename = "/mock/repo/a.lua", status = "modified" },
+		})
+		-- Simulate the user moving away while an async scope switch is in flight
+		local other_win = sidepanel.find_target_window(panel.win)
+		vim.api.nvim_set_current_win(other_win)
+
+		sidepanel.open_first_file()
+
+		assert.is_nil(captured.opened)
+	end)
+
+	it("open_first_file does nothing when the panel is gone", function()
+		local captured = {}
+		helpers.mock(sidepanel, "open_file", function(_, filename)
+			captured.opened = filename
+		end)
+		config.state.sidepanel = nil
+
+		sidepanel.open_first_file()
+
+		assert.is_nil(captured.opened)
+	end)
+
+	it("open_first_file does nothing when the session has ended", function()
+		local _, captured = setup_open_first_file({
+			{ path = "a.lua", filename = "/mock/repo/a.lua", status = "modified" },
+		})
+		config.state.active = false
+
+		sidepanel.open_first_file()
+
+		assert.is_nil(captured.opened)
+	end)
+
+	it("center_first_hunk moves the cursor to the first hunk line and centers", function()
+		local buf = helpers.create_buf()
+		local lines = {}
+		for i = 1, 50 do
+			lines[i] = "line " .. i
+		end
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+		local win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(win, buf)
+		vim.api.nvim_win_set_cursor(win, { 1, 0 })
+
+		sidepanel.center_first_hunk(win, { patch = "@@ -10,3 +20,4 @@\n line\n+new" })
+
+		assert.are.equal(20, vim.api.nvim_win_get_cursor(win)[1])
+	end)
+
+	it("center_first_hunk clamps the hunk line to the buffer length", function()
+		local buf = helpers.create_buf()
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a", "b", "c" })
+		local win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(win, buf)
+
+		sidepanel.center_first_hunk(win, { patch = "@@ -1 +100 @@\n+x" })
+
+		assert.are.equal(3, vim.api.nvim_win_get_cursor(win)[1])
+	end)
+
+	it("center_first_hunk leaves the cursor alone when the entry has no patch", function()
+		local buf = helpers.create_buf()
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a", "b", "c" })
+		local win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(win, buf)
+		vim.api.nvim_win_set_cursor(win, { 2, 0 })
+
+		sidepanel.center_first_hunk(win, { patch = "" })
+
+		assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
+	end)
+
+	it("open_first_file stays silent when no target window is available", function()
+		local _, captured = setup_open_first_file({
+			{ path = "a.lua", filename = "/mock/repo/a.lua", status = "modified" },
+		})
+		helpers.mock(sidepanel, "find_target_window", function()
+			return nil
+		end)
+		local notification
+		helpers.mock(vim, "notify", function(msg)
+			notification = msg
+		end)
+
+		sidepanel.open_first_file()
+
+		assert.is_nil(captured.opened)
+		assert.is_nil(notification)
+	end)
+
 	it("uses flat files by default", function()
 		config.state.changed_files = {
 			{ path = "a/b.lua", status = "modified", additions = 1, deletions = 0 },
