@@ -7,11 +7,39 @@ local config = require("fude.config")
 -- session was stopped/restarted) must not touch state, UI, or on_done.
 local request_generation = 0
 
+-- The in-flight scope switch, or nil when idle: { generation, is_full_pr, sha }.
+-- state.scope only changes when a switch's gh callback lands, so during a
+-- switch the no-op guards must compare against this pending target, not
+-- against state: re-selecting the pending target dedupes into the in-flight
+-- request, while selecting anything else supersedes it (the generation bump
+-- invalidates the pending callback).
+local pending_switch = nil
+
 --- @param captured_state table config.state captured when the request started
 --- @param generation number request_generation captured when the request started
 --- @return boolean current true when the callback may proceed
 local function is_current_request(captured_state, generation)
 	return config.state == captured_state and generation == request_generation
+end
+
+--- Start tracking a scope-switch request; returns its generation.
+--- @param is_full_pr boolean
+--- @param sha string|nil commit SHA when is_full_pr is false
+--- @return number generation
+local function begin_switch(is_full_pr, sha)
+	request_generation = request_generation + 1
+	pending_switch = { generation = request_generation, is_full_pr = is_full_pr, sha = sha }
+	return request_generation
+end
+
+--- Stop tracking the switch owning `generation` (its callback landed,
+--- successfully or not). A superseded (older) callback leaves the newer
+--- pending_switch untouched.
+--- @param generation number
+local function end_switch(generation)
+	if pending_switch and pending_switch.generation == generation then
+		pending_switch = nil
+	end
 end
 
 --- Determine the reviewed icon for a commit.
@@ -545,7 +573,11 @@ end
 --- @param on_done fun()|nil called after the scope change succeeded (not on failure/no-op)
 function M.apply_full_pr_scope(on_done)
 	local state = config.state
-	if state.scope == "full_pr" then
+	-- No-op against the in-flight target when a switch is pending (state.scope
+	-- is stale until that callback lands), else against the settled state.
+	local already_full_pr = pending_switch and pending_switch.is_full_pr
+		or (not pending_switch and state.scope == "full_pr")
+	if already_full_pr then
 		vim.notify("fude.nvim: Already reviewing full PR", vim.log.levels.INFO)
 		return
 	end
@@ -561,11 +593,11 @@ function M.apply_full_pr_scope(on_done)
 	end
 
 	-- Refetch PR files (update state only on success)
-	request_generation = request_generation + 1
-	local generation = request_generation
+	local generation = begin_switch(true, nil)
 	local previous_scope_sha = state.scope_commit_sha
 	local gh_mod = require("fude.gh")
 	gh_mod.get_pr_files(state.pr_number, function(err, files)
+		end_switch(generation)
 		if not is_current_request(state, generation) then
 			return
 		end
@@ -630,7 +662,11 @@ end
 --- @param on_done fun()|nil called after the scope change succeeded (not on failure/no-op)
 function M.apply_commit_scope(sha, on_done)
 	local state = config.state
-	if state.scope == "commit" and state.scope_commit_sha == sha then
+	-- No-op against the in-flight target when a switch is pending (state.scope
+	-- is stale until that callback lands), else against the settled state.
+	local already_this_commit = pending_switch and not pending_switch.is_full_pr and pending_switch.sha == sha
+		or (not pending_switch and state.scope == "commit" and state.scope_commit_sha == sha)
+	if already_this_commit then
 		vim.notify("fude.nvim: Already reviewing commit " .. sha:sub(1, 7), vim.log.levels.INFO)
 		return
 	end
@@ -667,10 +703,10 @@ function M.apply_commit_scope(sha, on_done)
 	end
 
 	-- Fetch commit files (update state only on success)
-	request_generation = request_generation + 1
-	local generation = request_generation
+	local generation = begin_switch(false, sha)
 	local gh_mod = require("fude.gh")
 	gh_mod.get_commit_files(sha, function(err, files)
+		end_switch(generation)
 		if not is_current_request(state, generation) then
 			return
 		end

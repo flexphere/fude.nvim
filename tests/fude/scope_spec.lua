@@ -637,6 +637,116 @@ describe("apply_scope on_done callback", function()
 		assert.is_nil(done.aaa)
 	end)
 
+	it("selecting full PR during an in-flight commit switch supersedes it", function()
+		-- state.scope is still "full_pr" while the commit fetch is in flight, so
+		-- the full-PR no-op guard must key off the pending target, not state
+		config.state.scope = "full_pr"
+		fake_git_ok()
+		local commit_cb, pr_cb
+		helpers.mock(gh, "get_commit_files", function(_, callback)
+			commit_cb = callback
+		end)
+		helpers.mock(gh, "get_pr_files", function(_, callback)
+			pr_cb = callback
+		end)
+
+		local done = {}
+		scope.apply_commit_scope("aaa1111", function()
+			done.commit = true
+		end)
+		scope.apply_full_pr_scope(function()
+			done.full_pr = true
+		end)
+		assert.is_not_nil(pr_cb) -- the full-PR request must not be treated as a no-op
+
+		commit_cb(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+		pr_cb(nil, { { filename = "p.lua", status = "modified", additions = 1, deletions = 0 } })
+
+		assert.are.equal("full_pr", config.state.scope)
+		assert.are.equal("p.lua", config.state.changed_files[1].path)
+		assert.is_nil(done.commit)
+		assert.is_true(done.full_pr)
+	end)
+
+	it("selecting the previous commit during an in-flight full-PR switch supersedes it", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "aaa1111"
+		fake_git_ok()
+		local commit_cb, pr_cb
+		helpers.mock(gh, "get_commit_files", function(_, callback)
+			commit_cb = callback
+		end)
+		helpers.mock(gh, "get_pr_files", function(_, callback)
+			pr_cb = callback
+		end)
+
+		local done = {}
+		scope.apply_full_pr_scope(function()
+			done.full_pr = true
+		end)
+		scope.apply_commit_scope("aaa1111", function()
+			done.commit = true
+		end)
+		assert.is_not_nil(commit_cb) -- re-selecting the settled commit must supersede the pending full-PR switch
+
+		pr_cb(nil, { { filename = "p.lua", status = "modified", additions = 1, deletions = 0 } })
+		commit_cb(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+
+		assert.are.equal("commit", config.state.scope)
+		assert.are.equal("aaa1111", config.state.scope_commit_sha)
+		assert.is_nil(done.full_pr)
+		assert.is_true(done.commit)
+	end)
+
+	it("re-selecting the in-flight commit dedupes into the pending request", function()
+		config.state.scope = "full_pr"
+		fake_git_ok()
+		local requests = 0
+		local commit_cb
+		helpers.mock(gh, "get_commit_files", function(_, callback)
+			requests = requests + 1
+			commit_cb = callback
+		end)
+
+		local done = {}
+		scope.apply_commit_scope("aaa1111", function()
+			done.first = true
+		end)
+		scope.apply_commit_scope("aaa1111", function()
+			done.second = true
+		end)
+
+		assert.are.equal(1, requests) -- the second press is a no-op, not a new request
+		commit_cb(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+		assert.is_true(done.first) -- the pending request stays current and completes
+		assert.is_nil(done.second)
+	end)
+
+	it("re-selecting full PR during an in-flight full-PR switch is a no-op", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "aaa1111"
+		fake_git_ok()
+		local requests = 0
+		local pr_cb
+		helpers.mock(gh, "get_pr_files", function(_, callback)
+			requests = requests + 1
+			pr_cb = callback
+		end)
+
+		local done = {}
+		scope.apply_full_pr_scope(function()
+			done.first = true
+		end)
+		scope.apply_full_pr_scope(function()
+			done.second = true
+		end)
+
+		assert.are.equal(1, requests)
+		pr_cb(nil, { { filename = "p.lua", status = "modified", additions = 1, deletions = 0 } })
+		assert.is_true(done.first)
+		assert.is_nil(done.second)
+	end)
+
 	it("refresh_preview restores the caller's focused window", function()
 		local preview = require("fude.preview")
 		local caller_win = vim.api.nvim_get_current_win()
