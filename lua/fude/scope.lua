@@ -965,6 +965,9 @@ function M.refresh_preview()
 	local preview = require("fude.preview")
 	if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
 		local current_win = vim.api.nvim_get_current_win()
+		-- close_preview destroys the old preview window, so a caller focused
+		-- there must be restored to the rebuilt preview instead.
+		local was_in_preview = current_win == state.preview_win
 		local source_win = state.source_win
 		preview.close_preview()
 		if source_win and vim.api.nvim_win_is_valid(source_win) then
@@ -973,7 +976,11 @@ function M.refresh_preview()
 		-- open_preview leaves focus on the source window; a plugin-triggered
 		-- rebuild must not move the user's focus (the sidepanel's post-switch
 		-- auto-open also relies on focus staying where the user left it).
-		if vim.api.nvim_win_is_valid(current_win) then
+		if was_in_preview then
+			if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
+				vim.api.nvim_set_current_win(state.preview_win)
+			end
+		elseif vim.api.nvim_win_is_valid(current_win) then
 			vim.api.nvim_set_current_win(current_win)
 		end
 	end

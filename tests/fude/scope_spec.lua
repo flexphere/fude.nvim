@@ -807,6 +807,33 @@ describe("apply_scope on_done callback", function()
 		assert.are.equal(caller_win, focused)
 	end)
 
+	it("refresh_preview moves a caller focused on the old preview to the rebuilt one", function()
+		local preview = require("fude.preview")
+		local source_win = vim.api.nvim_get_current_win()
+		vim.cmd("vsplit")
+		local old_preview_win = vim.api.nvim_get_current_win()
+		vim.cmd("vsplit")
+		local new_preview_win = vim.api.nvim_get_current_win()
+		config.state.source_win = source_win
+		config.state.preview_win = old_preview_win
+		helpers.mock(preview, "close_preview", function()
+			-- The real close_preview destroys the preview window
+			vim.api.nvim_win_close(old_preview_win, true)
+			config.state.preview_win = nil
+		end)
+		helpers.mock(preview, "open_preview", function(win)
+			config.state.preview_win = new_preview_win
+			vim.api.nvim_set_current_win(win)
+		end)
+		vim.api.nvim_set_current_win(old_preview_win)
+
+		scope.refresh_preview()
+
+		local focused = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_close(new_preview_win, true)
+		assert.are.equal(new_preview_win, focused)
+	end)
+
 	it("apply_commit_scope does not call on_done on a gh error", function()
 		config.state.scope = "full_pr"
 		fake_git_ok()
