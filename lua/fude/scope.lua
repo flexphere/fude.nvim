@@ -519,16 +519,18 @@ end
 
 --- Apply the selected scope.
 --- @param entry table scope entry with { sha, is_full_pr }
-function M.apply_scope(entry)
+--- @param on_done fun()|nil called after the scope change succeeded (not on failure/no-op)
+function M.apply_scope(entry, on_done)
 	if entry.is_full_pr then
-		M.apply_full_pr_scope()
+		M.apply_full_pr_scope(on_done)
 	else
-		M.apply_commit_scope(entry.sha)
+		M.apply_commit_scope(entry.sha, on_done)
 	end
 end
 
 --- Apply full PR scope (restore to original HEAD).
-function M.apply_full_pr_scope()
+--- @param on_done fun()|nil called after the scope change succeeded (not on failure/no-op)
+function M.apply_full_pr_scope(on_done)
 	local state = config.state
 	if state.scope == "full_pr" then
 		vim.notify("fude.nvim: Already reviewing full PR", vim.log.levels.INFO)
@@ -598,13 +600,22 @@ function M.apply_full_pr_scope()
 			string.format("fude.nvim: Scope → PR全体 (%s...%s)", state.base_ref, state.head_ref),
 			vim.log.levels.INFO
 		)
+
+		if on_done then
+			on_done()
+		end
 	end)
 end
 
 --- Apply commit scope (checkout specific commit).
 --- @param sha string commit SHA
-function M.apply_commit_scope(sha)
+--- @param on_done fun()|nil called after the scope change succeeded (not on failure/no-op)
+function M.apply_commit_scope(sha, on_done)
 	local state = config.state
+	if state.scope == "commit" and state.scope_commit_sha == sha then
+		vim.notify("fude.nvim: Already reviewing commit " .. sha:sub(1, 7), vim.log.levels.INFO)
+		return
+	end
 
 	-- Save original HEAD if not yet saved
 	if not state.original_head_sha then
@@ -680,6 +691,10 @@ function M.apply_commit_scope(sha)
 
 		local short_sha = sha:sub(1, 7)
 		vim.notify(string.format("fude.nvim: Scope → commit %s", short_sha), vim.log.levels.INFO)
+
+		if on_done then
+			on_done()
+		end
 	end)
 end
 

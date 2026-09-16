@@ -574,19 +574,20 @@ end
 --- Comments are unaffected — they anchor to the working tree, which does not
 --- change with the scope.
 --- @param scope string "base"|"unpushed"|"uncommitted"
+--- @return boolean changed true when the scope was actually switched
 function M.set_scope(scope)
 	local state = config.state
 	if not state.active or state.review_mode ~= "local" then
 		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
-		return
+		return false
 	end
 	if not vim.tbl_contains(M.SCOPES, scope) then
 		vim.notify("fude.nvim: Unknown local scope: " .. tostring(scope), vim.log.levels.WARN)
-		return
+		return false
 	end
 	local session = state.local_session
 	if session.scope == scope then
-		return
+		return false
 	end
 
 	local diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root)
@@ -597,7 +598,7 @@ function M.set_scope(scope)
 			or (scope == "unpushed") and "this branch has no upstream (nothing pushed)"
 			or ("cannot resolve base for " .. scope)
 		vim.notify("fude.nvim: Cannot switch to " .. scope .. " scope — " .. why, vim.log.levels.WARN)
-		return
+		return false
 	end
 
 	session.scope = scope
@@ -622,6 +623,7 @@ function M.set_scope(scope)
 	end
 
 	vim.notify("fude.nvim: Local scope → " .. scope, vim.log.levels.INFO)
+	return true
 end
 
 --- Pick a local review scope via vim.ui.select.
