@@ -629,6 +629,84 @@ function M.setup_keymaps(panel)
 	map("toggle_file_tree", function()
 		M.toggle_file_tree_mode(panel)
 	end, "Toggle tree/flat file list")
+
+	-- Entry-wise cursor movement (skips headers, separators, blank lines, and
+	-- tree-mode directory rows — only lines that accept `select` are stops)
+	map("next_entry", function()
+		M.move_to_adjacent_entry(panel, 1, vim.v.count1)
+	end, "Move to next selectable entry")
+	map("prev_entry", function()
+		M.move_to_adjacent_entry(panel, -1, vim.v.count1)
+	end, "Move to previous selectable entry")
+end
+
+--- Build the sorted 1-based list of panel lines that accept `select`.
+--- Headers, separators, blank lines, and (in tree mode) directory rows are
+--- excluded — entry-wise navigation jumps between these lines only.
+--- @param section_map table from build_sidepanel_content
+--- @param tree_entries table[]|nil tree entries (nil in flat mode)
+--- @return number[] lines ascending 1-based line numbers
+function M.build_selectable_lines(section_map, tree_entries)
+	local lines = {}
+	for line_0 = section_map.scope_start, section_map.scope_end do
+		table.insert(lines, line_0 + 1)
+	end
+	for line_0 = section_map.files_start, section_map.files_end do
+		local index = line_0 - section_map.files_start + 1
+		local is_directory = tree_entries ~= nil and tree_entries[index] ~= nil and tree_entries[index].type == "directory"
+		if not is_directory then
+			table.insert(lines, line_0 + 1)
+		end
+	end
+	return lines
+end
+
+--- Find the nearest selectable line from cursor_line in the given direction.
+--- Does not wrap; returns nil when there is nothing further that way.
+--- @param cursor_line number 1-based current line
+--- @param selectable_lines number[] ascending 1-based lines from build_selectable_lines
+--- @param direction number 1 (down) or -1 (up)
+--- @return number|nil line
+function M.find_adjacent_selectable_line(cursor_line, selectable_lines, direction)
+	if direction > 0 then
+		for _, line in ipairs(selectable_lines) do
+			if line > cursor_line then
+				return line
+			end
+		end
+	else
+		for i = #selectable_lines, 1, -1 do
+			if selectable_lines[i] < cursor_line then
+				return selectable_lines[i]
+			end
+		end
+	end
+	return nil
+end
+
+--- Move the panel cursor `count` selectable entries in `direction`.
+--- Stops at the edges (no wrap).
+--- @param panel table sidepanel state
+--- @param direction number 1 (down) or -1 (up)
+--- @param count number|nil repeat count (defaults to 1)
+function M.move_to_adjacent_entry(panel, direction, count)
+	if not panel.section_map or not panel.win or not vim.api.nvim_win_is_valid(panel.win) then
+		return
+	end
+	local selectable = M.build_selectable_lines(panel.section_map, panel.tree_entries)
+	local line = vim.api.nvim_win_get_cursor(panel.win)[1]
+	local moved = false
+	for _ = 1, count or 1 do
+		local next_line = M.find_adjacent_selectable_line(line, selectable, direction)
+		if not next_line then
+			break
+		end
+		line = next_line
+		moved = true
+	end
+	if moved then
+		pcall(vim.api.nvim_win_set_cursor, panel.win, { line, 0 })
+	end
 end
 
 --- Open a file in a non-panel, non-preview window.

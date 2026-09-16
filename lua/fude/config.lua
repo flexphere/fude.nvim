@@ -103,6 +103,8 @@ M.defaults = {
 			toggle_file_tree = "t",
 			reload = "R",
 			close = "q",
+			next_entry = "j", -- Jump to the next selectable (<CR>-able) line
+			prev_entry = "k", -- Jump to the previous selectable (<CR>-able) line
 		},
 	},
 	-- Callback invoked after review start completes (all data fetched).
