@@ -520,6 +520,31 @@ describe("sidepanel integration", function()
 		assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
 	end)
 
+	it("move_to_adjacent_entry skips headers and clamps at the edges", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local sm = panel.section_map
+
+		-- From the scope header, one step down lands on the first scope entry
+		vim.api.nvim_win_set_cursor(panel.win, { 1, 0 })
+		sidepanel.move_to_adjacent_entry(panel, 1, 1)
+		assert.are.equal(sm.scope_start + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		-- A large count clamps at the last file entry instead of overshooting
+		sidepanel.move_to_adjacent_entry(panel, 1, 99)
+		assert.are.equal(sm.files_end + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		-- Down at the bottom edge stays put
+		sidepanel.move_to_adjacent_entry(panel, 1, 1)
+		assert.are.equal(sm.files_end + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		-- Up from the first file entry skips the files header/separator/blank
+		-- back to the last scope entry
+		vim.api.nvim_win_set_cursor(panel.win, { sm.files_start + 1, 0 })
+		sidepanel.move_to_adjacent_entry(panel, -1, 1)
+		assert.are.equal(sm.scope_end + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+	end)
+
 	it("open_first_file stays silent when no target window is available", function()
 		local _, captured = setup_open_first_file({
 			{ path = "a.lua", filename = "/mock/repo/a.lua", status = "modified" },

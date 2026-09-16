@@ -602,3 +602,66 @@ describe("find_first_file_entry", function()
 		assert.are.equal("/repo/tree.lua", entry.filename)
 	end)
 end)
+
+describe("selectable line navigation", function()
+	-- Same layout as the resolve_entry_at_cursor scenario:
+	-- 3 scope entries (1-based lines 3-5), 2 file entries (lines 9-10),
+	-- everything else is header/separator/blank.
+	local section_map = {
+		scope_start = 2,
+		scope_end = 4,
+		files_start = 8,
+		files_end = 9,
+	}
+
+	describe("build_selectable_lines", function()
+		it("lists scope and file entry lines only (flat mode)", function()
+			assert.are.same({ 3, 4, 5, 9, 10 }, sidepanel.build_selectable_lines(section_map, nil))
+		end)
+
+		it("excludes directory rows in tree mode", function()
+			local tree_entries = {
+				{ type = "directory", path = "lua" },
+				{ type = "file", path = "lua/a.lua", file = { path = "lua/a.lua" } },
+			}
+			assert.are.same({ 3, 4, 5, 10 }, sidepanel.build_selectable_lines(section_map, tree_entries))
+		end)
+
+		it("handles empty sections", function()
+			local empty_map = { scope_start = 2, scope_end = 1, files_start = 5, files_end = 4 }
+			assert.are.same({}, sidepanel.build_selectable_lines(empty_map, nil))
+		end)
+	end)
+
+	describe("find_adjacent_selectable_line", function()
+		local lines = { 3, 4, 5, 9, 10 }
+
+		it("jumps from a header line to the first entry below", function()
+			assert.are.equal(3, sidepanel.find_adjacent_selectable_line(1, lines, 1))
+		end)
+
+		it("moves to the next entry within a section", function()
+			assert.are.equal(4, sidepanel.find_adjacent_selectable_line(3, lines, 1))
+		end)
+
+		it("skips the section boundary going down", function()
+			assert.are.equal(9, sidepanel.find_adjacent_selectable_line(5, lines, 1))
+		end)
+
+		it("skips the section boundary going up", function()
+			assert.are.equal(5, sidepanel.find_adjacent_selectable_line(9, lines, -1))
+		end)
+
+		it("returns nil at the bottom edge", function()
+			assert.is_nil(sidepanel.find_adjacent_selectable_line(10, lines, 1))
+		end)
+
+		it("returns nil at the top edge", function()
+			assert.is_nil(sidepanel.find_adjacent_selectable_line(3, lines, -1))
+		end)
+
+		it("returns nil when there are no selectable lines", function()
+			assert.is_nil(sidepanel.find_adjacent_selectable_line(1, {}, 1))
+		end)
+	end)
+end)
