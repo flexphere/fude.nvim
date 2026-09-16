@@ -593,9 +593,11 @@ function M.setup_keymaps(panel)
 
 		if entry_info.type == "scope" then
 			if config.state.review_mode == "local" then
-				require("fude.local.session").set_scope(entry_info.entry.local_scope)
+				if require("fude.local.session").set_scope(entry_info.entry.local_scope) then
+					M.open_first_file()
+				end
 			else
-				get_scope().apply_scope(entry_info.entry)
+				get_scope().apply_scope(entry_info.entry, M.open_first_file)
 			end
 		elseif entry_info.type == "file" then
 			local filename = entry_info.entry.filename
@@ -640,6 +642,65 @@ function M.open_file(panel, filename)
 	end
 	vim.api.nvim_set_current_win(target_win)
 	vim.cmd("edit " .. vim.fn.fnameescape(filename))
+end
+
+--- Find the first openable file entry in the Files section (display order).
+--- In tree mode the leading entries can be directory rows, so the first
+--- non-directory entry's file is returned. Files with status "removed" are
+--- skipped — they no longer exist on disk, so opening one would create a
+--- phantom empty buffer.
+--- @param file_entries table[]|nil flat file entries
+--- @param tree_entries table[]|nil tree entries (takes precedence when non-nil)
+--- @return table|nil file entry
+function M.find_first_file_entry(file_entries, tree_entries)
+	if tree_entries then
+		for _, entry in ipairs(tree_entries) do
+			if entry.type ~= "directory" and entry.file and entry.file.status ~= "removed" then
+				return entry.file
+			end
+		end
+		return nil
+	end
+	for _, entry in ipairs(file_entries or {}) do
+		if entry.status ~= "removed" then
+			return entry
+		end
+	end
+	return nil
+end
+
+--- Open the first file of the Files section (used after a scope switch).
+--- Reads the panel from config.state at call time (not a captured table) so a
+--- panel closed and reopened while an async scope switch was in flight is
+--- still found. Safe to call from async callbacks: no-ops when the session
+--- has ended, the panel is gone, the user has moved focus away from the panel
+--- while the switch was in flight, or no window is available to open into
+--- (the scope switch itself succeeded, so no warning is shown).
+function M.open_first_file()
+	if not config.state.active then
+		return
+	end
+	local panel = config.state.sidepanel
+	if not panel or not panel.win or not vim.api.nvim_win_is_valid(panel.win) then
+		return
+	end
+	-- Staleness guard: auto-open only while the user is still in the panel.
+	if vim.api.nvim_get_current_win() ~= panel.win then
+		return
+	end
+	if not M.find_target_window(panel.win) then
+		return
+	end
+	local entry = M.find_first_file_entry(panel.file_entries, panel.tree_entries)
+	if entry and entry.filename then
+		-- pcall: :edit can fail (e.g. E37 with 'nohidden' + modified buffer);
+		-- on the GitHub path this runs inside a gh callback, where an
+		-- uncaught error would surface as a bare stack trace.
+		local ok, err = pcall(M.open_file, panel, entry.filename)
+		if not ok then
+			vim.notify("fude.nvim: Could not open " .. entry.filename .. ": " .. tostring(err), vim.log.levels.WARN)
+		end
+	end
 end
 
 --- Get the entry under the cursor.

@@ -113,6 +113,7 @@ function M.build_file_entries(changed_files, repo_root, icons, viewed_files, vie
 			path = file.path,
 			filename = repo_root .. "/" .. file.path,
 			patch = file.patch or "",
+			status = file.status,
 			status_icon = icons[file.status] or "?",
 			status_hl = file.status == "added" and "DiffAdd" or file.status == "removed" and "DiffDelete" or "DiffChange",
 			additions = file.additions or 0,
