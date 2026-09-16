@@ -502,3 +502,78 @@ describe("resolve_entry_at_cursor", function()
 		assert.is_nil(sidepanel.resolve_entry_at_cursor(0, section_map))
 	end)
 end)
+
+describe("find_first_file_entry", function()
+	it("returns the first flat entry", function()
+		local file_entries = {
+			{ path = "a.lua", filename = "/repo/a.lua" },
+			{ path = "b.lua", filename = "/repo/b.lua" },
+		}
+		local entry = sidepanel.find_first_file_entry(file_entries, nil)
+		assert.are.equal("/repo/a.lua", entry.filename)
+	end)
+
+	it("returns nil for empty flat entries", function()
+		assert.is_nil(sidepanel.find_first_file_entry({}, nil))
+	end)
+
+	it("returns nil when flat entries are nil", function()
+		assert.is_nil(sidepanel.find_first_file_entry(nil, nil))
+	end)
+
+	it("skips a removed file at the top of the flat list", function()
+		local file_entries = {
+			{ path = "gone.lua", filename = "/repo/gone.lua", status = "removed" },
+			{ path = "b.lua", filename = "/repo/b.lua", status = "modified" },
+		}
+		local entry = sidepanel.find_first_file_entry(file_entries, nil)
+		assert.are.equal("/repo/b.lua", entry.filename)
+	end)
+
+	it("returns nil when every flat entry is removed", function()
+		local file_entries = {
+			{ path = "gone.lua", filename = "/repo/gone.lua", status = "removed" },
+		}
+		assert.is_nil(sidepanel.find_first_file_entry(file_entries, nil))
+	end)
+
+	it("skips leading directory rows in tree mode", function()
+		local tree_entries = {
+			{ type = "directory", path = "lua" },
+			{ type = "directory", path = "lua/fude" },
+			{ type = "file", path = "lua/fude/a.lua", file = { path = "lua/fude/a.lua", filename = "/repo/lua/fude/a.lua" } },
+			{ type = "file", path = "lua/fude/b.lua", file = { path = "lua/fude/b.lua", filename = "/repo/lua/fude/b.lua" } },
+		}
+		local entry = sidepanel.find_first_file_entry({}, tree_entries)
+		assert.are.equal("/repo/lua/fude/a.lua", entry.filename)
+	end)
+
+	it("skips a removed file at the top of the tree", function()
+		local tree_entries = {
+			{
+				type = "file",
+				path = "gone.lua",
+				file = { path = "gone.lua", filename = "/repo/gone.lua", status = "removed" },
+			},
+			{ type = "file", path = "b.lua", file = { path = "b.lua", filename = "/repo/b.lua", status = "modified" } },
+		}
+		local entry = sidepanel.find_first_file_entry({}, tree_entries)
+		assert.are.equal("/repo/b.lua", entry.filename)
+	end)
+
+	it("returns nil when tree mode has only directory rows", function()
+		local tree_entries = {
+			{ type = "directory", path = "lua" },
+		}
+		assert.is_nil(sidepanel.find_first_file_entry({}, tree_entries))
+	end)
+
+	it("prefers tree entries over flat entries when both are given", function()
+		local file_entries = { { path = "flat.lua", filename = "/repo/flat.lua" } }
+		local tree_entries = {
+			{ type = "file", path = "tree.lua", file = { path = "tree.lua", filename = "/repo/tree.lua" } },
+		}
+		local entry = sidepanel.find_first_file_entry(file_entries, tree_entries)
+		assert.are.equal("/repo/tree.lua", entry.filename)
+	end)
+end)

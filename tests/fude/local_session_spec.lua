@@ -511,6 +511,35 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("base", config.state.local_session.scope)
 	end)
 
+	it("set_scope returns true only when the scope actually changed", function()
+		mock_local_git()
+		session.start(nil)
+
+		assert.is_true(session.set_scope("uncommitted"))
+		-- Same scope again → no-op
+		assert.is_false(session.set_scope("uncommitted"))
+		-- Unknown scope → rejected
+		assert.is_false(session.set_scope("bogus"))
+	end)
+
+	it("set_scope returns false when the scope base cannot be resolved", function()
+		mock_local_git({
+			get_default_branch = function()
+				return nil
+			end,
+		})
+		session.start(nil)
+		assert.equals("uncommitted", config.state.local_session.scope)
+
+		assert.is_false(session.set_scope("base"))
+	end)
+
+	it("set_scope returns false when no local session is active", function()
+		mock_local_git()
+		helpers.mock(vim, "notify", function() end)
+		assert.is_false(session.set_scope("uncommitted"))
+	end)
+
 	it("set_scope preserves comments across a scope switch", function()
 		mock_local_git()
 		session.start(nil)

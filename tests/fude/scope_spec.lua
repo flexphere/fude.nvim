@@ -456,3 +456,151 @@ describe("apply_reviewed_toggle", function()
 		assert.is_true(config.state.reviewed_commits["other"])
 	end)
 end)
+
+describe("apply_scope on_done callback", function()
+	local config = require("fude.config")
+	local helpers = require("tests.helpers")
+	local gh = require("fude.gh")
+
+	local function fake_git_ok()
+		-- Fake all direct git calls (rev-parse / status / checkout) as clean successes
+		helpers.mock(vim, "system", function()
+			return {
+				wait = function()
+					return { code = 0, stdout = "", stderr = "" }
+				end,
+			}
+		end)
+	end
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.pr_number = 1
+		config.state.base_ref = "main"
+		config.state.head_ref = "feat/x"
+		config.state.merge_base_sha = "cachedbase" -- skip the real git merge-base call
+		config.state.pr_commits = {}
+		helpers.mock(vim, "notify", function() end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("apply_full_pr_scope calls on_done after a successful switch", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "abc1234"
+		fake_git_ok()
+		helpers.mock(gh, "get_pr_files", function(_, callback)
+			vim.schedule(function()
+				callback(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+			end)
+		end)
+
+		local done = false
+		scope.apply_full_pr_scope(function()
+			done = true
+		end)
+
+		assert.is_true(helpers.wait_for(function()
+			return done
+		end))
+		assert.are.equal("full_pr", config.state.scope)
+		assert.are.equal("a.lua", config.state.changed_files[1].path)
+	end)
+
+	it("apply_full_pr_scope does not call on_done on a gh error", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "abc1234"
+		fake_git_ok() -- keep the rollback checkout from touching the real repo
+		helpers.mock(gh, "get_pr_files", function(_, callback)
+			vim.schedule(function()
+				callback("API error", nil)
+			end)
+		end)
+
+		local done = false
+		scope.apply_full_pr_scope(function()
+			done = true
+		end)
+
+		vim.wait(100, function()
+			return done
+		end)
+		assert.is_false(done)
+		assert.are.equal("commit", config.state.scope)
+	end)
+
+	it("apply_full_pr_scope does not call on_done when already on full PR scope", function()
+		config.state.scope = "full_pr"
+
+		local done = false
+		scope.apply_full_pr_scope(function()
+			done = true
+		end)
+
+		vim.wait(100, function()
+			return done
+		end)
+		assert.is_false(done)
+	end)
+
+	it("apply_commit_scope calls on_done after a successful switch", function()
+		config.state.scope = "full_pr"
+		fake_git_ok()
+		helpers.mock(gh, "get_commit_files", function(_, callback)
+			vim.schedule(function()
+				callback(nil, { { filename = "b.lua", status = "modified", additions = 2, deletions = 0 } })
+			end)
+		end)
+
+		local done = false
+		scope.apply_commit_scope("abc1234", function()
+			done = true
+		end)
+
+		assert.is_true(helpers.wait_for(function()
+			return done
+		end))
+		assert.are.equal("commit", config.state.scope)
+		assert.are.equal("b.lua", config.state.changed_files[1].path)
+	end)
+
+	it("apply_commit_scope does not call on_done when the commit is already selected", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "abc1234"
+
+		local done = false
+		scope.apply_commit_scope("abc1234", function()
+			done = true
+		end)
+
+		vim.wait(100, function()
+			return done
+		end)
+		assert.is_false(done)
+		assert.are.equal("commit", config.state.scope)
+	end)
+
+	it("apply_commit_scope does not call on_done on a gh error", function()
+		config.state.scope = "full_pr"
+		fake_git_ok()
+		helpers.mock(gh, "get_commit_files", function(_, callback)
+			vim.schedule(function()
+				callback("API error", nil)
+			end)
+		end)
+
+		local done = false
+		scope.apply_commit_scope("abc1234", function()
+			done = true
+		end)
+
+		vim.wait(100, function()
+			return done
+		end)
+		assert.is_false(done)
+		assert.are.equal("full_pr", config.state.scope)
+	end)
+end)
