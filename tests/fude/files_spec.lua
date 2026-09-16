@@ -25,6 +25,17 @@ describe("build_file_entries", function()
 		local entries = files.build_file_entries(changed, "/repo", icons)
 		assert.are.equal("-", entries[1].status_icon)
 		assert.are.equal("DiffDelete", entries[1].status_hl)
+		-- The raw status must survive normalization: the sidepanel's post-switch
+		-- auto-open skips entries with status == "removed"
+		assert.are.equal("removed", entries[1].status)
+	end)
+
+	it("keeps the raw status on entries for non-removed files", function()
+		local changed = {
+			{ path = "m.lua", status = "modified", additions = 1, deletions = 1 },
+		}
+		local entries = files.build_file_entries(changed, "/repo", icons)
+		assert.are.equal("modified", entries[1].status)
 	end)
 
 	it("uses ? for unknown status", function()
