@@ -520,6 +520,40 @@ describe("sidepanel integration", function()
 		assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
 	end)
 
+	local function buf_keymap_desc(buf, lhs)
+		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			if m.lhs == lhs then
+				return m.desc
+			end
+		end
+		return nil
+	end
+
+	it("registers j/k entry-navigation keymaps by default", function()
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal("Move to next selectable entry", buf_keymap_desc(buf, "j"))
+		assert.are.equal("Move to previous selectable entry", buf_keymap_desc(buf, "k"))
+	end)
+
+	it("disabling next_entry/prev_entry leaves j/k unmapped", function()
+		config.setup({ sidepanel = { keymaps = { next_entry = false, prev_entry = false } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.is_nil(buf_keymap_desc(buf, "j"))
+		assert.is_nil(buf_keymap_desc(buf, "k"))
+	end)
+
+	it("an explicitly remapped action keeps its key over a later default", function()
+		-- A user who mapped select to "j" before next_entry existed must not
+		-- have it silently overwritten by the new default
+		config.setup({ sidepanel = { keymaps = { select = "j" } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal("Select scope or open file", buf_keymap_desc(buf, "j"))
+		assert.are.equal("Move to previous selectable entry", buf_keymap_desc(buf, "k"))
+	end)
+
 	it("move_to_adjacent_entry skips headers and clamps at the edges", function()
 		sidepanel.open()
 		local panel = config.state.sidepanel

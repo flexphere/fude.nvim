@@ -565,11 +565,17 @@ function M.setup_keymaps(panel)
 		keymaps = {}
 	end
 
+	-- First registration of a key wins: when a user maps an existing action to
+	-- a key that is also some later action's default (e.g. select = "j" vs the
+	-- next_entry default "j"), the user's earlier-listed action keeps the key
+	-- instead of being silently overwritten by the newer default.
+	local used_lhs = {}
 	local function map(action, callback, desc)
 		local lhs = keymaps[action]
-		if type(lhs) ~= "string" or lhs == "" then
+		if type(lhs) ~= "string" or lhs == "" or used_lhs[lhs] then
 			return
 		end
+		used_lhs[lhs] = true
 		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
 	end
 

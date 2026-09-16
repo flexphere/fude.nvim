@@ -854,6 +854,10 @@ Options:
                   panel-local mapping and allow another mapping to apply
                   (set both `next_entry = false` and `prev_entry = false`
                   to restore plain `j`/`k` line movement).
+                  When two actions resolve to the same key, the action
+                  listed earlier above wins (e.g. an explicit
+                  `select = "j"` takes the key; the `next_entry` default
+                  is skipped).
 
 `outdated.show`     Show outdated comments (default: true).
                   Outdated comments are those whose position in the code
