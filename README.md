@@ -235,7 +235,7 @@ require("fude").setup({
     position = "left",   -- "left" or "right"
     file_tree = "flat",  -- "flat" or "tree"
     keymaps = {
-      select = "<CR>",
+      select = "<CR>",           -- scope: switch & open the first file / file: open
       toggle_reviewed = "<Tab>", -- PR scope reviewed / local scope switch / file viewed
       toggle_file_tree = "t",
       reload = "R",
