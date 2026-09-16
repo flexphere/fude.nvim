@@ -747,6 +747,42 @@ describe("apply_scope on_done callback", function()
 		assert.is_nil(done.second)
 	end)
 
+	it("has_pending_commit_checkout tracks an in-flight commit switch", function()
+		config.state.scope = "full_pr"
+		fake_git_ok()
+		local commit_cb
+		helpers.mock(gh, "get_commit_files", function(_, callback)
+			commit_cb = callback
+		end)
+
+		assert.is_false(scope.has_pending_commit_checkout())
+		scope.apply_commit_scope("aaa1111", nil)
+		assert.is_true(scope.has_pending_commit_checkout())
+		commit_cb(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+		assert.is_false(scope.has_pending_commit_checkout())
+	end)
+
+	it("cancel_pending_switch makes the in-flight callback a no-op", function()
+		config.state.scope = "full_pr"
+		fake_git_ok()
+		local commit_cb
+		helpers.mock(gh, "get_commit_files", function(_, callback)
+			commit_cb = callback
+		end)
+
+		local done = false
+		scope.apply_commit_scope("aaa1111", function()
+			done = true
+		end)
+		scope.cancel_pending_switch()
+		assert.is_false(scope.has_pending_commit_checkout())
+
+		commit_cb(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+
+		assert.is_false(done)
+		assert.are.equal("full_pr", config.state.scope)
+	end)
+
 	it("refresh_preview restores the caller's focused window", function()
 		local preview = require("fude.preview")
 		local caller_win = vim.api.nvim_get_current_win()

@@ -449,8 +449,14 @@ function M.stop()
 	require("fude.ui").teardown_inline_hint_autocmd()
 	M.clear_buf_keymaps()
 
-	-- Restore original HEAD if in commit scope
-	if state.scope == "commit" and (state.original_head_ref or state.original_head_sha) then
+	-- Restore original HEAD if in commit scope. An in-flight commit switch has
+	-- already checked out its commit while state.scope is still the previous
+	-- value, so it needs the same restore; cancel it so its gh callback cannot
+	-- act after the session ends.
+	local scope_mod = require("fude.scope")
+	local pending_commit_checkout = scope_mod.has_pending_commit_checkout()
+	scope_mod.cancel_pending_switch()
+	if (state.scope == "commit" or pending_commit_checkout) and (state.original_head_ref or state.original_head_sha) then
 		local checkout_target = state.original_head_ref or state.original_head_sha
 		local result = vim.system({ "git", "checkout", checkout_target }, { text = true }):wait()
 		if result.code ~= 0 then

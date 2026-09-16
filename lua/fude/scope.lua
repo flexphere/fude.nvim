@@ -42,6 +42,23 @@ local function end_switch(generation)
 	end
 end
 
+--- True while a commit-scope switch is awaiting its gh callback. Its `git
+--- checkout <sha>` has already run, but `state.scope` is still the previous
+--- value — session teardown must treat this like commit scope when deciding
+--- whether to restore the original HEAD.
+--- @return boolean
+function M.has_pending_commit_checkout()
+	return pending_switch ~= nil and not pending_switch.is_full_pr
+end
+
+--- Invalidate any in-flight scope switch (used by session teardown). The
+--- generation bump makes the pending callback a no-op even when the state
+--- table itself survives.
+function M.cancel_pending_switch()
+	pending_switch = nil
+	request_generation = request_generation + 1
+end
+
 --- Determine the reviewed icon for a commit.
 --- @param reviewed boolean whether the commit is reviewed
 --- @return string icon

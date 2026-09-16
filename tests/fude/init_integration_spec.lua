@@ -667,6 +667,40 @@ describe("init integration", function()
 		end)
 	end)
 
+	describe("stop with an in-flight commit switch", function()
+		it("restores the original HEAD and cancels the pending switch", function()
+			-- A commit switch has already run `git checkout <sha>` but its gh
+			-- callback has not landed, so state.scope is still "full_pr".
+			config.state.active = true
+			config.state.scope = "full_pr"
+			config.state.original_head_ref = "main"
+			local scope_mod = require("fude.scope")
+			helpers.mock(scope_mod, "has_pending_commit_checkout", function()
+				return true
+			end)
+			local canceled = false
+			helpers.mock(scope_mod, "cancel_pending_switch", function()
+				canceled = true
+			end)
+			local commands = {}
+			helpers.mock(vim, "system", function(cmd)
+				table.insert(commands, table.concat(cmd, " "))
+				return {
+					wait = function()
+						return { code = 0, stdout = "", stderr = "" }
+					end,
+				}
+			end)
+			helpers.mock(vim, "notify", function() end)
+
+			init.stop()
+
+			assert.is_true(canceled)
+			assert.is_true(vim.tbl_contains(commands, "git checkout main"))
+			assert.is_false(config.state.active)
+		end)
+	end)
+
 	describe("is_new_file", function()
 		it("returns true for added file", function()
 			local changed_files = {
