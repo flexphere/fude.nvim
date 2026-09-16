@@ -491,10 +491,11 @@ Using lazy.nvim: >lua
     window before opening the file. The panel stays open.
     Switching scope with `<CR>` also opens the first file listed in
     the new scope's Files section (deleted files are skipped) and
-    moves focus to it. Nothing is opened when the scope did not
-    change (already selected, or the switch failed), when the new
-    scope has no openable files, or when focus has left the panel
-    before an asynchronous switch completed.
+    moves focus to it, placing the cursor on the file's first diff
+    hunk centered in the window (`zz`). Nothing is opened when the
+    scope did not change (already selected, or the switch failed),
+    when the new scope has no openable files, or when focus has left
+    the panel before an asynchronous switch completed.
     The panel auto-refreshes when the scope changes, data is reloaded,
     viewed/reviewed state is toggled, or the current buffer changes.
     The currently open file is marked with `▶` in the Files section,

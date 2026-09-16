@@ -669,6 +669,44 @@ function M.find_first_file_entry(file_entries, tree_entries)
 	return nil
 end
 
+--- Parse the new-file start line of the first hunk header in a diff patch.
+--- Accepts both a GitHub API `patch` (starts at the first `@@` header) and
+--- raw `git diff` output (headers before the first hunk are skipped).
+--- @param patch string|nil unified diff text
+--- @return number|nil line 1-based new-file line of the first hunk
+---   (0 for a leading pure-deletion hunk — clamp before use)
+function M.parse_first_hunk_line(patch)
+	if type(patch) ~= "string" then
+		return nil
+	end
+	for line in patch:gmatch("[^\n]+") do
+		local lnum = line:match("^@@%s+%-%d+,?%d*%s+%+(%d+)")
+		if lnum then
+			return tonumber(lnum)
+		end
+	end
+	return nil
+end
+
+--- Move the cursor in `win` to the first diff hunk of `entry` and center it.
+--- No-ops when the entry has no patch (or no hunk header).
+--- @param win number window handle showing the entry's file
+--- @param entry table file entry (patch resolved via files.resolve_patch)
+function M.center_first_hunk(win, entry)
+	local line = M.parse_first_hunk_line(get_files().resolve_patch(entry))
+	if not line then
+		return
+	end
+	if not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+	local last = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win))
+	pcall(vim.api.nvim_win_set_cursor, win, { math.max(1, math.min(line, last)), 0 })
+	vim.api.nvim_win_call(win, function()
+		vim.cmd("normal! zz")
+	end)
+end
+
 --- Open the first file of the Files section (used after a scope switch).
 --- Reads the panel from config.state at call time (not a captured table) so a
 --- panel closed and reopened while an async scope switch was in flight is
@@ -699,7 +737,10 @@ function M.open_first_file()
 		local ok, err = pcall(M.open_file, panel, entry.filename)
 		if not ok then
 			vim.notify("fude.nvim: Could not open " .. entry.filename .. ": " .. tostring(err), vim.log.levels.WARN)
+			return
 		end
+		-- open_file focused the target window; land on the first change.
+		M.center_first_hunk(vim.api.nvim_get_current_win(), entry)
 	end
 end
 
