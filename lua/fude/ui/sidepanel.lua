@@ -661,23 +661,27 @@ function M.build_selectable_lines(section_map, tree_entries)
 	return lines
 end
 
---- Find the nearest selectable line from cursor_line in the given direction.
---- Does not wrap; returns nil when there is nothing further that way.
+--- Find the selectable line `count` steps from cursor_line in the given
+--- direction. Does not wrap: a count past the edge clamps to the last
+--- selectable line that way; returns nil when there is nothing further.
+--- Index-based (one scan), so a huge count (`9999j`) costs the same as 1.
 --- @param cursor_line number 1-based current line
 --- @param selectable_lines number[] ascending 1-based lines from build_selectable_lines
 --- @param direction number 1 (down) or -1 (up)
+--- @param count number|nil steps to move (defaults to 1)
 --- @return number|nil line
-function M.find_adjacent_selectable_line(cursor_line, selectable_lines, direction)
+function M.find_adjacent_selectable_line(cursor_line, selectable_lines, direction, count)
+	count = count or 1
 	if direction > 0 then
-		for _, line in ipairs(selectable_lines) do
+		for i, line in ipairs(selectable_lines) do
 			if line > cursor_line then
-				return line
+				return selectable_lines[math.min(i + count - 1, #selectable_lines)]
 			end
 		end
 	else
 		for i = #selectable_lines, 1, -1 do
 			if selectable_lines[i] < cursor_line then
-				return selectable_lines[i]
+				return selectable_lines[math.max(i - count + 1, 1)]
 			end
 		end
 	end
@@ -694,18 +698,10 @@ function M.move_to_adjacent_entry(panel, direction, count)
 		return
 	end
 	local selectable = M.build_selectable_lines(panel.section_map, panel.tree_entries)
-	local line = vim.api.nvim_win_get_cursor(panel.win)[1]
-	local moved = false
-	for _ = 1, count or 1 do
-		local next_line = M.find_adjacent_selectable_line(line, selectable, direction)
-		if not next_line then
-			break
-		end
-		line = next_line
-		moved = true
-	end
-	if moved then
-		pcall(vim.api.nvim_win_set_cursor, panel.win, { line, 0 })
+	local cursor_line = vim.api.nvim_win_get_cursor(panel.win)[1]
+	local target = M.find_adjacent_selectable_line(cursor_line, selectable, direction, count)
+	if target then
+		pcall(vim.api.nvim_win_set_cursor, panel.win, { target, 0 })
 	end
 end
 
