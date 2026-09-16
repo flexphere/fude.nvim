@@ -583,6 +583,84 @@ describe("apply_scope on_done callback", function()
 		assert.are.equal("commit", config.state.scope)
 	end)
 
+	it("apply_full_pr_scope ignores a stale callback after the session was reset", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "abc1234"
+		fake_git_ok()
+		helpers.mock(gh, "get_pr_files", function(_, callback)
+			vim.schedule(function()
+				-- The review was stopped (and possibly restarted) while the
+				-- request was in flight: config.state is a different table now.
+				config.reset_state()
+				callback(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+			end)
+		end)
+
+		local done = false
+		scope.apply_full_pr_scope(function()
+			done = true
+		end)
+
+		vim.wait(100, function()
+			return done
+		end)
+		assert.is_false(done)
+		-- The new session's state must not be touched by the stale response
+		-- (reset_state defaults scope to "full_pr", so changed_files — which the
+		-- stale callback would have populated — is the discriminating field)
+		assert.are.equal(0, #config.state.changed_files)
+	end)
+
+	it("apply_commit_scope lets only the newest of two in-flight requests win", function()
+		config.state.scope = "full_pr"
+		fake_git_ok()
+		local callbacks = {}
+		helpers.mock(gh, "get_commit_files", function(sha, callback)
+			callbacks[sha] = callback
+		end)
+
+		local done = {}
+		scope.apply_commit_scope("aaa1111", function()
+			done.aaa = true
+		end)
+		scope.apply_commit_scope("bbb2222", function()
+			done.bbb = true
+		end)
+
+		-- Responses arrive out of order: the newer request first, then the stale one
+		callbacks["bbb2222"](nil, { { filename = "b.lua", status = "modified", additions = 1, deletions = 0 } })
+		callbacks["aaa1111"](nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
+
+		assert.are.equal("bbb2222", config.state.scope_commit_sha)
+		assert.are.equal("b.lua", config.state.changed_files[1].path)
+		assert.is_true(done.bbb)
+		assert.is_nil(done.aaa)
+	end)
+
+	it("refresh_preview restores the caller's focused window", function()
+		local preview = require("fude.preview")
+		local caller_win = vim.api.nvim_get_current_win()
+		vim.cmd("vsplit")
+		local source_win = vim.api.nvim_get_current_win()
+		vim.cmd("vsplit")
+		local preview_win = vim.api.nvim_get_current_win()
+		config.state.source_win = source_win
+		config.state.preview_win = preview_win
+		helpers.mock(preview, "close_preview", function() end)
+		helpers.mock(preview, "open_preview", function(win)
+			-- The real open_preview ends focused on the source window
+			vim.api.nvim_set_current_win(win)
+		end)
+		vim.api.nvim_set_current_win(caller_win)
+
+		scope.refresh_preview()
+
+		local focused = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_close(preview_win, true)
+		vim.api.nvim_win_close(source_win, true)
+		assert.are.equal(caller_win, focused)
+	end)
+
 	it("apply_commit_scope does not call on_done on a gh error", function()
 		config.state.scope = "full_pr"
 		fake_git_ok()

@@ -612,15 +612,11 @@ function M.set_scope(scope)
 	require("fude.ui.sidepanel").refresh()
 
 	-- Re-apply gitsigns base (local mode uses the full_pr code path with
-	-- merge_base_sha) and refresh an open side-by-side preview.
+	-- merge_base_sha) and refresh an open side-by-side preview
+	-- (refresh_preview restores the caller's focus, so the sidepanel's
+	-- post-switch auto-open still sees the cursor in the panel).
 	require("fude").restore_gitsigns_base()
-	local src = state.source_win
-	if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
-		require("fude.preview").close_preview()
-		if src and vim.api.nvim_win_is_valid(src) then
-			require("fude.preview").open_preview(src)
-		end
-	end
+	require("fude.scope").refresh_preview()
 
 	vim.notify("fude.nvim: Local scope → " .. scope, vim.log.levels.INFO)
 	return true

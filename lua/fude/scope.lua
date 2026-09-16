@@ -1,6 +1,19 @@
 local M = {}
 local config = require("fude.config")
 
+-- Monotonic id for in-flight scope-switch requests. Each apply_* call bumps it
+-- and captures the value; a gh callback whose id is no longer current (a newer
+-- switch was requested) or whose captured state table was replaced (the review
+-- session was stopped/restarted) must not touch state, UI, or on_done.
+local request_generation = 0
+
+--- @param captured_state table config.state captured when the request started
+--- @param generation number request_generation captured when the request started
+--- @return boolean current true when the callback may proceed
+local function is_current_request(captured_state, generation)
+	return config.state == captured_state and generation == request_generation
+end
+
 --- Determine the reviewed icon for a commit.
 --- @param reviewed boolean whether the commit is reviewed
 --- @return string icon
@@ -548,9 +561,14 @@ function M.apply_full_pr_scope(on_done)
 	end
 
 	-- Refetch PR files (update state only on success)
+	request_generation = request_generation + 1
+	local generation = request_generation
 	local previous_scope_sha = state.scope_commit_sha
 	local gh_mod = require("fude.gh")
 	gh_mod.get_pr_files(state.pr_number, function(err, files)
+		if not is_current_request(state, generation) then
+			return
+		end
 		if err then
 			vim.notify("fude.nvim: Failed to fetch PR files: " .. err, vim.log.levels.ERROR)
 			-- Rollback: restore previous commit checkout
@@ -649,8 +667,13 @@ function M.apply_commit_scope(sha, on_done)
 	end
 
 	-- Fetch commit files (update state only on success)
+	request_generation = request_generation + 1
+	local generation = request_generation
 	local gh_mod = require("fude.gh")
 	gh_mod.get_commit_files(sha, function(err, files)
+		if not is_current_request(state, generation) then
+			return
+		end
 		if err then
 			vim.notify("fude.nvim: Failed to fetch commit files: " .. err, vim.log.levels.ERROR)
 			-- Rollback: restore previous checkout
@@ -888,10 +911,17 @@ function M.refresh_preview()
 	local state = config.state
 	local preview = require("fude.preview")
 	if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
+		local current_win = vim.api.nvim_get_current_win()
 		local source_win = state.source_win
 		preview.close_preview()
 		if source_win and vim.api.nvim_win_is_valid(source_win) then
 			preview.open_preview(source_win)
+		end
+		-- open_preview leaves focus on the source window; a plugin-triggered
+		-- rebuild must not move the user's focus (the sidepanel's post-switch
+		-- auto-open also relies on focus staying where the user left it).
+		if vim.api.nvim_win_is_valid(current_win) then
+			vim.api.nvim_set_current_win(current_win)
 		end
 	end
 end
