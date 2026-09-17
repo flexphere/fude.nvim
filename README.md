@@ -110,8 +110,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
 | `:FudeReviewViewComment` | View comments on current line |
 | `:FudeReviewFiles` | List PR changed files with comment counts (Telescope/quickfix) |
-| `:FudeReviewNextFile` | Open the next changed file (wraps around) |
-| `:FudeReviewPrevFile` | Open the previous changed file (wraps around) |
+| `:FudeReviewNextFile` | Open the next changed file, following the side panel file list order (wraps around) |
+| `:FudeReviewPrevFile` | Open the previous changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewScope` | Select review scope (full PR or specific commit) |
 | `:FudeReviewScopeNext` | Move to next review scope |
 | `:FudeReviewScopePrev` | Move to previous review scope |

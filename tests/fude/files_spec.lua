@@ -533,6 +533,56 @@ describe("find_adjacent_file_index", function()
 	end)
 end)
 
+describe("build_navigation_order", function()
+	local function paths(entries)
+		local out = {}
+		for _, e in ipairs(entries) do
+			table.insert(out, e.path)
+		end
+		return out
+	end
+
+	local changed = {
+		{ path = "lua/z.lua", status = "modified" },
+		{ path = "lua/fude/b.lua", status = "modified" },
+		{ path = "README.md", status = "modified" },
+		{ path = "lua/fude/a.lua", status = "added" },
+	}
+
+	it("returns changed_files unchanged in flat mode", function()
+		local result = files.build_navigation_order(changed, false)
+		assert.are.same(changed, result)
+	end)
+
+	it("reorders to match the sidepanel tree render order in tree mode", function()
+		-- Tree order: directories then files, each alphabetical, depth-first.
+		-- lua/ before README.md (directory precedes file); within lua/, the
+		-- fude/ subdir precedes lua/z.lua; within fude/, a.lua before b.lua.
+		local result = files.build_navigation_order(changed, true)
+		assert.are.same({
+			"lua/fude/a.lua",
+			"lua/fude/b.lua",
+			"lua/z.lua",
+			"README.md",
+		}, paths(result))
+	end)
+
+	it("preserves the original file entry fields in tree mode", function()
+		local result = files.build_navigation_order(changed, true)
+		assert.are.equal("added", result[1].status)
+		assert.are.equal("lua/fude/a.lua", result[1].path)
+	end)
+
+	it("returns every file exactly once in tree mode", function()
+		local result = files.build_navigation_order(changed, true)
+		assert.are.equal(#changed, #result)
+	end)
+
+	it("returns an empty list for empty input in tree mode", function()
+		assert.are.same({}, files.build_navigation_order({}, true))
+	end)
+end)
+
 describe("next_file / prev_file", function()
 	local config = require("fude.config")
 	local diff = require("fude.diff")
@@ -671,5 +721,59 @@ describe("next_file / prev_file", function()
 
 		assert.is_nil(last_cmd)
 		assert.are.equal("fude.nvim: No source window available", notification)
+	end)
+
+	describe("tree mode order", function()
+		before_each(function()
+			-- Flat (changed_files) order differs from the tree render order:
+			-- the tree groups by directory and sorts, so z/a.lua comes before
+			-- the root-level m.lua even though it is listed last.
+			config.state.changed_files = {
+				{ path = "m.lua" },
+				{ path = "z/b.lua" },
+				{ path = "z/a.lua" },
+			}
+		end)
+
+		it("follows the panel's tree order when the panel is in tree mode", function()
+			config.state.sidepanel = { win = 10, file_tree_mode = "tree" }
+			helpers.mock(vim.api, "nvim_get_current_win", function()
+				return 1 -- not the panel window
+			end)
+
+			set_current_path("z/a.lua")
+			files.next_file()
+			assert.are.equal("edit /repo/z/b.lua", last_cmd)
+
+			set_current_path("z/b.lua")
+			files.next_file()
+			assert.are.equal("edit /repo/m.lua", last_cmd)
+		end)
+
+		it("follows the configured tree default when the panel is closed", function()
+			config.setup({ sidepanel = { file_tree = "tree" } })
+			config.state.active = true
+			config.state.changed_files = {
+				{ path = "m.lua" },
+				{ path = "z/b.lua" },
+				{ path = "z/a.lua" },
+			}
+			config.state.sidepanel = nil
+
+			set_current_path("z/a.lua")
+			files.next_file()
+			assert.are.equal("edit /repo/z/b.lua", last_cmd)
+		end)
+
+		it("keeps the flat order when the panel is in flat mode", function()
+			config.state.sidepanel = { win = 10, file_tree_mode = "flat" }
+			helpers.mock(vim.api, "nvim_get_current_win", function()
+				return 1
+			end)
+
+			set_current_path("m.lua")
+			files.next_file()
+			assert.are.equal("edit /repo/z/b.lua", last_cmd)
+		end)
 	end)
 end)
