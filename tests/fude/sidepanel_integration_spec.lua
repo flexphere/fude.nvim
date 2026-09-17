@@ -520,13 +520,18 @@ describe("sidepanel integration", function()
 		assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
 	end)
 
-	local function buf_keymap_desc(buf, lhs)
+	local function buf_keymap(buf, lhs)
 		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
 			if m.lhs == lhs then
-				return m.desc
+				return m
 			end
 		end
 		return nil
+	end
+
+	local function buf_keymap_desc(buf, lhs)
+		local m = buf_keymap(buf, lhs)
+		return m and m.desc or nil
 	end
 
 	it("registers j/k entry-navigation keymaps by default", function()
@@ -534,6 +539,29 @@ describe("sidepanel integration", function()
 		local buf = config.state.sidepanel.buf
 		assert.are.equal("Move to next selectable entry", buf_keymap_desc(buf, "j"))
 		assert.are.equal("Move to previous selectable entry", buf_keymap_desc(buf, "k"))
+	end)
+
+	it("the j/k keymap callbacks move the cursor between entries", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local sm = panel.section_map
+		-- Invoke the registered callbacks (not move_to_adjacent_entry directly)
+		-- so a broken keymap wiring fails this test
+		local next_cb = buf_keymap(panel.buf, "j").callback
+		local prev_cb = buf_keymap(panel.buf, "k").callback
+		assert.is_function(next_cb)
+		assert.is_function(prev_cb)
+
+		vim.api.nvim_win_set_cursor(panel.win, { 1, 0 })
+		next_cb()
+		assert.are.equal(sm.scope_start + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		next_cb()
+		local after_two = vim.api.nvim_win_get_cursor(panel.win)[1]
+		assert.is_true(after_two > sm.scope_start + 1)
+
+		prev_cb()
+		assert.are.equal(sm.scope_start + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
 	end)
 
 	it("disabling next_entry/prev_entry leaves j/k unmapped", function()
