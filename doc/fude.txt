@@ -169,6 +169,9 @@ Using lazy.nvim: >lua
     Open the next changed file in the PR. Wraps around from the
     last file to the first. If the current buffer is not part of
     the PR's changed files, opens the first changed file.
+    Navigation follows the side panel's file list order: when the
+    file list is in tree mode the tree render order is used, otherwise
+    the flat order.
     Equivalent Lua API: `require("fude.files").next_file()`.
     Requires an active review session.
 
@@ -176,6 +179,8 @@ Using lazy.nvim: >lua
     Open the previous changed file in the PR. Wraps around from the
     first file to the last. If the current buffer is not part of
     the PR's changed files, opens the last changed file.
+    Navigation follows the side panel's file list order (see
+    |:FudeReviewNextFile|).
     Equivalent Lua API: `require("fude.files").prev_file()`.
     Requires an active review session.
 
