@@ -17,6 +17,15 @@ end
 
 -- Dedicated namespace for sidepanel highlights (avoids collision with refresh_extmarks)
 local sidepanel_ns = vim.api.nvim_create_namespace("fude_sidepanel")
+local status_labels = { added = "A", modified = "M", removed = "D", renamed = "R", copied = "C" }
+-- Diff* groups often only set a background; status letters need foreground colors.
+local status_highlights = {
+	added = "DiagnosticOk",
+	modified = "DiagnosticWarn",
+	removed = "DiagnosticError",
+	renamed = "DiagnosticInfo",
+	copied = "DiagnosticInfo",
+}
 
 --- Format the scope section lines for the sidepanel.
 --- @param scope_entries table[] entries from scope.build_scope_entries
@@ -52,54 +61,152 @@ function M.format_scope_section(scope_entries, width)
 	return lines, highlights, #scope_entries
 end
 
+-- Widths use display cells; highlight columns use byte offsets.
+local function truncate_display(text, width)
+	if width <= 0 then
+		return ""
+	end
+	if vim.fn.strdisplaywidth(text) <= width then
+		return text
+	end
+	local budget = width - vim.fn.strdisplaywidth("…")
+	if budget < 0 then
+		return ""
+	end
+	local lo, hi = 0, vim.fn.strchars(text, true)
+	while lo < hi do
+		local mid = math.ceil((lo + hi) / 2)
+		if vim.fn.strdisplaywidth(vim.fn.strcharpart(text, 0, mid, true)) <= budget then
+			lo = mid
+		else
+			hi = mid - 1
+		end
+	end
+	return vim.fn.strcharpart(text, 0, lo, true) .. "…"
+end
+
+local function file_columns(file_entries, opts)
+	local columns = {
+		current = vim.fn.strdisplaywidth("▶"),
+		viewed = math.max(
+			1,
+			vim.fn.strdisplaywidth(opts.viewed_icon or "✓"),
+			vim.fn.strdisplaywidth(opts.unviewed_icon or "○")
+		),
+		icon = math.max(
+			vim.fn.strdisplaywidth(opts.directory_icon or ""),
+			vim.fn.strdisplaywidth(opts.directory_closed_icon or "")
+		),
+		adds = 2,
+		dels = 2,
+	}
+	for _, entry in ipairs(file_entries) do
+		columns.viewed = math.max(columns.viewed, vim.fn.strdisplaywidth(entry.viewed_icon or " "))
+		columns.icon = math.max(columns.icon, vim.fn.strdisplaywidth(entry.file_icon or ""))
+		columns.adds = math.max(columns.adds, #string.format("+%d", entry.additions or 0))
+		columns.dels = math.max(columns.dels, #string.format("-%d", entry.deletions or 0))
+	end
+	return columns
+end
+
+-- Flat and tree rows share the same fixed columns and right-aligned stats.
+local function format_file_row(row, width, columns)
+	width = math.max(0, width)
+	local prefix_width = columns.current + columns.viewed + 4
+	local disclosure_width = row.tree and 2 or 0
+	local stats_width = columns.adds + 1 + columns.dels
+	-- Do not show partial numbers when even one name cell cannot fit.
+	local show_stats = row.additions ~= nil and width >= prefix_width + disclosure_width + stats_width + 2
+	local limit = width - (show_stats and stats_width + 1 or 0)
+	local text, highlights = "", {}
+	local function append(value, hl)
+		value = truncate_display(value, limit - vim.fn.strdisplaywidth(text))
+		local start_col = #text
+		text = text .. value
+		if hl and #value > 0 then
+			table.insert(highlights, { start_col, #text, hl })
+		end
+	end
+	local function field(value, cells, hl)
+		append(value, hl)
+		append(string.rep(" ", math.max(0, cells - vim.fn.strdisplaywidth(value))) .. " ")
+	end
+
+	field(row.is_current and "▶" or " ", columns.current, row.is_current and "DiagnosticInfo" or nil)
+	field(row.viewed or " ", columns.viewed, row.viewed_hl or "Comment")
+	field(row.status or " ", 1, row.status_hl)
+
+	local available = math.max(0, limit - vim.fn.strdisplaywidth(text) - disclosure_width)
+	-- Reserve name cells before spending the remaining space on icons and indentation.
+	local show_icon = columns.icon > 0 and available >= columns.icon + 5
+	local icon_width = show_icon and columns.icon + 1 or 0
+	local indent = math.min((row.depth or 0) * 2, math.max(0, available - icon_width - 4))
+	append(string.rep(" ", indent))
+	if row.tree then
+		field(row.disclosure or " ", 1, row.disclosure and "Directory" or nil)
+	end
+	if show_icon then
+		field(row.icon or "", columns.icon, row.icon_hl)
+	end
+	append(row.name, row.name_hl)
+
+	if show_stats then
+		limit = width
+		append(string.rep(" ", width - stats_width - vim.fn.strdisplaywidth(text)))
+		local adds = string.format("+%d", row.additions)
+		local dels = string.format("-%d", row.deletions or 0)
+		append(string.rep(" ", columns.adds - #adds))
+		append(adds, "DiffAdd")
+		append(" " .. string.rep(" ", columns.dels - #dels))
+		append(dels, "DiffDelete")
+	end
+	return text, highlights
+end
+
+local function append_file_row(lines, highlights, row, width, columns)
+	local text, row_hls = format_file_row(row, width, columns)
+	local line_idx = #lines
+	table.insert(lines, text)
+	for _, hl in ipairs(row_hls) do
+		table.insert(highlights, { line_idx, hl[1], hl[2], hl[3] })
+	end
+end
+
 --- Format the files section lines for the sidepanel.
---- @param file_entries table[] entries from files.build_file_entries
---- @param width number available width in columns
+--- @param file_entries table[] entries from files.build_file_entries; optional file_icon/file_icon_hl
+--- @param width number available width in display cells
 --- @param format_path_fn (fun(s: string): string|nil)|nil formats file path for display (nil = identity)
 --- @param viewed_count number count of files with VIEWED state
 --- @param current_path string|nil repo-relative path of the currently open file
+--- @param opts table|nil { viewed_icon?: string, unviewed_icon?: string, unviewed_hl?: string }
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of file entries
-function M.format_files_section(file_entries, width, format_path_fn, viewed_count, current_path)
+function M.format_files_section(file_entries, width, format_path_fn, viewed_count, current_path, opts)
 	format_path_fn = format_path_fn or function(p)
 		return p
 	end
 	viewed_count = viewed_count or 0
-	local lines = { string.format(" Files (Reviewed: %d/%d)", viewed_count, #file_entries), string.rep("─", width) }
-	local highlights = {
-		{ 0, 0, -1, "Title" },
-	}
+	local lines =
+		{ string.format(" Files (Reviewed: %d/%d)", viewed_count, #file_entries), string.rep("─", math.max(0, width)) }
+	local highlights = { { 0, 0, -1, "Title" } }
+	opts = opts or {}
+	local columns = file_columns(file_entries, opts)
 
 	for _, entry in ipairs(file_entries) do
-		local is_current = current_path and entry.path == current_path
-		local current_icon = is_current and "▶" or " "
-		local viewed = entry.viewed_icon or " "
-		local status = entry.status_icon or "?"
-		local adds = string.format("+%-3d", entry.additions or 0)
-		local dels = string.format("-%-3d", entry.deletions or 0)
 		local raw = format_path_fn(entry.path)
-		local display_name = type(raw) == "string" and raw or entry.path
-		local text = current_icon .. " " .. viewed .. " " .. status .. " " .. adds .. " " .. dels .. " " .. display_name
-		local line_idx = #lines
-		table.insert(lines, text)
-
-		-- Current file highlight
-		if is_current then
-			table.insert(highlights, { line_idx, 0, #current_icon, "DiagnosticInfo" })
-		end
-		-- Viewed icon highlight
-		local viewed_start = #current_icon + 1
-		table.insert(highlights, { line_idx, viewed_start, viewed_start + #viewed, entry.viewed_hl or "Comment" })
-		-- Status icon highlight
-		local status_start = viewed_start + #viewed + 1
-		table.insert(highlights, { line_idx, status_start, status_start + #status, entry.status_hl or "DiffChange" })
-		-- Additions highlight
-		local adds_start = status_start + #status + 1
-		table.insert(highlights, { line_idx, adds_start, adds_start + #adds, "DiffAdd" })
-		-- Deletions highlight
-		local dels_start = adds_start + #adds + 1
-		table.insert(highlights, { line_idx, dels_start, dels_start + #dels, "DiffDelete" })
+		append_file_row(lines, highlights, {
+			is_current = current_path ~= nil and entry.path == current_path,
+			viewed = entry.viewed_icon or opts.unviewed_icon or "○",
+			viewed_hl = entry.viewed_hl or opts.unviewed_hl,
+			status = entry.status_icon or "?",
+			status_hl = entry.status_hl or "DiffChange",
+			icon = entry.file_icon,
+			icon_hl = entry.file_icon_hl,
+			name = type(raw) == "string" and raw or entry.path,
+			additions = entry.additions or 0,
+			deletions = entry.deletions or 0,
+		}, width, columns)
 	end
 
 	return lines, highlights, #file_entries
@@ -108,72 +215,57 @@ end
 --- Format the files section lines as a directory tree.
 --- @param tree_entries table[] entries from ui.sidepanel.tree.flatten_tree
 --- @param total_file_count number total number of changed files
---- @param width number available width in columns
+--- @param width number available width in display cells
 --- @param viewed_count number count of files with VIEWED state
 --- @param current_path string|nil repo-relative path of the currently open file
+--- @param opts table|nil viewed_icon/viewed_hl, unviewed_icon/unviewed_hl, directory_icon/directory_closed_icon
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of rendered tree entries
-function M.format_files_section_tree(tree_entries, total_file_count, width, viewed_count, current_path)
+function M.format_files_section_tree(tree_entries, total_file_count, width, viewed_count, current_path, opts)
+	opts = opts or {}
 	viewed_count = viewed_count or 0
-	local lines = { string.format(" Files (Reviewed: %d/%d)", viewed_count, total_file_count), string.rep("─", width) }
-	local highlights = {
-		{ 0, 0, -1, "Title" },
-	}
+	local lines =
+		{ string.format(" Files (Reviewed: %d/%d)", viewed_count, total_file_count), string.rep("─", math.max(0, width)) }
+	local highlights = { { 0, 0, -1, "Title" } }
+	local file_entries = {}
+	for _, entry in ipairs(tree_entries) do
+		if entry.type ~= "directory" then
+			table.insert(file_entries, entry.file or {})
+		end
+	end
+	local columns = file_columns(file_entries, opts)
 
 	for _, entry in ipairs(tree_entries) do
-		local indent = string.rep("  ", entry.depth)
-		local line_idx = #lines
-
+		local row = { name = entry.name, depth = entry.depth, tree = true }
 		if entry.type == "directory" then
-			local viewed_all = entry.total_files > 0 and entry.viewed_files == entry.total_files
-			local viewed_sign = (config.opts.signs and config.opts.signs.viewed) or "✓"
-			local viewed_marker = viewed_all and (" " .. viewed_sign) or ""
-			local text = indent .. entry.name .. viewed_marker
-			table.insert(lines, text)
-
-			local pos = #indent
-			table.insert(highlights, { line_idx, pos, pos + #entry.name, "Directory" })
-			if viewed_all then
-				local viewed_hl = (config.opts.signs and config.opts.signs.viewed_hl) or "DiagnosticOk"
-				local marker_start = pos + #entry.name + 1
-				table.insert(highlights, { line_idx, marker_start, marker_start + #viewed_sign, viewed_hl })
+			row.disclosure = entry.collapsed and "▸" or "▾"
+			if entry.collapsed and (entry.total_files or 0) > 0 then
+				local viewed_all = entry.viewed_files == entry.total_files
+				if viewed_all then
+					row.viewed = opts.viewed_icon or "✓"
+					row.viewed_hl = opts.viewed_hl or "DiagnosticOk"
+				else
+					row.viewed = opts.unviewed_icon or "○"
+					row.viewed_hl = opts.unviewed_hl or "Comment"
+				end
 			end
+			row.icon = entry.collapsed and (opts.directory_closed_icon or opts.directory_icon) or opts.directory_icon
+			row.icon_hl = "Directory"
+			row.name_hl = "Directory"
 		else
 			local f = entry.file or {}
-			local is_current = current_path and entry.path == current_path
-			local current_icon = is_current and "▶" or " "
-			local viewed = f.viewed_icon or " "
-			local status = f.status_icon or "?"
-			local adds = string.format("+%-3d", f.additions or 0)
-			local dels = string.format("-%-3d", f.deletions or 0)
-			local text = indent
-				.. current_icon
-				.. " "
-				.. viewed
-				.. " "
-				.. status
-				.. " "
-				.. adds
-				.. " "
-				.. dels
-				.. " "
-				.. entry.name
-			table.insert(lines, text)
-
-			local ci_start = #indent
-			if is_current then
-				table.insert(highlights, { line_idx, ci_start, ci_start + #current_icon, "DiagnosticInfo" })
-			end
-			local viewed_start = ci_start + #current_icon + 1
-			table.insert(highlights, { line_idx, viewed_start, viewed_start + #viewed, f.viewed_hl or "Comment" })
-			local status_start = viewed_start + #viewed + 1
-			table.insert(highlights, { line_idx, status_start, status_start + #status, f.status_hl or "DiffChange" })
-			local adds_start = status_start + #status + 1
-			table.insert(highlights, { line_idx, adds_start, adds_start + #adds, "DiffAdd" })
-			local dels_start = adds_start + #adds + 1
-			table.insert(highlights, { line_idx, dels_start, dels_start + #dels, "DiffDelete" })
+			row.is_current = current_path ~= nil and entry.path == current_path
+			row.viewed = f.viewed_icon or opts.unviewed_icon or "○"
+			row.viewed_hl = f.viewed_hl or opts.unviewed_hl
+			row.status = f.status_icon or "?"
+			row.status_hl = f.status_hl or "DiffChange"
+			row.icon = f.file_icon
+			row.icon_hl = f.file_icon_hl
+			row.additions = f.additions or 0
+			row.deletions = f.deletions or 0
 		end
+		append_file_row(lines, highlights, row, width, columns)
 	end
 
 	return lines, highlights, #tree_entries
@@ -281,6 +373,23 @@ function M.close()
 	end
 end
 
+-- Resolve optional icons outside the row formatters. Entries are local to render.
+local function add_file_icons(file_entries)
+	local ok, devicons = pcall(require, "nvim-web-devicons")
+	if not ok then
+		return nil
+	end
+	for _, entry in ipairs(file_entries) do
+		local name = entry.path:match("[^/]+$") or entry.path
+		local success, icon, hl = pcall(devicons.get_icon, name, name:match("%.([^%.]+)$"), { default = true })
+		if success and type(icon) == "string" then
+			entry.file_icon = icon
+			entry.file_icon_hl = type(hl) == "string" and hl or "Normal"
+		end
+	end
+	return "", ""
+end
+
 --- Render the sidepanel content into the buffer.
 --- @param panel table sidepanel state
 local function render(panel)
@@ -291,7 +400,14 @@ local function render(panel)
 	local comments_data = require("fude.comments.data")
 
 	local sp_opts = config.opts.sidepanel or {}
-	local width = math.max(20, sp_opts.width or 40)
+	local width = vim.api.nvim_win_get_width(panel.win)
+	panel.rendered_width = width
+	local row_opts = {
+		viewed_icon = (config.opts.signs and config.opts.signs.viewed) or "✓",
+		viewed_hl = (config.opts.signs and config.opts.signs.viewed_hl) or "DiagnosticOk",
+		unviewed_icon = (config.opts.signs and config.opts.signs.unviewed) or "○",
+		unviewed_hl = (config.opts.signs and config.opts.signs.unviewed_hl) or "Comment",
+	}
 
 	-- Build scope entries: local review shows the available local diff scopes,
 	-- GitHub review shows Full PR + commits.
@@ -319,17 +435,27 @@ local function render(panel)
 	local file_entries = {}
 	local viewed_count = 0
 	if repo_root then
-		local viewed_sign = (config.opts.signs and config.opts.signs.viewed) or "✓"
 		local comment_counts = comments_data.build_file_comment_counts(state.comments, state.pending_comments)
 		file_entries = files_mod.build_file_entries(
 			state.changed_files or {},
 			repo_root,
-			files_mod.status_icons,
+			status_labels,
 			state.viewed_files,
-			viewed_sign,
+			row_opts.viewed_icon,
 			comment_counts
 		)
 		viewed_count = files_mod.count_viewed(state.viewed_files, state.changed_files or {})
+	end
+
+	for _, entry in ipairs(file_entries) do
+		entry.status_hl = status_highlights[entry.status] or "Comment"
+		if (state.viewed_files or {})[entry.path] ~= "VIEWED" then
+			entry.viewed_icon = row_opts.unviewed_icon
+			entry.viewed_hl = row_opts.unviewed_hl
+		end
+	end
+	if sp_opts.icons ~= false then
+		row_opts.directory_icon, row_opts.directory_closed_icon = add_file_icons(file_entries)
 	end
 
 	-- Determine current file path for marker
@@ -362,12 +488,12 @@ local function render(panel)
 		local tree_mod = require("fude.ui.sidepanel.tree")
 		local tree = tree_mod.build_tree(file_entries)
 		tree_mod.collapse_singleton_chains(tree)
-		tree_entries = tree_mod.flatten_tree(tree, state.viewed_files)
+		tree_entries = tree_mod.flatten_tree(tree, state.viewed_files, panel.collapsed_dirs)
 		file_lines, file_hls, file_count =
-			M.format_files_section_tree(tree_entries, #file_entries, width, viewed_count, current_path)
+			M.format_files_section_tree(tree_entries, #file_entries, width, viewed_count, current_path, row_opts)
 	else
 		file_lines, file_hls, file_count =
-			M.format_files_section(file_entries, width, config.format_path, viewed_count, current_path)
+			M.format_files_section(file_entries, width, config.format_path, viewed_count, current_path, row_opts)
 	end
 
 	local lines, highlights, section_map =
@@ -399,7 +525,10 @@ local function render(panel)
 	if current_path and section_map then
 		local entries = tree_entries or file_entries
 		for i, ent in ipairs(entries) do
-			if ent.type ~= "directory" and ent.path == current_path then
+			local contains_current = ent.type == "directory"
+				and ent.collapsed
+				and current_path:sub(1, #ent.path + 1) == ent.path .. "/"
+			if (ent.type ~= "directory" and ent.path == current_path) or contains_current then
 				panel.current_file_line = section_map.files_entry_offset + i
 				break
 			end
@@ -449,6 +578,32 @@ function M.follow_current_file()
 		local line_count = vim.api.nvim_buf_line_count(panel.buf)
 		local target = math.min(panel.current_file_line, line_count)
 		pcall(vim.api.nvim_win_set_cursor, panel.win, { target, 0 })
+	end
+end
+
+--- Expand a file's ancestors after explicit next/previous-file navigation.
+--- Other directory folds and the focused window are left unchanged.
+--- @param path string repo-relative file path
+function M.reveal_file(path)
+	local panel = config.state.sidepanel
+	if
+		not panel
+		or panel.file_tree_mode ~= "tree"
+		or not panel.collapsed_dirs
+		or not panel.win
+		or not vim.api.nvim_win_is_valid(panel.win)
+	then
+		return
+	end
+	local changed = false
+	for directory in pairs(panel.collapsed_dirs) do
+		if path:sub(1, #directory + 1) == directory .. "/" then
+			panel.collapsed_dirs[directory] = nil
+			changed = true
+		end
+	end
+	if changed then
+		M.follow_current_file()
 	end
 end
 
@@ -503,6 +658,7 @@ function M.open()
 		scope_entries = {},
 		file_entries = {},
 		tree_entries = nil,
+		collapsed_dirs = {},
 		section_map = nil,
 		augroup = nil,
 		file_tree_mode = sp_opts.file_tree or "flat",
@@ -522,6 +678,21 @@ function M.open()
 				M.close()
 			end
 		end,
+	})
+
+	vim.api.nvim_create_autocmd("WinResized", {
+		group = augroup,
+		callback = function()
+			-- The event pattern names only the first resized window, not necessarily the panel.
+			if
+				config.state.sidepanel == panel
+				and vim.api.nvim_win_is_valid(win)
+				and vim.api.nvim_win_get_width(win) ~= panel.rendered_width
+			then
+				M.refresh()
+			end
+		end,
+		desc = "fude.nvim: Realign file rows after panel resize",
 	})
 
 	-- Render content
@@ -596,13 +767,16 @@ function M.setup_keymaps(panel)
 			else
 				get_scope().apply_scope(entry_info.entry, M.open_first_file)
 			end
+		elseif entry_info.type == "directory" then
+			panel.collapsed_dirs[entry_info.entry.path] = not entry_info.entry.collapsed or nil
+			M.refresh()
 		elseif entry_info.type == "file" then
 			local filename = entry_info.entry.filename
 			if filename then
 				M.open_file(panel, filename)
 			end
 		end
-	end, "Select scope or open file")
+	end, "Select scope, toggle directory, or open file")
 
 	-- Toggle reviewed/viewed
 	map("toggle_reviewed", function()
@@ -638,8 +812,8 @@ function M.setup_keymaps(panel)
 		M.close()
 	end, "Close side panel")
 
-	-- Entry-wise cursor movement (skips headers, separators, blank lines, and
-	-- tree-mode directory rows — only lines that accept `select` are stops)
+	-- Entry-wise cursor movement includes directories, which accept `select`.
+	-- Headers, separators, and blank lines are skipped.
 	map("next_entry", function()
 		M.move_to_adjacent_entry(panel, 1, vim.v.count1)
 	end, "Move to next selectable entry")
@@ -649,22 +823,16 @@ function M.setup_keymaps(panel)
 end
 
 --- Build the sorted 1-based list of panel lines that accept `select`.
---- Headers, separators, blank lines, and (in tree mode) directory rows are
---- excluded — entry-wise navigation jumps between these lines only.
+--- Includes directory rows; excludes headers, separators, and blank lines.
 --- @param section_map table from build_sidepanel_content
---- @param tree_entries table[]|nil tree entries (nil in flat mode)
 --- @return number[] lines ascending 1-based line numbers
-function M.build_selectable_lines(section_map, tree_entries)
+function M.build_selectable_lines(section_map)
 	local lines = {}
 	for line_0 = section_map.scope_start, section_map.scope_end do
 		table.insert(lines, line_0 + 1)
 	end
 	for line_0 = section_map.files_start, section_map.files_end do
-		local index = line_0 - section_map.files_start + 1
-		local is_directory = tree_entries ~= nil and tree_entries[index] ~= nil and tree_entries[index].type == "directory"
-		if not is_directory then
-			table.insert(lines, line_0 + 1)
-		end
+		table.insert(lines, line_0 + 1)
 	end
 	return lines
 end
@@ -705,7 +873,7 @@ function M.move_to_adjacent_entry(panel, direction, count)
 	if not panel.section_map or not panel.win or not vim.api.nvim_win_is_valid(panel.win) then
 		return
 	end
-	local selectable = M.build_selectable_lines(panel.section_map, panel.tree_entries)
+	local selectable = M.build_selectable_lines(panel.section_map)
 	local cursor_line = vim.api.nvim_win_get_cursor(panel.win)[1]
 	local target = M.find_adjacent_selectable_line(cursor_line, selectable, direction, count)
 	if target then
@@ -811,7 +979,13 @@ function M.open_first_file()
 	if not M.find_target_window(panel.win) then
 		return
 	end
-	local entry = M.find_first_file_entry(panel.file_entries, panel.tree_entries)
+	local entry
+	if panel.file_tree_mode == "tree" and panel.collapsed_dirs and next(panel.collapsed_dirs) then
+		-- Scope selection must still open the first file when every directory is folded.
+		entry = M.find_first_file_entry(get_files().build_navigation_order(panel.file_entries, true))
+	else
+		entry = M.find_first_file_entry(panel.file_entries, panel.tree_entries)
+	end
 	if entry and entry.filename then
 		-- pcall: :edit can fail (e.g. E37 with 'nohidden' + modified buffer);
 		-- on the GitHub path this runs inside a gh callback, where an
