@@ -572,6 +572,14 @@ describe("sidepanel integration", function()
 		assert.is_nil(buf_keymap_desc(buf, "k"))
 	end)
 
+	it("resolves a key collision in the documented action order", function()
+		-- doc/fude.txt lists select before close, so select must win the key
+		config.setup({ sidepanel = { keymaps = { select = "q", close = "q" } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal("Select scope or open file", buf_keymap_desc(buf, "q"))
+	end)
+
 	it("an explicitly remapped action keeps its key over a later default", function()
 		-- A user who mapped select to "j" before next_entry existed must not
 		-- have it silently overwritten by the new default

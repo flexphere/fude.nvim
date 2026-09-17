@@ -565,10 +565,12 @@ function M.setup_keymaps(panel)
 		keymaps = {}
 	end
 
-	-- First registration of a key wins: when a user maps an existing action to
-	-- a key that is also some later action's default (e.g. select = "j" vs the
-	-- next_entry default "j"), the user's earlier-listed action keeps the key
-	-- instead of being silently overwritten by the newer default.
+	-- First registration of a key wins: when a user maps an action to a key
+	-- that is also another action's default (e.g. select = "j" vs the
+	-- next_entry default "j"), the action registered first keeps the key
+	-- instead of being silently overwritten. The registration order below is
+	-- the priority order documented in doc/fude.txt (`sidepanel.keymaps`), so
+	-- keep the two in sync.
 	local used_lhs = {}
 	local function map(action, callback, desc)
 		local lhs = keymaps[action]
@@ -578,17 +580,6 @@ function M.setup_keymaps(panel)
 		used_lhs[lhs] = true
 		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
 	end
-
-	-- Close
-	map("close", function()
-		M.close()
-	end, "Close side panel")
-
-	-- Refresh (reload from GitHub)
-	map("reload", function()
-		local init_mod = require("fude.init")
-		init_mod.reload()
-	end, "Reload review data")
 
 	-- Select / Open
 	map("select", function()
@@ -635,6 +626,17 @@ function M.setup_keymaps(panel)
 	map("toggle_file_tree", function()
 		M.toggle_file_tree_mode(panel)
 	end, "Toggle tree/flat file list")
+
+	-- Refresh (reload from GitHub)
+	map("reload", function()
+		local init_mod = require("fude.init")
+		init_mod.reload()
+	end, "Reload review data")
+
+	-- Close
+	map("close", function()
+		M.close()
+	end, "Close side panel")
 
 	-- Entry-wise cursor movement (skips headers, separators, blank lines, and
 	-- tree-mode directory rows — only lines that accept `select` are stops)
