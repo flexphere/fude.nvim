@@ -105,6 +105,48 @@ describe("compute_aggregate", function()
 end)
 
 describe("flatten_tree", function()
+	it("hides descendants but aggregates all nested files and preserves their entries", function()
+		local root = tree.build_tree({
+			make_file("src/a.lua", { additions = 1 }),
+			make_file("src/nested/b.lua", { additions = 2, deletions = 3 }),
+			make_file("src/nested/c.lua"),
+			make_file("other.lua"),
+		})
+		local original = vim.deepcopy(root)
+		local entries = tree.flatten_tree(root, { ["src/nested/b.lua"] = "VIEWED" }, { src = true })
+		assert.are.equal(2, #entries)
+		assert.are.equal("src", entries[1].path)
+		assert.is_true(entries[1].collapsed)
+		assert.are.equal(3, entries[1].total_files)
+		assert.are.equal(1, entries[1].viewed_files)
+		assert.are.equal(3, entries[1].additions)
+		assert.are.equal(3, entries[1].deletions)
+		assert.are.equal("other.lua", entries[2].path)
+		assert.are.same(original, root)
+		assert.are.equal(6, #tree.flatten_tree(root))
+	end)
+
+	it("retains a nested fold after reopening its parent", function()
+		local root = tree.build_tree({ make_file("src/a.lua"), make_file("src/nested/b.lua") })
+		local collapsed = { src = true, ["src/nested"] = true }
+		assert.are.equal(1, #tree.flatten_tree(root, {}, collapsed))
+		collapsed.src = nil
+		local entries = tree.flatten_tree(root, {}, collapsed)
+		assert.are.equal(3, #entries)
+		assert.is_false(entries[1].collapsed)
+		assert.is_true(entries[2].collapsed)
+		assert.are.equal("src/a.lua", entries[3].path)
+	end)
+
+	it("uses the full path of a compacted directory chain as the fold key", function()
+		local root = tree.build_tree({ make_file("a/b/c.lua") })
+		tree.collapse_singleton_chains(root)
+		local entries = tree.flatten_tree(root, {}, { ["a/b"] = true })
+		assert.are.equal(1, #entries)
+		assert.are.equal("a/b", entries[1].path)
+		assert.is_true(entries[1].collapsed)
+	end)
+
 	it("emits directories and files in render order with depth", function()
 		local root = tree.build_tree({
 			make_file("a/b.md", { additions = 5 }),
