@@ -483,6 +483,10 @@ Using lazy.nvim: >lua
                 listed in the new scope. On a file: open it.
       `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
                 (local). On a file: toggle viewed.
+      `j` / `k`   Move to the next / previous selectable entry,
+                skipping headers, separators, blank lines, and
+                (in tree mode) directory rows. Accepts a count;
+                stops at the edges.
       `t`       Toggle files between flat list and tree
       `R`       Reload review data
       `q`       Close panel
@@ -843,8 +847,17 @@ Options:
                   - `toggle_file_tree`: "t"
                   - `reload`: "R"
                   - `close`: "q"
+                  - `next_entry`: "j" / `prev_entry`: "k" (jump between
+                    selectable entry lines, skipping headers, separators,
+                    blank lines, and tree-mode directory rows)
                   Set an action to `false` or an empty string to disable its
-                  panel-local mapping and allow another mapping to apply.
+                  panel-local mapping and allow another mapping to apply
+                  (set both `next_entry = false` and `prev_entry = false`
+                  to restore plain `j`/`k` line movement).
+                  When two actions resolve to the same key, the action
+                  listed earlier above wins (e.g. an explicit
+                  `select = "j"` takes the key; the `next_entry` default
+                  is skipped).
 
 `outdated.show`     Show outdated comments (default: true).
                   Outdated comments are those whose position in the code

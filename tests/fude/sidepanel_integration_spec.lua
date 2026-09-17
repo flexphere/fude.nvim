@@ -520,6 +520,101 @@ describe("sidepanel integration", function()
 		assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
 	end)
 
+	local function buf_keymap(buf, lhs)
+		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			if m.lhs == lhs then
+				return m
+			end
+		end
+		return nil
+	end
+
+	local function buf_keymap_desc(buf, lhs)
+		local m = buf_keymap(buf, lhs)
+		return m and m.desc or nil
+	end
+
+	it("registers j/k entry-navigation keymaps by default", function()
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal("Move to next selectable entry", buf_keymap_desc(buf, "j"))
+		assert.are.equal("Move to previous selectable entry", buf_keymap_desc(buf, "k"))
+	end)
+
+	it("the j/k keymap callbacks move the cursor between entries", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local sm = panel.section_map
+		-- Invoke the registered callbacks (not move_to_adjacent_entry directly)
+		-- so a broken keymap wiring fails this test
+		local next_cb = buf_keymap(panel.buf, "j").callback
+		local prev_cb = buf_keymap(panel.buf, "k").callback
+		assert.is_function(next_cb)
+		assert.is_function(prev_cb)
+
+		vim.api.nvim_win_set_cursor(panel.win, { 1, 0 })
+		next_cb()
+		assert.are.equal(sm.scope_start + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		next_cb()
+		local after_two = vim.api.nvim_win_get_cursor(panel.win)[1]
+		assert.is_true(after_two > sm.scope_start + 1)
+
+		prev_cb()
+		assert.are.equal(sm.scope_start + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+	end)
+
+	it("disabling next_entry/prev_entry leaves j/k unmapped", function()
+		config.setup({ sidepanel = { keymaps = { next_entry = false, prev_entry = false } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.is_nil(buf_keymap_desc(buf, "j"))
+		assert.is_nil(buf_keymap_desc(buf, "k"))
+	end)
+
+	it("resolves a key collision in the documented action order", function()
+		-- doc/fude.txt lists select before close, so select must win the key
+		config.setup({ sidepanel = { keymaps = { select = "q", close = "q" } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal("Select scope or open file", buf_keymap_desc(buf, "q"))
+	end)
+
+	it("an explicitly remapped action keeps its key over a later default", function()
+		-- A user who mapped select to "j" before next_entry existed must not
+		-- have it silently overwritten by the new default
+		config.setup({ sidepanel = { keymaps = { select = "j" } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal("Select scope or open file", buf_keymap_desc(buf, "j"))
+		assert.are.equal("Move to previous selectable entry", buf_keymap_desc(buf, "k"))
+	end)
+
+	it("move_to_adjacent_entry skips headers and clamps at the edges", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local sm = panel.section_map
+
+		-- From the scope header, one step down lands on the first scope entry
+		vim.api.nvim_win_set_cursor(panel.win, { 1, 0 })
+		sidepanel.move_to_adjacent_entry(panel, 1, 1)
+		assert.are.equal(sm.scope_start + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		-- A large count clamps at the last file entry instead of overshooting
+		sidepanel.move_to_adjacent_entry(panel, 1, 99)
+		assert.are.equal(sm.files_end + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		-- Down at the bottom edge stays put
+		sidepanel.move_to_adjacent_entry(panel, 1, 1)
+		assert.are.equal(sm.files_end + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+
+		-- Up from the first file entry skips the files header/separator/blank
+		-- back to the last scope entry
+		vim.api.nvim_win_set_cursor(panel.win, { sm.files_start + 1, 0 })
+		sidepanel.move_to_adjacent_entry(panel, -1, 1)
+		assert.are.equal(sm.scope_end + 1, vim.api.nvim_win_get_cursor(panel.win)[1])
+	end)
+
 	it("open_first_file stays silent when no target window is available", function()
 		local _, captured = setup_open_first_file({
 			{ path = "a.lua", filename = "/mock/repo/a.lua", status = "modified" },
