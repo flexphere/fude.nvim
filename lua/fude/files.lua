@@ -128,6 +128,30 @@ function M.build_file_entries(changed_files, repo_root, icons, viewed_files, vie
 	return entries
 end
 
+--- Build the ordered file list used for next/prev navigation.
+--- In flat mode the changed_files order is used as-is. In tree mode the order
+--- is made to match the sidepanel's tree rendering (directories then files, each
+--- sorted alphabetically, depth-first) so navigation follows what is displayed.
+--- @param changed_files table[] list of { path, ... }
+--- @param tree_mode boolean whether to use the sidepanel tree order
+--- @return table[] ordered list of file entries (each has .path)
+function M.build_navigation_order(changed_files, tree_mode)
+	if not tree_mode then
+		return changed_files
+	end
+	local tree_mod = require("fude.ui.sidepanel.tree")
+	local tree = tree_mod.build_tree(changed_files)
+	tree_mod.collapse_singleton_chains(tree)
+	local entries = tree_mod.flatten_tree(tree)
+	local ordered = {}
+	for _, entry in ipairs(entries) do
+		if entry.type == "file" then
+			table.insert(ordered, entry.file or { path = entry.path })
+		end
+	end
+	return ordered
+end
+
 --- Find the index of the next/prev changed file relative to the current path.
 --- Wraps around at the edges. If the current path is not in the list, returns
 --- the first entry for "next" and the last for "prev".
@@ -190,13 +214,16 @@ local function goto_adjacent(direction)
 		vim.api.nvim_set_current_win(target_win)
 	end
 
+	local tree_mode = ((panel and panel.file_tree_mode) or config.opts.sidepanel.file_tree) == "tree"
+	local nav_files = M.build_navigation_order(state.changed_files, tree_mode)
+
 	local current_path = diff.make_relative(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p"), repo_root)
-	local idx = M.find_adjacent_file_index(state.changed_files, current_path, direction)
+	local idx = M.find_adjacent_file_index(nav_files, current_path, direction)
 	if not idx then
 		return
 	end
 
-	local target = state.changed_files[idx]
+	local target = nav_files[idx]
 	vim.cmd("edit " .. vim.fn.fnameescape(repo_root .. "/" .. target.path))
 end
 
