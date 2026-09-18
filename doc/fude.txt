@@ -173,7 +173,7 @@ File opening position                                 *fude-file-position*
     - A new buffer starts at the first changed line in the current scope,
       centered with zz. Leading context lines are skipped. Deletions use
       the corresponding surviving boundary, clamped to the buffer.
-    - An existing buffer (even if unloaded) is not re-centered.
+    - Any other existing buffer (even if unloaded) is not re-centered.
       Cursor, scroll position, and fold settings saved while leaving
       the file during the review are restored on return.
     - No patch, no hunk, or a patch lookup failure does not prevent
