@@ -225,6 +225,9 @@ local function goto_adjacent(direction)
 
 	local target = nav_files[idx]
 	vim.cmd("edit " .. vim.fn.fnameescape(repo_root .. "/" .. target.path))
+	if config.state == state and state.active then
+		require("fude.ui.sidepanel").reveal_file(target.path)
+	end
 end
 
 --- Move to the next changed file in the PR (wraps around).

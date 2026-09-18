@@ -15,6 +15,8 @@ M.defaults = {
 		pending_hl = "DiagnosticHint",
 		viewed = "✓",
 		viewed_hl = "DiagnosticOk",
+		unviewed = "○", -- Unreviewed side panel files
+		unviewed_hl = "Comment",
 		draft = "✎ draft",
 		draft_hl = "DiagnosticWarn",
 	},
@@ -97,6 +99,7 @@ M.defaults = {
 		width = 40, -- Panel width in columns
 		position = "left", -- "left" or "right"
 		file_tree = "flat", -- "flat" or "tree"
+		icons = true, -- Use nvim-web-devicons when available
 		keymaps = {
 			select = "<CR>",
 			toggle_reviewed = "<Tab>",

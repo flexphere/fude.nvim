@@ -123,8 +123,9 @@ end
 --- Flatten the tree into render-order entries.
 --- @param root table from build_tree
 --- @param viewed_files table<string, string>|nil for aggregate viewed counts
+--- @param collapsed_dirs table<string, boolean>|nil paths whose descendants are hidden
 --- @return table[] entries
-function M.flatten_tree(root, viewed_files)
+function M.flatten_tree(root, viewed_files, collapsed_dirs)
 	local entries = {}
 	local aggregate_cache = {}
 
@@ -141,8 +142,11 @@ function M.flatten_tree(root, viewed_files)
 					deletions = agg.deletions,
 					total_files = agg.total_files,
 					viewed_files = agg.viewed_files,
+					collapsed = collapsed_dirs ~= nil and collapsed_dirs[child.path] == true,
 				})
-				visit(child, depth + 1)
+				if not (collapsed_dirs and collapsed_dirs[child.path]) then
+					visit(child, depth + 1)
+				end
 			else
 				table.insert(entries, {
 					type = "file",

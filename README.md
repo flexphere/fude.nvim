@@ -32,6 +32,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - Optional: [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) for picker UI (changed files and review scope)
 - Optional: [snacks.nvim](https://github.com/folke/snacks.nvim) for picker UI (alternative to telescope, used when `file_list_mode = "snacks"` for changed files and review scope)
 - Optional: [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim) for diff base switching
+- Optional: [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) and a Nerd Font for side panel file and folder icons
 - Optional: [blink.cmp](https://github.com/saghen/blink.cmp) or [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) for `@user` / `#issue` / `_commit` completion
 
 ## Installation
@@ -153,6 +154,8 @@ require("fude").setup({
     pending_hl = "DiagnosticHint",
     viewed = "✓",
     viewed_hl = "DiagnosticOk",
+    unviewed = "○",         -- Unreviewed files in the side panel
+    unviewed_hl = "Comment",
     draft = "✎ draft",       -- Indicator for lines with an unsaved local draft
     draft_hl = "DiagnosticWarn",
   },
@@ -234,10 +237,11 @@ require("fude").setup({
     width = 40,          -- Panel width in columns
     position = "left",   -- "left" or "right"
     file_tree = "flat",  -- "flat" or "tree"
+    icons = true,       -- Use nvim-web-devicons when available; false hides icons
     keymaps = {
-      select = "<CR>",           -- scope: switch & open the first file / file: open
+      select = "<CR>",           -- scope: switch / directory: fold / file: open
       toggle_reviewed = "<Tab>", -- PR scope reviewed / local scope switch / file viewed
-      next_entry = "j",          -- jump to next selectable entry (skips headers/directories)
+      next_entry = "j",          -- jump to next selectable entry (includes directories)
       prev_entry = "k",          -- jump to previous selectable entry
       toggle_file_tree = "t",
       reload = "R",
@@ -254,6 +258,34 @@ require("fude").setup({
   },
 })
 ```
+
+## Side panel file layout
+
+The side panel uses fixed columns for the current file (`▶`), review state
+(`✓` / `○`), and change status (`M` modified, `A` added, `D` deleted,
+`R` renamed, `C` copied). Status letters use foreground colors from the
+colorscheme: `DiagnosticWarn` for M, `DiagnosticOk` for A, `DiagnosticError`
+for D, and `DiagnosticInfo` for R/C. Only fold indicators,
+icons, and names are indented in tree mode.
+Additions and deletions appear at the right edge in both flat and tree layouts,
+and realign when the panel is resized. Column widths use every file in the
+current scope, including hidden descendants, so folding does not shift other rows.
+Long names are shortened with `…`;
+the original path is still used when opening a file.
+
+Review marks and colors are configurable with `signs.viewed`,
+`signs.viewed_hl`, `signs.unviewed`, and `signs.unviewed_hl`.
+Press `<CR>` on a directory to fold (`▸`) or expand (`▾`) it.
+Expanded directories do not show review marks. A collapsed directory containing
+files shows the done mark only when every descendant file is reviewed;
+otherwise it shows the undone mark. `j` / `k` also stop on directory rows.
+Folds survive refreshes and flat/tree switches while the panel stays open.
+File-to-file navigation (`]f` / `[f` in the example mappings) includes files
+inside collapsed directories and expands their parents to reveal the target.
+The unviewed settings apply to the side panel, not the file pickers.
+File and folder icons use the optional nvim-web-devicons integration;
+folders use open/closed icons to match their fold state.
+Set `sidepanel.icons = false` to hide them; fold arrows remain visible.
 
 ## Comment drafts
 

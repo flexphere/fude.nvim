@@ -1,6 +1,171 @@
 local sidepanel = require("fude.ui.sidepanel")
 local config = require("fude.config")
 
+describe("file row layout", function()
+	local tree = require("fude.ui.sidepanel.tree")
+	local function render(mode, entries, width, current, opts)
+		if mode == "flat" then
+			return sidepanel.format_files_section(entries, width, nil, 0, current, opts)
+		end
+		local viewed = {}
+		for _, entry in ipairs(entries) do
+			if entry.viewed_icon and entry.viewed_icon ~= " " then
+				viewed[entry.path] = "VIEWED"
+			end
+		end
+		return sidepanel.format_files_section_tree(
+			tree.flatten_tree(tree.build_tree(entries), viewed),
+			#entries,
+			width,
+			0,
+			current,
+			opts
+		)
+	end
+	local function find_line(lines, name)
+		for index, line in ipairs(lines) do
+			if line:find(name, 1, true) then
+				return line, index
+			end
+		end
+		error("Missing row: " .. name)
+	end
+	local function column(line, value)
+		return vim.fn.strdisplaywidth(line:sub(1, assert(line:find(value, 1, true)) - 1))
+	end
+
+	for _, mode in ipairs({ "flat", "tree" }) do
+		describe(mode, function()
+			it("right-aligns diff counts after the name, including zeros and large counts", function()
+				local entries = {
+					{ path = "src/one.lua", additions = 12345, deletions = 678, status_icon = "~", viewed_icon = "✓" },
+					{ path = "two.lua", additions = 1, deletions = 0, status_icon = "+" },
+				}
+				local lines = render(mode, entries, 48, "src/one.lua")
+				local one = find_line(lines, "one.lua")
+				local two = find_line(lines, "two.lua")
+				assert.are.equal(48, vim.fn.strdisplaywidth(one))
+				assert.are.equal(48, vim.fn.strdisplaywidth(two))
+				assert.truthy(one:match("one%.lua%s+%+12345%s+%-678$"))
+				assert.truthy(two:match("two%.lua%s+%+1%s+%-0$"))
+				-- The ends of the additions columns agree despite different digit counts.
+				assert.are.equal(column(one, "+12345") + 6, column(two, "+1") + 2)
+			end)
+
+			it("keeps current, viewed and status columns fixed across depths and wide signs", function()
+				local entries = {
+					{ path = "root.lua", status_icon = "~", viewed_icon = "完" },
+					{ path = "deep/nested/leaf.lua", status_icon = "~", viewed_icon = "完" },
+					{ path = "deep/other.lua", status_icon = "~", viewed_icon = " " },
+				}
+				local lines = render(mode, entries, 70, "deep/nested/leaf.lua", { viewed_icon = "完" })
+				local root = find_line(lines, "root.lua")
+				local leaf = find_line(lines, "leaf.lua")
+				local other = find_line(lines, "other.lua")
+				assert.are.equal(2, column(root, "完"))
+				assert.are.equal(2, column(leaf, "完"))
+				assert.are.equal(0, column(leaf, "▶"))
+				assert.are.equal(5, column(root, "~"))
+				assert.are.equal(5, column(leaf, "~"))
+				assert.are.equal(5, column(other, "~"))
+				if mode == "tree" then
+					local directory = find_line(lines, "nested")
+					assert.is_falsy(directory:find("完", 1, true))
+					assert.is_falsy(find_line(lines, "deep"):find("完", 1, true))
+				end
+			end)
+
+			it("aligns names with different icon widths and highlights the actual UTF-8 bytes", function()
+				local entries = {
+					{ path = "日本語.lua", file_icon = "界", file_icon_hl = "TestIcon", additions = 7, deletions = 2 },
+					{ path = "other.lua", file_icon = "L", file_icon_hl = "TestIcon", additions = 0, deletions = 0 },
+				}
+				local lines, hls = render(mode, entries, 40, "日本語.lua")
+				local japanese, line_index = find_line(lines, "日本語.lua")
+				local other = find_line(lines, "other.lua")
+				assert.are.equal(column(japanese, "日本語.lua"), column(other, "other.lua"))
+				assert.are.equal(40, vim.fn.strdisplaywidth(japanese))
+				local selected = {}
+				for _, hl in ipairs(hls) do
+					if hl[1] == line_index - 1 then
+						selected[hl[4]] = japanese:sub(hl[2] + 1, hl[3])
+					end
+				end
+				assert.are.equal("▶", selected.DiagnosticInfo)
+				assert.are.equal("界", selected.TestIcon)
+				assert.are.equal("+7", selected.DiffAdd)
+				assert.are.equal("-2", selected.DiffDelete)
+			end)
+
+			it("truncates Japanese names without breaking UTF-8 or overwriting stats", function()
+				local lines = render(mode, {
+					{ path = "日本語のとても長い名前.lua", additions = 5, deletions = 0 },
+				}, 20)
+				local line = lines[3]
+				assert.are.equal(20, vim.fn.strdisplaywidth(line))
+				assert.truthy(line:find(mode == "tree" and "日本…" or "日本語…", 1, true))
+				assert.truthy(line:match("%+5 %-0$"))
+			end)
+
+			it("keeps combining characters with their base when truncating", function()
+				local lines = render(mode, { { path = "ééééééééé.lua" } }, 20)
+				assert.truthy(lines[3]:find(mode == "tree" and "ééééé…" or "ééééééé…", 1, true))
+				assert.are.equal(20, vim.fn.strdisplaywidth(lines[3]))
+			end)
+
+			it("keeps deep rows within very narrow widths and never emits partial counts", function()
+				local entries = {
+					{
+						path = "a/b/c/d/e/f/leaf.lua",
+						viewed_icon = "✓",
+						file_icon = "界",
+						additions = 123456,
+						deletions = 987654,
+					},
+				}
+				for _, width in ipairs({ 0, 1, 7, 20, 40 }) do
+					local lines, hls = render(mode, entries, width, entries[1].path)
+					for i = 3, #lines do
+						assert.is_true(vim.fn.strdisplaywidth(lines[i]) <= width)
+						assert.is_falsy(lines[i]:match("%+[0-9]+…"))
+					end
+					for _, hl in ipairs(hls) do
+						if hl[1] >= 2 then
+							assert.is_true(hl[2] >= 0 and hl[3] > hl[2] and hl[3] <= #lines[hl[1] + 1])
+						end
+					end
+					if width == 20 then
+						local row = lines[#lines]
+						assert.truthy(row:find(mode == "tree" and "lea…" or "a/b/", 1, true))
+						assert.is_falsy(row:find("+123456", 1, true))
+					end
+				end
+			end)
+
+			it("does not mutate file entries while formatting", function()
+				local entries = { { path = "folder/file.lua", viewed_icon = "✓", additions = 1 } }
+				local original = vim.deepcopy(entries)
+				render(mode, entries, 20, entries[1].path)
+				assert.are.same(original, entries)
+			end)
+		end)
+	end
+
+	it("renders a directory icon without a current-file marker or diff counts", function()
+		local lines, hls = render("tree", {
+			{ path = "src/one.lua", viewed_icon = "✓", additions = 1 },
+		}, 40, "src/one.lua", { directory_icon = "D" })
+		assert.are.equal("      ▾ D src", lines[3])
+		local directory_hls = {}
+		for _, hl in ipairs(hls) do
+			if hl[1] == 2 and hl[4] == "Directory" then
+				table.insert(directory_hls, lines[3]:sub(hl[2] + 1, hl[3]))
+			end
+		end
+		assert.are.same({ "▾", "D", "src" }, directory_hls)
+	end)
+end)
+
 describe("format_scope_section", function()
 	local scope_entries = {
 		{
@@ -228,6 +393,13 @@ describe("format_files_section", function()
 end)
 
 describe("format_files_section_tree", function()
+	it("does not mark an empty collapsed directory as done or undone", function()
+		local lines = sidepanel.format_files_section_tree({
+			{ type = "directory", name = "empty", depth = 0, collapsed = true, total_files = 0, viewed_files = 0 },
+		}, 0, 40, 0)
+		assert.are.equal("      ▸ empty", lines[3])
+	end)
+
 	local tree = require("fude.ui.sidepanel.tree")
 
 	after_each(function()
@@ -264,8 +436,8 @@ describe("format_files_section_tree", function()
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, {})
 		local lines = sidepanel.format_files_section_tree(entries, 1, 40, 0)
-		assert.are.equal("a", lines[3])
-		assert.are.equal("  b", lines[4])
+		assert.are.equal("      ▾ a", lines[3])
+		assert.are.equal("        ▾ b", lines[4])
 		assert.is_truthy(lines[5]:find("    "))
 		assert.truthy(lines[5]:find("c.md"))
 	end)
@@ -279,10 +451,10 @@ describe("format_files_section_tree", function()
 		local entries = tree.flatten_tree(root, {})
 		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 0)
 
-		assert.are.equal("a", lines[3])
+		assert.are.equal("      ▾ a", lines[3])
 	end)
 
-	it("uses configured viewed sign for fully viewed directories", function()
+	it("omits even a configured viewed sign for fully viewed directories", function()
 		config.setup({ signs = { viewed = "●" } })
 		local file_entries = {
 			make_file_entry("a/b.md"),
@@ -290,9 +462,11 @@ describe("format_files_section_tree", function()
 		}
 		local root = tree.build_tree(file_entries)
 		local entries = tree.flatten_tree(root, { ["a/b.md"] = "VIEWED", ["a/c.md"] = "VIEWED" })
-		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 2)
+		local lines = sidepanel.format_files_section_tree(entries, #file_entries, 40, 2, nil, {
+			viewed_icon = config.opts.signs.viewed,
+		})
 
-		assert.are.equal("a ●", lines[3])
+		assert.are.equal("      ▾ a", lines[3])
 	end)
 
 	it("keeps flat row diff columns on file entries", function()
@@ -616,20 +790,12 @@ describe("selectable line navigation", function()
 
 	describe("build_selectable_lines", function()
 		it("lists scope and file entry lines only (flat mode)", function()
-			assert.are.same({ 3, 4, 5, 9, 10 }, sidepanel.build_selectable_lines(section_map, nil))
-		end)
-
-		it("excludes directory rows in tree mode", function()
-			local tree_entries = {
-				{ type = "directory", path = "lua" },
-				{ type = "file", path = "lua/a.lua", file = { path = "lua/a.lua" } },
-			}
-			assert.are.same({ 3, 4, 5, 10 }, sidepanel.build_selectable_lines(section_map, tree_entries))
+			assert.are.same({ 3, 4, 5, 9, 10 }, sidepanel.build_selectable_lines(section_map))
 		end)
 
 		it("handles empty sections", function()
 			local empty_map = { scope_start = 2, scope_end = 1, files_start = 5, files_end = 4 }
-			assert.are.same({}, sidepanel.build_selectable_lines(empty_map, nil))
+			assert.are.same({}, sidepanel.build_selectable_lines(empty_map))
 		end)
 	end)
 

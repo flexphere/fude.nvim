@@ -171,7 +171,8 @@ Using lazy.nvim: >lua
     the PR's changed files, opens the first changed file.
     Navigation follows the side panel's file list order: when the
     file list is in tree mode the tree render order is used, otherwise
-    the flat order.
+    the flat order. Files inside collapsed directories are included;
+    their parent directories expand to reveal the target in the panel.
     Equivalent Lua API: `require("fude.files").next_file()`.
     Requires an active review session.
 
@@ -180,7 +181,8 @@ Using lazy.nvim: >lua
     first file to the last. If the current buffer is not part of
     the PR's changed files, opens the last changed file.
     Navigation follows the side panel's file list order (see
-    |:FudeReviewNextFile|).
+    |:FudeReviewNextFile|). Collapsed parent directories expand to
+    reveal the target in the panel.
     Equivalent Lua API: `require("fude.files").prev_file()`.
     Requires an active review session.
 
@@ -480,18 +482,40 @@ Using lazy.nvim: >lua
 
     Files:~
       Lists all changed files in the current scope with status icons,
-      additions/deletions counts, and viewed state. The header shows
+      right-aligned additions/deletions counts, and viewed state.
+      Fixed columns show the current-file marker, review state (✓ / ○),
+      and status (M modified, A added, D deleted, R renamed, C copied).
+      Status letters use colorscheme foreground colors: DiagnosticWarn
+      for M, DiagnosticOk for A, DiagnosticError for D, DiagnosticInfo
+      for R/C, and Comment for unknown status (?).
+      Only fold indicators, icons and names are indented in tree mode.
+      Expanded directories (▾) do not show review marks. A collapsed
+      directory (▸) containing files shows the configured viewed mark
+      only when every descendant file is viewed, otherwise the unviewed
+      mark. Folds survive refreshes and flat/tree switches while the
+      panel stays open. Next/previous-file navigation includes hidden
+      files and expands their parent directories to reveal the target.
+      Long names are shortened with … without changing the path used
+      to open the file. Narrow panels reduce indentation or omit icons;
+      counts are hidden if they cannot fit alongside the state columns
+      and at least one name cell. Counts are never partially displayed.
+      Optional nvim-web-devicons integration adds file and folder icons
+      (requires a Nerd Font); folders use open/closed icons matching
+      their fold state. Without it, icons are omitted but arrows remain.
+      Column widths include hidden descendants, so folding a directory
+      does not shift the names or diff counts of other visible files.
+      The header shows
       the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 
     Keymaps (panel defaults):~
       `<CR>`    On a scope: switch to it and open the first file
                 listed in the new scope. On a file: open it.
+                On a directory: fold or expand its descendants.
       `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
                 (local). On a file: toggle viewed.
       `j` / `k`   Move to the next / previous selectable entry,
-                skipping headers, separators, blank lines, and
-                (in tree mode) directory rows. Accepts a count;
-                stops at the edges.
+                including directory rows. Skips headers, separators
+                and blank lines. Accepts a count; stops at the edges.
       `t`       Toggle files between flat list and tree
       `R`       Reload review data
       `q`       Close panel
@@ -499,14 +523,16 @@ Using lazy.nvim: >lua
     When opening a file with `<CR>`, the cursor moves to a non-panel
     window before opening the file. The panel stays open.
     Switching scope with `<CR>` also opens the first file listed in
-    the new scope's Files section (deleted files are skipped) and
+    the new scope's Files section (including files inside collapsed
+    directories; deleted files are skipped) and
     moves focus to it, placing the cursor on the file's first diff
     hunk centered in the window (`zz`). Nothing is opened when the
     scope did not change (already selected, or the switch failed),
     when the new scope has no openable files, or when focus has left
     the panel before an asynchronous switch completed.
     The panel auto-refreshes when the scope changes, data is reloaded,
-    viewed/reviewed state is toggled, or the current buffer changes.
+    viewed/reviewed state is toggled, the current buffer changes, or the
+    panel width changes.
     The currently open file is marked with `▶` in the Files section,
     and the panel cursor follows the active file automatically.
     Configurable via `sidepanel` options. Requires an active session.
@@ -596,6 +622,8 @@ Default configuration: >lua
       pending_hl = "DiagnosticHint",
       viewed = "✓",
       viewed_hl = "DiagnosticOk",
+      unviewed = "○", -- Unreviewed side panel files
+      unviewed_hl = "Comment",
       draft = "✎ draft",
       draft_hl = "DiagnosticWarn",
     },
@@ -652,6 +680,7 @@ Default configuration: >lua
       width = 40,       -- Panel width in columns (minimum 20)
       position = "left", -- "left" or "right"
       file_tree = "flat", -- "flat" or "tree"
+      icons = true, -- Use nvim-web-devicons when available
       keymaps = {
         select = "<CR>",
         toggle_reviewed = "<Tab>",
@@ -706,11 +735,16 @@ Options:
 `signs.pending_hl`  Highlight group for pending indicators
                   (default: "DiagnosticHint").
 
-`signs.viewed`      Character shown in the file list for viewed files
-                  (default: "✓").
+`signs.viewed`      Mark shown for viewed files (default: "✓").
 
 `signs.viewed_hl`   Highlight group for viewed file indicators
                   (default: "DiagnosticOk").
+
+`signs.unviewed`    Mark shown for unreviewed files in the side panel
+                  (default: "○"). Does not affect file pickers.
+
+`signs.unviewed_hl` Highlight group for unreviewed side panel indicators
+                  (default: "Comment").
 
 `signs.draft`       Text shown in virtual text on lines that have an unsaved
                   local draft (see |fude-drafts|). For reply / edit drafts the
@@ -843,10 +877,15 @@ Options:
                   |:FudeReviewToggleFileTree| or the
                   `sidepanel.keymaps.toggle_file_tree` mapping (default: "t").
 
+`sidepanel.icons`   Show file-type and folder icons using nvim-web-devicons
+                  when installed (default: true). Set false to hide icons
+                  and skip loading the icon provider. Requires a Nerd Font.
+
 `sidepanel.keymaps`
                   Buffer-local mappings used only inside the side panel.
                   Available actions and defaults:
-                  - `select`: "<CR>"
+                  - `select`: "<CR>" (scope: switch; directory: fold or
+                    expand; file: open)
                   - `toggle_reviewed`: "<Tab>" (toggles scope reviewed or
                     file viewed state; switches scope in local review)
                   - `toggle_file_tree`: "t"
@@ -854,7 +893,7 @@ Options:
                   - `close`: "q"
                   - `next_entry`: "j" / `prev_entry`: "k" (jump between
                     selectable entry lines, skipping headers, separators,
-                    blank lines, and tree-mode directory rows)
+                    and blank lines; includes tree-mode directory rows)
                   Set an action to `false` or an empty string to disable its
                   panel-local mapping and allow another mapping to apply
                   (set both `next_entry = false` and `prev_entry = false`
