@@ -502,6 +502,8 @@ Using lazy.nvim: >lua
       Optional nvim-web-devicons integration adds file and folder icons
       (requires a Nerd Font); folders use open/closed icons matching
       their fold state. Without it, icons are omitted but arrows remain.
+      Column widths include hidden descendants, so folding a directory
+      does not shift the names or diff counts of other visible files.
       The header shows
       the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 

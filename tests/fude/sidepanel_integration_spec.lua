@@ -921,6 +921,38 @@ describe("sidepanel integration", function()
 		assert.truthy(file_row(panel, "b.lua"))
 	end)
 
+	it("keeps visible row columns stable when folding files with wider icons and larger counts", function()
+		config.opts.sidepanel.file_tree = "tree"
+		config.opts.sidepanel.width = 45
+		helpers.mock(package.loaded, "nvim-web-devicons", {
+			get_icon = function(name)
+				return name == "hidden.lua" and "界界" or "L", "Special"
+			end,
+		})
+		config.state.changed_files = {
+			{ path = "src/hidden.lua", status = "modified", additions = 12345, deletions = 67890 },
+			{ path = "long-visible-file-name.lua", status = "added", additions = 1, deletions = 0 },
+		}
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local function visible_row()
+			local lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+			return lines[panel.section_map.files_end + 1]
+		end
+		local expanded = visible_row()
+		assert.truthy(expanded:find("…", 1, true))
+		assert.are.equal(45, vim.fn.strdisplaywidth(expanded))
+		vim.api.nvim_win_set_cursor(panel.win, { panel.section_map.files_start + 1, 0 })
+		local select = buf_keymap(panel.buf, "<CR>").callback
+		select()
+		assert.are.equal(2, #panel.tree_entries)
+		assert.are.equal(expanded, visible_row())
+		sidepanel.refresh()
+		assert.are.equal(expanded, visible_row())
+		select()
+		assert.are.equal(expanded, visible_row())
+	end)
+
 	it("switches between open and closed folder icons with the Enter key", function()
 		config.opts.sidepanel.file_tree = "tree"
 		helpers.mock(package.loaded, "nvim-web-devicons", {

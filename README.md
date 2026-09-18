@@ -268,7 +268,9 @@ colorscheme: `DiagnosticWarn` for M, `DiagnosticOk` for A, `DiagnosticError`
 for D, and `DiagnosticInfo` for R/C. Only fold indicators,
 icons, and names are indented in tree mode.
 Additions and deletions appear at the right edge in both flat and tree layouts,
-and realign when the panel is resized. Long names are shortened with `…`;
+and realign when the panel is resized. Column widths use every file in the
+current scope, including hidden descendants, so folding does not shift other rows.
+Long names are shortened with `…`;
 the original path is still used when opening a file.
 
 Review marks and colors are configurable with `signs.viewed`,

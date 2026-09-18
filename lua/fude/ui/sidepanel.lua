@@ -218,7 +218,7 @@ end
 --- @param width number available width in display cells
 --- @param viewed_count number count of files with VIEWED state
 --- @param current_path string|nil repo-relative path of the currently open file
---- @param opts table|nil viewed_icon/viewed_hl, unviewed_icon/unviewed_hl, directory_icon/directory_closed_icon
+--- @param opts table|nil review signs/highlights, directory icons, and all_file_entries (including hidden files)
 --- @return string[] lines
 --- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
 --- @return number entry_count number of rendered tree entries
@@ -228,10 +228,13 @@ function M.format_files_section_tree(tree_entries, total_file_count, width, view
 	local lines =
 		{ string.format(" Files (Reviewed: %d/%d)", viewed_count, total_file_count), string.rep("─", math.max(0, width)) }
 	local highlights = { { 0, 0, -1, "Title" } }
-	local file_entries = {}
-	for _, entry in ipairs(tree_entries) do
-		if entry.type ~= "directory" then
-			table.insert(file_entries, entry.file or {})
+	local file_entries = opts.all_file_entries
+	if not file_entries then
+		file_entries = {}
+		for _, entry in ipairs(tree_entries) do
+			if entry.type ~= "directory" then
+				table.insert(file_entries, entry.file or {})
+			end
 		end
 	end
 	local columns = file_columns(file_entries, opts)
@@ -489,6 +492,8 @@ local function render(panel)
 		local tree = tree_mod.build_tree(file_entries)
 		tree_mod.collapse_singleton_chains(tree)
 		tree_entries = tree_mod.flatten_tree(tree, state.viewed_files, panel.collapsed_dirs)
+		-- Hidden descendants still determine column widths, so folding does not shift other rows.
+		row_opts.all_file_entries = file_entries
 		file_lines, file_hls, file_count =
 			M.format_files_section_tree(tree_entries, #file_entries, width, viewed_count, current_path, row_opts)
 	else
