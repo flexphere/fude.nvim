@@ -719,7 +719,8 @@ local function setup_quickfix_keymap(buf)
 			if previous.buffer == 1 then
 				vim.fn.mapset("n", false, previous)
 			end
-			local ok, err = pcall(vim.cmd, "normal \r")
+			local enter = vim.api.nvim_replace_termcodes("<CR>", true, false, true)
+			local ok, err = pcall(vim.cmd, "normal " .. enter)
 			if vim.api.nvim_buf_is_valid(buf) then
 				vim.keymap.set("n", "<CR>", open_entry, opts)
 			end
