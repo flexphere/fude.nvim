@@ -67,7 +67,7 @@ describe("review file opening", function()
 			path = "nested/target.lua",
 			filename = root .. "/nested/target.lua",
 			status = "modified",
-			patch = "@@ -100,3 +100,3 @@\n-old\n+new",
+			patch = "@@ -100,7 +100,7 @@\n line 100\n line 101\n line 102\n-old\n+new\n line 104\n line 105\n line 106",
 		}
 		config.state.changed_files = { target }
 		helpers.mock(diff, "get_repo_root", function()
@@ -267,7 +267,7 @@ describe("review file opening", function()
 					drain()
 					assert.are.equal(target.filename, vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(source_win)))
 					if case == "new" then
-						assert.are.equal(100, vim.api.nvim_win_get_cursor(source_win)[1])
+						assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 						local screen_row = vim.api.nvim_win_call(source_win, function()
 							return vim.fn.winline()
 						end)
@@ -296,7 +296,7 @@ describe("review file opening", function()
 		files.show_quickfix()
 		vim.api.nvim_set_current_win(source_win)
 		files.next_file()
-		assert.are.equal(100, vim.api.nvim_win_get_cursor(source_win)[1])
+		assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 		assert.are.equal(1, center_count)
 	end)
 
@@ -343,7 +343,7 @@ describe("review file opening", function()
 		files.next_file()
 		drain()
 		assert.is_nil(config.state.sidepanel.collapsed_dirs.nested)
-		assert.are.equal(100, vim.api.nvim_win_get_cursor(source_win)[1])
+		assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 		assert.are.equal(1, center_count)
 		assert.are.equal(vim.api.nvim_win_get_buf(source_win), config.state.preview_source_buf)
 	end)
@@ -376,7 +376,7 @@ describe("review file opening", function()
 		vim.api.nvim_win_set_cursor(0, { 2, 0 })
 		press_enter(vim.api.nvim_get_current_buf())
 		assert.are.equal(2, vim.fn.getqflist({ idx = 0 }).idx)
-		assert.are.equal(100, vim.api.nvim_win_get_cursor(source_win)[1])
+		assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 	end)
 
 	it("does not position another buffer opened by an edit autocmd", function()
@@ -399,11 +399,11 @@ describe("review file opening", function()
 		target.filename = root .. "/[a].lua"
 		vim.fn.writefile(lines, target.filename)
 		files.open_file(target.filename, target)
-		assert.are.equal(100, vim.api.nvim_win_get_cursor(source_win)[1])
+		assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 		target.filename = root .. "/with spaces [b].lua"
 		vim.fn.writefile(lines, target.filename)
 		files.open_file(target.filename, target)
-		assert.are.equal(100, vim.api.nvim_win_get_cursor(source_win)[1])
+		assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 	end)
 
 	it("preserves a manually opened diff fold when returning to an existing file", function()
@@ -466,7 +466,7 @@ describe("review file opening", function()
 		config.state.changed_files = { target }
 		files.show_quickfix()
 		press_enter(vim.api.nvim_get_current_buf())
-		assert.are.equal(100, vim.api.nvim_win_get_cursor(source_win)[1])
+		assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 	end)
 
 	it("clears saved views when the session resets", function()
@@ -496,7 +496,41 @@ describe("first hunk helpers", function()
 	after_each(helpers.cleanup)
 	it("parse_first_hunk_line reads the first hunk of a GitHub-style patch", function()
 		local patch = "@@ -10,3 +12,4 @@ local x\n line\n+new\n line\n@@ -30,2 +33,2 @@\n line"
-		assert.are.equal(12, files.parse_first_hunk_line(patch))
+		assert.are.equal(13, files.parse_first_hunk_line(patch))
+	end)
+
+	it("skips the actual number of context lines before the first change", function()
+		for _, count in ipairs({ 0, 1, 2, 3, 5 }) do
+			local context = string.rep(" context\n", count)
+			local patch = "@@ -10,8 +10,8 @@\n" .. context .. "-old\n+new\n context"
+			assert.are.equal(10 + count, files.parse_first_hunk_line(patch))
+		end
+	end)
+
+	it("positions a contextual deletion at the next surviving line", function()
+		local patch = "@@ -10,5 +10,3 @@\n before\n-old\n-old2\n after\n end"
+		assert.are.equal(11, files.parse_first_hunk_line(patch))
+	end)
+
+	it("keeps the anchor of a zero-context deletion", function()
+		assert.are.equal(9, files.parse_first_hunk_line("@@ -10,2 +9,0 @@\n-a\n-b"))
+	end)
+
+	it("starts a new file at its first added line", function()
+		assert.are.equal(1, files.parse_first_hunk_line("@@ -0,0 +1,2 @@\n+a\n+b"))
+	end)
+
+	it("does not mistake later file headers for a change in an empty hunk", function()
+		local patch = "@@ -1 +1 @@\n same\ndiff --git a/next b/next\n--- a/next\n+++ b/next\n@@ -1 +1 @@\n+x"
+		assert.is_nil(files.parse_first_hunk_line(patch))
+	end)
+
+	it("ignores a second hunk when the first contains no changes", function()
+		assert.is_nil(files.parse_first_hunk_line("@@ -1 +1 @@\n same\n@@ -3 +3 @@\n+x"))
+	end)
+
+	it("returns nil for a header without changed lines", function()
+		assert.is_nil(files.parse_first_hunk_line("@@ -1 +1 @@"))
 	end)
 
 	it("parse_first_hunk_line skips git-diff headers before the first hunk", function()
@@ -532,7 +566,7 @@ describe("first hunk helpers", function()
 
 		files.center_first_hunk(win, { patch = "@@ -10,3 +20,4 @@\n line\n+new" })
 
-		assert.are.equal(20, vim.api.nvim_win_get_cursor(win)[1])
+		assert.are.equal(21, vim.api.nvim_win_get_cursor(win)[1])
 	end)
 
 	it("center_first_hunk clamps the hunk line to the buffer length", function()
@@ -543,6 +577,14 @@ describe("first hunk helpers", function()
 
 		files.center_first_hunk(win, { patch = "@@ -1 +100 @@\n+x" })
 
+		assert.are.equal(3, vim.api.nvim_win_get_cursor(win)[1])
+	end)
+
+	it("centers an end-of-file deletion on the last surviving line", function()
+		local buf = helpers.create_buf({ "a", "b", "c" })
+		local win = vim.api.nvim_get_current_win()
+		vim.api.nvim_win_set_buf(win, buf)
+		files.center_first_hunk(win, { patch = "@@ -1,4 +1,3 @@\n a\n b\n c\n-deleted" })
 		assert.are.equal(3, vim.api.nvim_win_get_cursor(win)[1])
 	end)
 
