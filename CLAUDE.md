@@ -79,6 +79,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `merge_base_sha` | init, local/session | init |
 | `pr_url` | init | init, ui, drafts |
 | `changed_files` | init, init(reload), scope, local/session | init, files, scope, ui/sidepanel, local/session |
+| `file_views` | files | files |
 | `comments` | comments/sync, comments/local_sync | comments, comments/sync, files, ui/comment_browser, ui/sidepanel, local/session, local/tracker |
 | `comment_map` | comments/sync, comments/local_sync | comments, ui/comment_browser |
 | `pending_comments` | comments, comments/sync, ui/comment_browser | comments, comments/sync, files, ui/comment_browser, ui/sidepanel |
@@ -87,7 +88,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `thread_map` | comments/sync | comments/sync |
 | `pr_node_id` | init | init, files |
 | `viewed_files` | init, init(reload), files, comments/local_sync | files, ui/sidepanel |
-| `preview_win` | preview | init, preview, scope, ui/sidepanel |
+| `preview_win` | preview | init, preview, scope, ui/sidepanel, files |
 | `preview_buf` | preview | |
 | `preview_source_buf` | preview | preview |
 | `source_win` | preview | preview, scope, ui/sidepanel |

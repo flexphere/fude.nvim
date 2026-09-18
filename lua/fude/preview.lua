@@ -44,6 +44,9 @@ function M.open_preview(source_win)
 	end
 
 	local content, _ = diff.get_base_content(base_ref, rel_path)
+	local source_view = vim.api.nvim_win_call(source_win, vim.fn.winsaveview)
+	local source_foldenable = vim.wo[source_win].foldenable
+	local source_foldlevel = vim.wo[source_win].foldlevel
 
 	M.close_preview()
 
@@ -97,6 +100,12 @@ function M.open_preview(source_win)
 	if config.opts.diff_filler_char then
 		vim.wo[source_win].fillchars = "diff:" .. config.opts.diff_filler_char
 	end
+	-- Split changes and diff setup can move the source view. Calculate
+	-- folds/filler before restoring it, including for queued BufEnter.
+	vim.cmd("diffupdate")
+	vim.wo[source_win].foldenable = source_foldenable
+	vim.wo[source_win].foldlevel = source_foldlevel
+	vim.fn.winrestview(source_view)
 
 	-- Create preview-specific autocmds
 	local preview_augroup = vim.api.nvim_create_augroup("FudePreview", { clear = true })
