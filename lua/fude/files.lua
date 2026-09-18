@@ -794,16 +794,18 @@ function M.show_quickfix()
 	})
 	for _, filename in ipairs(new_files) do
 		local buf = file_bufnr(filename)
-		vim.b[buf].fude_quickfix_unopened = true
-		-- Any real read, including one outside fude, consumes the marker.
-		-- Buffer-local autocmds are also removed when the buffer is wiped.
-		vim.api.nvim_create_autocmd({ "BufReadPre", "BufNewFile" }, {
-			buffer = buf,
-			once = true,
-			callback = function()
-				vim.b[buf].fude_quickfix_unopened = nil
-			end,
-		})
+		if buf ~= -1 and vim.api.nvim_buf_is_valid(buf) then
+			vim.b[buf].fude_quickfix_unopened = true
+			-- Any real read, including one outside fude, consumes the marker.
+			-- Buffer-local autocmds are also removed when the buffer is wiped.
+			vim.api.nvim_create_autocmd({ "BufReadPre", "BufNewFile" }, {
+				buffer = buf,
+				once = true,
+				callback = function()
+					vim.b[buf].fude_quickfix_unopened = nil
+				end,
+			})
+		end
 	end
 	vim.cmd("copen")
 	setup_quickfix_keymap(vim.api.nvim_get_current_buf())

@@ -300,6 +300,28 @@ describe("review file opening", function()
 		assert.are.equal(1, center_count)
 	end)
 
+	it("does not fail when quickfix cannot resolve a newly registered buffer", function()
+		local original_list_bufs = vim.api.nvim_list_bufs
+		local hide_target = true
+		helpers.mock(vim.api, "nvim_list_bufs", function()
+			local bufs = original_list_bufs()
+			if not hide_target then
+				return bufs
+			end
+			return vim.tbl_filter(function(buf)
+				return vim.api.nvim_buf_get_name(buf) ~= target.filename
+			end, bufs)
+		end)
+
+		local ok, err = pcall(files.show_quickfix)
+		hide_target = false
+
+		assert.is_true(ok, err)
+		local buf = vim.fn.bufnr(target.filename)
+		assert.are_not.equal(-1, buf)
+		assert.is_nil(vim.b[buf].fude_quickfix_unopened)
+	end)
+
 	it("does not re-center a quickfix buffer read outside fude and later unloaded", function()
 		files.show_quickfix()
 		vim.api.nvim_set_current_win(source_win)
