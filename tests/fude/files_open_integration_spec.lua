@@ -428,6 +428,82 @@ describe("review file opening", function()
 		assert.are.equal(103, vim.api.nvim_win_get_cursor(source_win)[1])
 	end)
 
+	it("prefers the exact buffer when a symlink alias was registered first", function()
+		vim.cmd("edit " .. vim.fn.fnameescape(target.filename))
+		vim.api.nvim_win_set_cursor(source_win, { 65, 3 })
+		vim.cmd("normal! zt")
+		local expected = current_view()
+		vim.cmd("edit " .. vim.fn.fnameescape(root .. "/start.lua"))
+		local alias = root .. "/alias.lua"
+		assert(vim.uv.fs_symlink(target.filename, alias))
+		local alias_buf = helpers.create_buf()
+		vim.b[alias_buf].fude_quickfix_unopened = true
+		local original_get_name = vim.api.nvim_buf_get_name
+		helpers.mock(vim.api, "nvim_buf_get_name", function(buf)
+			return buf == alias_buf and alias or original_get_name(buf)
+		end)
+		local original_list_bufs = vim.api.nvim_list_bufs
+		helpers.mock(vim.api, "nvim_list_bufs", function()
+			local bufs = { alias_buf }
+			vim.list_extend(
+				bufs,
+				vim.tbl_filter(function(buf)
+					return buf ~= alias_buf
+				end, original_list_bufs())
+			)
+			return bufs
+		end)
+
+		files.open_file(target.filename, target)
+
+		assert.are.same(expected, current_view())
+		assert.are.equal(0, center_count)
+	end)
+
+	it("continues when buffer lookup finds another alias of the opened file", function()
+		vim.cmd("edit " .. vim.fn.fnameescape(target.filename))
+		vim.api.nvim_win_set_cursor(source_win, { 65, 3 })
+		vim.cmd("normal! zt")
+		local expected = current_view()
+		vim.cmd("edit " .. vim.fn.fnameescape(root .. "/start.lua"))
+		local alias = root .. "/alias.lua"
+		assert(vim.uv.fs_symlink(target.filename, alias))
+		local alias_buf = helpers.create_buf()
+		local original_get_name = vim.api.nvim_buf_get_name
+		helpers.mock(vim.api, "nvim_buf_get_name", function(buf)
+			return buf == alias_buf and alias or original_get_name(buf)
+		end)
+		local target_buf = vim.fn.bufnr(target.filename)
+		local original_list_bufs = vim.api.nvim_list_bufs
+		local hide_target = true
+		helpers.mock(vim.api, "nvim_list_bufs", function()
+			if hide_target then
+				local bufs = { alias_buf }
+				vim.list_extend(
+					bufs,
+					vim.tbl_filter(function(buf)
+						return buf ~= alias_buf and buf ~= target_buf
+					end, original_list_bufs())
+				)
+				return bufs
+			end
+			return original_list_bufs()
+		end)
+		local preview_calls = 0
+		helpers.mock(preview, "on_buf_enter", function()
+			preview_calls = preview_calls + 1
+		end)
+		config.state.preview_win = source_win
+
+		local ok, err = pcall(files.open_file, target.filename, target)
+		hide_target = false
+		config.state.preview_win = nil
+
+		assert.is_true(ok, err)
+		assert.are.equal(1, preview_calls)
+		assert.are.same(expected, current_view())
+	end)
+
 	it("preserves a manually opened diff fold when returning to an existing file", function()
 		files.open_file(target.filename, target)
 		vim.wo.foldenable = true

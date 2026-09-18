@@ -2,17 +2,34 @@ local M = {}
 local config = require("fude.config")
 local diff = require("fude.diff")
 
+local function absolute_path(filename)
+	return vim.fn.fnamemodify(filename, ":p")
+end
+
+local function resolved_path(filename)
+	return vim.fn.resolve(absolute_path(filename))
+end
+
 -- bufnr falls back to pattern matching; a path such as "[a].lua" must not
--- accidentally identify an existing "a.lua" buffer.
+-- accidentally identify an existing "a.lua" buffer. Prefer an exact path so
+-- aliases of the same file cannot hide the buffer the caller intends to open.
 local function file_bufnr(filename)
-	local path = vim.fn.resolve(vim.fn.fnamemodify(filename, ":p"))
+	local path = absolute_path(filename)
+	local resolved = vim.fn.resolve(path)
+	local fallback = -1
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 		local name = vim.api.nvim_buf_get_name(buf)
-		if name ~= "" and vim.fn.resolve(name) == path then
-			return buf
+		if name ~= "" then
+			local buf_path = absolute_path(name)
+			if buf_path == path then
+				return buf
+			end
+			if fallback == -1 and vim.fn.resolve(buf_path) == resolved then
+				fallback = buf
+			end
 		end
 	end
-	return -1
+	return fallback
 end
 
 M.status_icons = {
@@ -126,7 +143,6 @@ function M.open_file(filename, entry)
 	-- setqflist registers unloaded buffers before any file is actually opened.
 	-- Only buffers created by our list have this marker.
 	local is_new = buf == -1 or vim.b[buf].fude_quickfix_unopened == true
-	local saved = state.file_views[buf]
 	if not entry then
 		local path = diff.to_repo_relative(filename)
 		for _, file in ipairs(state.changed_files) do
@@ -139,15 +155,19 @@ function M.open_file(filename, entry)
 	if buf ~= vim.api.nvim_get_current_buf() then
 		vim.cmd("edit " .. vim.fn.fnameescape(filename))
 	end
+	local opened_buf = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) or -1
+	local opened_name = opened_buf ~= -1 and vim.api.nvim_buf_get_name(opened_buf) or ""
 	if
 		config.state ~= state
 		or not state.active
 		or not vim.api.nvim_win_is_valid(win)
 		or vim.api.nvim_get_current_win() ~= win
-		or file_bufnr(filename) ~= vim.api.nvim_win_get_buf(win)
+		or opened_name == ""
+		or resolved_path(opened_name) ~= resolved_path(filename)
 	then
 		return
 	end
+	local saved = state.file_views[opened_buf] or state.file_views[buf]
 	-- Finish an existing preview's rebuild before positioning the source.
 	-- Its queued BufEnter callback then sees an up-to-date preview and no-ops.
 	if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
