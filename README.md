@@ -137,6 +137,16 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted`) |
 | `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
+### File opening position
+
+Opening a file with the side panel, next/previous-file commands, or the
+Telescope, snacks, or quickfix Enter action centers the first diff hunk only
+when the file has no existing buffer. This also applies to the first file
+opened after a scope switch, in both GitHub and local reviews.
+Existing buffers are not re-centered; positions saved during the review
+(including scrolling) are restored. A missing patch or hunk does not prevent
+opening the file. Comment and draft jumps still go to their specified line.
+
 ## Configuration
 
 ```lua
