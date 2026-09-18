@@ -52,23 +52,38 @@ function M.resolve_patch(entry)
 	return entry.patch or ""
 end
 
---- Parse the new-file start line of the first unified-diff hunk.
+--- Find the first changed position in the first unified-diff hunk.
+--- Context lines advance the new-file position; deletions use its surviving
+--- boundary (or the header anchor for a zero-context, deletion-only hunk).
 --- @param patch string|nil
 --- @return number|nil line (may be 0 for a leading deletion)
 function M.parse_first_hunk_line(patch)
 	if type(patch) ~= "string" then
 		return nil
 	end
+	local new_line
 	for line in patch:gmatch("[^\n]+") do
-		local lnum = line:match("^@@%s+%-%d+,?%d*%s+%+(%d+)")
-		if lnum then
-			return tonumber(lnum)
+		if new_line == nil then
+			local lnum = line:match("^@@%s+%-%d+,?%d*%s+%+(%d+),?%d*%s+@@")
+			if lnum then
+				new_line = tonumber(lnum)
+			end
+		else
+			local prefix = line:sub(1, 1)
+			if prefix == " " then
+				new_line = new_line + 1
+			elseif prefix == "+" or prefix == "-" then
+				return new_line
+			elseif prefix ~= "\\" then
+				-- Do not read a later hunk or file as part of the first hunk.
+				return nil
+			end
 		end
 	end
 	return nil
 end
 
---- Center the first hunk, without making an unavailable patch an open error.
+--- Center the first change, without making an unavailable patch an open error.
 --- @param win number source window
 --- @param entry table changed-file entry
 function M.center_first_hunk(win, entry)
