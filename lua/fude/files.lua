@@ -2,6 +2,36 @@ local M = {}
 local config = require("fude.config")
 local diff = require("fude.diff")
 
+local function absolute_path(filename)
+	return vim.fn.fnamemodify(filename, ":p")
+end
+
+local function resolved_path(filename)
+	return vim.fn.resolve(absolute_path(filename))
+end
+
+-- bufnr falls back to pattern matching; a path such as "[a].lua" must not
+-- accidentally identify an existing "a.lua" buffer. Prefer an exact path so
+-- aliases of the same file cannot hide the buffer the caller intends to open.
+local function file_bufnr(filename)
+	local path = absolute_path(filename)
+	local resolved = vim.fn.resolve(path)
+	local fallback = -1
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		local name = vim.api.nvim_buf_get_name(buf)
+		if name ~= "" then
+			local buf_path = absolute_path(name)
+			if buf_path == path then
+				return buf
+			end
+			if fallback == -1 and vim.fn.resolve(buf_path) == resolved then
+				fallback = buf
+			end
+		end
+	end
+	return fallback
+end
+
 M.status_icons = {
 	added = "+",
 	modified = "~",
@@ -37,6 +67,127 @@ function M.resolve_patch(entry)
 		return diff.get_review_patch(session.base_sha, entry.path, session.worktree_root) or ""
 	end
 	return entry.patch or ""
+end
+
+--- Find the first changed position in the first unified-diff hunk.
+--- Context lines advance the new-file position; deletions use its surviving
+--- boundary (or the header anchor for a zero-context, deletion-only hunk).
+--- @param patch string|nil
+--- @return number|nil line (may be 0 for a leading deletion)
+function M.parse_first_hunk_line(patch)
+	if type(patch) ~= "string" then
+		return nil
+	end
+	local new_line
+	for line in patch:gmatch("[^\n]+") do
+		if new_line == nil then
+			local lnum = line:match("^@@%s+%-%d+,?%d*%s+%+(%d+),?%d*%s+@@")
+			if lnum then
+				new_line = tonumber(lnum)
+			end
+		else
+			local prefix = line:sub(1, 1)
+			if prefix == " " then
+				new_line = new_line + 1
+			elseif prefix == "+" or prefix == "-" then
+				return new_line
+			elseif prefix ~= "\\" then
+				-- Do not read a later hunk or file as part of the first hunk.
+				return nil
+			end
+		end
+	end
+	return nil
+end
+
+--- Center the first change, without making an unavailable patch an open error.
+--- @param win number source window
+--- @param entry table changed-file entry
+function M.center_first_hunk(win, entry)
+	local ok, patch = pcall(M.resolve_patch, entry)
+	local line = ok and M.parse_first_hunk_line(patch) or nil
+	if not line or not vim.api.nvim_win_is_valid(win) then
+		return
+	end
+	local last = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win))
+	vim.api.nvim_win_set_cursor(win, { math.max(1, math.min(line, last)), 0 })
+	vim.api.nvim_win_call(win, function()
+		vim.cmd("normal! zz")
+	end)
+end
+
+--- Remember a source view before leaving it. Buffer existence, not this
+--- cache, determines whether opening a file should center its first hunk.
+--- @param buf number buffer being left
+function M.save_view(buf)
+	local state = config.state
+	if not state.active or buf ~= vim.api.nvim_get_current_buf() or vim.bo[buf].buftype ~= "" then
+		return
+	end
+	state.file_views[buf] = {
+		view = vim.fn.winsaveview(),
+		foldenable = vim.wo.foldenable,
+		foldlevel = vim.wo.foldlevel,
+	}
+end
+
+--- Open a review file, centering its first hunk only for a new buffer.
+--- Restore existing buffers' views saved while the review was active.
+--- @param filename string absolute file path
+--- @param entry table|nil changed-file entry; otherwise resolved in the current scope
+function M.open_file(filename, entry)
+	local state = config.state
+	local win = vim.api.nvim_get_current_win()
+	M.save_view(vim.api.nvim_get_current_buf())
+	local buf = file_bufnr(filename)
+	-- setqflist registers unloaded buffers before any file is actually opened.
+	-- Only buffers created by our list have this marker.
+	local is_new = buf == -1 or vim.b[buf].fude_quickfix_unopened == true
+	if not entry then
+		local path = diff.to_repo_relative(filename)
+		for _, file in ipairs(state.changed_files) do
+			if file.path == path then
+				entry = file
+				break
+			end
+		end
+	end
+	if buf ~= vim.api.nvim_get_current_buf() then
+		vim.cmd("edit " .. vim.fn.fnameescape(filename))
+	end
+	local opened_buf = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) or -1
+	local opened_name = opened_buf ~= -1 and vim.api.nvim_buf_get_name(opened_buf) or ""
+	if
+		config.state ~= state
+		or not state.active
+		or not vim.api.nvim_win_is_valid(win)
+		or vim.api.nvim_get_current_win() ~= win
+		or opened_name == ""
+		or resolved_path(opened_name) ~= resolved_path(filename)
+	then
+		return
+	end
+	local saved = state.file_views[opened_buf] or state.file_views[buf]
+	-- Finish an existing preview's rebuild before positioning the source.
+	-- Its queued BufEnter callback then sees an up-to-date preview and no-ops.
+	if state.preview_win and vim.api.nvim_win_is_valid(state.preview_win) then
+		require("fude.preview").on_buf_enter()
+	end
+	if is_new and entry then
+		M.center_first_hunk(vim.api.nvim_get_current_win(), entry)
+	elseif saved then
+		vim.wo.foldenable = saved.foldenable
+		vim.wo.foldlevel = saved.foldlevel
+		-- Reopen folds that hid rows which used to be visible. Restoring just
+		-- foldlevel cannot recover folds opened individually with zo/zv.
+		for _, row in ipairs({ saved.view.lnum, saved.view.topline }) do
+			local start = vim.fn.foldclosed(row)
+			if start >= 0 and start < row then
+				vim.cmd("silent! " .. row .. "foldopen")
+			end
+		end
+		vim.fn.winrestview(saved.view)
+	end
 end
 
 --- Determine the viewed icon for a file.
@@ -224,7 +375,7 @@ local function goto_adjacent(direction)
 	end
 
 	local target = nav_files[idx]
-	vim.cmd("edit " .. vim.fn.fnameescape(repo_root .. "/" .. target.path))
+	M.open_file(repo_root .. "/" .. target.path, target)
 	if config.state == state and state.active then
 		require("fude.ui.sidepanel").reveal_file(target.path)
 	end
@@ -359,10 +510,10 @@ function M.show_telescope()
 			}),
 			attach_mappings = function(prompt_bufnr, map)
 				actions.select_default:replace(function()
-					actions.close(prompt_bufnr)
 					local selection = action_state.get_selected_entry()
+					actions.close(prompt_bufnr)
 					if selection then
-						vim.cmd("edit " .. vim.fn.fnameescape(selection.filename))
+						M.open_file(selection.filename, selection)
 					end
 				end)
 
@@ -446,7 +597,7 @@ function M.show_snacks()
 		confirm = function(picker, item)
 			picker:close()
 			if item then
-				vim.cmd("edit " .. vim.fn.fnameescape(item.filename))
+				M.open_file(item.filename, item)
 			end
 		end,
 		actions = {
@@ -572,6 +723,49 @@ function M.toggle_viewed_in_telescope(prompt_bufnr)
 	end)
 end
 
+--- Install a file-list Enter action without losing an existing quickfix mapping.
+local function setup_quickfix_keymap(buf)
+	local previous = vim.fn.maparg("<CR>", "n", false, true)
+	if previous.desc == "Open review file" then
+		return
+	end
+	local opts = { buffer = buf, desc = "Open review file" }
+	local function open_entry()
+		local list = vim.fn.getqflist({ context = 0, items = 0 })
+		if not config.state.active or type(list.context) ~= "table" or not list.context.fude_files then
+			-- Let Neovim run the original mapping (including expr/script-local
+			-- mappings), or its built-in action, for every other list.
+			vim.keymap.del("n", "<CR>", { buffer = buf })
+			if previous.buffer == 1 then
+				vim.fn.mapset("n", false, previous)
+			end
+			local enter = vim.api.nvim_replace_termcodes("<CR>", true, false, true)
+			local ok, err = pcall(vim.cmd, "normal " .. enter)
+			if vim.api.nvim_buf_is_valid(buf) then
+				vim.keymap.set("n", "<CR>", open_entry, opts)
+			end
+			if not ok then
+				error(err)
+			end
+			return
+		end
+		local index = vim.api.nvim_win_get_cursor(0)[1]
+		local item = list.items[index]
+		if not item or not vim.api.nvim_buf_is_valid(item.bufnr) then
+			return
+		end
+		local win = require("fude.ui.sidepanel").find_target_window(vim.api.nvim_get_current_win())
+		if not win then
+			return
+		end
+		local filename = vim.api.nvim_buf_get_name(item.bufnr)
+		vim.fn.setqflist({}, "a", { idx = index })
+		vim.api.nvim_set_current_win(win)
+		M.open_file(filename)
+	end
+	vim.keymap.set("n", "<CR>", open_entry, opts)
+end
+
 --- Show changed files in the quickfix list.
 function M.show_quickfix()
 	local state = config.state
@@ -593,11 +787,15 @@ function M.show_quickfix()
 	)
 	local format_path = config.format_path
 	local items = {}
+	local new_files = {}
 	for _, entry in ipairs(raw_entries) do
+		if file_bufnr(entry.filename) == -1 then
+			table.insert(new_files, entry.filename)
+		end
 		local comment_part = entry.comment_display ~= "" and (" " .. entry.comment_display) or ""
 		table.insert(items, {
 			filename = entry.filename,
-			lnum = 1,
+			lnum = 0,
 			text = string.format(
 				"[%s] [%s] +%d -%d%s  %s",
 				entry.viewed_icon,
@@ -613,8 +811,25 @@ function M.show_quickfix()
 	vim.fn.setqflist({}, " ", {
 		title = M.picker_title(state.pr_number),
 		items = items,
+		context = { fude_files = true },
 	})
+	for _, filename in ipairs(new_files) do
+		local buf = file_bufnr(filename)
+		if buf ~= -1 and vim.api.nvim_buf_is_valid(buf) then
+			vim.b[buf].fude_quickfix_unopened = true
+			-- Any real read, including one outside fude, consumes the marker.
+			-- Buffer-local autocmds are also removed when the buffer is wiped.
+			vim.api.nvim_create_autocmd({ "BufReadPre", "BufNewFile" }, {
+				buffer = buf,
+				once = true,
+				callback = function()
+					vim.b[buf].fude_quickfix_unopened = nil
+				end,
+			})
+		end
+	end
 	vim.cmd("copen")
+	setup_quickfix_keymap(vim.api.nvim_get_current_buf())
 end
 
 return M

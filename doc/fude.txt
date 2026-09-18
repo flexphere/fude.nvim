@@ -165,6 +165,26 @@ Using lazy.nvim: >lua
     is used. In quickfix mode, comment counts are shown without
     these highlights.
 
+File opening position                                 *fude-file-position*
+
+    File selection in the side panel, Telescope, snacks, and quickfix
+    (<CR>), next/previous-file navigation, and post-scope-switch
+    auto-open share the same behavior in GitHub and local reviews:
+    - A new buffer starts at the first changed line in the current scope,
+      centered with zz. Leading context lines are skipped. Deletions use
+      the corresponding surviving boundary, clamped to the buffer.
+    - Any other existing buffer (even if unloaded) is not re-centered.
+      Cursor, scroll position, and fold settings saved while leaving
+      the file during the review are restored on return.
+    - No patch, no hunk, or a patch lookup failure does not prevent
+      opening the file.
+    Comment and draft jumps retain their explicit target line.
+
+    Quickfix buffers registered by the file list itself are considered
+    new until first read. Other existing unloaded buffers are not.
+    The Enter action is specific to fude's file list; native quickfix
+    commands such as :cc and :cnext retain Neovim's usual behavior.
+
 :FudeReviewNextFile                                *:FudeReviewNextFile*
     Open the next changed file in the PR. Wraps around from the
     last file to the first. If the current buffer is not part of
@@ -525,8 +545,9 @@ Using lazy.nvim: >lua
     Switching scope with `<CR>` also opens the first file listed in
     the new scope's Files section (including files inside collapsed
     directories; deleted files are skipped) and
-    moves focus to it, placing the cursor on the file's first diff
-    hunk centered in the window (`zz`). Nothing is opened when the
+    moves focus to it. New buffers start at the first diff hunk,
+    centered in the window; existing buffers retain their saved
+    position (see |fude-file-position|). Nothing is opened when the
     scope did not change (already selected, or the switch failed),
     when the new scope has no openable files, or when focus has left
     the panel before an asynchronous switch completed.

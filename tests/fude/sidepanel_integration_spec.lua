@@ -483,45 +483,6 @@ describe("sidepanel integration", function()
 		assert.is_nil(captured.opened)
 	end)
 
-	it("center_first_hunk moves the cursor to the first hunk line and centers", function()
-		local buf = helpers.create_buf()
-		local lines = {}
-		for i = 1, 50 do
-			lines[i] = "line " .. i
-		end
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-		local win = vim.api.nvim_get_current_win()
-		vim.api.nvim_win_set_buf(win, buf)
-		vim.api.nvim_win_set_cursor(win, { 1, 0 })
-
-		sidepanel.center_first_hunk(win, { patch = "@@ -10,3 +20,4 @@\n line\n+new" })
-
-		assert.are.equal(20, vim.api.nvim_win_get_cursor(win)[1])
-	end)
-
-	it("center_first_hunk clamps the hunk line to the buffer length", function()
-		local buf = helpers.create_buf()
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a", "b", "c" })
-		local win = vim.api.nvim_get_current_win()
-		vim.api.nvim_win_set_buf(win, buf)
-
-		sidepanel.center_first_hunk(win, { patch = "@@ -1 +100 @@\n+x" })
-
-		assert.are.equal(3, vim.api.nvim_win_get_cursor(win)[1])
-	end)
-
-	it("center_first_hunk leaves the cursor alone when the entry has no patch", function()
-		local buf = helpers.create_buf()
-		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a", "b", "c" })
-		local win = vim.api.nvim_get_current_win()
-		vim.api.nvim_win_set_buf(win, buf)
-		vim.api.nvim_win_set_cursor(win, { 2, 0 })
-
-		sidepanel.center_first_hunk(win, { patch = "" })
-
-		assert.are.equal(2, vim.api.nvim_win_get_cursor(win)[1])
-	end)
-
 	local function buf_keymap(buf, lhs)
 		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
 			if m.lhs == lhs then

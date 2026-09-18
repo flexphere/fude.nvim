@@ -320,6 +320,14 @@ end
 function M.setup_review_autocmds(state)
 	state.augroup = vim.api.nvim_create_augroup("Fude", { clear = true })
 
+	vim.api.nvim_create_autocmd("BufLeave", {
+		group = state.augroup,
+		callback = function(ev)
+			require("fude.files").save_view(ev.buf)
+		end,
+		desc = "fude.nvim: Remember source file position",
+	})
+
 	vim.api.nvim_create_autocmd("BufEnter", {
 		group = state.augroup,
 		callback = function(ev)

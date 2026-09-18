@@ -134,6 +134,7 @@ M.state = {
 	merge_base_sha = nil, -- Merge-base SHA for gitsigns (avoids merge commit noise)
 	pr_url = nil,
 	changed_files = {},
+	file_views = {}, -- buffer -> last source view during this review session
 	comments = {},
 	comment_map = {},
 	pending_comments = {}, -- Comments in GitHub pending review: { [path:start:end] = { path, line, start_line?, body } }
@@ -192,6 +193,7 @@ function M.reset_state()
 		merge_base_sha = nil,
 		pr_url = nil,
 		changed_files = {},
+		file_views = {},
 		comments = {},
 		comment_map = {},
 		pending_comments = {},

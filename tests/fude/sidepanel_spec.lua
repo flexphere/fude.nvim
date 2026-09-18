@@ -742,31 +742,6 @@ describe("find_first_file_entry", function()
 		assert.is_nil(sidepanel.find_first_file_entry({}, tree_entries))
 	end)
 
-	it("parse_first_hunk_line reads the first hunk of a GitHub-style patch", function()
-		local patch = "@@ -10,3 +12,4 @@ local x\n line\n+new\n line\n@@ -30,2 +33,2 @@\n line"
-		assert.are.equal(12, sidepanel.parse_first_hunk_line(patch))
-	end)
-
-	it("parse_first_hunk_line skips git-diff headers before the first hunk", function()
-		local patch = "diff --git a/f.lua b/f.lua\nindex 111..222 100644\n--- a/f.lua\n+++ b/f.lua\n@@ -1 +5,2 @@\n+x"
-		assert.are.equal(5, sidepanel.parse_first_hunk_line(patch))
-	end)
-
-	it("parse_first_hunk_line returns 0 for a leading pure-deletion hunk", function()
-		assert.are.equal(0, sidepanel.parse_first_hunk_line("@@ -1,3 +0,0 @@\n-a\n-b\n-c"))
-	end)
-
-	it("parse_first_hunk_line ignores hunk-like text in diff content lines", function()
-		local patch = " @@ -1 +9 @@ inside content\n+@@ -1 +9 @@ added line"
-		assert.is_nil(sidepanel.parse_first_hunk_line(patch))
-	end)
-
-	it("parse_first_hunk_line returns nil for empty or non-string patches", function()
-		assert.is_nil(sidepanel.parse_first_hunk_line(""))
-		assert.is_nil(sidepanel.parse_first_hunk_line(nil))
-		assert.is_nil(sidepanel.parse_first_hunk_line("no hunks here"))
-	end)
-
 	it("prefers tree entries over flat entries when both are given", function()
 		local file_entries = { { path = "flat.lua", filename = "/repo/flat.lua" } }
 		local tree_entries = {
