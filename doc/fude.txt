@@ -170,8 +170,9 @@ File opening position                                 *fude-file-position*
     File selection in the side panel, Telescope, snacks, and quickfix
     (<CR>), next/previous-file navigation, and post-scope-switch
     auto-open share the same behavior in GitHub and local reviews:
-    - A new buffer starts at the first hunk in the current scope,
-      centered with zz.
+    - A new buffer starts at the first changed line in the current scope,
+      centered with zz. Leading context lines are skipped. Deletions use
+      the corresponding surviving boundary, clamped to the buffer.
     - An existing buffer (even if unloaded) is not re-centered.
       Cursor, scroll position, and fold settings saved while leaving
       the file during the review are restored on return.
