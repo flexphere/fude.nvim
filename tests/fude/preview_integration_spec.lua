@@ -19,9 +19,17 @@ describe("preview integration", function()
 		end
 	end)
 
+	--- Overwrite 'diffopt', remembering the value the test started with so after_each
+	--- can restore it even when a test sets it several times.
+	local function set_diffopt(value)
+		original_diffopt = original_diffopt or vim.o.diffopt
+		vim.o.diffopt = value
+	end
+
 	--- Apply config.opts.diffopt globally the same way init.lua does on start.
-	local function apply_default_diffopt()
-		original_diffopt = vim.o.diffopt
+	--- `initial` is the user 'diffopt' to start from (defaults to the current value).
+	local function apply_default_diffopt(initial)
+		set_diffopt(initial or vim.o.diffopt)
 		for _, opt in ipairs(config.opts.diffopt) do
 			vim.opt.diffopt:append(opt)
 		end
@@ -169,6 +177,82 @@ describe("preview integration", function()
 
 			assert.is_true(vim.wo[source_win].wrap, "Source window wrap should follow the user's setting")
 			assert.is_true(vim.wo[config.state.preview_win].wrap, "Preview window wrap should follow the user's setting")
+		end)
+
+		local PLAIN_DIFFOPT = "internal,filler,closeoff,indent-heuristic"
+
+		--- Open the preview for `current_lines` against `base_lines` and return the source
+		--- window's diff state row by row: "-" per filler row, "." for an unchanged row,
+		--- otherwise the DiffXxx highlight suffix (Add/Change/Text).
+		local function source_diff_signature(name, base_lines, current_lines)
+			helpers.mock_diff({ [name] = name })
+			helpers.mock_base_content(table.concat(base_lines, "\n") .. "\n")
+			local _, source_win = open_for_buffer(current_lines, name)
+			vim.api.nvim_set_current_win(source_win)
+
+			local parts = {}
+			for lnum = 1, #current_lines do
+				for _ = 1, vim.fn.diff_filler(lnum) do
+					parts[#parts + 1] = "-"
+				end
+				local id = vim.fn.diff_hlID(lnum, 1)
+				parts[#parts + 1] = id == 0 and "." or vim.fn.synIDattr(id, "name"):sub(5)
+			end
+
+			preview.close_preview()
+			return table.concat(parts, " ")
+		end
+
+		it("overrides the user's linematch so a rewritten block stays in one piece", function()
+			-- "beta" survives the rewrite but moves. With linematch on, Neovim pulls the two
+			-- "beta" rows onto the same screen row and breaks the changed block apart around
+			-- them; with it off the block stays in one piece, which is what the GitHub web
+			-- view shows. This is the smallest fixture where the two differ.
+			local base_lines = { "keep", "alpha", "beta", "gamma", "keep2" }
+			local current_lines = { "keep", "NEW1", "NEW2", "beta", "keep2" }
+
+			set_diffopt(PLAIN_DIFFOPT)
+			local without_linematch = source_diff_signature("lm_off.lua", base_lines, current_lines)
+
+			set_diffopt(PLAIN_DIFFOPT .. ",linematch:60")
+			local with_linematch = source_diff_signature("lm_on.lua", base_lines, current_lines)
+
+			-- what init.lua does on start, on top of a user diffopt that enables linematch
+			apply_default_diffopt(PLAIN_DIFFOPT .. ",linematch:60")
+			local with_fude_defaults = source_diff_signature("lm_defaults.lua", base_lines, current_lines)
+
+			assert.are_not.equal(
+				without_linematch,
+				with_linematch,
+				"fixture no longer reacts to linematch, so the next assertion would pass for the wrong reason"
+			)
+			assert.are.equal(without_linematch, with_fude_defaults)
+		end)
+
+		it("leaves the diff algorithm alone so hunks split the way the GitHub web view does", function()
+			-- A repeated line gives histogram a different anchor than myers, so the two
+			-- split this input into different hunks. Only which lines are equal matters;
+			-- the contents themselves are arbitrary.
+			local base_lines = { "}", "}", "alpha", "beta", "gamma", "}", "}" }
+			local current_lines = { "alpha", "}", "beta", "}" }
+
+			set_diffopt(PLAIN_DIFFOPT)
+			local myers = source_diff_signature("algo_myers.lua", base_lines, current_lines)
+
+			set_diffopt(PLAIN_DIFFOPT .. ",algorithm:histogram")
+			local histogram = source_diff_signature("algo_histogram.lua", base_lines, current_lines)
+
+			-- what init.lua does on start, on top of a user diffopt that picks no algorithm:
+			-- the default must not drag the user onto a different one
+			apply_default_diffopt(PLAIN_DIFFOPT)
+			local with_fude_defaults = source_diff_signature("algo_defaults.lua", base_lines, current_lines)
+
+			assert.are_not.equal(
+				myers,
+				histogram,
+				"fixture no longer distinguishes the algorithms, so the next assertion would pass for the wrong reason"
+			)
+			assert.are.equal(myers, with_fude_defaults)
 		end)
 
 		it("does nothing when not active", function()

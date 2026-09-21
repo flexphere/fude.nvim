@@ -635,7 +635,7 @@ Default configuration: >lua
     -- Diff filler character (nil to keep user's default)
     diff_filler_char = nil,
     -- Additional diffopt values applied during review ({} to apply none and keep your own diffopt)
-    diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic", "followwrap" },
+    diffopt = { "linematch:0", "indent-heuristic", "followwrap" },
     signs = {
       comment = "#",
       comment_hl = "DiagnosticInfo",
@@ -744,6 +744,20 @@ Options:
                   The default includes "followwrap" so that the diff
                   preview follows your 'wrap' setting; without it,
                   |:diffthis| forces 'nowrap' in both diff windows.
+                  It also includes "linematch:0", which turns off the
+                  second-stage line alignment. On a heavily rewritten
+                  file that alignment splits one changed block into
+                  many and scatters filler lines on both sides. A
+                  later duplicate key wins, so this overrides the
+                  built-in "linematch:40" of Neovim 0.11+ as well.
+                  To get the alignment back, replace it with your own
+                  threshold, e.g. { "linematch:40",
+                  "indent-heuristic", "followwrap" }.
+                  There is deliberately no "algorithm:" entry, so the
+                  Neovim default (myers) applies. git and the GitHub
+                  web view split hunks the same way, which keeps the
+                  preview and the PR page in agreement. Adding
+                  "algorithm:histogram" moves those boundaries.
 
 `signs.comment`     Character shown in virtual text for comment indicators.
 
