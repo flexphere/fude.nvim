@@ -208,11 +208,13 @@ File opening position                                 *fude-file-position*
 
 :FudeReviewNextUnviewedFile                *:FudeReviewNextUnviewedFile*
     Open the next changed file that is not marked as viewed, skipping
-    the ones already reviewed. Follows the same navigation order as
+    the ones already reviewed. Files deleted by the PR are skipped too,
+    since they cannot be opened. Follows the same navigation order as
     |:FudeReviewNextFile| and wraps around. When the current buffer is
     not part of the changed files, opens the first unviewed one. When
-    every file has been viewed, notifies and stays put; when the
-    current file is the only unviewed one, it is reopened.
+    nothing is left to review, notifies and stays put without leaving
+    the side panel; when the current file is the only unviewed one, it
+    is reopened.
     Bound to `]F` by default (see `keymaps.next_unviewed_file`).
     Equivalent Lua API: `require("fude.files").next_unviewed_file()`.
     Requires an active review session.
