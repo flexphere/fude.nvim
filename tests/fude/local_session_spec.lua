@@ -473,7 +473,10 @@ describe("session lifecycle (start/reload/stop)", function()
 		session.start(nil)
 		assert.equals("base", config.state.local_session.scope)
 		assert.equals("basesha", config.state.local_session.base_sha)
-		assert.equals("main", config.state.local_session.content_ref)
+		-- The preview pane reads content_ref. It has to be the merge-base as well,
+		-- not the base branch tip ("main"), or the preview drifts away from the
+		-- changed-files list as soon as the base branch moves on.
+		assert.equals("basesha", config.state.local_session.content_ref)
 	end)
 
 	it("set_scope switches the diff base to HEAD for uncommitted", function()
@@ -501,7 +504,7 @@ describe("session lifecycle (start/reload/stop)", function()
 		session.set_scope("base")
 		assert.equals("base", config.state.local_session.scope)
 		assert.equals("basesha", config.state.local_session.base_sha)
-		assert.equals("main", config.state.local_session.content_ref)
+		assert.equals("basesha", config.state.local_session.content_ref)
 	end)
 
 	it("set_scope rejects an unknown scope", function()
@@ -584,7 +587,7 @@ describe("session.resolve_scope_base", function()
 		assert.equals("emptyhash", content_ref)
 	end)
 
-	it("base resolves to the merge-base sha with the base branch as content ref", function()
+	it("base resolves both the diff base and the content ref to the merge-base sha", function()
 		local diff = require("fude.diff")
 		helpers.mock(diff, "get_merge_base", function(ref)
 			assert.equals("main", ref)
@@ -592,7 +595,9 @@ describe("session.resolve_scope_base", function()
 		end)
 		local diff_base, content_ref = session.resolve_scope_base("base", "main")
 		assert.equals("mergesha", diff_base)
-		assert.equals("main", content_ref)
+		-- Returning the base branch ("main") here would make the preview pane show the
+		-- base branch tip while the changed-files list stays on the merge-base.
+		assert.equals("mergesha", content_ref)
 	end)
 
 	it("returns nil when the merge-base cannot be resolved", function()
