@@ -1118,4 +1118,17 @@ describe("buffer-local review keymaps", function()
 
 		assert.is_function(mapped_callback(foreign, "]F"))
 	end)
+
+	it("leaves a foreign mapping alone even when it carries the same description", function()
+		-- Ownership is decided by callback identity, so copying fude's desc text is
+		-- not enough to get someone else's mapping deleted.
+		config.setup({})
+		local foreign = helpers.create_buf({ "line" }, "keymap_same_desc.lua")
+		vim.bo[foreign].buftype = ""
+		vim.keymap.set("n", "]F", function() end, { buffer = foreign, desc = "Review: Next unviewed file" })
+
+		init.clear_buf_keymaps()
+
+		assert.is_function(mapped_callback(foreign, "]F"))
+	end)
 end)
