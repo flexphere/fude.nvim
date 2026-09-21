@@ -383,7 +383,8 @@ function M.setup_review_autocmds(state)
 end
 
 --- Buffer-local mappings fude installs during review mode, keyed by their
---- `config.opts.keymaps` entry. `desc` doubles as the ownership marker on teardown.
+--- `config.opts.keymaps` entry. Each `run` is a single function object reused for
+--- every buffer, so teardown can recognize fude's own mappings by identity.
 local BUF_KEYMAPS = {
 	{
 		opt = "next_comment",
@@ -415,9 +416,9 @@ local BUF_KEYMAPS = {
 	},
 }
 
-local FUDE_KEYMAP_DESCS = {}
+local FUDE_KEYMAP_CALLBACKS = {}
 for _, spec in ipairs(BUF_KEYMAPS) do
-	FUDE_KEYMAP_DESCS[spec.desc] = true
+	FUDE_KEYMAP_CALLBACKS[spec.run] = true
 end
 
 --- Set buffer-local keymaps for the current buffer during review mode.
@@ -435,15 +436,17 @@ function M.setup_buf_keymaps()
 	end
 end
 
---- Remove buffer-local review keymaps from all loaded buffers. Only mappings carrying
---- one of fude's own descriptions are deleted: deleting by configured lhs alone would
---- also drop a same-key mapping owned by an ftplugin or another plugin in a buffer
---- review mode never entered, and `]F`/`[F` sit in a crowded bracket namespace.
+--- Remove buffer-local review keymaps from all loaded buffers. A mapping is deleted
+--- only when its callback is one of the `BUF_KEYMAPS` functions, which identifies
+--- fude's own mappings exactly: deleting by configured lhs would also drop a same-key
+--- mapping owned by an ftplugin in a buffer review mode never entered (`]F`/`[F` sit
+--- in a crowded bracket namespace), and matching on `desc` would still collide with
+--- anyone using the same description text.
 function M.clear_buf_keymaps()
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_is_loaded(buf) then
 			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
-				if map.desc and FUDE_KEYMAP_DESCS[map.desc] then
+				if map.callback and FUDE_KEYMAP_CALLBACKS[map.callback] then
 					pcall(vim.keymap.del, "n", map.lhs, { buffer = buf })
 				end
 			end
