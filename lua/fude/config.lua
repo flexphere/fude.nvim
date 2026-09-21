@@ -11,7 +11,9 @@ M.defaults = {
 	-- splits one changed block into many and scatters filler lines on both sides, which makes
 	-- the diff harder to read than the GitHub web view. A later duplicate key wins, so this
 	-- also overrides Neovim's built-in linematch:40 (0.11+).
-	diffopt = { "algorithm:histogram", "linematch:0", "indent-heuristic", "followwrap" },
+	-- No "algorithm:" entry on purpose: Neovim defaults to myers, which is what git and the
+	-- GitHub web view use, so the hunk boundaries line up with the PR page.
+	diffopt = { "linematch:0", "indent-heuristic", "followwrap" },
 	signs = {
 		comment = "#",
 		comment_hl = "DiagnosticInfo",

@@ -209,7 +209,7 @@ describe("preview integration", function()
 		end
 
 		it("overrides the user's linematch so a rewritten block stays in one piece", function()
-			local plain = "internal,filler,closeoff,algorithm:histogram,indent-heuristic"
+			local plain = "internal,filler,closeoff,indent-heuristic"
 
 			set_diffopt(plain)
 			local without_linematch = source_diff_signature("lm_off.lua")
