@@ -1104,4 +1104,18 @@ describe("buffer-local review keymaps", function()
 		assert.is_nil(mapped_callback(buf, "]F"))
 		assert.is_nil(mapped_callback(buf, "[F"))
 	end)
+
+	it("leaves a same-key mapping fude did not install alone", function()
+		-- `]F` sits in a crowded bracket namespace, so an ftplugin may own it in a
+		-- buffer review mode never entered. Deleting by configured lhs alone would
+		-- silently drop that mapping on stop.
+		config.setup({})
+		local foreign = helpers.create_buf({ "line" }, "keymap_foreign.lua")
+		vim.bo[foreign].buftype = ""
+		vim.keymap.set("n", "]F", function() end, { buffer = foreign, desc = "ftplugin: next fixture" })
+
+		init.clear_buf_keymaps()
+
+		assert.is_function(mapped_callback(foreign, "]F"))
+	end)
 end)

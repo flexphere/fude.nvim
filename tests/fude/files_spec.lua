@@ -600,6 +600,46 @@ describe("find_adjacent_unviewed_index", function()
 		assert.are.equal(2, files.find_adjacent_unviewed_index(changed, "a.lua", "next", nil))
 		assert.are.equal(4, files.find_adjacent_unviewed_index(changed, "a.lua", "prev", nil))
 	end)
+
+	it("skips files removed by the PR, which cannot be opened", function()
+		local with_removed = {
+			{ path = "a.lua", status = "modified" },
+			{ path = "gone.lua", status = "removed" },
+			{ path = "c.lua", status = "modified" },
+		}
+		assert.are.equal(3, files.find_adjacent_unviewed_index(with_removed, "a.lua", "next", {}))
+		assert.are.equal(1, files.find_adjacent_unviewed_index(with_removed, "c.lua", "prev", {}))
+	end)
+
+	it("returns nil when the only unviewed files were removed by the PR", function()
+		local with_removed = {
+			{ path = "a.lua", status = "modified" },
+			{ path = "gone.lua", status = "removed" },
+		}
+		assert.is_nil(files.find_adjacent_unviewed_index(with_removed, "a.lua", "next", { ["a.lua"] = "VIEWED" }))
+	end)
+end)
+
+describe("has_unviewed_target", function()
+	it("is true while any file is neither viewed nor removed", function()
+		local changed = { { path = "a.lua" }, { path = "b.lua" } }
+		assert.is_true(files.has_unviewed_target(changed, { ["a.lua"] = "VIEWED" }))
+	end)
+
+	it("is false once every file has been viewed", function()
+		local changed = { { path = "a.lua" }, { path = "b.lua" } }
+		assert.is_false(files.has_unviewed_target(changed, { ["a.lua"] = "VIEWED", ["b.lua"] = "VIEWED" }))
+	end)
+
+	it("does not count files removed by the PR as targets", function()
+		local changed = { { path = "a.lua", status = "modified" }, { path = "gone.lua", status = "removed" } }
+		assert.is_false(files.has_unviewed_target(changed, { ["a.lua"] = "VIEWED" }))
+	end)
+
+	it("is false for an empty list and treats a nil viewed map as nothing viewed", function()
+		assert.is_false(files.has_unviewed_target({}, nil))
+		assert.is_true(files.has_unviewed_target({ { path = "a.lua" } }, nil))
+	end)
 end)
 
 describe("build_navigation_order", function()
@@ -926,5 +966,44 @@ describe("next_unviewed_file / prev_unviewed_file", function()
 		set_current_path("z/a.lua")
 		files.next_unviewed_file()
 		assert.are.equal("edit /repo/m.lua", last_cmd)
+	end)
+
+	it("skips files removed by the PR", function()
+		config.state.changed_files = {
+			{ path = "a.lua", status = "modified" },
+			{ path = "gone.lua", status = "removed" },
+			{ path = "c.lua", status = "modified" },
+		}
+		set_current_path("a.lua")
+		files.next_unviewed_file()
+		assert.are.equal("edit /repo/c.lua", last_cmd)
+	end)
+
+	it("keeps the cursor in the sidepanel when there is nowhere to go", function()
+		-- Bailing out after the window switch would drag the user out of the panel
+		-- only to report that every file has been viewed.
+		local sidepanel = require("fude.ui.sidepanel")
+		config.state.viewed_files = { ["a.lua"] = "VIEWED", ["b.lua"] = "VIEWED", ["c.lua"] = "VIEWED" }
+		config.state.sidepanel = { win = 10 }
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return 10
+		end)
+		helpers.mock(sidepanel, "find_target_window", function()
+			return 20
+		end)
+		local focused_win
+		helpers.mock(vim.api, "nvim_set_current_win", function(win)
+			focused_win = win
+		end)
+		local notification
+		helpers.mock(vim, "notify", function(msg)
+			notification = msg
+		end)
+
+		files.next_unviewed_file()
+
+		assert.is_nil(focused_win)
+		assert.is_nil(last_cmd)
+		assert.are.equal("fude.nvim: No unviewed files", notification)
 	end)
 end)
