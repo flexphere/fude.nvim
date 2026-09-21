@@ -1029,3 +1029,79 @@ describe("init integration", function()
 		end)
 	end)
 end)
+
+describe("buffer-local review keymaps", function()
+	local files = require("fude.files")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	--- Look up a buffer-local normal-mode mapping's callback by its lhs.
+	local function mapped_callback(buf, lhs)
+		for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			if map.lhs == lhs then
+				return map.callback
+			end
+		end
+		return nil
+	end
+
+	local function review_buf(name)
+		local buf = helpers.create_buf({ "line" }, name)
+		vim.bo[buf].buftype = ""
+		vim.api.nvim_set_current_buf(buf)
+		return buf
+	end
+
+	-- Asserting on the registered lhs alone would still pass if the callback were
+	-- wired to the wrong function, so the callbacks are pulled out and invoked.
+	it("wires the default unviewed-file keys to the navigation functions", function()
+		config.setup({})
+		local buf = review_buf("keymap_default.lua")
+
+		init.setup_buf_keymaps()
+
+		local called = {}
+		helpers.mock(files, "next_unviewed_file", function()
+			called.next = true
+		end)
+		helpers.mock(files, "prev_unviewed_file", function()
+			called.prev = true
+		end)
+
+		local next_cb = mapped_callback(buf, "]F")
+		local prev_cb = mapped_callback(buf, "[F")
+		assert.is_function(next_cb)
+		assert.is_function(prev_cb)
+
+		next_cb()
+		prev_cb()
+
+		assert.is_true(called.next)
+		assert.is_true(called.prev)
+	end)
+
+	it("honors a custom key and leaves the key unmapped when set to false", function()
+		config.setup({ keymaps = { next_unviewed_file = "gU", prev_unviewed_file = false } })
+		local buf = review_buf("keymap_custom.lua")
+
+		init.setup_buf_keymaps()
+
+		assert.is_function(mapped_callback(buf, "gU"))
+		assert.is_nil(mapped_callback(buf, "]F"))
+		assert.is_nil(mapped_callback(buf, "[F"))
+	end)
+
+	it("removes the unviewed-file keymaps on clear", function()
+		config.setup({})
+		local buf = review_buf("keymap_clear.lua")
+		init.setup_buf_keymaps()
+		assert.is_function(mapped_callback(buf, "]F"))
+
+		init.clear_buf_keymaps()
+
+		assert.is_nil(mapped_callback(buf, "]F"))
+		assert.is_nil(mapped_callback(buf, "[F"))
+	end)
+end)
