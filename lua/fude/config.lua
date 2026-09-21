@@ -7,7 +7,11 @@ M.defaults = {
 	diff_filler_char = nil,
 	-- Additional diffopt values applied during review ({} to apply none and keep your own diffopt).
 	-- "followwrap" keeps the user's 'wrap' setting: without it, :diffthis forces nowrap.
-	diffopt = { "algorithm:histogram", "linematch:60", "indent-heuristic", "followwrap" },
+	-- "linematch:0" turns off the second-stage line alignment. On heavily rewritten files it
+	-- splits one changed block into many and scatters filler lines on both sides, which makes
+	-- the diff harder to read than the GitHub web view. A later duplicate key wins, so this
+	-- also overrides Neovim's built-in linematch:40 (0.11+).
+	diffopt = { "algorithm:histogram", "linematch:0", "indent-heuristic", "followwrap" },
 	signs = {
 		comment = "#",
 		comment_hl = "DiagnosticInfo",
