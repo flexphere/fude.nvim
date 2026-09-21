@@ -382,6 +382,44 @@ function M.setup_review_autocmds(state)
 	require("fude.ui").setup_inline_hint_autocmd()
 end
 
+--- Buffer-local mappings fude installs during review mode, keyed by their
+--- `config.opts.keymaps` entry. `desc` doubles as the ownership marker on teardown.
+local BUF_KEYMAPS = {
+	{
+		opt = "next_comment",
+		desc = "Review: Next comment",
+		run = function()
+			require("fude.comments").next_comment()
+		end,
+	},
+	{
+		opt = "prev_comment",
+		desc = "Review: Prev comment",
+		run = function()
+			require("fude.comments").prev_comment()
+		end,
+	},
+	{
+		opt = "next_unviewed_file",
+		desc = "Review: Next unviewed file",
+		run = function()
+			require("fude.files").next_unviewed_file()
+		end,
+	},
+	{
+		opt = "prev_unviewed_file",
+		desc = "Review: Prev unviewed file",
+		run = function()
+			require("fude.files").prev_unviewed_file()
+		end,
+	},
+}
+
+local FUDE_KEYMAP_DESCS = {}
+for _, spec in ipairs(BUF_KEYMAPS) do
+	FUDE_KEYMAP_DESCS[spec.desc] = true
+end
+
 --- Set buffer-local keymaps for the current buffer during review mode.
 function M.setup_buf_keymaps()
 	local buf = vim.api.nvim_get_current_buf()
@@ -389,44 +427,25 @@ function M.setup_buf_keymaps()
 		return
 	end
 	local km = config.opts.keymaps
-	if km.next_comment then
-		vim.keymap.set("n", km.next_comment, function()
-			require("fude.comments").next_comment()
-		end, { buffer = buf, desc = "Review: Next comment" })
-	end
-	if km.prev_comment then
-		vim.keymap.set("n", km.prev_comment, function()
-			require("fude.comments").prev_comment()
-		end, { buffer = buf, desc = "Review: Prev comment" })
-	end
-	if km.next_unviewed_file then
-		vim.keymap.set("n", km.next_unviewed_file, function()
-			require("fude.files").next_unviewed_file()
-		end, { buffer = buf, desc = "Review: Next unviewed file" })
-	end
-	if km.prev_unviewed_file then
-		vim.keymap.set("n", km.prev_unviewed_file, function()
-			require("fude.files").prev_unviewed_file()
-		end, { buffer = buf, desc = "Review: Prev unviewed file" })
+	for _, spec in ipairs(BUF_KEYMAPS) do
+		local lhs = km[spec.opt]
+		if lhs then
+			vim.keymap.set("n", lhs, spec.run, { buffer = buf, desc = spec.desc })
+		end
 	end
 end
 
---- Remove buffer-local review keymaps from all loaded buffers.
+--- Remove buffer-local review keymaps from all loaded buffers. Only mappings carrying
+--- one of fude's own descriptions are deleted: deleting by configured lhs alone would
+--- also drop a same-key mapping owned by an ftplugin or another plugin in a buffer
+--- review mode never entered, and `]F`/`[F` sit in a crowded bracket namespace.
 function M.clear_buf_keymaps()
-	local km = config.opts.keymaps
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_is_loaded(buf) then
-			if km.next_comment then
-				pcall(vim.keymap.del, "n", km.next_comment, { buffer = buf })
-			end
-			if km.prev_comment then
-				pcall(vim.keymap.del, "n", km.prev_comment, { buffer = buf })
-			end
-			if km.next_unviewed_file then
-				pcall(vim.keymap.del, "n", km.next_unviewed_file, { buffer = buf })
-			end
-			if km.prev_unviewed_file then
-				pcall(vim.keymap.del, "n", km.prev_unviewed_file, { buffer = buf })
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+				if map.desc and FUDE_KEYMAP_DESCS[map.desc] then
+					pcall(vim.keymap.del, "n", map.lhs, { buffer = buf })
+				end
 			end
 		end
 	end
