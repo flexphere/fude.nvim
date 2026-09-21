@@ -303,6 +303,23 @@ function M.build_navigation_order(changed_files, tree_mode)
 	return ordered
 end
 
+--- Index of `path` in a navigation-ordered file list, or nil when it is absent
+--- (including when there is no current path at all).
+--- @param files table[] list of { path, ... }
+--- @param path string|nil repo-relative path
+--- @return number|nil
+local function index_of_path(files, path)
+	if not path then
+		return nil
+	end
+	for i, file in ipairs(files) do
+		if file.path == path then
+			return i
+		end
+	end
+	return nil
+end
+
 --- Find the index of the next/prev changed file relative to the current path.
 --- Wraps around at the edges. If the current path is not in the list, returns
 --- the first entry for "next" and the last for "prev".
@@ -316,15 +333,7 @@ function M.find_adjacent_file_index(changed_files, current_path, direction)
 		return nil
 	end
 
-	local current_idx
-	if current_path then
-		for i, file in ipairs(changed_files) do
-			if file.path == current_path then
-				current_idx = i
-				break
-			end
-		end
-	end
+	local current_idx = index_of_path(changed_files, current_path)
 
 	if not current_idx then
 		return direction == "prev" and total or 1
@@ -336,9 +345,69 @@ function M.find_adjacent_file_index(changed_files, current_path, direction)
 	return ((current_idx - 2) % total) + 1
 end
 
+--- Whether a changed file is a target for unviewed navigation: not marked as viewed,
+--- and still present in the working tree. Files deleted by the PR are excluded because
+--- they cannot be opened (`:edit` would create an empty buffer for a path that no
+--- longer exists), matching how `ui/sidepanel.find_first_file_entry` skips them. They
+--- would otherwise be hit on every wrap-around, since a deleted file is rarely viewed.
+--- @param file table { path, status, ... }
+--- @param viewed_files table<string, string> { [path] = "VIEWED" | "UNVIEWED" | "DISMISSED" }
+--- @return boolean
+local function is_unviewed_target(file, viewed_files)
+	return file.status ~= "removed" and viewed_files[file.path] ~= "VIEWED"
+end
+
+--- Whether any changed file is a target for unviewed navigation. Callers use this to
+--- bail out before moving the cursor or switching windows.
+--- @param changed_files table[] list of { path, status, ... }
+--- @param viewed_files table<string, string>|nil
+--- @return boolean
+function M.has_unviewed_target(changed_files, viewed_files)
+	viewed_files = viewed_files or {}
+	for _, file in ipairs(changed_files) do
+		if is_unviewed_target(file, viewed_files) then
+			return true
+		end
+	end
+	return false
+end
+
+--- Find the index of the next/prev *unviewed* changed file relative to the current
+--- path. Walks the navigation order in `direction` and returns the first entry that
+--- `is_unviewed_target` accepts, wrapping around at the edges. The current file is
+--- reached last, so it is returned only when it is the sole unviewed file. Returns nil
+--- when the list is empty or holds no unviewed target.
+--- @param files table[] navigation-ordered list of { path, status, ... }
+--- @param current_path string|nil repo-relative path of the current buffer (nil if not in repo)
+--- @param direction "next"|"prev"
+--- @param viewed_files table<string, string>|nil { [path] = "VIEWED" | "UNVIEWED" | "DISMISSED" }
+--- @return number|nil index 1-based index into files, or nil when there is nowhere to go
+function M.find_adjacent_unviewed_index(files, current_path, direction, viewed_files)
+	local total = #files
+	if total == 0 then
+		return nil
+	end
+	viewed_files = viewed_files or {}
+
+	local current_idx = index_of_path(files, current_path)
+
+	-- With no current file, start just outside the list so the first step lands on
+	-- the first entry for "next" and the last one for "prev".
+	local start = current_idx or (direction == "next" and 0 or total + 1)
+	local step = direction == "next" and 1 or -1
+	for i = 1, total do
+		local idx = ((start - 1 + step * i) % total) + 1
+		if is_unviewed_target(files[idx], viewed_files) then
+			return idx
+		end
+	end
+	return nil
+end
+
 --- Move to the next/prev changed file in the PR.
 --- @param direction "next"|"prev"
-local function goto_adjacent(direction)
+--- @param unviewed_only boolean|nil skip files already marked as viewed
+local function goto_adjacent(direction, unviewed_only)
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
@@ -352,6 +421,13 @@ local function goto_adjacent(direction)
 
 	local repo_root = diff.get_repo_root()
 	if not repo_root then
+		return
+	end
+
+	-- Checked before the window switch below: bailing out afterwards would drag the
+	-- user out of the side panel only to report that there is nowhere to go.
+	if unviewed_only and not M.has_unviewed_target(state.changed_files, state.viewed_files) then
+		vim.notify("fude.nvim: No unviewed files", vim.log.levels.INFO)
 		return
 	end
 
@@ -369,7 +445,14 @@ local function goto_adjacent(direction)
 	local nav_files = M.build_navigation_order(state.changed_files, tree_mode)
 
 	local current_path = diff.make_relative(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p"), repo_root)
-	local idx = M.find_adjacent_file_index(nav_files, current_path, direction)
+	local idx
+	if unviewed_only then
+		-- has_unviewed_target above already ruled out the nil case; the guard below
+		-- keeps the notification in one place rather than reporting it twice.
+		idx = M.find_adjacent_unviewed_index(nav_files, current_path, direction, state.viewed_files)
+	else
+		idx = M.find_adjacent_file_index(nav_files, current_path, direction)
+	end
 	if not idx then
 		return
 	end
@@ -389,6 +472,16 @@ end
 --- Move to the previous changed file in the PR (wraps around).
 function M.prev_file()
 	goto_adjacent("prev")
+end
+
+--- Move to the next changed file not yet marked as viewed (wraps around).
+function M.next_unviewed_file()
+	goto_adjacent("next", true)
+end
+
+--- Move to the previous changed file not yet marked as viewed (wraps around).
+function M.prev_unviewed_file()
+	goto_adjacent("prev", true)
 end
 
 --- Show changed files list using the configured mode.

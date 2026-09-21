@@ -206,6 +206,27 @@ File opening position                                 *fude-file-position*
     Equivalent Lua API: `require("fude.files").prev_file()`.
     Requires an active review session.
 
+:FudeReviewNextUnviewedFile                *:FudeReviewNextUnviewedFile*
+    Open the next changed file that is not marked as viewed, skipping
+    the ones already reviewed. Files deleted by the PR are skipped too,
+    since they cannot be opened. Follows the same navigation order as
+    |:FudeReviewNextFile| and wraps around. When the current buffer is
+    not part of the changed files, opens the first unviewed one. When
+    nothing is left to review, notifies and stays put without leaving
+    the side panel; when the current file is the only unviewed one, it
+    is reopened.
+    Bound to `]F` by default (see `keymaps.next_unviewed_file`).
+    Equivalent Lua API: `require("fude.files").next_unviewed_file()`.
+    Requires an active review session.
+
+:FudeReviewPrevUnviewedFile                *:FudeReviewPrevUnviewedFile*
+    Open the previous changed file that is not marked as viewed.
+    Mirrors |:FudeReviewNextUnviewedFile| in the other direction, so
+    with no current file in the list it opens the last unviewed one.
+    Bound to `[F` by default (see `keymaps.prev_unviewed_file`).
+    Equivalent Lua API: `require("fude.files").prev_unviewed_file()`.
+    Requires an active review session.
+
 :FudeReviewScope                                    *:FudeReviewScope*
     Select the review scope. Opens a picker showing the PR's commit
     history and a "Full PR" option. By default, the scope is the full
@@ -583,10 +604,11 @@ File opening position                                 *fude-file-position*
 ==============================================================================
 5. KEYMAPS                                                *fude-keymaps*
 
-Comment navigation keymaps (]c / [c by default) are set as buffer-local
-mappings during review mode and removed on stop. Other keymaps are not
-set by the plugin. Configure them in your lazy.nvim spec or manually.
-Suggested mappings:
+Comment navigation (]c / [c) and unviewed-file navigation (]F / [F) are
+set as buffer-local mappings during review mode and removed on stop.
+Change them under `keymaps`, or set one to `false` to leave that key
+alone. Other keymaps are not set by the plugin. Configure them in your
+lazy.nvim spec or manually. Suggested mappings:
 
   `<leader>et`  Toggle review mode
   `<leader>es`  Start review mode
@@ -610,6 +632,8 @@ Suggested mappings:
   `<leader>eM`  Unmark current file as viewed
   `]c`          Next comment
   `[c`          Previous comment
+  `]F`          Next unviewed changed file
+  `[F`          Previous unviewed changed file
   `e`           Edit comment (in |:FudeReviewViewComment| float, own comments only)
   `d`           Delete comment (in |:FudeReviewViewComment| float, own comments only)
   `gx`          Open GitHub reference or URL under cursor (in floats)
@@ -672,6 +696,10 @@ Default configuration: >lua
     keymaps = {
       next_comment = "]c",
       prev_comment = "[c",
+      -- Jump between changed files that are not marked as viewed yet
+      -- (false leaves the key unmapped)
+      next_unviewed_file = "]F",
+      prev_unviewed_file = "[F",
     },
     -- Comment display style: "virtualText" or "inline"
     comment_style = "virtualText",
@@ -823,6 +851,16 @@ Options:
 `keymaps.prev_comment`
                   Buffer-local mapping for previous-comment navigation,
                   set during review mode and removed on stop (default: "[c").
+
+`keymaps.next_unviewed_file`
+                  Buffer-local mapping for |:FudeReviewNextUnviewedFile|,
+                  set during review mode and removed on stop
+                  (default: "]F"). Set to false to leave the key unmapped.
+
+`keymaps.prev_unviewed_file`
+                  Buffer-local mapping for |:FudeReviewPrevUnviewedFile|,
+                  set during review mode and removed on stop
+                  (default: "[F"). Set to false to leave the key unmapped.
 
 `auto_view_comment` When true, automatically opens the comment viewer
                   float after navigating to a comment line via ]c, [c,
