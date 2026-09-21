@@ -20,7 +20,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right). Sections are foldable with standard Neovim fold commands. Press `r` to re-request a review from a reviewer who has already reviewed
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows (blink.cmp / nvim-cmp)
-- **Viewed files** - Mark/unmark files as viewed (synced with GitHub)
+- **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
 - **Create PR** - Create draft PRs from templates with a two-pane float (title + body)
 - **Open in browser** - Open the PR in your browser
 - **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
@@ -47,6 +47,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewNextFile", "FudeReviewPrevFile",
+    "FudeReviewNextUnviewedFile", "FudeReviewPrevUnviewedFile",
     "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
@@ -80,7 +81,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     { "<leader>eR", "<cmd>FudeReviewReload<cr>", desc = "Review: Reload data" },
     { "<leader>em", "<cmd>FudeReviewViewed<cr>", desc = "Review: Mark viewed" },
     { "<leader>eM", "<cmd>FudeReviewUnviewed<cr>", desc = "Review: Unmark viewed" },
-    -- ]c / [c are set automatically as buffer-local keymaps during review mode
+    -- ]c / [c (comments) and ]F / [F (unviewed files) are set automatically as
+    -- buffer-local keymaps during review mode; change them under `keymaps`
     -- <Tab> toggles viewed state in FudeReviewFiles / reviewed state in FudeReviewScope
   },
 }
@@ -113,6 +115,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewFiles` | List PR changed files with comment counts (Telescope/quickfix) |
 | `:FudeReviewNextFile` | Open the next changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewPrevFile` | Open the previous changed file, following the side panel file list order (wraps around) |
+| `:FudeReviewNextUnviewedFile` | Open the next changed file not yet marked as viewed (`]F`, wraps around) |
+| `:FudeReviewPrevUnviewedFile` | Open the previous changed file not yet marked as viewed (`[F`, wraps around) |
 | `:FudeReviewScope` | Select review scope (full PR or specific commit) |
 | `:FudeReviewScopeNext` | Move to next review scope |
 | `:FudeReviewScopePrev` | Move to previous review scope |
