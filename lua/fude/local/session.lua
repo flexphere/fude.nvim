@@ -144,8 +144,12 @@ M.SCOPES = { "base", "unpushed", "uncommitted" }
 ---                   fresh repo of agent work is still reviewable)
 --- `diff_base` is the ref passed to `git diff` (used for the changed-files
 --- list and per-file patches); `content_ref` is the ref passed to `git show`
---- for the side-by-side preview's base pane. Returns nil when the scope is not
---- available (no base branch / no upstream / no commits).
+--- for the side-by-side preview's base pane. Every scope returns the same ref
+--- for both: on "base" that is the merge-base, not the base branch tip, so the
+--- review keeps showing what this branch changed even after the base branch
+--- moves on (the same three-dot semantics the GitHub flow gets from
+--- `state.merge_base_sha`). Returns nil when the scope is not available
+--- (no base branch / no upstream / no commits).
 --- @param scope string "base"|"unpushed"|"uncommitted"
 --- @param base_ref string|nil the session's base branch
 --- @param cwd string|nil repo root (for upstream resolution)
@@ -181,7 +185,7 @@ function M.resolve_scope_base(scope, base_ref, cwd)
 	if not merge_base then
 		return nil, nil
 	end
-	return merge_base, base_ref
+	return merge_base, merge_base
 end
 
 --- Build the list of scopes available for the current git state, with labels,
