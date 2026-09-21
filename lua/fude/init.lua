@@ -399,6 +399,16 @@ function M.setup_buf_keymaps()
 			require("fude.comments").prev_comment()
 		end, { buffer = buf, desc = "Review: Prev comment" })
 	end
+	if km.next_unviewed_file then
+		vim.keymap.set("n", km.next_unviewed_file, function()
+			require("fude.files").next_unviewed_file()
+		end, { buffer = buf, desc = "Review: Next unviewed file" })
+	end
+	if km.prev_unviewed_file then
+		vim.keymap.set("n", km.prev_unviewed_file, function()
+			require("fude.files").prev_unviewed_file()
+		end, { buffer = buf, desc = "Review: Prev unviewed file" })
+	end
 end
 
 --- Remove buffer-local review keymaps from all loaded buffers.
@@ -411,6 +421,12 @@ function M.clear_buf_keymaps()
 			end
 			if km.prev_comment then
 				pcall(vim.keymap.del, "n", km.prev_comment, { buffer = buf })
+			end
+			if km.next_unviewed_file then
+				pcall(vim.keymap.del, "n", km.next_unviewed_file, { buffer = buf })
+			end
+			if km.prev_unviewed_file then
+				pcall(vim.keymap.del, "n", km.prev_unviewed_file, { buffer = buf })
 			end
 		end
 	end

@@ -89,6 +89,10 @@ M.defaults = {
 		reply_comment = "<leader>Rr",
 		next_comment = "]c",
 		prev_comment = "[c",
+		-- Jump between changed files that are not marked as viewed yet.
+		-- Set to false to leave the key unmapped.
+		next_unviewed_file = "]F",
+		prev_unviewed_file = "[F",
 	},
 	-- Auto-reload review data from GitHub at regular intervals
 	auto_reload = {

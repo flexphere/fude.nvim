@@ -303,6 +303,23 @@ function M.build_navigation_order(changed_files, tree_mode)
 	return ordered
 end
 
+--- Index of `path` in a navigation-ordered file list, or nil when it is absent
+--- (including when there is no current path at all).
+--- @param files table[] list of { path, ... }
+--- @param path string|nil repo-relative path
+--- @return number|nil
+local function index_of_path(files, path)
+	if not path then
+		return nil
+	end
+	for i, file in ipairs(files) do
+		if file.path == path then
+			return i
+		end
+	end
+	return nil
+end
+
 --- Find the index of the next/prev changed file relative to the current path.
 --- Wraps around at the edges. If the current path is not in the list, returns
 --- the first entry for "next" and the last for "prev".
@@ -316,15 +333,7 @@ function M.find_adjacent_file_index(changed_files, current_path, direction)
 		return nil
 	end
 
-	local current_idx
-	if current_path then
-		for i, file in ipairs(changed_files) do
-			if file.path == current_path then
-				current_idx = i
-				break
-			end
-		end
-	end
+	local current_idx = index_of_path(changed_files, current_path)
 
 	if not current_idx then
 		return direction == "prev" and total or 1
@@ -336,9 +345,42 @@ function M.find_adjacent_file_index(changed_files, current_path, direction)
 	return ((current_idx - 2) % total) + 1
 end
 
+--- Find the index of the next/prev *unviewed* changed file relative to the current
+--- path. Walks the navigation order in `direction` and returns the first entry whose
+--- viewed state is not VIEWED, wrapping around at the edges. The current file is
+--- reached last, so it is returned only when it is the sole unviewed file. Returns nil
+--- when the list is empty or every file has been viewed.
+--- @param files table[] navigation-ordered list of { path, ... }
+--- @param current_path string|nil repo-relative path of the current buffer (nil if not in repo)
+--- @param direction "next"|"prev"
+--- @param viewed_files table<string, string>|nil { [path] = "VIEWED" | "UNVIEWED" | "DISMISSED" }
+--- @return number|nil index 1-based index into files, or nil when there is nowhere to go
+function M.find_adjacent_unviewed_index(files, current_path, direction, viewed_files)
+	local total = #files
+	if total == 0 then
+		return nil
+	end
+	viewed_files = viewed_files or {}
+
+	local current_idx = index_of_path(files, current_path)
+
+	-- With no current file, start just outside the list so the first step lands on
+	-- the first entry for "next" and the last one for "prev".
+	local start = current_idx or (direction == "next" and 0 or total + 1)
+	local step = direction == "next" and 1 or -1
+	for i = 1, total do
+		local idx = ((start - 1 + step * i) % total) + 1
+		if viewed_files[files[idx].path] ~= "VIEWED" then
+			return idx
+		end
+	end
+	return nil
+end
+
 --- Move to the next/prev changed file in the PR.
 --- @param direction "next"|"prev"
-local function goto_adjacent(direction)
+--- @param unviewed_only boolean|nil skip files already marked as viewed
+local function goto_adjacent(direction, unviewed_only)
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
@@ -369,7 +411,16 @@ local function goto_adjacent(direction)
 	local nav_files = M.build_navigation_order(state.changed_files, tree_mode)
 
 	local current_path = diff.make_relative(vim.fn.fnamemodify(vim.api.nvim_buf_get_name(0), ":p"), repo_root)
-	local idx = M.find_adjacent_file_index(nav_files, current_path, direction)
+	local idx
+	if unviewed_only then
+		idx = M.find_adjacent_unviewed_index(nav_files, current_path, direction, state.viewed_files)
+		if not idx then
+			vim.notify("fude.nvim: No unviewed files", vim.log.levels.INFO)
+			return
+		end
+	else
+		idx = M.find_adjacent_file_index(nav_files, current_path, direction)
+	end
 	if not idx then
 		return
 	end
@@ -389,6 +440,16 @@ end
 --- Move to the previous changed file in the PR (wraps around).
 function M.prev_file()
 	goto_adjacent("prev")
+end
+
+--- Move to the next changed file not yet marked as viewed (wraps around).
+function M.next_unviewed_file()
+	goto_adjacent("next", true)
+end
+
+--- Move to the previous changed file not yet marked as viewed (wraps around).
+function M.prev_unviewed_file()
+	goto_adjacent("prev", true)
 end
 
 --- Show changed files list using the configured mode.
