@@ -372,17 +372,33 @@ File opening position                                 *fude-file-position*
     the PR from the current branch via `gh` CLI.
 
 :FudeCreatePR                                            *:FudeCreatePR*
-    Create a draft PR from a template. Searches for GitHub PR templates
-    in standard locations (`.github/PULL_REQUEST_TEMPLATE/`,
-    `PULL_REQUEST_TEMPLATE.md`, etc.). If multiple templates are found,
-    shows a Telescope picker with preview (when Telescope is available),
-    otherwise falls back to |vim.ui.select()| without a preview pane.
-    If one template is found, uses it directly. If none, opens with an
-    empty body.
+    Create a draft PR from a template.
+
+    First, a base branch picker lists the branches on the `origin`
+    remote (from the local remote-tracking refs, most recently
+    committed first) with the repository's default branch at the top,
+    marked `(default)`. Pressing `<CR>` right away accepts the default;
+    type to fuzzy-filter and pick another branch. Uses Telescope when
+    available, otherwise |vim.ui.select()|. Cancelling the picker aborts
+    the command. Without a remote, a default branch resolved from local
+    refs (`main`/`master`) is still offered; only when no candidate exists
+    at all is the picker skipped and `gh` left to choose the base. The chosen
+    branch is passed as `gh pr create --base` and also decides the
+    default title (the subject of the first commit not on that branch).
+
+    Then searches for GitHub PR templates in standard locations
+    (`.github/PULL_REQUEST_TEMPLATE/`, `PULL_REQUEST_TEMPLATE.md`,
+    etc.). If multiple templates are found, shows a Telescope picker
+    with preview (when Telescope is available), otherwise falls back to
+    |vim.ui.select()| without a preview pane. If one template is found,
+    uses it directly. If none, opens with an empty body.
 
     Opens a two-pane floating window:
     - Upper pane: PR title (single line)
     - Lower pane: PR body (pre-filled with template content)
+
+    The footer shows the selected base branch, e.g.
+    `<CR> create draft → main | q cancel`.
 
     Press `<Tab>` to switch between title and body panes.
     Press `<CR>` to create a draft PR.
