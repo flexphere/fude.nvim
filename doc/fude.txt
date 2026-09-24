@@ -375,10 +375,17 @@ File opening position                                 *fude-file-position*
     Create a draft PR from a template.
 
     First, a base branch picker lists the branches on the `origin`
-    remote (from the local remote-tracking refs, most recently
-    committed first) with the repository's default branch at the top,
-    marked `(default)`. Pressing `<CR>` right away accepts the default;
-    type to fuzzy-filter and pick another branch. Uses Telescope when
+    remote (from the local remote-tracking refs) in this order:
+    1. The repository's default branch, marked `(default)`.
+    2. Related branches: the parent of the current branch in a
+       gh-stack stack (read from `.git/gh-stack`), marked
+       `(stack parent)`, then the branches the current branch was built
+       on top of in `git log` (tips between the default branch and
+       HEAD), nearest first, marked `(ancestor)`.
+    3. All other branches, most recently committed first.
+    The current branch itself is not listed. Pressing `<CR>` right away
+    accepts the default; type to fuzzy-filter and pick another branch.
+    Uses Telescope when
     available, otherwise |vim.ui.select()|. Cancelling the picker aborts
     the command. Without a remote, a default branch resolved from local
     refs (`main`/`master`) is still offered; only when no candidate exists
