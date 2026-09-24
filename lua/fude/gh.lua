@@ -631,6 +631,37 @@ function M.create_draft_pr(title, body, attachments, base, callback)
 	end)
 end
 
+--- Get the URL of the open PR whose head is `branch`.
+--- @param branch string head branch name
+--- @param callback fun(err: string|nil, url: string|nil) url is nil when the branch has no open PR
+function M.get_open_pr_url(branch, callback)
+	M.run_json({ "pr", "view", branch, "--json", "url,state" }, function(err, data)
+		if err then
+			-- `gh pr view` exits non-zero when the branch has no PR at all
+			callback(nil, nil)
+			return
+		end
+		if type(data) == "table" and data.state == "OPEN" and type(data.url) == "string" then
+			callback(nil, data.url)
+		else
+			callback(nil, nil)
+		end
+	end)
+end
+
+--- Link PRs into a GitHub stacked PR chain via the gh-stack extension
+--- (`gh stack link`, which does not depend on gh-stack's local tracking state).
+--- Existing stacks containing any of the PRs are extended, never shrunk.
+--- @param refs string[] PR URLs in stack order (bottom → top)
+--- @param callback fun(err: string|nil)
+function M.link_stack(refs, callback)
+	local args = { "stack", "link" }
+	vim.list_extend(args, refs)
+	M.run(args, function(err)
+		callback(err)
+	end)
+end
+
 --- Get the authenticated GitHub username.
 --- @param callback fun(err: string|nil, login: string|nil)
 function M.get_authenticated_user(callback)

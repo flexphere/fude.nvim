@@ -339,12 +339,44 @@ function M.find_templates()
 	return templates
 end
 
+--- Stack a freshly created PR on top of the open PR of `parent_branch` as a
+--- GitHub stacked PR (`gh stack link <parent PR> <new PR>`).
+--- The parent is passed as its PR URL, never as a branch name: `gh stack link`
+--- pushes branch arguments and creates PRs for branches without one, which
+--- would open an unrequested PR for the parent. When the parent has no open
+--- PR the step is skipped with a warning, since a stack links PRs, not branches.
+--- The PR itself is already created at this point, so every failure is a WARN
+--- that leaves it in place as an ordinary (unstacked) PR.
+--- @param parent_branch string base branch the PR was created against (the picked base)
+--- @param pr_url string URL of the PR just created
+--- @private
+local function link_to_stack(parent_branch, pr_url)
+	gh.get_open_pr_url(parent_branch, function(_, parent_url)
+		if not parent_url then
+			vim.notify(
+				"fude.nvim: Not stacked: " .. parent_branch .. " has no open PR (the PR was created unstacked)",
+				vim.log.levels.WARN
+			)
+			return
+		end
+		gh.link_stack({ parent_url, pr_url }, function(err)
+			if err then
+				vim.notify("fude.nvim: Stacking failed (the PR was created unstacked): " .. vim.trim(err), vim.log.levels.WARN)
+				return
+			end
+			vim.notify("fude.nvim: Stacked on " .. parent_url, vim.log.levels.INFO)
+		end)
+	end)
+end
+
 --- Open the PR float with explicit title and body content.
 --- @param title_lines string[]|nil initial title lines (default: {""})
 --- @param body_lines string[]|nil initial body lines (default: {""})
 --- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...),
 ---   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun(),
----   base: string|nil (create mode: base branch passed to `gh pr create --base`; nil lets gh choose) }
+---   base: string|nil (create mode: base branch passed to `gh pr create --base`; nil lets gh choose),
+---   stack: boolean|nil (create mode: the user chose to stack the PR; after creation it is linked
+---   on top of the open PR of `base` as a GitHub stacked PR) }
 function M.open_pr_float(title_lines, body_lines, opts)
 	title_lines = title_lines or { "" }
 	body_lines = body_lines or { "" }
@@ -382,7 +414,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	local lower_border = { "├", "─", "┤", "│", "╯", "─", "╰", "│" }
 
 	-- Determine footer text
-	local footer_text = opts.footer or M.build_footer_text(mode, opts.from_draft, opts.base)
+	local footer_text = opts.footer or M.build_footer_text(mode, opts.from_draft, opts.base, opts.stack)
 
 	-- Open title window (focused)
 	local title_win = vim.api.nvim_open_win(title_buf, true, {
@@ -533,6 +565,9 @@ function M.open_pr_float(title_lines, body_lines, opts)
 			local url = data and data.url or ""
 			local suffix = M.format_attach_suffix(#extracted.attachments)
 			vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
+			if opts.stack and opts.base and url ~= "" then
+				link_to_stack(opts.base, url)
+			end
 		end)
 	end
 
@@ -688,11 +723,15 @@ end
 --- @param mode string "create"|"edit"
 --- @param from_draft boolean|nil whether the float was opened from a restored draft
 --- @param base string|nil base branch (create mode only)
+--- @param stack boolean|nil whether the PR will be stacked on `base` (create mode only)
 --- @return string footer_text
-function M.build_footer_text(mode, from_draft, base)
+function M.build_footer_text(mode, from_draft, base, stack)
 	local action = mode == "edit" and "<CR> update" or "<CR> create draft"
 	if mode ~= "edit" and base and base ~= "" then
 		action = action .. " → " .. base
+		if stack then
+			action = action .. " (stacked)"
+		end
 	end
 	local cancel = from_draft and "q cancel (draft restored)" or "q cancel"
 	return " " .. action .. " | " .. cancel .. " "
@@ -754,6 +793,19 @@ function M.build_base_branch_entries(branches, default_branch, opts)
 		end
 	end
 	return entries
+end
+
+--- Find the relation marker of the entry whose value is `value`.
+--- @param entries table[] entries from build_base_branch_entries
+--- @param value string|nil selected branch name
+--- @return string|nil relation ("stack parent" | "ancestor"), nil for unrelated or unknown branches
+function M.find_entry_relation(entries, value)
+	for _, e in ipairs(entries or {}) do
+		if e.value == value then
+			return e.relation
+		end
+	end
+	return nil
 end
 
 --- Show an entry picker using Telescope when available, otherwise vim.ui.select.
@@ -820,6 +872,41 @@ local function pick_entry(entries, opts, callback)
 		:find()
 end
 
+--- Build the choices for the "create as stacked PR?" prompt.
+--- The likely answer comes first so a bare <CR> accepts it: Yes for the
+--- gh-stack parent (the branch is already the layer below in a local stack),
+--- No otherwise (an arbitrary branch is usually just a merge target).
+--- @param relation string|nil relation of the picked base ("stack parent" | "ancestor" | nil)
+--- @return table[] choices { label: string, stack: boolean }
+function M.build_stack_choices(relation)
+	local yes = { label = "Yes (stacked PR)", stack = true }
+	local no = { label = "No (ordinary PR)", stack = false }
+	if relation == "stack parent" then
+		return { yes, no }
+	end
+	return { no, yes }
+end
+
+--- Ask whether to create the PR as a GitHub stacked PR on top of `base`.
+--- @param base string picked base branch
+--- @param relation string|nil relation of the picked base (orders the choices)
+--- @param callback fun(stack: boolean|nil) true/false for the answer, nil on cancel
+function M.confirm_stack(base, relation, callback)
+	local choices = M.build_stack_choices(relation)
+	vim.ui.select(choices, {
+		prompt = "Stack the PR on " .. base .. "?",
+		format_item = function(item)
+			return item.label
+		end,
+	}, function(choice)
+		if choice then
+			callback(choice.stack)
+		else
+			callback(nil)
+		end
+	end)
+end
+
 --- Show the base branch picker (Telescope or vim.ui.select).
 --- @param entries table[] entries from build_base_branch_entries
 --- @param callback fun(selected: string|nil) receives the branch name or nil on cancel
@@ -834,12 +921,13 @@ end
 --- select if multiple, open the float.
 --- When a draft exists, it is shown as a selectable option alongside templates.
 --- @param base string|nil base branch (nil: gh chooses)
+--- @param stack boolean|nil whether the user chose to stack the PR on `base` (linked after creation)
 --- @private
-local function create_with_base(base)
+local function create_with_base(base, stack)
 	local templates = M.find_templates()
 	local has_draft = M.get_draft() ~= nil
 	local total = #templates + (has_draft and 1 or 0)
-	local float_opts = { base = base }
+	local float_opts = { base = base, stack = stack }
 
 	if total == 0 then
 		-- No templates, no draft: open with empty body
@@ -899,7 +987,16 @@ function M.create()
 		if not base then
 			return
 		end
-		create_with_base(base)
+		if base == default_branch then
+			create_with_base(base, false)
+			return
+		end
+		M.confirm_stack(base, M.find_entry_relation(entries, base), function(stack)
+			if stack == nil then
+				return
+			end
+			create_with_base(base, stack)
+		end)
 	end)
 end
 
