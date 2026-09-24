@@ -393,6 +393,17 @@ File opening position                                 *fude-file-position*
     branch is passed as `gh pr create --base` and also decides the
     default title (the subject of the first commit not on that branch).
 
+    When a branch other than the default branch is picked, a Yes/No
+    prompt asks whether to create the PR as a GitHub stacked PR on top
+    of that branch (Yes comes first for the `(stack parent)` branch, No
+    for any other). Cancelling the prompt aborts the command. On Yes,
+    after `gh pr create` succeeds the new PR is linked on top of the
+    base branch's open PR with `gh stack link` (requires the gh-stack
+    extension and stacked PRs enabled on the repository). When the base
+    branch has no open PR, or linking fails (e.g. the base PR already
+    has another PR stacked on it), a warning is shown and the PR stays
+    as an ordinary unstacked PR.
+
     Then searches for GitHub PR templates in standard locations
     (`.github/PULL_REQUEST_TEMPLATE/`, `PULL_REQUEST_TEMPLATE.md`,
     etc.). If multiple templates are found, shows a Telescope picker
@@ -405,7 +416,8 @@ File opening position                                 *fude-file-position*
     - Lower pane: PR body (pre-filled with template content)
 
     The footer shows the selected base branch, e.g.
-    `<CR> create draft → main | q cancel`.
+    `<CR> create draft → main | q cancel`, with `(stacked)` appended
+    when you chose to stack the PR.
 
     Press `<Tab>` to switch between title and body panes.
     Press `<CR>` to create a draft PR.

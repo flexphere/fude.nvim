@@ -133,7 +133,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel (focus it when open, close it when focused) |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
-| `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; body `file://` images/videos are uploaded via `gh --attach`) |
+| `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`; body `file://` images/videos are uploaded via `gh --attach`) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalStop` | Stop local review mode |
