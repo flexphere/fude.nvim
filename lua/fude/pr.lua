@@ -699,21 +699,58 @@ function M.build_footer_text(mode, from_draft, base)
 end
 
 --- Build picker entries for base branch selection.
---- The default branch comes first (so pressing <CR> in a fresh picker accepts it)
---- with a "(default)" marker, followed by the remaining branches in the given order.
+--- Order: the default branch first (so pressing <CR> in a fresh picker accepts it)
+--- with a "(default)" marker, then related branches right after it (the gh-stack
+--- parent, then branches HEAD was built on top of, nearest first) with a marker
+--- naming the relation, then the remaining branches in the given order.
 --- A default branch missing from `branches` is still listed first, since
 --- `get_default_branch` can resolve it from a source other than the remote refs.
+--- Related branches are listed only when present in `branches`: gh can only
+--- target a branch that exists on the remote. The current branch is never
+--- listed, since a PR cannot target its own head branch.
 --- @param branches string[] candidate branch names (e.g. from diff.get_remote_branches)
 --- @param default_branch string|nil repository default branch
---- @return table[] entries { display: string, value: string, is_default: boolean }
-function M.build_base_branch_entries(branches, default_branch)
+--- @param opts table|nil { current_branch: string|nil, stack_parent: string|nil, ancestors: string[]|nil }
+--- @return table[] entries { display: string, value: string, is_default: boolean, relation: string|nil }
+function M.build_base_branch_entries(branches, default_branch, opts)
+	opts = opts or {}
 	local entries = {}
-	if default_branch and default_branch ~= "" then
-		table.insert(entries, { display = default_branch .. " (default)", value = default_branch, is_default = true })
+	local seen = {}
+	if opts.current_branch then
+		seen[opts.current_branch] = true
 	end
+	if default_branch and default_branch ~= "" and not seen[default_branch] then
+		table.insert(entries, { display = default_branch .. " (default)", value = default_branch, is_default = true })
+		seen[default_branch] = true
+	end
+
+	local on_remote = {}
 	for _, name in ipairs(branches or {}) do
-		if name ~= default_branch then
+		on_remote[name] = true
+	end
+	local related = {}
+	if opts.stack_parent then
+		table.insert(related, { name = opts.stack_parent, relation = "stack parent" })
+	end
+	for _, name in ipairs(opts.ancestors or {}) do
+		table.insert(related, { name = name, relation = "ancestor" })
+	end
+	for _, r in ipairs(related) do
+		if on_remote[r.name] and not seen[r.name] then
+			table.insert(entries, {
+				display = r.name .. " (" .. r.relation .. ")",
+				value = r.name,
+				is_default = false,
+				relation = r.relation,
+			})
+			seen[r.name] = true
+		end
+	end
+
+	for _, name in ipairs(branches or {}) do
+		if not seen[name] then
 			table.insert(entries, { display = name, value = name, is_default = false })
+			seen[name] = true
 		end
 	end
 	return entries
@@ -835,7 +872,8 @@ local function create_with_base(base)
 end
 
 --- Show PR creation flow: pick the base branch, then templates, then open the float.
---- The base picker lists remote branches with the default branch preselected
+--- The base picker lists remote branches with the default branch preselected and
+--- related branches (gh-stack parent, branches HEAD is built on) right after it
 --- (a default branch resolved from local refs is listed even without a remote,
 --- so the default title keeps its commit range). It is skipped only when there
 --- are no candidates at all, in which case gh chooses the base as before.
@@ -847,7 +885,12 @@ function M.create()
 	end
 
 	local default_branch = diff.get_default_branch()
-	local entries = M.build_base_branch_entries(diff.get_remote_branches(), default_branch)
+	local current_branch = diff.get_current_branch()
+	local entries = M.build_base_branch_entries(diff.get_remote_branches(), default_branch, {
+		current_branch = current_branch,
+		stack_parent = diff.get_gh_stack_parent(current_branch),
+		ancestors = diff.get_ancestor_branches(default_branch),
+	})
 	if #entries == 0 then
 		create_with_base(nil)
 		return
