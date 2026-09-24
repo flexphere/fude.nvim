@@ -5,10 +5,16 @@ local helpers = require("tests.helpers")
 describe("create passes default title to open_pr_float", function()
 	local captured_title_lines
 	local captured_body_lines
+	local captured_opts
+	local base_entries
+	local base_callback
 
 	before_each(function()
 		captured_title_lines = nil
 		captured_body_lines = nil
+		captured_opts = nil
+		base_entries = nil
+		base_callback = nil
 		pr.clear_draft()
 
 		-- Mock diff functions
@@ -18,8 +24,19 @@ describe("create passes default title to open_pr_float", function()
 		helpers.mock(diff, "get_default_branch", function()
 			return "main"
 		end)
+		helpers.mock(diff, "get_remote_branches", function()
+			return { "feat/other", "main" }
+		end)
 		helpers.mock(diff, "get_first_commit_subject", function(_)
 			return "Initial commit message"
+		end)
+
+		-- Mock the base picker: capture entries, pick the first entry (the
+		-- default branch) synchronously like a fresh <CR> in the picker would
+		helpers.mock(pr, "select_base_branch", function(entries, callback)
+			base_entries = entries
+			base_callback = callback
+			callback(entries[1].value)
 		end)
 
 		-- Mock find_templates to return empty (no templates, no draft)
@@ -28,9 +45,10 @@ describe("create passes default title to open_pr_float", function()
 		end)
 
 		-- Mock open_pr_float to capture arguments
-		helpers.mock(pr, "open_pr_float", function(title_lines, body_lines)
+		helpers.mock(pr, "open_pr_float", function(title_lines, body_lines, opts)
 			captured_title_lines = title_lines
 			captured_body_lines = body_lines
+			captured_opts = opts
 		end)
 	end)
 
@@ -44,13 +62,80 @@ describe("create passes default title to open_pr_float", function()
 		assert.are.same({ "" }, captured_body_lines)
 	end)
 
-	it("passes nil title when default branch is nil", function()
+	it("offers the default branch first and passes it as the float base", function()
+		pr.create()
+		assert.are.equal("main", base_entries[1].value)
+		assert.is_true(base_entries[1].is_default)
+		assert.are.equal("feat/other", base_entries[2].value)
+		assert.are.equal("main", captured_opts.base)
+	end)
+
+	it("derives the default title from the selected base branch", function()
+		local subject_base
+		helpers.mock(diff, "get_first_commit_subject", function(base)
+			subject_base = base
+			return "From " .. base
+		end)
+		helpers.mock(pr, "select_base_branch", function(_, callback)
+			callback("feat/other")
+		end)
+		pr.create()
+		assert.are.equal("feat/other", subject_base)
+		assert.are.same({ "From feat/other" }, captured_title_lines)
+		assert.are.equal("feat/other", captured_opts.base)
+	end)
+
+	it("aborts without opening the float when the base picker is cancelled", function()
+		helpers.mock(pr, "select_base_branch", function(_, callback)
+			callback(nil)
+		end)
+		pr.create()
+		assert.is_nil(captured_opts)
+		assert.is_nil(captured_body_lines)
+	end)
+
+	it("skips the base picker and lets gh choose when there are no candidates", function()
+		helpers.mock(diff, "get_default_branch", function()
+			return nil
+		end)
+		helpers.mock(diff, "get_remote_branches", function()
+			return {}
+		end)
+		pr.create()
+		assert.is_nil(base_callback)
+		assert.is_nil(captured_opts.base)
+		assert.is_nil(captured_title_lines)
+		assert.are.same({ "" }, captured_body_lines)
+	end)
+
+	it("offers a locally resolved default branch when there are no remote branches", function()
+		-- remote-less repo: get_default_branch falls back to a local main, which
+		-- is still offered so the default title keeps its commit range
+		local subject_base
+		helpers.mock(diff, "get_first_commit_subject", function(base)
+			subject_base = base
+			return "Local subject"
+		end)
+		helpers.mock(diff, "get_remote_branches", function()
+			return {}
+		end)
+		pr.create()
+		assert.are.equal(1, #base_entries)
+		assert.are.equal("main", base_entries[1].value)
+		assert.are.equal("main", captured_opts.base)
+		assert.are.equal("main", subject_base)
+		assert.are.same({ "Local subject" }, captured_title_lines)
+	end)
+
+	it("still offers remote branches (without a default marker) when the default branch is unknown", function()
 		helpers.mock(diff, "get_default_branch", function()
 			return nil
 		end)
 		pr.create()
-		assert.is_nil(captured_title_lines)
-		assert.are.same({ "" }, captured_body_lines)
+		assert.are.equal("feat/other", base_entries[1].value)
+		assert.is_false(base_entries[1].is_default)
+		assert.are.equal("feat/other", captured_opts.base)
+		assert.are.same({ "Initial commit message" }, captured_title_lines)
 	end)
 
 	it("passes nil title when first commit subject is nil", function()
@@ -81,14 +166,11 @@ describe("create passes default title to open_pr_float", function()
 
 	it("wires on_discard_draft to clear the session draft when opened from the draft", function()
 		pr.save_draft({ "Draft title" }, { "Draft body" })
-		local captured_opts
-		helpers.mock(pr, "open_pr_float", function(_, _, opts)
-			captured_opts = opts
-		end)
 
 		pr.create()
 
 		assert.is_true(captured_opts.from_draft)
+		assert.are.equal("main", captured_opts.base)
 		captured_opts.on_discard_draft()
 		assert.is_nil(pr.get_draft())
 	end)
@@ -778,7 +860,7 @@ describe("create submit draft cleanup", function()
 
 	it("keeps a session draft saved while the create request is in flight", function()
 		local finish_create
-		helpers.mock(gh, "create_draft_pr", function(_, _, _, callback)
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
 			finish_create = callback
 		end)
 
@@ -798,7 +880,7 @@ describe("create submit draft cleanup", function()
 
 	it("clears the draft after success when nothing was saved in flight", function()
 		local finish_create
-		helpers.mock(gh, "create_draft_pr", function(_, _, _, callback)
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
 			finish_create = callback
 		end)
 
@@ -808,6 +890,125 @@ describe("create submit draft cleanup", function()
 
 		finish_create(nil, { url = "https://github.com/o/r/pull/1" })
 		assert.is_nil(pr.get_draft())
+	end)
+
+	it("passes opts.base to gh.create_draft_pr on submit", function()
+		local captured_base = "unset"
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, base, callback)
+			captured_base = base
+			callback(nil, { url = "https://github.com/o/r/pull/1" })
+		end)
+
+		pr.open_pr_float({ "t" }, { "b" }, { base = "develop" })
+		get_cr_callback(vim.api.nvim_get_current_buf())()
+		assert.are.equal("develop", captured_base)
+	end)
+
+	it("passes nil base to gh.create_draft_pr when opts.base is absent", function()
+		local captured_base = "unset"
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, base, callback)
+			captured_base = base
+			callback(nil, { url = "https://github.com/o/r/pull/1" })
+		end)
+
+		pr.open_pr_float({ "t" }, { "b" }, {})
+		get_cr_callback(vim.api.nvim_get_current_buf())()
+		assert.is_nil(captured_base)
+	end)
+end)
+
+describe("build_footer_text", function()
+	it("shows the base branch in create mode", function()
+		assert.are.equal(" <CR> create draft → main | q cancel ", pr.build_footer_text("create", false, "main"))
+	end)
+
+	it("omits the base when nil or empty", function()
+		assert.are.equal(" <CR> create draft | q cancel ", pr.build_footer_text("create", false, nil))
+		assert.are.equal(" <CR> create draft | q cancel ", pr.build_footer_text("create", false, ""))
+	end)
+
+	it("appends the draft-restored hint", function()
+		assert.are.equal(
+			" <CR> create draft → develop | q cancel (draft restored) ",
+			pr.build_footer_text("create", true, "develop")
+		)
+	end)
+
+	it("ignores the base in edit mode", function()
+		assert.are.equal(" <CR> update | q cancel ", pr.build_footer_text("edit", false, "main"))
+		assert.are.equal(" <CR> update | q cancel (draft restored) ", pr.build_footer_text("edit", true, nil))
+	end)
+end)
+
+describe("build_base_branch_entries", function()
+	it("puts the default branch first with a marker and keeps the rest in order", function()
+		local entries = pr.build_base_branch_entries({ "feat/a", "main", "release" }, "main")
+		assert.are.same({
+			{ display = "main (default)", value = "main", is_default = true },
+			{ display = "feat/a", value = "feat/a", is_default = false },
+			{ display = "release", value = "release", is_default = false },
+		}, entries)
+	end)
+
+	it("lists a default branch missing from the branch list", function()
+		local entries = pr.build_base_branch_entries({ "feat/a" }, "main")
+		assert.are.same({ "main", "feat/a" }, { entries[1].value, entries[2].value })
+		assert.is_true(entries[1].is_default)
+	end)
+
+	it("returns the branches unchanged when there is no default branch", function()
+		local entries = pr.build_base_branch_entries({ "feat/a", "main" }, nil)
+		assert.are.same({ "feat/a", "main" }, { entries[1].value, entries[2].value })
+		assert.is_false(entries[1].is_default)
+		assert.are.equal("feat/a", entries[1].display)
+	end)
+
+	it("returns an empty list when there are no candidates", function()
+		assert.are.same({}, pr.build_base_branch_entries({}, nil))
+		assert.are.same({}, pr.build_base_branch_entries(nil, ""))
+	end)
+end)
+
+describe("select_base_branch (vim.ui.select fallback)", function()
+	local orig_select
+
+	before_each(function()
+		orig_select = vim.ui.select
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+		helpers.cleanup()
+	end)
+
+	it("lists entry displays and maps the chosen index back to the branch name", function()
+		local captured_items, captured_prompt
+		vim.ui.select = function(items, sopts, on_choice)
+			captured_items = items
+			captured_prompt = sopts.prompt
+			on_choice(items[2], 2)
+		end
+		local selected = "unset"
+		pr.select_base_branch({
+			{ display = "main (default)", value = "main", is_default = true },
+			{ display = "develop", value = "develop", is_default = false },
+		}, function(value)
+			selected = value
+		end)
+		assert.are.same({ "main (default)", "develop" }, captured_items)
+		assert.are.equal("Select base branch:", captured_prompt)
+		assert.are.equal("develop", selected)
+	end)
+
+	it("passes nil to the callback on cancel", function()
+		vim.ui.select = function(_, _, on_choice)
+			on_choice(nil, nil)
+		end
+		local selected = "unset"
+		pr.select_base_branch({ { display = "main (default)", value = "main", is_default = true } }, function(value)
+			selected = value
+		end)
+		assert.is_nil(selected)
 	end)
 end)
 

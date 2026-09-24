@@ -478,7 +478,7 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			captured_args = args
 			callback(nil, "https://github.com/o/r/pull/1\n")
 		end)
-		gh.create_draft_pr("t", "b", { "./a.png", "./b.mp4" }, function() end)
+		gh.create_draft_pr("t", "b", { "./a.png", "./b.mp4" }, nil, function() end)
 		assert.are.same({
 			"pr",
 			"create",
@@ -500,9 +500,32 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			captured_args = args
 			callback(nil, "")
 		end)
-		gh.create_draft_pr("t", "b", nil, function() end)
+		gh.create_draft_pr("t", "b", nil, nil, function() end)
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
-		gh.create_draft_pr("t", "b", {}, function() end)
+		gh.create_draft_pr("t", "b", {}, nil, function() end)
+		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
+	end)
+
+	it("create_draft_pr passes --base before --attach when a base branch is given", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "https://github.com/o/r/pull/1\n")
+		end)
+		gh.create_draft_pr("t", "b", { "./a.png" }, "develop", function() end)
+		assert.are.same(
+			{ "pr", "create", "--draft", "--title", "t", "--body", "b", "--base", "develop", "--attach", "./a.png" },
+			captured_args
+		)
+	end)
+
+	it("create_draft_pr omits --base when base is nil or empty", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		gh.create_draft_pr("t", "b", nil, "", function() end)
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
 	end)
 

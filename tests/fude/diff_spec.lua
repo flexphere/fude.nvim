@@ -50,6 +50,22 @@ describe("parse_log_first_subject", function()
 	end)
 end)
 
+describe("parse_remote_branches", function()
+	it("returns branch names in order, skipping HEAD and blank lines", function()
+		local out = "HEAD\nmain\n\nfeat/foo\nrelease/1.2\n"
+		assert.are.same({ "main", "feat/foo", "release/1.2" }, diff.parse_remote_branches(out))
+	end)
+
+	it("returns an empty list for nil or empty output", function()
+		assert.are.same({}, diff.parse_remote_branches(nil))
+		assert.are.same({}, diff.parse_remote_branches(""))
+	end)
+
+	it("trims surrounding whitespace and CRLF", function()
+		assert.are.same({ "main", "dev" }, diff.parse_remote_branches("  main \r\ndev\r\n"))
+	end)
+end)
+
 describe("make_relative", function()
 	it("strips root prefix", function()
 		assert.are.equal("lua/foo.lua", diff.make_relative("/home/user/project/lua/foo.lua", "/home/user/project"))
