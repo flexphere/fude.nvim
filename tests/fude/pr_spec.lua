@@ -27,6 +27,15 @@ describe("create passes default title to open_pr_float", function()
 		helpers.mock(diff, "get_remote_branches", function()
 			return { "feat/other", "main" }
 		end)
+		helpers.mock(diff, "get_current_branch", function()
+			return "feat/me"
+		end)
+		helpers.mock(diff, "get_gh_stack_parent", function(_)
+			return nil
+		end)
+		helpers.mock(diff, "get_ancestor_branches", function(_)
+			return {}
+		end)
 		helpers.mock(diff, "get_first_commit_subject", function(_)
 			return "Initial commit message"
 		end)
@@ -60,6 +69,30 @@ describe("create passes default title to open_pr_float", function()
 		pr.create()
 		assert.are.same({ "Initial commit message" }, captured_title_lines)
 		assert.are.same({ "" }, captured_body_lines)
+	end)
+
+	it("wires the stack parent and ancestors from git right after the default branch", function()
+		local stack_arg, ancestor_arg
+		helpers.mock(diff, "get_remote_branches", function()
+			return { "feat/me", "zzz", "feat/base", "feat/parent", "main" }
+		end)
+		helpers.mock(diff, "get_gh_stack_parent", function(branch)
+			stack_arg = branch
+			return "feat/parent"
+		end)
+		helpers.mock(diff, "get_ancestor_branches", function(default_branch)
+			ancestor_arg = default_branch
+			return { "feat/parent", "feat/base" }
+		end)
+		pr.create()
+		assert.are.equal("feat/me", stack_arg)
+		assert.are.equal("main", ancestor_arg)
+		assert.are.same(
+			{ "main (default)", "feat/parent (stack parent)", "feat/base (ancestor)", "zzz" },
+			vim.tbl_map(function(e)
+				return e.display
+			end, base_entries)
+		)
 	end)
 
 	it("offers the default branch first and passes it as the float base", function()
@@ -966,6 +999,55 @@ describe("build_base_branch_entries", function()
 	it("returns an empty list when there are no candidates", function()
 		assert.are.same({}, pr.build_base_branch_entries({}, nil))
 		assert.are.same({}, pr.build_base_branch_entries(nil, ""))
+	end)
+
+	it("places related branches right after the default branch with relation markers", function()
+		local entries = pr.build_base_branch_entries({ "x", "anc2", "parent", "anc1", "main" }, "main", {
+			stack_parent = "parent",
+			ancestors = { "anc1", "anc2" },
+		})
+		assert.are.same(
+			{ "main (default)", "parent (stack parent)", "anc1 (ancestor)", "anc2 (ancestor)", "x" },
+			vim.tbl_map(function(e)
+				return e.display
+			end, entries)
+		)
+		assert.are.equal("stack parent", entries[2].relation)
+		assert.are.equal("ancestor", entries[3].relation)
+		assert.is_nil(entries[5].relation)
+	end)
+
+	it("labels a branch that is both stack parent and ancestor once, as stack parent", function()
+		local entries = pr.build_base_branch_entries({ "p", "main" }, "main", {
+			stack_parent = "p",
+			ancestors = { "p" },
+		})
+		assert.are.equal(2, #entries)
+		assert.are.equal("p (stack parent)", entries[2].display)
+	end)
+
+	it("skips related branches that are not on the remote", function()
+		local entries = pr.build_base_branch_entries({ "main", "x" }, "main", {
+			stack_parent = "unpushed",
+			ancestors = { "also-local" },
+		})
+		assert.are.same({ "main", "x" }, { entries[1].value, entries[2].value })
+		assert.are.equal(2, #entries)
+	end)
+
+	it("does not list the current branch", function()
+		local entries = pr.build_base_branch_entries({ "me", "main", "x" }, "main", {
+			current_branch = "me",
+			stack_parent = "me",
+			ancestors = { "me" },
+		})
+		assert.are.same({ "main", "x" }, { entries[1].value, entries[2].value })
+		assert.are.equal(2, #entries)
+	end)
+
+	it("does not treat the default branch as a related branch when it is the stack trunk", function()
+		local entries = pr.build_base_branch_entries({ "main", "x" }, "main", { stack_parent = "main" })
+		assert.are.same({ "main (default)", "x" }, { entries[1].display, entries[2].display })
 	end)
 end)
 
