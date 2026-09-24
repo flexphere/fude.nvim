@@ -529,6 +529,52 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
 	end)
 
+	it("get_open_pr_url returns the URL only for an open PR", function()
+		local captured_args
+		local response
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(response.err, response.data)
+		end)
+		local got = "unset"
+		local function lookup()
+			gh.get_open_pr_url("feat/a", function(_, url)
+				got = url
+			end)
+		end
+
+		response = { data = { state = "OPEN", url = "https://github.com/o/r/pull/1" } }
+		lookup()
+		assert.are.same({ "pr", "view", "feat/a", "--json", "url,state" }, captured_args)
+		assert.are.equal("https://github.com/o/r/pull/1", got)
+
+		response = { data = { state = "MERGED", url = "https://github.com/o/r/pull/1" } }
+		lookup()
+		assert.is_nil(got)
+
+		-- gh pr view exits non-zero when the branch has no PR
+		response = { err = "no pull requests found for branch" }
+		lookup()
+		assert.is_nil(got)
+	end)
+
+	it("link_stack runs gh stack link with the refs bottom to top", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		local done_err = "unset"
+		gh.link_stack({ "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" }, function(err)
+			done_err = err
+		end)
+		assert.are.same(
+			{ "stack", "link", "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" },
+			captured_args
+		)
+		assert.is_nil(done_err)
+	end)
+
 	it("edit_pr inserts the PR number before flags and appends --attach pairs", function()
 		local captured_args
 		helpers.mock(gh, "run", function(args, callback)
