@@ -343,7 +343,8 @@ end
 --- @param title_lines string[]|nil initial title lines (default: {""})
 --- @param body_lines string[]|nil initial body lines (default: {""})
 --- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...),
----   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun() }
+---   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun(),
+---   base: string|nil (create mode: base branch passed to `gh pr create --base`; nil lets gh choose) }
 function M.open_pr_float(title_lines, body_lines, opts)
 	title_lines = title_lines or { "" }
 	body_lines = body_lines or { "" }
@@ -381,18 +382,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	local lower_border = { "├", "─", "┤", "│", "╯", "─", "╰", "│" }
 
 	-- Determine footer text
-	local footer_text = opts.footer
-	if not footer_text then
-		if is_edit and opts.from_draft then
-			footer_text = " <CR> update | q cancel (draft restored) "
-		elseif is_edit then
-			footer_text = " <CR> update | q cancel "
-		elseif opts.from_draft then
-			footer_text = " <CR> create draft | q cancel (draft restored) "
-		else
-			footer_text = " <CR> create draft | q cancel "
-		end
-	end
+	local footer_text = opts.footer or M.build_footer_text(mode, opts.from_draft, opts.base)
 
 	-- Open title window (focused)
 	local title_win = vim.api.nvim_open_win(title_buf, true, {
@@ -530,7 +520,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 
 		local extracted = M.parse_body_attachments(parsed.body, expand_home)
-		gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, function(err, data)
+		gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, opts.base, function(err, data)
 			if err then
 				vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
 				return
@@ -658,84 +648,85 @@ function M.open_pr_float(title_lines, body_lines, opts)
 end
 
 --- Open the float from a draft selection.
+--- @param float_opts table|nil extra open_pr_float opts (e.g. { base = "main" })
 --- @private
-local function open_from_draft()
+local function open_from_draft(float_opts)
 	local d = M.get_draft()
 	if d then
 		-- "Discard & close" deletes the stored draft too, matching the edit
 		-- mode and comment input semantics. Opening from a template instead
 		-- leaves an unrelated stored draft alone (no on_discard_draft there).
-		M.open_pr_float(d.title_lines, d.body_lines, { from_draft = true, on_discard_draft = M.clear_draft })
+		local opts = vim.tbl_extend("force", float_opts or {}, { from_draft = true, on_discard_draft = M.clear_draft })
+		M.open_pr_float(d.title_lines, d.body_lines, opts)
 	end
 end
 
 --- Open the float from a template file.
 --- @param path string template file path
 --- @param default_title string|nil default title from first commit
+--- @param float_opts table|nil extra open_pr_float opts (e.g. { base = "main" })
 --- @private
-local function open_from_template(path, default_title)
+local function open_from_template(path, default_title, float_opts)
 	local lines = vim.fn.readfile(path)
 	local title_lines = default_title and { default_title } or nil
-	M.open_pr_float(title_lines, lines)
+	M.open_pr_float(title_lines, lines, float_opts)
 end
 
---- Get default PR title from first commit message (lazy helper).
+--- Get default PR title from the first commit not on the base branch (lazy helper).
+--- @param base string|nil base branch; nil yields nil (no commit range to derive the title from)
 --- @return string|nil default_title
-local function get_default_title()
-	local default_branch = diff.get_default_branch()
-	if default_branch then
-		return diff.get_first_commit_subject(default_branch)
+local function get_default_title(base)
+	if base then
+		return diff.get_first_commit_subject(base)
 	end
 	return nil
 end
 
---- Show PR creation flow: find templates, select if multiple, open float.
---- When a draft exists, it is shown as a selectable option alongside templates.
-function M.create()
-	local repo_root = diff.get_repo_root()
-	if not repo_root then
-		vim.notify("fude.nvim: Not in a git repository", vim.log.levels.ERROR)
-		return
+--- Build the footer for the two-pane PR float when no explicit footer is given.
+--- Create mode shows the base branch so the user can confirm the target picked
+--- in the preceding picker before submitting.
+--- @param mode string "create"|"edit"
+--- @param from_draft boolean|nil whether the float was opened from a restored draft
+--- @param base string|nil base branch (create mode only)
+--- @return string footer_text
+function M.build_footer_text(mode, from_draft, base)
+	local action = mode == "edit" and "<CR> update" or "<CR> create draft"
+	if mode ~= "edit" and base and base ~= "" then
+		action = action .. " → " .. base
 	end
-
-	local templates = M.find_templates()
-	local has_draft = M.get_draft() ~= nil
-	local total = #templates + (has_draft and 1 or 0)
-
-	if total == 0 then
-		-- No templates, no draft: open with empty body
-		local default_title = get_default_title()
-		local title_lines = default_title and { default_title } or nil
-		M.open_pr_float(title_lines, { "" })
-	elseif total == 1 and not has_draft then
-		-- Single template, no draft: read and open
-		local default_title = get_default_title()
-		open_from_template(templates[1], default_title)
-	elseif total == 1 and has_draft then
-		-- Only draft, no templates: open from draft
-		open_from_draft()
-	else
-		-- Multiple options: show picker with draft + templates
-		local entries = M.build_picker_entries(templates, has_draft)
-		M.select_template(entries, function(selected)
-			if not selected then
-				return
-			end
-			if selected == "__draft__" then
-				open_from_draft()
-			else
-				-- Lazy: only fetch default title when template is selected
-				local default_title = get_default_title()
-				open_from_template(selected, default_title)
-			end
-		end)
-	end
+	local cancel = from_draft and "q cancel (draft restored)" or "q cancel"
+	return " " .. action .. " | " .. cancel .. " "
 end
 
---- Show template/draft picker using Telescope or vim.ui.select.
---- @param entries table[] entries from build_picker_entries
---- @param callback fun(selected: string|nil) receives entry value or nil
-function M.select_template(entries, callback)
+--- Build picker entries for base branch selection.
+--- The default branch comes first (so pressing <CR> in a fresh picker accepts it)
+--- with a "(default)" marker, followed by the remaining branches in the given order.
+--- A default branch missing from `branches` is still listed first, since
+--- `get_default_branch` can resolve it from a source other than the remote refs.
+--- @param branches string[] candidate branch names (e.g. from diff.get_remote_branches)
+--- @param default_branch string|nil repository default branch
+--- @return table[] entries { display: string, value: string, is_default: boolean }
+function M.build_base_branch_entries(branches, default_branch)
+	local entries = {}
+	if default_branch and default_branch ~= "" then
+		table.insert(entries, { display = default_branch .. " (default)", value = default_branch, is_default = true })
+	end
+	for _, name in ipairs(branches or {}) do
+		if name ~= default_branch then
+			table.insert(entries, { display = name, value = name, is_default = false })
+		end
+	end
+	return entries
+end
+
+--- Show an entry picker using Telescope when available, otherwise vim.ui.select.
+--- Telescope preselects the first result, so callers order entries default-first.
+--- @param entries table[] entries { display: string, value: string, ... }
+--- @param opts table { prompt: string (vim.ui.select prompt), title: string (Telescope prompt title),
+---   make_previewer: (fun(): table)|nil (Telescope only; called lazily so the fallback path never requires Telescope) }
+--- @param callback fun(selected: string|nil) receives entry value or nil on cancel
+--- @private
+local function pick_entry(entries, opts, callback)
 	local has_telescope, pickers = pcall(require, "telescope.pickers")
 	if not has_telescope then
 		-- Fallback to vim.ui.select
@@ -744,7 +735,7 @@ function M.select_template(entries, callback)
 			table.insert(items, e.display)
 		end
 		vim.ui.select(items, {
-			prompt = "Select PR template:",
+			prompt = opts.prompt,
 		}, function(_, idx)
 			if idx then
 				callback(entries[idx].value)
@@ -759,11 +750,10 @@ function M.select_template(entries, callback)
 	local conf = require("telescope.config").values
 	local actions = require("telescope.actions")
 	local action_state = require("telescope.actions.state")
-	local previewers = require("telescope.previewers")
 
 	pickers
 		.new({}, {
-			prompt_title = "PR Templates",
+			prompt_title = opts.title,
 			finder = finders.new_table({
 				results = entries,
 				entry_maker = function(entry)
@@ -776,7 +766,110 @@ function M.select_template(entries, callback)
 				end,
 			}),
 			sorter = conf.generic_sorter({}),
-			previewer = previewers.new_buffer_previewer({
+			previewer = opts.make_previewer and opts.make_previewer() or nil,
+			attach_mappings = function(prompt_bufnr)
+				actions.select_default:replace(function()
+					actions.close(prompt_bufnr)
+					local selection = action_state.get_selected_entry()
+					if selection then
+						callback(selection.value)
+					else
+						callback(nil)
+					end
+				end)
+				return true
+			end,
+		})
+		:find()
+end
+
+--- Show the base branch picker (Telescope or vim.ui.select).
+--- @param entries table[] entries from build_base_branch_entries
+--- @param callback fun(selected: string|nil) receives the branch name or nil on cancel
+function M.select_base_branch(entries, callback)
+	pick_entry(entries, {
+		prompt = "Select base branch:",
+		title = "Base Branch",
+	}, callback)
+end
+
+--- Continue the creation flow after the base branch is settled: find templates,
+--- select if multiple, open the float.
+--- When a draft exists, it is shown as a selectable option alongside templates.
+--- @param base string|nil base branch (nil: gh chooses)
+--- @private
+local function create_with_base(base)
+	local templates = M.find_templates()
+	local has_draft = M.get_draft() ~= nil
+	local total = #templates + (has_draft and 1 or 0)
+	local float_opts = { base = base }
+
+	if total == 0 then
+		-- No templates, no draft: open with empty body
+		local default_title = get_default_title(base)
+		local title_lines = default_title and { default_title } or nil
+		M.open_pr_float(title_lines, { "" }, float_opts)
+	elseif total == 1 and not has_draft then
+		-- Single template, no draft: read and open
+		local default_title = get_default_title(base)
+		open_from_template(templates[1], default_title, float_opts)
+	elseif total == 1 and has_draft then
+		-- Only draft, no templates: open from draft
+		open_from_draft(float_opts)
+	else
+		-- Multiple options: show picker with draft + templates
+		local entries = M.build_picker_entries(templates, has_draft)
+		M.select_template(entries, function(selected)
+			if not selected then
+				return
+			end
+			if selected == "__draft__" then
+				open_from_draft(float_opts)
+			else
+				-- Lazy: only fetch default title when template is selected
+				local default_title = get_default_title(base)
+				open_from_template(selected, default_title, float_opts)
+			end
+		end)
+	end
+end
+
+--- Show PR creation flow: pick the base branch, then templates, then open the float.
+--- The base picker lists remote branches with the default branch preselected
+--- (a default branch resolved from local refs is listed even without a remote,
+--- so the default title keeps its commit range). It is skipped only when there
+--- are no candidates at all, in which case gh chooses the base as before.
+function M.create()
+	local repo_root = diff.get_repo_root()
+	if not repo_root then
+		vim.notify("fude.nvim: Not in a git repository", vim.log.levels.ERROR)
+		return
+	end
+
+	local default_branch = diff.get_default_branch()
+	local entries = M.build_base_branch_entries(diff.get_remote_branches(), default_branch)
+	if #entries == 0 then
+		create_with_base(nil)
+		return
+	end
+	M.select_base_branch(entries, function(base)
+		if not base then
+			return
+		end
+		create_with_base(base)
+	end)
+end
+
+--- Show template/draft picker using Telescope or vim.ui.select.
+--- @param entries table[] entries from build_picker_entries
+--- @param callback fun(selected: string|nil) receives entry value or nil
+function M.select_template(entries, callback)
+	pick_entry(entries, {
+		prompt = "Select PR template:",
+		title = "PR Templates",
+		make_previewer = function()
+			local previewers = require("telescope.previewers")
+			return previewers.new_buffer_previewer({
 				title = "Preview",
 				get_buffer_by_name = function(_, entry)
 					return entry.value
@@ -803,21 +896,9 @@ function M.select_template(entries, callback)
 					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 					vim.bo[self.state.bufnr].filetype = "markdown"
 				end,
-			}),
-			attach_mappings = function(prompt_bufnr)
-				actions.select_default:replace(function()
-					actions.close(prompt_bufnr)
-					local selection = action_state.get_selected_entry()
-					if selection then
-						callback(selection.value)
-					else
-						callback(nil)
-					end
-				end)
-				return true
-			end,
-		})
-		:find()
+			})
+		end,
+	}, callback)
 end
 
 --- Edit the current PR's title and body.

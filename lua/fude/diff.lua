@@ -156,6 +156,45 @@ function M.get_default_branch()
 	return nil
 end
 
+--- Parse `git for-each-ref --format=%(refname:strip=3) refs/remotes/origin/` output
+--- into branch names, preserving order. Skips blank lines and the symbolic `HEAD`
+--- ref (origin/HEAD is a pointer to the default branch, not a branch itself).
+--- @param output string|nil for-each-ref output
+--- @return string[] branch names (e.g. { "main", "feat/foo" })
+function M.parse_remote_branches(output)
+	local branches = {}
+	if not output or output == "" then
+		return branches
+	end
+	for _, line in ipairs(vim.split(output, "\n", { plain = true })) do
+		local name = vim.trim(line)
+		if name ~= "" and name ~= "HEAD" then
+			table.insert(branches, name)
+		end
+	end
+	return branches
+end
+
+--- Get the branch names on the `origin` remote, most recently committed first.
+--- Uses the local remote-tracking refs (no network), so the list is as fresh as
+--- the last `git fetch`.
+--- @return string[] branch names without the `origin/` prefix (empty when there is no remote)
+function M.get_remote_branches()
+	local result = vim
+		.system({
+			"git",
+			"for-each-ref",
+			"--sort=-committerdate",
+			"--format=%(refname:strip=3)",
+			"refs/remotes/origin/",
+		}, { text = true })
+		:wait()
+	if result.code ~= 0 then
+		return {}
+	end
+	return M.parse_remote_branches(result.stdout)
+end
+
 --- Get the current branch name (nil when detached HEAD).
 --- @return string|nil branch name
 function M.get_current_branch()

@@ -611,9 +611,13 @@ end
 --- @param title string PR title
 --- @param body string PR body
 --- @param attachments string[]|nil local file paths to upload via --attach (requires gh >= 2.99.0)
+--- @param base string|nil base branch name; nil lets gh pick the repository default
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.create_draft_pr(title, body, attachments, callback)
+function M.create_draft_pr(title, body, attachments, base, callback)
 	local args = { "pr", "create", "--draft", "--title", title, "--body", body }
+	if base and base ~= "" then
+		vim.list_extend(args, { "--base", base })
+	end
 	for _, path in ipairs(attachments or {}) do
 		vim.list_extend(args, { "--attach", path })
 	end
