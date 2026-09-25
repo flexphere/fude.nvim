@@ -299,6 +299,51 @@ describe("comments single comment submit", function()
 			assert.is_nil(drafts.get(key))
 		end)
 
+		it(ep.name .. " keeps a draft re-saved while the single comment is in flight", function()
+			local key = drafts.current_key(ep.kind, "single_test.lua", 1, 1)
+			drafts.set(key, "old draft")
+			local finish
+			helpers.mock(sync, "create_single_comment", function(_, _, _, _, callback)
+				finish = callback
+			end)
+			helpers.mock(ui, "open_comment_input", function(callback, _opts)
+				callback("single body", "single")
+			end)
+
+			ep.run(false)
+			drafts.set(key, "newer draft")
+			finish(nil)
+			assert.equals("newer draft", drafts.get(key))
+		end)
+
+		it(ep.name .. " keeps a draft re-saved while the pending save is in flight", function()
+			local key = drafts.current_key(ep.kind, "single_test.lua", 1, 1)
+			drafts.set(key, "old draft")
+			local finish
+			helpers.mock(sync, "sync_pending_review", function(callback)
+				finish = callback
+			end)
+			helpers.mock(ui, "open_comment_input", function(callback, _opts)
+				callback("review body", "review")
+			end)
+
+			local saved_notified = false
+			helpers.mock(vim, "notify", function(msg)
+				if msg:find("saved", 1, true) then
+					saved_notified = true
+				end
+			end)
+
+			ep.run(false)
+			drafts.set(key, "newer draft")
+			finish(nil)
+			-- The success path runs inside vim.schedule; its notify is the sync point.
+			assert.is_true(helpers.wait_for(function()
+				return saved_notified
+			end))
+			assert.equals("newer draft", drafts.get(key))
+		end)
+
 		it(ep.name .. " keeps the draft when the single comment fails", function()
 			local key = drafts.current_key(ep.kind, "single_test.lua", 1, 1)
 			drafts.set(key, "old draft")

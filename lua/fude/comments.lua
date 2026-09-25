@@ -150,12 +150,15 @@ end
 --- @param draft_key string|nil local draft key to remove on success
 --- @param label string notification noun ("Comment" / "Suggestion")
 local function post_single_comment(rel_path, start_line, end_line, body, draft_key, label)
+	-- The input is already closed, so the same location can be reopened and a
+	-- new draft saved while the request is in flight; keep that newer draft.
+	local draft_snapshot = drafts.get(draft_key)
 	sync.create_single_comment(rel_path, start_line, end_line, body, function(err)
 		if err then
 			vim.notify("fude.nvim: Failed to post " .. label:lower() .. ": " .. err, vim.log.levels.ERROR)
 			return
 		end
-		drafts.remove(draft_key)
+		drafts.remove_if_unchanged(draft_key, draft_snapshot)
 		ui.refresh_extmarks()
 		vim.notify("fude.nvim: " .. label .. " posted", vim.log.levels.INFO)
 	end)
@@ -220,6 +223,7 @@ function M.create_comment(is_visual)
 			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
+			local draft_snapshot = drafts.get(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -228,8 +232,9 @@ function M.create_comment(is_visual)
 						-- Remove from pending_comments on failure
 						state.pending_comments[pending_key] = nil
 					else
-						-- Drop the local draft only after the pending save succeeds.
-						drafts.remove(draft_key)
+						-- Drop the local draft only after the pending save succeeds, and
+						-- keep one re-saved while the request was in flight.
+						drafts.remove_if_unchanged(draft_key, draft_snapshot)
 						vim.notify("fude.nvim: Pending comment saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()
@@ -670,6 +675,7 @@ function M.suggest_change(is_visual)
 			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
+			local draft_snapshot = drafts.get(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -677,8 +683,9 @@ function M.suggest_change(is_visual)
 						vim.notify("fude.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
 						state.pending_comments[pending_key] = nil
 					else
-						-- Drop the local draft only after the pending save succeeds.
-						drafts.remove(draft_key)
+						-- Drop the local draft only after the pending save succeeds, and
+						-- keep one re-saved while the request was in flight.
+						drafts.remove_if_unchanged(draft_key, draft_snapshot)
 						vim.notify("fude.nvim: Pending suggestion saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()
