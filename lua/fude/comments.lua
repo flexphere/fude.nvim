@@ -21,6 +21,7 @@ M.merge_pending_into_comments = data.merge_pending_into_comments
 M.pending_comments_to_array = data.pending_comments_to_array
 M.get_comment_line_range = data.get_comment_line_range
 M.get_reply_target_id = data.get_reply_target_id
+M.build_submit_choices = data.build_submit_choices
 
 -- Re-export sync functions (facade)
 M.submit_as_review = sync.submit_as_review
@@ -121,6 +122,48 @@ local function create_local_comment(buf, rel_path, start_line, end_line, initial
 	})
 end
 
+--- Ask how a new GitHub line comment should be posted (pending review or single).
+--- Evaluated on submit rather than on open so a pending review detected while
+--- the input was open (e.g. by auto-reload) removes the single choice.
+--- @param cb fun(kind: string|nil) "review" | "single", or nil when cancelled
+local function pick_submit_kind(cb)
+	local choices = data.build_submit_choices(sync.has_pending_review())
+	if #choices == 1 then
+		cb(choices[1].kind)
+		return
+	end
+	vim.ui.select(choices, {
+		prompt = "Post comment as:",
+		format_item = function(item)
+			return item.label
+		end,
+	}, function(choice)
+		cb(choice and choice.kind or nil)
+	end)
+end
+
+--- Post a single (non-review) comment and drop its draft on success.
+--- @param rel_path string repo-relative path
+--- @param start_line number
+--- @param end_line number
+--- @param body string comment body
+--- @param draft_key string|nil local draft key to remove on success
+--- @param label string notification noun ("Comment" / "Suggestion")
+local function post_single_comment(rel_path, start_line, end_line, body, draft_key, label)
+	-- The input is already closed, so the same location can be reopened and a
+	-- new draft saved while the request is in flight; keep that newer draft.
+	local draft_snapshot = drafts.get(draft_key)
+	sync.create_single_comment(rel_path, start_line, end_line, body, function(err)
+		if err then
+			vim.notify("fude.nvim: Failed to post " .. label:lower() .. ": " .. err, vim.log.levels.ERROR)
+			return
+		end
+		drafts.remove_if_unchanged(draft_key, draft_snapshot)
+		ui.refresh_extmarks()
+		vim.notify("fude.nvim: " .. label .. " posted", vim.log.levels.INFO)
+	end)
+end
+
 --- Create a new comment on the current line or visual selection.
 --- @param is_visual boolean whether the comment is for a visual selection
 function M.create_comment(is_visual)
@@ -174,10 +217,13 @@ function M.create_comment(is_visual)
 			ui.refresh_extmarks()
 			return
 		end
-		if comment_body then
-			-- <CR> pressed: save as pending review on GitHub
+		if comment_body and action == "single" then
+			post_single_comment(rel_path, start_line, end_line, comment_body, draft_key, "Comment")
+		elseif comment_body then
+			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
+			local draft_snapshot = drafts.get(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -186,8 +232,9 @@ function M.create_comment(is_visual)
 						-- Remove from pending_comments on failure
 						state.pending_comments[pending_key] = nil
 					else
-						-- Drop the local draft only after the pending save succeeds.
-						drafts.remove(draft_key)
+						-- Drop the local draft only after the pending save succeeds, and
+						-- keep one re-saved while the request was in flight.
+						drafts.remove_if_unchanged(draft_key, draft_snapshot)
 						vim.notify("fude.nvim: Pending comment saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()
@@ -198,6 +245,7 @@ function M.create_comment(is_visual)
 	end, {
 		initial_lines = initial_lines,
 		allow_draft = drafts.enabled(),
+		pick_submit_kind = pick_submit_kind,
 	})
 end
 
@@ -621,10 +669,13 @@ function M.suggest_change(is_visual)
 			ui.refresh_extmarks()
 			return
 		end
-		if comment_body then
-			-- <CR> pressed: save as pending review on GitHub
+		if comment_body and action == "single" then
+			post_single_comment(rel_path, start_line, end_line, comment_body, draft_key, "Suggestion")
+		elseif comment_body then
+			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
+			local draft_snapshot = drafts.get(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -632,8 +683,9 @@ function M.suggest_change(is_visual)
 						vim.notify("fude.nvim: Failed to save pending: " .. err, vim.log.levels.ERROR)
 						state.pending_comments[pending_key] = nil
 					else
-						-- Drop the local draft only after the pending save succeeds.
-						drafts.remove(draft_key)
+						-- Drop the local draft only after the pending save succeeds, and
+						-- keep one re-saved while the request was in flight.
+						drafts.remove_if_unchanged(draft_key, draft_snapshot)
 						vim.notify("fude.nvim: Pending suggestion saved", vim.log.levels.INFO)
 					end
 					ui.refresh_extmarks()
@@ -646,6 +698,7 @@ function M.suggest_change(is_visual)
 		title = " Suggest Change ",
 		cursor_pos = cursor_pos,
 		allow_draft = drafts.enabled(),
+		pick_submit_kind = pick_submit_kind,
 	})
 end
 

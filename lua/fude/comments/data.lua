@@ -229,6 +229,19 @@ function M.build_review_comment_object(path, start_line, end_line, body)
 	return comment
 end
 
+--- Build the submit choices offered when saving a new line comment.
+--- GitHub rejects single (non-review) comments while the user has a pending
+--- review, so only the review choice is returned in that case.
+--- @param has_pending_review boolean whether a pending review exists
+--- @return table[] choices { label = string, kind = "review"|"single" }
+function M.build_submit_choices(has_pending_review)
+	local review = { label = "Start a review (pending)", kind = "review" }
+	if has_pending_review then
+		return { review }
+	end
+	return { { label = "Add single comment (post now)", kind = "single" }, review }
+end
+
 --- Merge pending comments into existing comments for immediate display.
 --- Creates synthetic comment objects from pending_comments and combines with existing ones.
 --- Used to bridge the gap between sync_pending_review success and fetch_comments completion.

@@ -239,8 +239,10 @@ function M.select_review_event(callback)
 end
 
 --- Open a floating window to compose a comment.
---- @param callback fun(body: string|nil) called with comment body or nil if cancelled
---- @param opts table|nil optional settings: initial_lines, title, footer, cursor_pos
+--- @param callback fun(body: string|nil, action: string) called with comment body or nil if cancelled
+--- @param opts table|nil optional settings: initial_lines, title, footer, cursor_pos,
+---   pick_submit_kind (fun(cb: fun(kind: string|nil))): asked on <CR> with a non-empty
+---   body; cb(kind) closes the input and passes kind as the action, cb(nil) keeps it open
 function M.open_comment_input(callback, opts)
 	opts = opts or {}
 	local initial_lines = opts.initial_lines or { "" }
@@ -292,9 +294,9 @@ function M.open_comment_input(callback, opts)
 		if not callback then
 			return
 		end
-		if action == "submit" then
+		if action == "submit" or action == "review" or action == "single" then
 			local body = vim.trim(text)
-			callback(body ~= "" and body or nil, "submit")
+			callback(body ~= "" and body or nil, action)
 		elseif action == "draft" then
 			callback(text, "draft")
 		else
@@ -303,7 +305,17 @@ function M.open_comment_input(callback, opts)
 	end
 
 	vim.keymap.set("n", "<CR>", function()
-		finish("submit")
+		local body = vim.trim(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"))
+		if not opts.pick_submit_kind or body == "" then
+			finish("submit")
+			return
+		end
+		-- Ask before closing so cancelling the choice keeps the input open.
+		opts.pick_submit_kind(function(kind)
+			if kind and vim.api.nvim_win_is_valid(win) then
+				finish(kind)
+			end
+		end)
 	end, { buffer = buf, desc = "Save" })
 
 	local function close_input()

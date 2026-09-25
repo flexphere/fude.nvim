@@ -367,6 +367,61 @@ function M.sync_pending_review(callback)
 	end
 end
 
+--- Whether the user has (or is creating) a pending review.
+--- pending_comments is filled before the first sync_pending_review round-trip
+--- sets pending_review_id, so both are checked to cover that window.
+--- @return boolean
+function M.has_pending_review()
+	local state = config.state
+	return state.pending_review_id ~= nil or next(state.pending_comments or {}) ~= nil
+end
+
+--- Post a single (non-review) line comment that is published immediately.
+--- GitHub rejects this while the user has a pending review, so it fails
+--- early instead of waiting for the 422.
+--- @param path string repo-relative file path
+--- @param start_line number
+--- @param end_line number
+--- @param body string comment body
+--- @param callback fun(err: string|nil)
+function M.create_single_comment(path, start_line, end_line, body, callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active")
+		return
+	end
+	if M.has_pending_review() then
+		callback("Cannot post a single comment while a pending review exists")
+		return
+	end
+
+	local sha, sha_err = gh.get_head_sha()
+	if not sha then
+		callback(sha_err or "Failed to get HEAD SHA")
+		return
+	end
+
+	local captured_state = state
+	local function on_done(err, _)
+		if err then
+			callback(err)
+			return
+		end
+		-- The comment is on GitHub either way, so the caller still hears about
+		-- it; only the refresh is skipped when the session changed meanwhile.
+		callback(nil)
+		if config.state == captured_state then
+			fetch_comments()
+		end
+	end
+
+	if start_line == end_line then
+		gh.create_comment(state.pr_number, sha, path, end_line, body, on_done)
+	else
+		gh.create_comment_range(state.pr_number, sha, path, start_line, end_line, body, on_done)
+	end
+end
+
 --- Reply to a review comment on GitHub.
 --- When a pending review exists, the REST `pulls/{pr}/comments/{id}/replies`
 --- endpoint fails with 422, so we use the GraphQL `addPullRequestReviewThreadReply`

@@ -2774,6 +2774,74 @@ describe("open_comment_input keymaps", function()
 		assert.is_true(lhs["q"], "q should be bound")
 		assert.is_true(lhs["<Esc>"], "<Esc> should be bound")
 	end)
+
+	local function open_with(lines, opts)
+		local calls = {}
+		ui.open_comment_input(function(body, action)
+			table.insert(calls, { body = body, action = action })
+		end, vim.tbl_extend("force", { initial_lines = lines }, opts or {}))
+		vim.cmd("stopinsert")
+		local win = vim.api.nvim_get_current_win()
+		return win, calls
+	end
+
+	local function press_cr(win)
+		local buf = vim.api.nvim_win_get_buf(win)
+		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			if m.lhs == "<CR>" then
+				m.callback()
+				return
+			end
+		end
+		error("<CR> is not mapped")
+	end
+
+	it("<CR> submits as 'submit' when pick_submit_kind is not given", function()
+		local win, calls = open_with({ "hello" })
+		press_cr(win)
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+		assert.same({ { body = "hello", action = "submit" } }, calls)
+	end)
+
+	it("<CR> passes the picked kind as the action", function()
+		local win, calls = open_with({ "hello" }, {
+			pick_submit_kind = function(cb)
+				cb("single")
+			end,
+		})
+		press_cr(win)
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+		assert.same({ { body = "hello", action = "single" } }, calls)
+	end)
+
+	it("<CR> keeps the input open when the choice is cancelled", function()
+		local win, calls = open_with({ "hello" }, {
+			pick_submit_kind = function(cb)
+				cb(nil)
+			end,
+		})
+		press_cr(win)
+		local still_open = vim.api.nvim_win_is_valid(win)
+		local is_current = vim.api.nvim_get_current_win() == win
+		pcall(vim.api.nvim_win_close, win, true)
+		assert.is_true(still_open)
+		assert.is_true(is_current)
+		assert.same({}, calls)
+	end)
+
+	it("<CR> with an empty body skips the choice", function()
+		local picked = false
+		local win, calls = open_with({ "  " }, {
+			pick_submit_kind = function(cb)
+				picked = true
+				cb("single")
+			end,
+		})
+		press_cr(win)
+		assert.is_false(picked)
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+		assert.same({ { body = nil, action = "submit" } }, calls)
+	end)
 end)
 
 describe("format_comment_browser_list draft rendering", function()

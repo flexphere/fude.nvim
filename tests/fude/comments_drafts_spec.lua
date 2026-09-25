@@ -243,3 +243,187 @@ describe("comments local draft wiring", function()
 		assert.same({ "draft edit" }, captured.initial_lines)
 	end)
 end)
+
+describe("comments single comment submit", function()
+	local tmp
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.pr_number = 132
+		config.state.pr_url = "https://github.com/owner/repo/pull/132"
+		tmp = vim.fn.tempname()
+		vim.fn.mkdir(tmp, "p")
+		drafts._dir = tmp
+		helpers.mock_diff({ ["single_test.lua"] = "single_test.lua" })
+		helpers.mock(ui, "refresh_extmarks", function() end)
+		local buf = helpers.create_buf({ "line content" }, "single_test.lua")
+		vim.api.nvim_set_current_buf(buf)
+	end)
+
+	after_each(function()
+		drafts._dir = nil
+		vim.fn.delete(tmp, "rf")
+		helpers.cleanup()
+		config.setup({})
+	end)
+
+	-- create_comment and suggest_change wire the single path separately, so
+	-- every case runs against both entry points.
+	local entry_points = {
+		{ name = "create_comment", kind = "line", run = comments.create_comment },
+		{ name = "suggest_change", kind = "suggest", run = comments.suggest_change },
+	}
+
+	for _, ep in ipairs(entry_points) do
+		it(ep.name .. " posts a single comment without touching pending_comments", function()
+			local key = drafts.current_key(ep.kind, "single_test.lua", 1, 1)
+			drafts.set(key, "old draft")
+			local posted
+			helpers.mock(sync, "create_single_comment", function(path, s_line, e_line, body, callback)
+				posted = { path = path, start_line = s_line, end_line = e_line, body = body }
+				callback(nil)
+			end)
+			local synced = false
+			helpers.mock(sync, "sync_pending_review", function()
+				synced = true
+			end)
+			helpers.mock(ui, "open_comment_input", function(callback, _opts)
+				callback("single body", "single")
+			end)
+
+			ep.run(false)
+			assert.same({ path = "single_test.lua", start_line = 1, end_line = 1, body = "single body" }, posted)
+			assert.is_false(synced)
+			assert.same({}, config.state.pending_comments)
+			assert.is_nil(drafts.get(key))
+		end)
+
+		it(ep.name .. " keeps a draft re-saved while the single comment is in flight", function()
+			local key = drafts.current_key(ep.kind, "single_test.lua", 1, 1)
+			drafts.set(key, "old draft")
+			local finish
+			helpers.mock(sync, "create_single_comment", function(_, _, _, _, callback)
+				finish = callback
+			end)
+			helpers.mock(ui, "open_comment_input", function(callback, _opts)
+				callback("single body", "single")
+			end)
+
+			ep.run(false)
+			drafts.set(key, "newer draft")
+			finish(nil)
+			assert.equals("newer draft", drafts.get(key))
+		end)
+
+		it(ep.name .. " keeps a draft re-saved while the pending save is in flight", function()
+			local key = drafts.current_key(ep.kind, "single_test.lua", 1, 1)
+			drafts.set(key, "old draft")
+			local finish
+			helpers.mock(sync, "sync_pending_review", function(callback)
+				finish = callback
+			end)
+			helpers.mock(ui, "open_comment_input", function(callback, _opts)
+				callback("review body", "review")
+			end)
+
+			local saved_notified = false
+			helpers.mock(vim, "notify", function(msg)
+				if msg:find("saved", 1, true) then
+					saved_notified = true
+				end
+			end)
+
+			ep.run(false)
+			drafts.set(key, "newer draft")
+			finish(nil)
+			-- The success path runs inside vim.schedule; its notify is the sync point.
+			assert.is_true(helpers.wait_for(function()
+				return saved_notified
+			end))
+			assert.equals("newer draft", drafts.get(key))
+		end)
+
+		it(ep.name .. " keeps the draft when the single comment fails", function()
+			local key = drafts.current_key(ep.kind, "single_test.lua", 1, 1)
+			drafts.set(key, "old draft")
+			helpers.mock(sync, "create_single_comment", function(_, _, _, _, callback)
+				callback("Validation Failed")
+			end)
+			helpers.mock(ui, "open_comment_input", function(callback, _opts)
+				callback("single body", "single")
+			end)
+
+			ep.run(false)
+			assert.equals("old draft", drafts.get(key))
+		end)
+
+		it(ep.name .. " offers review and single choices when no pending review exists", function()
+			local opts_captured
+			helpers.mock(ui, "open_comment_input", function(_callback, opts)
+				opts_captured = opts
+			end)
+			local items
+			local on_choice
+			helpers.mock(vim.ui, "select", function(its, _, cb)
+				items = its
+				on_choice = cb
+			end)
+
+			ep.run(false)
+			local kinds = {}
+			opts_captured.pick_submit_kind(function(kind)
+				table.insert(kinds, kind or "nil")
+			end)
+			assert.same(
+				{ "single", "review" },
+				vim.tbl_map(function(i)
+					return i.kind
+				end, items)
+			)
+			on_choice(items[1])
+			on_choice(nil)
+			assert.same({ "single", "nil" }, kinds)
+		end)
+
+		it(ep.name .. " skips the choice while the first pending sync is in flight", function()
+			config.state.pending_comments = { ["other.lua:3:3"] = { body = "queued" } }
+			local opts_captured
+			helpers.mock(ui, "open_comment_input", function(_callback, opts)
+				opts_captured = opts
+			end)
+			local selected = false
+			helpers.mock(vim.ui, "select", function()
+				selected = true
+			end)
+
+			ep.run(false)
+			local picked
+			opts_captured.pick_submit_kind(function(kind)
+				picked = kind
+			end)
+			assert.equals("review", picked)
+			assert.is_false(selected)
+		end)
+
+		it(ep.name .. " skips the choice and uses the review while a pending review exists", function()
+			config.state.pending_review_id = 5
+			local opts_captured
+			helpers.mock(ui, "open_comment_input", function(_callback, opts)
+				opts_captured = opts
+			end)
+			local selected = false
+			helpers.mock(vim.ui, "select", function()
+				selected = true
+			end)
+
+			ep.run(false)
+			local picked
+			opts_captured.pick_submit_kind(function(kind)
+				picked = kind
+			end)
+			assert.equals("review", picked)
+			assert.is_false(selected)
+		end)
+	end
+end)

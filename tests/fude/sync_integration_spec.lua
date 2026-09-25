@@ -881,4 +881,154 @@ describe("sync integration", function()
 			assert.are.equal("Forbidden", cb_err)
 		end)
 	end)
+	describe("create_single_comment", function()
+		-- POST and GET share the same gh args prefix, so dispatch on --method.
+		local function mock_comments_endpoint(post_resp)
+			local calls = { post = nil, get = 0 }
+			helpers.mock_gh({
+				["api:repos/{owner}/{repo}/pulls/42/comments"] = function(args, callback)
+					local is_post = vim.tbl_contains(args, "POST")
+					if is_post then
+						calls.post = args
+					else
+						calls.get = calls.get + 1
+					end
+					vim.schedule(function()
+						if is_post and type(post_resp) == "string" then
+							callback(post_resp, nil)
+						else
+							callback(nil, is_post and { id = 99 } or {})
+						end
+					end)
+				end,
+			})
+			return calls
+		end
+
+		local function arg_values(args)
+			local set = {}
+			for _, a in ipairs(args) do
+				set[a] = true
+			end
+			return set
+		end
+
+		before_each(function()
+			config.state.active = true
+			config.state.pr_number = 42
+		end)
+
+		it("posts a single-line comment on HEAD and refreshes comments", function()
+			local calls = mock_comments_endpoint()
+			local cb_called, cb_err = false, "unset"
+			sync.create_single_comment("foo.lua", 10, 10, "looks good", function(err)
+				cb_called = true
+				cb_err = err
+			end)
+
+			assert.is_true(helpers.wait_for(function()
+				return cb_called and calls.get > 0
+			end))
+			assert.is_nil(cb_err)
+			local v = arg_values(calls.post)
+			assert.is_true(v["body=looks good"])
+			assert.is_true(v["commit_id=abc123def456"])
+			assert.is_true(v["path=foo.lua"])
+			assert.is_true(v["line=10"])
+			assert.is_true(v["side=RIGHT"])
+			assert.is_nil(v["start_side=RIGHT"])
+		end)
+
+		it("posts a range comment with start_line and start_side", function()
+			local calls = mock_comments_endpoint()
+			local cb_called = false
+			sync.create_single_comment("foo.lua", 5, 8, "range", function()
+				cb_called = true
+			end)
+
+			assert.is_true(helpers.wait_for(function()
+				return cb_called
+			end))
+			local v = arg_values(calls.post)
+			assert.is_true(v["start_line=5"])
+			assert.is_true(v["line=8"])
+			assert.is_true(v["start_side=RIGHT"])
+		end)
+
+		it("fails without calling the API while a pending review exists", function()
+			local calls = mock_comments_endpoint()
+			config.state.pending_review_id = 7
+
+			local cb_err
+			sync.create_single_comment("foo.lua", 10, 10, "body", function(err)
+				cb_err = err
+			end)
+
+			assert.is_not_nil(cb_err)
+			assert.is_not_nil(cb_err:find("pending review", 1, true))
+			assert.is_nil(calls.post)
+		end)
+
+		it("still reports success but skips the refresh when the session changed", function()
+			local calls = mock_comments_endpoint()
+			local cb_called, cb_err = false, "unset"
+			sync.create_single_comment("foo.lua", 10, 10, "body", function(err)
+				cb_called = true
+				cb_err = err
+			end)
+			-- Session stopped and restarted before the POST response arrives.
+			config.reset_state()
+			config.state.active = true
+			config.state.pr_number = 42
+
+			assert.is_true(helpers.wait_for(function()
+				return cb_called
+			end))
+			assert.is_nil(cb_err)
+			vim.wait(100, function()
+				return calls.get > 0
+			end)
+			assert.are.equal(0, calls.get)
+		end)
+
+		it("fails while the first pending review sync is still in flight", function()
+			local calls = mock_comments_endpoint()
+			-- pending_comments is set before sync_pending_review assigns pending_review_id.
+			config.state.pending_comments = { ["foo.lua:1:1"] = { body = "queued" } }
+
+			local cb_err
+			sync.create_single_comment("foo.lua", 10, 10, "body", function(err)
+				cb_err = err
+			end)
+
+			assert.is_not_nil(cb_err)
+			assert.is_nil(calls.post)
+		end)
+
+		it("returns error when not active", function()
+			config.state.active = false
+
+			local cb_err
+			sync.create_single_comment("foo.lua", 10, 10, "body", function(err)
+				cb_err = err
+			end)
+
+			assert.are.equal("Not active", cb_err)
+		end)
+
+		it("passes API error to callback without refreshing", function()
+			local calls = mock_comments_endpoint("Validation Failed")
+			local cb_called, cb_err = false, nil
+			sync.create_single_comment("foo.lua", 10, 10, "body", function(err)
+				cb_called = true
+				cb_err = err
+			end)
+
+			assert.is_true(helpers.wait_for(function()
+				return cb_called
+			end))
+			assert.are.equal("Validation Failed", cb_err)
+			assert.are.equal(0, calls.get)
+		end)
+	end)
 end)
