@@ -260,11 +260,17 @@ File opening position                                 *fude-file-position*
 :FudeReviewScopeNext                            *:FudeReviewScopeNext*
     Move to the next review scope. Cycles through:
     Full PR → commit 1 → commit 2 → ... → commit N → Full PR.
+    After the switch, opens the first changed file of the new scope (as
+    selecting a scope in the side panel does), unless focus moved elsewhere
+    while the switch was in progress.
     Requires an active review session.
 
 :FudeReviewScopePrev                            *:FudeReviewScopePrev*
     Move to the previous review scope. Cycles through:
     Full PR → commit N → ... → commit 2 → commit 1 → Full PR.
+    After the switch, opens the first changed file of the new scope (as
+    selecting a scope in the side panel does), unless focus moved elsewhere
+    while the switch was in progress.
     Requires an active review session.
 
 :FudeReviewOverview                                *:FudeReviewOverview*

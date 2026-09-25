@@ -118,8 +118,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewNextUnviewedFile` | Open the next changed file not yet marked as viewed (`]F`, wraps around) |
 | `:FudeReviewPrevUnviewedFile` | Open the previous changed file not yet marked as viewed (`[F`, wraps around) |
 | `:FudeReviewScope` | Select review scope (full PR or specific commit) |
-| `:FudeReviewScopeNext` | Move to next review scope |
-| `:FudeReviewScopePrev` | Move to previous review scope |
+| `:FudeReviewScopeNext` | Move to next review scope and open its first file |
+| `:FudeReviewScopePrev` | Move to previous review scope and open its first file |
 | `:FudeReviewOverview` | Show PR overview and issue-level comments |
 | `:FudeReviewListComments` | Browse all PR review and issue comments in 3-pane floating window |
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |

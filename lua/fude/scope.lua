@@ -868,8 +868,27 @@ function M.statusline()
 	return M.format_scope_label(state.scope, state.scope_commit_index, total)
 end
 
---- Move to the next scope.
-function M.next_scope()
+--- Build the on_done callback that opens the new scope's first file, like the
+--- sidepanel's scope selection does. Staleness guard: the file opens only while
+--- focus is still where the user triggered the switch. The diff preview is
+--- rebuilt with a new window handle during the switch, so a switch triggered
+--- from the preview accepts whichever window is the preview afterwards.
+--- @return fun()
+local function open_first_file_after_switch()
+	local origin_win = vim.api.nvim_get_current_win()
+	local from_preview = origin_win == config.state.preview_win
+	return function()
+		local current_win = vim.api.nvim_get_current_win()
+		if current_win ~= origin_win and not (from_preview and current_win == config.state.preview_win) then
+			return
+		end
+		require("fude.files").open_first_file()
+	end
+end
+
+--- Move to the adjacent scope.
+--- @param find_index fun(current_scope: string, current_index: number|nil, total: number): number
+local function goto_adjacent_scope(find_index)
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
@@ -883,43 +902,26 @@ function M.next_scope()
 	local gh_mod = require("fude.gh")
 	local commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
 	local total = #commit_entries
-	local next_idx = M.find_next_scope_index(state.scope, state.scope_commit_index, total)
+	local idx = find_index(state.scope, state.scope_commit_index, total)
 
-	if next_idx == 0 then
-		M.apply_full_pr_scope()
+	if idx == 0 then
+		M.apply_full_pr_scope(open_first_file_after_switch())
 	else
-		local entry = commit_entries[next_idx]
+		local entry = commit_entries[idx]
 		if entry and entry.sha then
-			M.apply_commit_scope(entry.sha)
+			M.apply_commit_scope(entry.sha, open_first_file_after_switch())
 		end
 	end
 end
 
---- Move to the previous scope.
+--- Move to the next scope and open its first file.
+function M.next_scope()
+	goto_adjacent_scope(M.find_next_scope_index)
+end
+
+--- Move to the previous scope and open its first file.
 function M.prev_scope()
-	local state = config.state
-	if not state.active then
-		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
-		return
-	end
-	if state.review_mode == "local" then
-		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
-		return
-	end
-
-	local gh_mod = require("fude.gh")
-	local commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
-	local total = #commit_entries
-	local prev_idx = M.find_prev_scope_index(state.scope, state.scope_commit_index, total)
-
-	if prev_idx == 0 then
-		M.apply_full_pr_scope()
-	else
-		local entry = commit_entries[prev_idx]
-		if entry and entry.sha then
-			M.apply_commit_scope(entry.sha)
-		end
-	end
+	goto_adjacent_scope(M.find_prev_scope_index)
 end
 
 --- Format preview lines for a scope entry's changed files.
