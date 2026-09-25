@@ -12,7 +12,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
 - **Virtual text** - Comment and pending indicators on lines with existing comments
 - **Resolved labels** - Threads resolved on GitHub are labeled `[resolved]` in the comment browser, comment viewer, and editor indicators
-- **Pending review** - Comments are saved as GitHub pending review (visible on PR page)
+- **Pending review or single comment** - On submit, choose between adding the comment to a GitHub pending review (visible on PR page) or posting it immediately as a single comment
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Review scope** - Review the full PR or focus on a specific commit, navigate scopes with next/prev, mark commits as reviewed, statusline integration
@@ -94,7 +94,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 2. Start review mode: `:FudeReviewStart` (detects PR, fetches comments, sets up extmarks)
 3. Optionally open diff preview: `:FudeReviewDiff` (toggle side-by-side diff view)
 4. Navigate code normally - the preview follows your movements when open
-5. Create comments with `:FudeReviewComment` (saved as GitHub pending review)
+5. Create comments with `:FudeReviewComment` (`<CR>` asks whether to start a pending review or post a single comment)
 6. View existing comments with `:FudeReviewViewComment`
 7. Submit pending comments as a review: `:FudeReviewSubmit` (select Comment/Approve/Request Changes)
 8. Browse changed files with `:FudeReviewFiles`
