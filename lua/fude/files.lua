@@ -465,8 +465,8 @@ local function goto_adjacent(direction, unviewed_only)
 end
 
 --- Open the first openable changed file in navigation order (used after a scope
---- switch). Leaves the side panel or the diff preview for a source window first,
---- matching next/previous-file navigation. Removed files are skipped, as in
+--- switch). Leaves the side panel, the diff preview, a floating window, or a
+--- special buffer for a source window first. Removed files are skipped, as in
 --- `ui/sidepanel.open_first_file`.
 function M.open_first_file()
 	local state = config.state
@@ -486,9 +486,16 @@ function M.open_first_file()
 		return
 	end
 
+	-- The switch can be triggered from a float (comment viewer etc.) or a special
+	-- buffer (quickfix, help); :edit there would replace that UI with the file.
 	local current_win = vim.api.nvim_get_current_win()
 	local panel_win = panel and panel.win
-	if current_win == panel_win or current_win == state.preview_win then
+	if
+		current_win == panel_win
+		or current_win == state.preview_win
+		or vim.api.nvim_win_get_config(current_win).relative ~= ""
+		or vim.bo[vim.api.nvim_win_get_buf(current_win)].buftype ~= ""
+	then
 		local target_win = sidepanel.find_target_window(panel_win)
 		if not target_win then
 			return

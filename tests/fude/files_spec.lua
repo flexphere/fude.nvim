@@ -1080,6 +1080,53 @@ describe("open_first_file", function()
 		assert.are.equal("edit /repo/z/b.lua", last_cmd)
 	end)
 
+	it("opens from the source window when invoked in a floating window", function()
+		local source_win = vim.api.nvim_get_current_win()
+		local float_buf = vim.api.nvim_create_buf(false, true)
+		local float_win = vim.api.nvim_open_win(float_buf, true, {
+			relative = "editor",
+			row = 1,
+			col = 1,
+			width = 10,
+			height = 2,
+		})
+		helpers.mock(sidepanel, "find_target_window", function()
+			return source_win
+		end)
+		local focused_win
+		helpers.mock(vim.api, "nvim_set_current_win", function(win)
+			focused_win = win
+		end)
+
+		files.open_first_file()
+
+		vim.api.nvim_win_close(float_win, true)
+		vim.api.nvim_buf_delete(float_buf, { force = true })
+		assert.are.equal(source_win, focused_win)
+		assert.are.equal("edit /repo/z/b.lua", last_cmd)
+	end)
+
+	it("opens from the source window when invoked in a special buffer", function()
+		local special_buf = vim.api.nvim_create_buf(false, true)
+		vim.bo[special_buf].buftype = "nofile"
+		local prev_buf = vim.api.nvim_get_current_buf()
+		vim.api.nvim_set_current_buf(special_buf)
+		helpers.mock(sidepanel, "find_target_window", function()
+			return 20
+		end)
+		local focused_win
+		helpers.mock(vim.api, "nvim_set_current_win", function(win)
+			focused_win = win
+		end)
+
+		files.open_first_file()
+
+		vim.api.nvim_set_current_buf(prev_buf)
+		vim.api.nvim_buf_delete(special_buf, { force = true })
+		assert.are.equal(20, focused_win)
+		assert.are.equal("edit /repo/z/b.lua", last_cmd)
+	end)
+
 	it("does not open a file when no source window is available", function()
 		config.state.sidepanel = { win = 10 }
 		helpers.mock(vim.api, "nvim_get_current_win", function()
