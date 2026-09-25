@@ -401,13 +401,18 @@ function M.create_single_comment(path, start_line, end_line, body, callback)
 		return
 	end
 
+	local captured_state = state
 	local function on_done(err, _)
 		if err then
 			callback(err)
 			return
 		end
+		-- The comment is on GitHub either way, so the caller still hears about
+		-- it; only the refresh is skipped when the session changed meanwhile.
 		callback(nil)
-		fetch_comments()
+		if config.state == captured_state then
+			fetch_comments()
+		end
 	end
 
 	if start_line == end_line then

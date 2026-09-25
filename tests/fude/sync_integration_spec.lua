@@ -969,6 +969,28 @@ describe("sync integration", function()
 			assert.is_nil(calls.post)
 		end)
 
+		it("still reports success but skips the refresh when the session changed", function()
+			local calls = mock_comments_endpoint()
+			local cb_called, cb_err = false, "unset"
+			sync.create_single_comment("foo.lua", 10, 10, "body", function(err)
+				cb_called = true
+				cb_err = err
+			end)
+			-- Session stopped and restarted before the POST response arrives.
+			config.reset_state()
+			config.state.active = true
+			config.state.pr_number = 42
+
+			assert.is_true(helpers.wait_for(function()
+				return cb_called
+			end))
+			assert.is_nil(cb_err)
+			vim.wait(100, function()
+				return calls.get > 0
+			end)
+			assert.are.equal(0, calls.get)
+		end)
+
 		it("fails while the first pending review sync is still in flight", function()
 			local calls = mock_comments_endpoint()
 			-- pending_comments is set before sync_pending_review assigns pending_review_id.
