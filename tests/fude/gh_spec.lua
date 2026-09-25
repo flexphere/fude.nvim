@@ -537,8 +537,10 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			callback(response.err, response.data)
 		end)
 		local got = "unset"
+		local got_err = "unset"
 		local function lookup()
-			gh.get_open_pr_url("feat/a", function(_, url)
+			gh.get_open_pr_url("feat/a", function(err, url)
+				got_err = err
 				got = url
 			end)
 		end
@@ -552,10 +554,29 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		lookup()
 		assert.is_nil(got)
 
-		-- gh pr view exits non-zero when the branch has no PR
-		response = { err = "no pull requests found for branch" }
+		-- gh pr view exits non-zero when the branch has no PR: not an error
+		response = { err = 'no pull requests found for branch "feat/a"\n' }
 		lookup()
 		assert.is_nil(got)
+		assert.is_nil(got_err)
+	end)
+
+	it("get_open_pr_url reports a failed lookup as an error, not as no PR", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback("HTTP 401: Bad credentials", nil)
+		end)
+		local got_err, got_url = "unset", "unset"
+		gh.get_open_pr_url("feat/a", function(err, url)
+			got_err, got_url = err, url
+		end)
+		assert.are.equal("HTTP 401: Bad credentials", got_err)
+		assert.is_nil(got_url)
+	end)
+
+	it("is_no_pr_error matches only gh's no-PR message", function()
+		assert.is_true(gh.is_no_pr_error('no pull requests found for branch "x"'))
+		assert.is_false(gh.is_no_pr_error("HTTP 401: Bad credentials"))
+		assert.is_false(gh.is_no_pr_error(nil))
 	end)
 
 	it("link_stack runs gh stack link with the refs bottom to top", function()

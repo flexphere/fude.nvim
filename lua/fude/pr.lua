@@ -344,14 +344,25 @@ end
 --- The parent is passed as its PR URL, never as a branch name: `gh stack link`
 --- pushes branch arguments and creates PRs for branches without one, which
 --- would open an unrequested PR for the parent. When the parent has no open
---- PR the step is skipped with a warning, since a stack links PRs, not branches.
+--- PR the step is skipped with a warning, since a stack links PRs, not branches;
+--- a failed lookup gets its own warning with gh's error so it is not mistaken for "no PR".
 --- The PR itself is already created at this point, so every failure is a WARN
 --- that leaves it in place as an ordinary (unstacked) PR.
 --- @param parent_branch string base branch the PR was created against (the picked base)
 --- @param pr_url string URL of the PR just created
 --- @private
 local function link_to_stack(parent_branch, pr_url)
-	gh.get_open_pr_url(parent_branch, function(_, parent_url)
+	gh.get_open_pr_url(parent_branch, function(lookup_err, parent_url)
+		if lookup_err then
+			vim.notify(
+				"fude.nvim: Not stacked: failed to look up the PR of "
+					.. parent_branch
+					.. " (the PR was created unstacked): "
+					.. vim.trim(lookup_err),
+				vim.log.levels.WARN
+			)
+			return
+		end
 		if not parent_url then
 			vim.notify(
 				"fude.nvim: Not stacked: " .. parent_branch .. " has no open PR (the PR was created unstacked)",

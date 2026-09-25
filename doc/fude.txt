@@ -400,7 +400,8 @@ File opening position                                 *fude-file-position*
     after `gh pr create` succeeds the new PR is linked on top of the
     base branch's open PR with `gh stack link` (requires the gh-stack
     extension and stacked PRs enabled on the repository). When the base
-    branch has no open PR, or linking fails (e.g. the base PR already
+    branch has no open PR, its PR cannot be looked up (the warning shows
+    gh's error), or linking fails (e.g. the base PR already
     has another PR stacked on it), a warning is shown and the PR stays
     as an ordinary unstacked PR.
 

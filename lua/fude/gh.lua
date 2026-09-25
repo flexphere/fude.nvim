@@ -631,14 +631,30 @@ function M.create_draft_pr(title, body, attachments, base, callback)
 	end)
 end
 
+--- Whether a `gh pr view` error means "the branch has no PR" rather than a
+--- failed lookup (auth, network, repository resolution, ...).
+--- @param err string|nil error text from gh
+--- @return boolean
+function M.is_no_pr_error(err)
+	return type(err) == "string" and err:find("no pull requests found", 1, true) ~= nil
+end
+
 --- Get the URL of the open PR whose head is `branch`.
+--- "No PR" and a failed lookup are reported differently so callers can tell
+--- the user which one happened.
 --- @param branch string head branch name
---- @param callback fun(err: string|nil, url: string|nil) url is nil when the branch has no open PR
+--- @param callback fun(err: string|nil, url: string|nil) err is set only when the lookup failed;
+---   url is nil (with no err) when the branch has no open PR
 function M.get_open_pr_url(branch, callback)
 	M.run_json({ "pr", "view", branch, "--json", "url,state" }, function(err, data)
 		if err then
-			-- `gh pr view` exits non-zero when the branch has no PR at all
-			callback(nil, nil)
+			-- `gh pr view` exits non-zero both when the branch has no PR and
+			-- when the lookup itself fails; only the former means "no PR"
+			if M.is_no_pr_error(err) then
+				callback(nil, nil)
+			else
+				callback(err, nil)
+			end
 			return
 		end
 		if type(data) == "table" and data.state == "OPEN" and type(data.url) == "string" then
