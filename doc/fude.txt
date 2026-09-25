@@ -130,10 +130,10 @@ Using lazy.nvim: >lua
     selected lines (visual mode). Opens a floating window for
     composing the comment. Press `<CR>` to submit, then choose how to
     post it:
+      Add single comment (post now)  Publish the comment immediately.
       Start a review (pending)       Save as GitHub pending review
                                      (visible on PR page with "Pending"
                                      status).
-      Add single comment (post now)  Publish the comment immediately.
     Cancelling the choice returns to the input. While a pending review
     exists, GitHub does not accept single comments, so `<CR>` adds the
     comment to the pending review without asking. `q` cancels.

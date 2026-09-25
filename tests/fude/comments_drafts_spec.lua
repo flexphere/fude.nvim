@@ -376,12 +376,12 @@ describe("comments single comment submit", function()
 				table.insert(kinds, kind or "nil")
 			end)
 			assert.same(
-				{ "review", "single" },
+				{ "single", "review" },
 				vim.tbl_map(function(i)
 					return i.kind
 				end, items)
 			)
-			on_choice(items[2])
+			on_choice(items[1])
 			on_choice(nil)
 			assert.same({ "single", "nil" }, kinds)
 		end)

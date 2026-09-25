@@ -235,12 +235,11 @@ end
 --- @param has_pending_review boolean whether a pending review exists
 --- @return table[] choices { label = string, kind = "review"|"single" }
 function M.build_submit_choices(has_pending_review)
-	local choices = { { label = "Start a review (pending)", kind = "review" } }
+	local review = { label = "Start a review (pending)", kind = "review" }
 	if has_pending_review then
-		return choices
+		return { review }
 	end
-	table.insert(choices, { label = "Add single comment (post now)", kind = "single" })
-	return choices
+	return { { label = "Add single comment (post now)", kind = "single" }, review }
 end
 
 --- Merge pending comments into existing comments for immediate display.
