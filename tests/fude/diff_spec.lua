@@ -50,6 +50,135 @@ describe("parse_log_first_subject", function()
 	end)
 end)
 
+describe("parse_remote_branches", function()
+	it("returns branch names in order, skipping HEAD and blank lines", function()
+		local out = "HEAD\nmain\n\nfeat/foo\nrelease/1.2\n"
+		assert.are.same({ "main", "feat/foo", "release/1.2" }, diff.parse_remote_branches(out))
+	end)
+
+	it("returns an empty list for nil or empty output", function()
+		assert.are.same({}, diff.parse_remote_branches(nil))
+		assert.are.same({}, diff.parse_remote_branches(""))
+	end)
+
+	it("trims surrounding whitespace and CRLF", function()
+		assert.are.same({ "main", "dev" }, diff.parse_remote_branches("  main \r\ndev\r\n"))
+	end)
+end)
+
+describe("parse_gh_stack_parent", function()
+	local stack_json = vim.json.encode({
+		schemaVersion = 1,
+		stacks = {
+			{
+				trunk = { branch = "main", head = "aaa" },
+				branches = { { branch = "a", base = "aaa" }, { branch = "b", base = "bbb" } },
+			},
+		},
+	})
+
+	it("returns the previous branch in the stack", function()
+		assert.are.equal("a", diff.parse_gh_stack_parent(stack_json, "b"))
+	end)
+
+	it("returns the trunk for the bottom branch", function()
+		assert.are.equal("main", diff.parse_gh_stack_parent(stack_json, "a"))
+	end)
+
+	it("returns nil for a branch outside every stack", function()
+		assert.is_nil(diff.parse_gh_stack_parent(stack_json, "other"))
+	end)
+
+	it("returns nil for missing, corrupt, or unexpected input", function()
+		assert.is_nil(diff.parse_gh_stack_parent(nil, "b"))
+		assert.is_nil(diff.parse_gh_stack_parent("", "b"))
+		assert.is_nil(diff.parse_gh_stack_parent("{not json", "b"))
+		assert.is_nil(diff.parse_gh_stack_parent('{"stacks": 1}', "b"))
+		assert.is_nil(diff.parse_gh_stack_parent(stack_json, nil))
+		assert.is_nil(diff.parse_gh_stack_parent('{"stacks":[{"branches":[{"branch":"a"}]}]}', "a"))
+	end)
+end)
+
+describe("parse_ancestor_log", function()
+	it("returns branches in log order, nearest to HEAD first", function()
+		assert.are.same({ "feature", "b", "a" }, diff.parse_ancestor_log("origin/feature\n\norigin/b\norigin/a\n"))
+	end)
+
+	it("sorts refs on the same commit by name and skips symbolic refs and duplicates", function()
+		local out = "origin/z, origin/m\norigin/HEAD -> origin/main, origin/m\n"
+		assert.are.same({ "m", "z" }, diff.parse_ancestor_log(out))
+	end)
+
+	it("returns an empty list for nil or empty output", function()
+		assert.are.same({}, diff.parse_ancestor_log(nil))
+		assert.are.same({}, diff.parse_ancestor_log(""))
+	end)
+end)
+
+describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function()
+	local original_cwd
+	local repo
+
+	local function git(...)
+		local res = vim.system({ "git", ... }, { cwd = repo, text = true }):wait()
+		assert(res.code == 0, "git failed: " .. table.concat({ ... }, " ") .. " " .. (res.stderr or ""))
+		return vim.trim(res.stdout or "")
+	end
+
+	before_each(function()
+		original_cwd = vim.fn.getcwd()
+		repo = vim.fn.tempname()
+		vim.fn.mkdir(repo, "p")
+		git("init", "-q", "-b", "main")
+		-- repo-local identity: CI runners have no global git identity, and
+		-- commit-tree (unlike commit) takes no -c shortcut in this helper
+		git("config", "user.name", "t")
+		git("config", "user.email", "t@t")
+		git("commit", "-q", "--allow-empty", "-m", "root")
+		git("update-ref", "refs/remotes/origin/main", "HEAD")
+		git("update-ref", "refs/remotes/origin/old-merged", "HEAD")
+		-- stack: main -> a -> b -> (HEAD) feature
+		git("checkout", "-q", "-b", "feature")
+		git("commit", "-q", "--allow-empty", "-m", "a1")
+		git("update-ref", "refs/remotes/origin/a", "HEAD")
+		git("commit", "-q", "--allow-empty", "-m", "b1")
+		git("update-ref", "refs/remotes/origin/b", "HEAD")
+		git("commit", "-q", "--allow-empty", "-m", "f1")
+		-- unrelated branch forked from main
+		git(
+			"update-ref",
+			"refs/remotes/origin/unrelated",
+			git("commit-tree", "-p", "main", "-m", "u", git("rev-parse", "HEAD^{tree}"))
+		)
+		vim.cmd.cd(repo)
+	end)
+
+	after_each(function()
+		vim.cmd.cd(original_cwd)
+		vim.fn.delete(repo, "rf")
+	end)
+
+	it("lists branches between the default branch and HEAD, nearest first", function()
+		assert.are.same({ "b", "a" }, diff.get_ancestor_branches("main"))
+	end)
+
+	it("returns an empty list when the default branch cannot be resolved", function()
+		assert.are.same({}, diff.get_ancestor_branches("nope"))
+		assert.are.same({}, diff.get_ancestor_branches(nil))
+	end)
+
+	it("reads the stack parent from .git/gh-stack", function()
+		local stack =
+			{ stacks = { { trunk = { branch = "main" }, branches = { { branch = "a" }, { branch = "feature" } } } } }
+		vim.fn.writefile({ vim.json.encode(stack) }, repo .. "/.git/gh-stack")
+		assert.are.equal("a", diff.get_gh_stack_parent("feature"))
+	end)
+
+	it("returns nil when gh-stack metadata does not exist", function()
+		assert.is_nil(diff.get_gh_stack_parent("feature"))
+	end)
+end)
+
 describe("make_relative", function()
 	it("strips root prefix", function()
 		assert.are.equal("lua/foo.lua", diff.make_relative("/home/user/project/lua/foo.lua", "/home/user/project"))

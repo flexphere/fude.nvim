@@ -478,7 +478,7 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			captured_args = args
 			callback(nil, "https://github.com/o/r/pull/1\n")
 		end)
-		gh.create_draft_pr("t", "b", { "./a.png", "./b.mp4" }, function() end)
+		gh.create_draft_pr("t", "b", { "./a.png", "./b.mp4" }, nil, function() end)
 		assert.are.same({
 			"pr",
 			"create",
@@ -500,10 +500,100 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			captured_args = args
 			callback(nil, "")
 		end)
-		gh.create_draft_pr("t", "b", nil, function() end)
+		gh.create_draft_pr("t", "b", nil, nil, function() end)
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
-		gh.create_draft_pr("t", "b", {}, function() end)
+		gh.create_draft_pr("t", "b", {}, nil, function() end)
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
+	end)
+
+	it("create_draft_pr passes --base before --attach when a base branch is given", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "https://github.com/o/r/pull/1\n")
+		end)
+		gh.create_draft_pr("t", "b", { "./a.png" }, "develop", function() end)
+		assert.are.same(
+			{ "pr", "create", "--draft", "--title", "t", "--body", "b", "--base", "develop", "--attach", "./a.png" },
+			captured_args
+		)
+	end)
+
+	it("create_draft_pr omits --base when base is nil or empty", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		gh.create_draft_pr("t", "b", nil, "", function() end)
+		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
+	end)
+
+	it("get_open_pr_url returns the URL only for an open PR", function()
+		local captured_args
+		local response
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(response.err, response.data)
+		end)
+		local got = "unset"
+		local got_err = "unset"
+		local function lookup()
+			gh.get_open_pr_url("feat/a", function(err, url)
+				got_err = err
+				got = url
+			end)
+		end
+
+		response = { data = { state = "OPEN", url = "https://github.com/o/r/pull/1" } }
+		lookup()
+		assert.are.same({ "pr", "view", "feat/a", "--json", "url,state" }, captured_args)
+		assert.are.equal("https://github.com/o/r/pull/1", got)
+
+		response = { data = { state = "MERGED", url = "https://github.com/o/r/pull/1" } }
+		lookup()
+		assert.is_nil(got)
+
+		-- gh pr view exits non-zero when the branch has no PR: not an error
+		response = { err = 'no pull requests found for branch "feat/a"\n' }
+		lookup()
+		assert.is_nil(got)
+		assert.is_nil(got_err)
+	end)
+
+	it("get_open_pr_url reports a failed lookup as an error, not as no PR", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback("HTTP 401: Bad credentials", nil)
+		end)
+		local got_err, got_url = "unset", "unset"
+		gh.get_open_pr_url("feat/a", function(err, url)
+			got_err, got_url = err, url
+		end)
+		assert.are.equal("HTTP 401: Bad credentials", got_err)
+		assert.is_nil(got_url)
+	end)
+
+	it("is_no_pr_error matches only gh's no-PR message", function()
+		assert.is_true(gh.is_no_pr_error('no pull requests found for branch "x"'))
+		assert.is_false(gh.is_no_pr_error("HTTP 401: Bad credentials"))
+		assert.is_false(gh.is_no_pr_error(nil))
+	end)
+
+	it("link_stack runs gh stack link with the refs bottom to top", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		local done_err = "unset"
+		gh.link_stack({ "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" }, function(err)
+			done_err = err
+		end)
+		assert.are.same(
+			{ "stack", "link", "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" },
+			captured_args
+		)
+		assert.is_nil(done_err)
 	end)
 
 	it("edit_pr inserts the PR number before flags and appends --attach pairs", function()

@@ -372,17 +372,53 @@ File opening position                                 *fude-file-position*
     the PR from the current branch via `gh` CLI.
 
 :FudeCreatePR                                            *:FudeCreatePR*
-    Create a draft PR from a template. Searches for GitHub PR templates
-    in standard locations (`.github/PULL_REQUEST_TEMPLATE/`,
-    `PULL_REQUEST_TEMPLATE.md`, etc.). If multiple templates are found,
-    shows a Telescope picker with preview (when Telescope is available),
-    otherwise falls back to |vim.ui.select()| without a preview pane.
-    If one template is found, uses it directly. If none, opens with an
-    empty body.
+    Create a draft PR from a template.
+
+    First, a base branch picker lists the branches on the `origin`
+    remote (from the local remote-tracking refs) in this order:
+    1. The repository's default branch, marked `(default)`.
+    2. Related branches: the parent of the current branch in a
+       gh-stack stack (read from `.git/gh-stack`), marked
+       `(stack parent)`, then the branches the current branch was built
+       on top of in `git log` (tips between the default branch and
+       HEAD), nearest first, marked `(ancestor)`.
+    3. All other branches, most recently committed first.
+    The current branch itself is not listed. Pressing `<CR>` right away
+    accepts the default; type to fuzzy-filter and pick another branch.
+    Uses Telescope when
+    available, otherwise |vim.ui.select()|. Cancelling the picker aborts
+    the command. Without a remote, a default branch resolved from local
+    refs (`main`/`master`) is still offered; only when no candidate exists
+    at all is the picker skipped and `gh` left to choose the base. The chosen
+    branch is passed as `gh pr create --base` and also decides the
+    default title (the subject of the first commit not on that branch).
+
+    When a branch other than the default branch is picked, a Yes/No
+    prompt asks whether to create the PR as a GitHub stacked PR on top
+    of that branch (Yes comes first for the `(stack parent)` branch, No
+    for any other). Cancelling the prompt aborts the command. On Yes,
+    after `gh pr create` succeeds the new PR is linked on top of the
+    base branch's open PR with `gh stack link` (requires the gh-stack
+    extension and stacked PRs enabled on the repository). When the base
+    branch has no open PR, its PR cannot be looked up (the warning shows
+    gh's error), or linking fails (e.g. the base PR already
+    has another PR stacked on it), a warning is shown and the PR stays
+    as an ordinary unstacked PR.
+
+    Then searches for GitHub PR templates in standard locations
+    (`.github/PULL_REQUEST_TEMPLATE/`, `PULL_REQUEST_TEMPLATE.md`,
+    etc.). If multiple templates are found, shows a Telescope picker
+    with preview (when Telescope is available), otherwise falls back to
+    |vim.ui.select()| without a preview pane. If one template is found,
+    uses it directly. If none, opens with an empty body.
 
     Opens a two-pane floating window:
     - Upper pane: PR title (single line)
     - Lower pane: PR body (pre-filled with template content)
+
+    The footer shows the selected base branch, e.g.
+    `<CR> create draft → main | q cancel`, with `(stacked)` appended
+    when you chose to stack the PR.
 
     Press `<Tab>` to switch between title and body panes.
     Press `<CR>` to create a draft PR.

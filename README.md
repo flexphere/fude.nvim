@@ -21,7 +21,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
-- **Create PR** - Create draft PRs from templates with a two-pane float (title + body)
+- **Create PR** - Create draft PRs from templates with a two-pane float (title + body), picking the base branch from a fuzzy finder (default branch preselected)
 - **Open in browser** - Open the PR in your browser
 - **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
 
@@ -133,7 +133,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel (focus it when open, close it when focused) |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
-| `:FudeCreatePR` | Create draft PR from template (body `file://` images/videos are uploaded via `gh --attach`) |
+| `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`; body `file://` images/videos are uploaded via `gh --attach`) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalStop` | Stop local review mode |
