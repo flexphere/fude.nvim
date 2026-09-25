@@ -128,16 +128,20 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		repo = vim.fn.tempname()
 		vim.fn.mkdir(repo, "p")
 		git("init", "-q", "-b", "main")
-		git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "root")
+		-- repo-local identity: CI runners have no global git identity, and
+		-- commit-tree (unlike commit) takes no -c shortcut in this helper
+		git("config", "user.name", "t")
+		git("config", "user.email", "t@t")
+		git("commit", "-q", "--allow-empty", "-m", "root")
 		git("update-ref", "refs/remotes/origin/main", "HEAD")
 		git("update-ref", "refs/remotes/origin/old-merged", "HEAD")
 		-- stack: main -> a -> b -> (HEAD) feature
 		git("checkout", "-q", "-b", "feature")
-		git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "a1")
+		git("commit", "-q", "--allow-empty", "-m", "a1")
 		git("update-ref", "refs/remotes/origin/a", "HEAD")
-		git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "b1")
+		git("commit", "-q", "--allow-empty", "-m", "b1")
 		git("update-ref", "refs/remotes/origin/b", "HEAD")
-		git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "f1")
+		git("commit", "-q", "--allow-empty", "-m", "f1")
 		-- unrelated branch forked from main
 		git(
 			"update-ref",
