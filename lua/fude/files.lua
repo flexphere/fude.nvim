@@ -464,6 +464,50 @@ local function goto_adjacent(direction, unviewed_only)
 	end
 end
 
+--- Open the first openable changed file in navigation order (used after a scope
+--- switch). Leaves the side panel or the diff preview for a source window first,
+--- matching next/previous-file navigation. Removed files are skipped, as in
+--- `ui/sidepanel.open_first_file`.
+function M.open_first_file()
+	local state = config.state
+	if not state.active then
+		return
+	end
+	local repo_root = diff.get_repo_root()
+	if not repo_root then
+		return
+	end
+
+	local sidepanel = require("fude.ui.sidepanel")
+	local panel = state.sidepanel
+	local tree_mode = ((panel and panel.file_tree_mode) or config.opts.sidepanel.file_tree) == "tree"
+	local target = sidepanel.find_first_file_entry(M.build_navigation_order(state.changed_files, tree_mode))
+	if not target then
+		return
+	end
+
+	local current_win = vim.api.nvim_get_current_win()
+	local panel_win = panel and panel.win
+	if current_win == panel_win or current_win == state.preview_win then
+		local target_win = sidepanel.find_target_window(panel_win)
+		if not target_win then
+			return
+		end
+		vim.api.nvim_set_current_win(target_win)
+	end
+
+	-- pcall: this runs inside a gh callback, where an :edit failure (e.g. E37)
+	-- would otherwise surface as a bare stack trace.
+	local ok, err = pcall(M.open_file, repo_root .. "/" .. target.path, target)
+	if not ok then
+		vim.notify("fude.nvim: Could not open " .. target.path .. ": " .. tostring(err), vim.log.levels.WARN)
+		return
+	end
+	if config.state == state and state.active then
+		sidepanel.reveal_file(target.path)
+	end
+end
+
 --- Move to the next changed file in the PR (wraps around).
 function M.next_file()
 	goto_adjacent("next")

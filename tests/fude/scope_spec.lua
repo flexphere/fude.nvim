@@ -855,3 +855,76 @@ describe("apply_scope on_done callback", function()
 		assert.are.equal("full_pr", config.state.scope)
 	end)
 end)
+
+describe("next_scope / prev_scope open the first file", function()
+	local config = require("fude.config")
+	local helpers = require("tests.helpers")
+	local files = require("fude.files")
+
+	local opened
+	local captured_on_done
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.scope = "full_pr"
+		config.state.pr_commits = {
+			{ sha = "aaa1111", commit = { message = "first", author = { name = "x" } } },
+			{ sha = "bbb2222", commit = { message = "second", author = { name = "x" } } },
+		}
+		opened = 0
+		captured_on_done = nil
+		helpers.mock(files, "open_first_file", function()
+			opened = opened + 1
+		end)
+		helpers.mock(scope, "apply_commit_scope", function(_, on_done)
+			captured_on_done = on_done
+		end)
+		helpers.mock(scope, "apply_full_pr_scope", function(on_done)
+			captured_on_done = on_done
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("next_scope opens the first file after the switch succeeds", function()
+		scope.next_scope()
+		assert.is_function(captured_on_done)
+		captured_on_done()
+		assert.are.equal(1, opened)
+	end)
+
+	it("prev_scope opens the first file after the switch succeeds", function()
+		scope.prev_scope()
+		assert.is_function(captured_on_done)
+		captured_on_done()
+		assert.are.equal(1, opened)
+	end)
+
+	it("does not open a file when focus moved to another window during the switch", function()
+		local win = 100
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return win
+		end)
+		scope.next_scope()
+		win = 200
+		captured_on_done()
+		assert.are.equal(0, opened)
+	end)
+
+	it("opens the file when the switch was triggered from the rebuilt diff preview", function()
+		local win = 100
+		config.state.preview_win = 100
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return win
+		end)
+		scope.next_scope()
+		-- refresh_preview replaces the preview window during the switch.
+		config.state.preview_win = 101
+		win = 101
+		captured_on_done()
+		assert.are.equal(1, opened)
+	end)
+end)

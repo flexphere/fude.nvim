@@ -1007,3 +1007,90 @@ describe("next_unviewed_file / prev_unviewed_file", function()
 		assert.are.equal("fude.nvim: No unviewed files", notification)
 	end)
 end)
+
+describe("open_first_file", function()
+	local config = require("fude.config")
+	local diff = require("fude.diff")
+	local helpers = require("tests.helpers")
+	local sidepanel = require("fude.ui.sidepanel")
+
+	local last_cmd
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.changed_files = {
+			{ path = "z/removed.lua", status = "removed" },
+			{ path = "z/b.lua", status = "modified" },
+			{ path = "a.lua", status = "added" },
+		}
+		helpers.mock(diff, "get_repo_root", function()
+			return "/repo"
+		end)
+		last_cmd = nil
+		helpers.mock(vim, "cmd", function(c)
+			last_cmd = c
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("opens the first non-removed file in flat order", function()
+		files.open_first_file()
+		assert.are.equal("edit /repo/z/b.lua", last_cmd)
+	end)
+
+	it("follows the tree order when the sidepanel is in tree mode", function()
+		config.state.sidepanel = { file_tree_mode = "tree" }
+		files.open_first_file()
+		-- Directories come before files at the root, so z/b.lua still precedes a.lua.
+		assert.are.equal("edit /repo/z/b.lua", last_cmd)
+	end)
+
+	it("does nothing when not active", function()
+		config.state.active = false
+		files.open_first_file()
+		assert.is_nil(last_cmd)
+	end)
+
+	it("does nothing when every file is removed", function()
+		config.state.changed_files = { { path = "a.lua", status = "removed" } }
+		files.open_first_file()
+		assert.is_nil(last_cmd)
+	end)
+
+	it("opens from the source window when invoked in the diff preview", function()
+		config.state.preview_win = 30
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return 30
+		end)
+		helpers.mock(sidepanel, "find_target_window", function()
+			return 20
+		end)
+		local focused_win
+		helpers.mock(vim.api, "nvim_set_current_win", function(win)
+			focused_win = win
+		end)
+
+		files.open_first_file()
+
+		assert.are.equal(20, focused_win)
+		assert.are.equal("edit /repo/z/b.lua", last_cmd)
+	end)
+
+	it("does not open a file when no source window is available", function()
+		config.state.sidepanel = { win = 10 }
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return 10
+		end)
+		helpers.mock(sidepanel, "find_target_window", function()
+			return nil
+		end)
+
+		files.open_first_file()
+
+		assert.is_nil(last_cmd)
+	end)
+end)
