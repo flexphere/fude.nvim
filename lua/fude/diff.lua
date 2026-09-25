@@ -251,37 +251,48 @@ function M.get_gh_stack_parent(branch)
 	return M.parse_gh_stack_parent(table.concat(lines, "\n"), branch)
 end
 
---- Parse `<count> <branch>` lines into entries sorted by distance (nearest first),
---- ties broken by name for a stable order.
---- @param lines string[] lines of "<count> <branch>"
---- @return string[] branch names
-function M.sort_branches_by_distance(lines)
-	local items = {}
-	for _, line in ipairs(lines or {}) do
-		local count, name = line:match("^(%d+)%s+(%S+)$")
-		if count then
-			table.insert(items, { name = name, distance = tonumber(count) })
-		end
-	end
-	table.sort(items, function(a, b)
-		if a.distance ~= b.distance then
-			return a.distance < b.distance
-		end
-		return a.name < b.name
-	end)
+--- Parse `git log --format=%D --decorate-refs=refs/remotes/origin/` output into
+--- branch names in log order (nearest to HEAD first). Each line lists the refs
+--- decorating one commit, comma-separated; refs on the same commit are sorted
+--- by name for a stable order. Symbolic entries (`origin/HEAD -> origin/main`)
+--- and duplicates are skipped.
+--- @param output string|nil git log output
+--- @return string[] branch names without the `origin/` prefix
+function M.parse_ancestor_log(output)
 	local names = {}
-	for _, item in ipairs(items) do
-		table.insert(names, item.name)
+	local seen = {}
+	if not output or output == "" then
+		return names
+	end
+	for _, line in ipairs(vim.split(output, "\n", { plain = true })) do
+		local on_commit = {}
+		for _, ref in ipairs(vim.split(line, ",", { plain = true })) do
+			ref = vim.trim(ref)
+			local name = ref:match("^origin/(.+)$")
+			if name and not ref:find("->", 1, true) and name ~= "HEAD" then
+				table.insert(on_commit, name)
+			end
+		end
+		table.sort(on_commit)
+		for _, name in ipairs(on_commit) do
+			if not seen[name] then
+				seen[name] = true
+				table.insert(names, name)
+			end
+		end
 	end
 	return names
 end
 
---- Get the `origin` branches that HEAD was built on top of: their tips are
---- ancestors of HEAD but not of the default branch, i.e. the branches between
---- the default branch and HEAD in `git log` (e.g. the lower layers of a stack).
---- Sorted nearest first (fewest commits from the branch tip to HEAD).
+--- Get the `origin` branches that HEAD was built on top of: branch tips in
+--- `<default>..HEAD`, i.e. between the default branch and HEAD in `git log`
+--- (e.g. the lower layers of a stack), nearest first.
+--- One `git log` walk from HEAD yields both membership and order, so the cost
+--- does not grow with the number of candidate branches. The range excludes
+--- branches already merged into the default branch.
 --- Returns an empty list when the default branch ref cannot be resolved: without
---- `--no-merged <default>` every branch ever merged into it would match.
+--- the range bound every branch in HEAD's history would match.
+--- May include the current branch's own remote ref; callers filter it out.
 --- @param default_branch string|nil repository default branch
 --- @return string[] branch names without the `origin/` prefix
 function M.get_ancestor_branches(default_branch)
@@ -301,24 +312,18 @@ function M.get_ancestor_branches(default_branch)
 	local result = vim
 		.system({
 			"git",
-			"for-each-ref",
-			"--merged=HEAD",
-			"--no-merged=" .. default_ref,
-			"--format=%(refname:strip=3)",
-			"refs/remotes/origin/",
+			"log",
+			"--topo-order",
+			"--format=%D",
+			"--decorate-refs=refs/remotes/origin/",
+			"--decorate-refs-exclude=refs/remotes/origin/HEAD",
+			default_ref .. "..HEAD",
 		}, { text = true })
 		:wait()
 	if result.code ~= 0 then
 		return {}
 	end
-	local lines = {}
-	for _, name in ipairs(M.parse_remote_branches(result.stdout)) do
-		local count = vim.system({ "git", "rev-list", "--count", "origin/" .. name .. "..HEAD" }, { text = true }):wait()
-		if count.code == 0 then
-			table.insert(lines, vim.trim(count.stdout) .. " " .. name)
-		end
-	end
-	return M.sort_branches_by_distance(lines)
+	return M.parse_ancestor_log(result.stdout)
 end
 
 --- Get the current branch name (nil when detached HEAD).

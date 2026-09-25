@@ -99,17 +99,19 @@ describe("parse_gh_stack_parent", function()
 	end)
 end)
 
-describe("sort_branches_by_distance", function()
-	it("sorts nearest first and breaks ties by name", function()
-		assert.are.same(
-			{ "near", "a-mid", "b-mid", "far" },
-			diff.sort_branches_by_distance({ "9 far", "3 b-mid", "1 near", "3 a-mid" })
-		)
+describe("parse_ancestor_log", function()
+	it("returns branches in log order, nearest to HEAD first", function()
+		assert.are.same({ "feature", "b", "a" }, diff.parse_ancestor_log("origin/feature\n\norigin/b\norigin/a\n"))
 	end)
 
-	it("skips malformed lines", function()
-		assert.are.same({ "ok" }, diff.sort_branches_by_distance({ "x y", "", "2 ok" }))
-		assert.are.same({}, diff.sort_branches_by_distance(nil))
+	it("sorts refs on the same commit by name and skips symbolic refs and duplicates", function()
+		local out = "origin/z, origin/m\norigin/HEAD -> origin/main, origin/m\n"
+		assert.are.same({ "m", "z" }, diff.parse_ancestor_log(out))
+	end)
+
+	it("returns an empty list for nil or empty output", function()
+		assert.are.same({}, diff.parse_ancestor_log(nil))
+		assert.are.same({}, diff.parse_ancestor_log(""))
 	end)
 end)
 
