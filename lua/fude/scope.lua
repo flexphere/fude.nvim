@@ -125,16 +125,17 @@ end
 --- `format_scope_section` and the sidepanel selection handler work unchanged).
 --- Availability and labels are decided by the caller (`local/session` via
 --- `scope_specs`), so only the scopes valid for the current git state appear.
---- @param specs table[] { { scope = string, label = string, is_current = boolean } }
+--- Commit scopes carry the target SHA, since they all share the scope name.
+--- @param specs table[] { { scope = string, label = string, is_current = boolean, commit_sha = string|nil } }
 --- @return table[] entries with a `local_scope` value field
 function M.build_local_scope_entries(specs)
 	local entries = {}
 	for _, s in ipairs(specs or {}) do
 		table.insert(entries, {
-			value = s.scope,
+			value = s.commit_sha or s.scope,
 			local_scope = s.scope,
 			display_text = s.label,
-			sha = nil,
+			sha = s.commit_sha,
 			is_full_pr = false,
 			reviewed = false,
 			reviewed_icon = " ",
@@ -841,14 +842,19 @@ end
 
 --- Format the statusline label for a local review session.
 --- @param base_ref string|nil base ref of the local session
---- @param scope string|nil "base" | "unpushed" | "uncommitted"
---- @return string label e.g. "Local: main", "Local: unpushed", "Local: uncommitted"
-function M.format_local_scope_label(base_ref, scope)
+--- @param scope string|nil "base" | "unpushed" | "uncommitted" | "commit"
+--- @param commit_index number|nil 1-based position of the commit scope's commit
+--- @param commit_total number|nil number of commits on the branch
+--- @return string label e.g. "Local: main", "Local: unpushed", "Local: 3/5"
+function M.format_local_scope_label(base_ref, scope, commit_index, commit_total)
 	if scope == "unpushed" then
 		return "Local: unpushed"
 	end
 	if scope == "uncommitted" then
 		return "Local: uncommitted"
+	end
+	if scope == "commit" then
+		return string.format("Local: %s/%s", commit_index or "?", commit_total or "?")
 	end
 	return string.format("Local: %s", base_ref or "?")
 end
@@ -861,8 +867,13 @@ function M.statusline()
 		return ""
 	end
 	if state.review_mode == "local" then
-		local scope = state.local_session and state.local_session.scope
-		return M.format_local_scope_label(state.base_ref, scope)
+		local session = state.local_session
+		return M.format_local_scope_label(
+			state.base_ref,
+			session and session.scope,
+			session and session.scope_commit_index,
+			session and session.commits and #session.commits
+		)
 	end
 	local total = #state.pr_commits
 	return M.format_scope_label(state.scope, state.scope_commit_index, total)

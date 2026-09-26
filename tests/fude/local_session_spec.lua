@@ -651,6 +651,59 @@ describe("session.resolve_scope_base", function()
 		local diff_base = session.resolve_scope_base("unpushed", "main", "/repo")
 		assert.is_nil(diff_base)
 	end)
+
+	it("commit resolves to the commit's parent", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "has_parent", function(sha, cwd)
+			assert.equals("abc123", sha)
+			assert.equals("/repo", cwd)
+			return true
+		end)
+		local diff_base, content_ref = session.resolve_scope_base("commit", "main", "/repo", "abc123")
+		-- Both refs must be the parent: the caller checks abc123 out, so
+		-- `git diff abc123^` against the working tree is that commit's own diff.
+		assert.equals("abc123^", diff_base)
+		assert.equals("abc123^", content_ref)
+	end)
+
+	it("commit falls back to the empty tree for a root commit", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "has_parent", function()
+			return false
+		end)
+		helpers.mock(diff, "get_empty_tree", function()
+			return "emptyhash"
+		end)
+		local diff_base, content_ref = session.resolve_scope_base("commit", "main", "/repo", "root1")
+		assert.equals("emptyhash", diff_base)
+		assert.equals("emptyhash", content_ref)
+	end)
+
+	it("commit returns nil without a commit sha", function()
+		local diff_base, content_ref = session.resolve_scope_base("commit", "main", "/repo", nil)
+		assert.is_nil(diff_base)
+		assert.is_nil(content_ref)
+	end)
+end)
+
+describe("session.build_commit_specs", function()
+	it("labels each commit with its position, short sha and subject", function()
+		local specs = session.build_commit_specs({
+			{ sha = "aaa1", short_sha = "aaa1111", subject = "feat: first" },
+			{ sha = "bbb2", short_sha = "bbb2222", subject = "fix: second" },
+		})
+		assert.equals(2, #specs)
+		assert.equals("commit", specs[1].scope)
+		assert.equals("aaa1", specs[1].commit_sha)
+		assert.equals(1, specs[1].commit_index)
+		assert.equals("Commit [1/2] aaa1111 feat: first", specs[1].label)
+		assert.equals("Commit [2/2] bbb2222 fix: second", specs[2].label)
+	end)
+
+	it("returns an empty list for no commits", function()
+		assert.same({}, session.build_commit_specs(nil))
+		assert.same({}, session.build_commit_specs({}))
+	end)
 end)
 
 describe("session.scope_specs", function()
@@ -699,6 +752,43 @@ describe("session.scope_specs", function()
 		end, specs)
 		assert.same({ "base", "uncommitted" }, scopes)
 	end)
+
+	it("appends one entry per cached commit", function()
+		helpers.mock(diff, "get_upstream_ref", function()
+			return nil
+		end)
+		local specs = session.scope_specs(session_of({
+			base_ref = "main",
+			branch = "feat/x",
+			commits = {
+				{ sha = "aaa1", short_sha = "aaa1111", subject = "feat: first" },
+				{ sha = "bbb2", short_sha = "bbb2222", subject = "fix: second" },
+			},
+		}))
+		local scopes = vim.tbl_map(function(s)
+			return s.scope
+		end, specs)
+		assert.same({ "base", "uncommitted", "commit", "commit" }, scopes)
+		assert.equals("aaa1", specs[3].commit_sha)
+	end)
+
+	it("marks the current commit by sha, not by scope name", function()
+		helpers.mock(diff, "get_upstream_ref", function()
+			return nil
+		end)
+		local specs = session.scope_specs(session_of({
+			base_ref = "main",
+			branch = "feat/x",
+			scope = "commit",
+			scope_commit_sha = "bbb2",
+			commits = {
+				{ sha = "aaa1", short_sha = "aaa1111", subject = "feat: first" },
+				{ sha = "bbb2", short_sha = "bbb2222", subject = "fix: second" },
+			},
+		}))
+		assert.is_falsy(specs[3].is_current)
+		assert.is_true(specs[4].is_current)
+	end)
 end)
 
 describe("scope.format_local_scope_label", function()
@@ -711,5 +801,11 @@ describe("scope.format_local_scope_label", function()
 
 	it("shows a neutral label for uncommitted scope", function()
 		assert.equals("Local: uncommitted", scope.format_local_scope_label("main", "uncommitted"))
+	end)
+
+	it("shows the commit position for commit scope", function()
+		assert.equals("Local: 2/5", scope.format_local_scope_label("main", "commit", 2, 5))
+		-- A commit scope with no cached list must still render something.
+		assert.equals("Local: ?/?", scope.format_local_scope_label("main", "commit"))
 	end)
 end)

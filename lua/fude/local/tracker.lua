@@ -49,6 +49,14 @@ function M.sync_buffer(buf, rel_path)
 		registry[buf] = nil
 		return
 	end
+	-- The commit scope has a past commit checked out: the buffer's lines are not
+	-- the working-tree lines the comments anchor to, so tracking them here would
+	-- persist bogus positions on the next write.
+	if require("fude.local.session").in_commit_scope() then
+		vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+		registry[buf] = nil
+		return
+	end
 	vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 	registry[buf] = {}
 
@@ -144,6 +152,10 @@ end
 function M.on_buf_write(buf)
 	local state = config.state
 	if not state.active or state.review_mode ~= "local" then
+		return
+	end
+	-- Never persist positions computed against a checked-out past commit.
+	if require("fude.local.session").in_commit_scope() then
 		return
 	end
 	local moves = M.collect_moves(buf)

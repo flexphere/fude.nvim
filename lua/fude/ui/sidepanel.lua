@@ -766,7 +766,8 @@ function M.setup_keymaps(panel)
 
 		if entry_info.type == "scope" then
 			if config.state.review_mode == "local" then
-				if require("fude.local.session").set_scope(entry_info.entry.local_scope) then
+				local opts = { commit_sha = entry_info.entry.sha }
+				if require("fude.local.session").set_scope(entry_info.entry.local_scope, opts) then
 					M.open_first_file()
 				end
 			else
@@ -793,7 +794,7 @@ function M.setup_keymaps(panel)
 		if entry_info.type == "scope" then
 			-- Local review scopes have no "reviewed" state; switch scope instead.
 			if config.state.review_mode == "local" then
-				require("fude.local.session").set_scope(entry_info.entry.local_scope)
+				require("fude.local.session").set_scope(entry_info.entry.local_scope, { commit_sha = entry_info.entry.sha })
 			else
 				M.toggle_scope_reviewed(panel, entry_info)
 			end

@@ -347,7 +347,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewLocalScope",
-		desc = "Select local review scope (base / unpushed / uncommitted)",
+		desc = "Select local review scope (base / unpushed / uncommitted / commit)",
 		category = "Scope",
 		available = when_local,
 		nargs = "?",
@@ -356,7 +356,8 @@ M.list = {
 		end,
 		run = function(opts)
 			local session = require("fude.local.session")
-			if opts.args ~= "" then
+			-- "commit" needs a target SHA, which only the picker can supply.
+			if opts.args ~= "" and opts.args ~= "commit" then
 				session.set_scope(opts.args)
 			else
 				session.select_scope()

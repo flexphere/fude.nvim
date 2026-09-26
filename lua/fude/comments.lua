@@ -56,6 +56,20 @@ local function has_review_target(state)
 	return state.active and (state.pr_number ~= nil or state.local_session ~= nil)
 end
 
+--- Whether comment actions must be refused because the local review is in the
+--- commit scope. That scope checks a past commit out, so the buffer is not the
+--- working tree comments anchor to — creating or moving one there would record
+--- a position that means nothing once the branch is restored. Notifies when it
+--- blocks, so callers just `return`.
+--- @return boolean blocked
+local function blocked_by_commit_scope()
+	if not require("fude.local.session").in_commit_scope() then
+		return false
+	end
+	vim.notify("fude.nvim: Comments are read-only in the commit scope — switch scope to comment", vim.log.levels.WARN)
+	return true
+end
+
 --- Toggle editor visibility of resolved comments.
 --- Only affects inline comment boxes (the virt_lines rendered in "inline"
 --- comment style): refresh_extmarks skips resolved comments when hidden.
@@ -172,6 +186,9 @@ function M.create_comment(is_visual)
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	local buf = vim.api.nvim_get_current_buf()
 	local filepath = vim.api.nvim_buf_get_name(buf)
@@ -284,6 +301,9 @@ function M.reply_to_comment(comment_id)
 	if not has_review_target(state) then
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	if not comment_id then
 		local buf = vim.api.nvim_get_current_buf()
@@ -384,6 +404,9 @@ function M.edit_comment(comment_id)
 	local state = config.state
 	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 
@@ -492,6 +515,9 @@ function M.delete_comment(comment_id)
 	local state = config.state
 	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 
@@ -609,6 +635,9 @@ function M.suggest_change(is_visual)
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	local buf = vim.api.nvim_get_current_buf()
 	local filepath = vim.api.nvim_buf_get_name(buf)
@@ -709,6 +738,9 @@ function M.toggle_resolve()
 	local state = config.state
 	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 	if not is_local_mode() then

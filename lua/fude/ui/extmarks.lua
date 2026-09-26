@@ -137,6 +137,14 @@ function M.refresh_extmarks()
 	end
 
 	local buf = vim.api.nvim_get_current_buf()
+	-- The local commit scope has a past commit checked out, so the buffer is not
+	-- the working tree the comments anchor to. Rendering them would point at
+	-- unrelated lines; clear instead.
+	if require("fude.local.session").in_commit_scope() then
+		vim.api.nvim_buf_clear_namespace(buf, state.ns_id, 0, -1)
+		return
+	end
+
 	local filepath = vim.api.nvim_buf_get_name(buf)
 	local diff = require("fude.diff")
 	local rel_path = diff.to_repo_relative(filepath)

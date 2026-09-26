@@ -89,13 +89,22 @@ function M.load_comments(callback, opts)
 	local result = store.materialize(events)
 	local comments = result.comments
 
+	-- The commit scope has a past commit checked out, so the files on disk are
+	-- not the working tree these comments anchor to. Re-anchoring or applying
+	-- the outdated check against them would corrupt the store, so keep the
+	-- materialized state as-is and skip both.
+	local commit_scope = require("fude.local.session").is_commit_scope(session)
+
 	-- Context-based re-anchor: recover comments whose line drifted while the
 	-- buffer was CLOSED (e.g. an external agent edit) and persist the confident
 	-- matches as move events so agents see the updated positions. Only closed
 	-- files are fed in, so unsaved edits in open buffers are never written back
 	-- here — the extmark tracker owns open buffers and persists on save.
-	local file_lines, closed_lines = read_commented_files(session.worktree_root, comment_paths(comments))
-	local moves = store.reanchor(comments, closed_lines)
+	local file_lines, closed_lines
+	if not commit_scope then
+		file_lines, closed_lines = read_commented_files(session.worktree_root, comment_paths(comments))
+	end
+	local moves = commit_scope and {} or store.reanchor(comments, closed_lines)
 	if #moves > 0 then
 		local created = now_iso()
 		local append_err = nil
@@ -128,7 +137,9 @@ function M.load_comments(callback, opts)
 		end
 	end
 
-	store.apply_outdated(comments, line_counts_of(file_lines))
+	if not commit_scope then
+		store.apply_outdated(comments, line_counts_of(file_lines))
+	end
 
 	-- Normalize the local `resolved` flag onto the display-facing `is_resolved`,
 	-- gated by `resolved.show`. This mirrors how `sync.lua` only sets
