@@ -145,7 +145,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
-| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted`) |
+| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted` / `commit`) |
 | `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
 ### File opening position
@@ -342,8 +342,9 @@ typically to review AI-agent-generated code locally. No GitHub interaction
 happens in this mode:
 
 - Changed files come from the local git diff, plus untracked files. The diff
-  base depends on the **scope** (switch with `:FudeReviewLocalScope`). Every
-  scope compares the working tree against a ref, so comments stay anchored:
+  base depends on the **scope** (switch with `:FudeReviewLocalScope`). The
+  first three compare the working tree against a ref, so comments stay
+  anchored:
   - `base` — merge-base with `base` (default: the remote default branch, else
     a local `main`/`master`): the whole branch diff, including committed work.
     Shown only on a branch that differs from its base ref.
@@ -351,6 +352,12 @@ happens in this mode:
     pushed. Shown only when the branch has an upstream.
   - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes. Always
     available.
+  - `commit` — one entry per commit on the branch, showing that commit alone
+    (`<sha>^` vs `<sha>`). It checks the commit out, so it needs a clean
+    working tree and leaves HEAD detached until you switch back; fude restores
+    the branch on scope switch, `:FudeReviewLocalStop`, and quit. Because the
+    working tree is then a past snapshot rather than your work, comments are
+    read-only in this scope: none are shown and none can be created.
   The side panel / picker lists only the scopes valid for the current git
   state, and the statusline shows the active one. When no base branch can be
   found (a fresh, remote-less repo), the session starts in `uncommitted`; in a
