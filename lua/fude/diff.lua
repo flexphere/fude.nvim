@@ -104,6 +104,97 @@ function M.parse_log_first_subject(output)
 	return subject
 end
 
+--- Field separator used by `get_commit_log` (git's %x1f). A control character
+--- keeps the parser safe against commit subjects containing tabs or pipes.
+local COMMIT_LOG_SEP = "\31"
+
+--- Parse `git log --format=%H%x1f%h%x1f%s` output.
+--- @param output string|nil git log output
+--- @return table[] commits { sha, short_sha, subject }
+function M.parse_commit_log(output)
+	local commits = {}
+	if not output or output == "" then
+		return commits
+	end
+	for line in output:gmatch("[^\r\n]+") do
+		local sha, short_sha, subject = line:match(
+			"^([^"
+				.. COMMIT_LOG_SEP
+				.. "]+)"
+				.. COMMIT_LOG_SEP
+				.. "([^"
+				.. COMMIT_LOG_SEP
+				.. "]+)"
+				.. COMMIT_LOG_SEP
+				.. "(.*)$"
+		)
+		if sha then
+			table.insert(commits, { sha = sha, short_sha = short_sha, subject = subject })
+		end
+	end
+	return commits
+end
+
+--- List the commits reachable from `tip` but not from `base_ref`, oldest first.
+--- `tip` is taken explicitly (rather than HEAD) so the list stays stable while
+--- the local review's commit scope has a commit checked out.
+--- @param base_ref string base commit SHA or ref
+--- @param tip string|nil tip ref (default: "HEAD")
+--- @param cwd string|nil repo root
+--- @return table[] commits { sha, short_sha, subject }
+function M.get_commit_log(base_ref, tip, cwd)
+	local result = vim
+		.system({
+			"git",
+			"log",
+			base_ref .. ".." .. (tip or "HEAD"),
+			"--reverse",
+			"--format=%H%x1f%h%x1f%s",
+		}, { text = true, cwd = cwd })
+		:wait()
+	if result.code ~= 0 then
+		return {}
+	end
+	return M.parse_commit_log(result.stdout)
+end
+
+--- Whether the working tree has staged or unstaged changes.
+--- Untracked files do not count: `git checkout` carries them across, so they
+--- never block a commit checkout.
+--- @param cwd string|nil repo root
+--- @return boolean dirty
+function M.is_worktree_dirty(cwd)
+	local result = vim.system({ "git", "status", "--porcelain", "-uno" }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		-- Unknown state: treat as dirty so we never checkout over real work.
+		return true
+	end
+	return vim.trim(result.stdout or "") ~= ""
+end
+
+--- Checkout a ref in the working tree (synchronous).
+--- @param ref string branch name or commit SHA
+--- @param cwd string|nil repo root
+--- @return boolean ok, string|nil err
+function M.checkout(ref, cwd)
+	local result = vim.system({ "git", "checkout", ref }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		return false, vim.trim(result.stderr or "")
+	end
+	return true, nil
+end
+
+--- Whether a commit has a parent (i.e. `<sha>^` resolves).
+--- @param sha string commit SHA
+--- @param cwd string|nil repo root
+--- @return boolean
+function M.has_parent(sha, cwd)
+	local result = vim
+		.system({ "git", "rev-parse", "--verify", "--quiet", sha .. "^" }, { text = true, cwd = cwd })
+		:wait()
+	return result.code == 0
+end
+
 --- Get the merge-base between a ref and HEAD.
 --- @param ref string|nil branch name or commit SHA
 --- @return string|nil merge-base SHA

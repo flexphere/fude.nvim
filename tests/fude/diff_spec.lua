@@ -424,3 +424,80 @@ describe("get_review_patch", function()
 		assert.is_nil(diff.get_review_patch("basesha", "unchanged.lua"))
 	end)
 end)
+
+describe("parse_commit_log", function()
+	local SEP = "\31"
+
+	it("parses sha, short sha and subject per line", function()
+		local out = table.concat({
+			"aaa111" .. SEP .. "aaa1" .. SEP .. "feat: add scope",
+			"bbb222" .. SEP .. "bbb2" .. SEP .. "fix: handle nil",
+		}, "\n") .. "\n"
+		local commits = diff.parse_commit_log(out)
+		assert.equals(2, #commits)
+		assert.same({ sha = "aaa111", short_sha = "aaa1", subject = "feat: add scope" }, commits[1])
+		assert.equals("fix: handle nil", commits[2].subject)
+	end)
+
+	it("keeps a subject containing tabs and pipes", function()
+		local commits = diff.parse_commit_log("aaa111" .. SEP .. "aaa1" .. SEP .. "fix: a\tb | c\n")
+		assert.equals("fix: a\tb | c", commits[1].subject)
+	end)
+
+	it("keeps an empty subject rather than dropping the commit", function()
+		local commits = diff.parse_commit_log("aaa111" .. SEP .. "aaa1" .. SEP .. "\n")
+		assert.equals(1, #commits)
+		assert.equals("", commits[1].subject)
+	end)
+
+	it("returns an empty list for empty or nil output", function()
+		assert.same({}, diff.parse_commit_log(""))
+		assert.same({}, diff.parse_commit_log(nil))
+	end)
+
+	it("skips malformed lines", function()
+		local commits = diff.parse_commit_log("garbage without separators\n")
+		assert.same({}, commits)
+	end)
+end)
+
+describe("is_worktree_dirty", function()
+	local original_system = vim.system
+
+	after_each(function()
+		vim.system = original_system
+	end)
+
+	it("is false for clean porcelain output", function()
+		vim.system = function()
+			return {
+				wait = function()
+					return { code = 0, stdout = "" }
+				end,
+			}
+		end
+		assert.is_false(diff.is_worktree_dirty("/repo"))
+	end)
+
+	it("is true when porcelain reports changes", function()
+		vim.system = function()
+			return {
+				wait = function()
+					return { code = 0, stdout = " M lua/fude/init.lua\n" }
+				end,
+			}
+		end
+		assert.is_true(diff.is_worktree_dirty("/repo"))
+	end)
+
+	it("is true when git itself fails, so no checkout runs over unknown state", function()
+		vim.system = function()
+			return {
+				wait = function()
+					return { code = 128, stdout = "" }
+				end,
+			}
+		end
+		assert.is_true(diff.is_worktree_dirty("/repo"))
+	end)
+end)
