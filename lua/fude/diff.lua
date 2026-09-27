@@ -487,40 +487,20 @@ function M.get_review_patch(base_sha, path, cwd)
 end
 
 --- Get the subject of the first commit since base branch.
+--- `origin/<base>` is tried before the local ref: the PR targets the branch on
+--- GitHub, and a stale local branch of the same name would give a title based
+--- on a different commit range. The local ref is the fallback for repos
+--- without a remote.
 --- @param base_ref string base branch name (e.g., "main")
 --- @return string|nil subject first commit message subject
 function M.get_first_commit_subject(base_ref)
-	-- Get first commit (oldest) since diverging from base
-	-- Note: --reverse without -1, then parse_log_first_subject takes the first line
-	local result = vim
-		.system({
-			"git",
-			"log",
-			base_ref .. "..HEAD",
-			"--reverse",
-			"--format=%s",
-		}, { text = true })
-		:wait()
-
-	if result.code == 0 and result.stdout then
-		return M.parse_log_first_subject(result.stdout)
+	for _, ref in ipairs({ "origin/" .. base_ref, base_ref }) do
+		-- --reverse without -1, then parse_log_first_subject takes the first line
+		local result = vim.system({ "git", "log", ref .. "..HEAD", "--reverse", "--format=%s" }, { text = true }):wait()
+		if result.code == 0 and result.stdout then
+			return M.parse_log_first_subject(result.stdout)
+		end
 	end
-
-	-- Try with origin/ prefix
-	local result2 = vim
-		.system({
-			"git",
-			"log",
-			"origin/" .. base_ref .. "..HEAD",
-			"--reverse",
-			"--format=%s",
-		}, { text = true })
-		:wait()
-
-	if result2.code == 0 and result2.stdout then
-		return M.parse_log_first_subject(result2.stdout)
-	end
-
 	return nil
 end
 

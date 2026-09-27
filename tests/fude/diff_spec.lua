@@ -193,6 +193,17 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.are.same({ "b", "feat/a" }, diff.get_ancestor_branches("main"))
 	end)
 
+	it("bases the first commit subject on origin/<base> over a stale local branch", function()
+		-- local main stays at root while origin/main moves up to a1
+		git("update-ref", "refs/remotes/origin/main", "refs/remotes/origin/feat/a")
+		assert.are.equal("b1", diff.get_first_commit_subject("main"))
+	end)
+
+	it("falls back to the local branch when there is no origin/<base>", function()
+		git("branch", "local-only", "refs/remotes/origin/feat/a")
+		assert.are.equal("b1", diff.get_first_commit_subject("local-only"))
+	end)
+
 	it("returns an empty list when the default branch cannot be resolved", function()
 		assert.are.same({}, diff.get_ancestor_branches("nope"))
 		assert.are.same({}, diff.get_ancestor_branches(nil))
