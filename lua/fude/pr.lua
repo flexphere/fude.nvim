@@ -804,11 +804,25 @@ function M.build_base_branch_entries(branches, default_branch, opts)
 	return entries
 end
 
+--- Maximum number of result rows a compact picker shows before scrolling.
+local COMPACT_PICKER_MAX_ROWS = 15
+
+--- Calculate the total height of a compact (dropdown) Telescope picker so it
+--- fits its entries: one row per entry, capped, plus the prompt and borders.
+--- @param entry_count number number of entries
+--- @return number height in lines
+function M.calculate_compact_picker_height(entry_count)
+	local rows = math.max(1, math.min(entry_count or 0, COMPACT_PICKER_MAX_ROWS))
+	-- prompt line + prompt/results borders
+	return rows + 4
+end
+
 --- Show an entry picker using Telescope when available, otherwise vim.ui.select.
 --- Telescope preselects the first result, so callers order entries default-first.
 --- @param entries table[] entries { display: string, value: string, ... }
 --- @param opts table { prompt: string (vim.ui.select prompt), title: string (Telescope prompt title),
----   make_previewer: (fun(): table)|nil (Telescope only; called lazily so the fallback path never requires Telescope) }
+---   make_previewer: (fun(): table)|nil (Telescope only; called lazily so the fallback path never requires Telescope),
+---   compact: boolean|nil (Telescope only; a small dropdown sized to the entries, for pickers without a preview) }
 --- @param callback fun(selected: string|nil) receives entry value or nil on cancel
 --- @private
 local function pick_entry(entries, opts, callback)
@@ -836,8 +850,15 @@ local function pick_entry(entries, opts, callback)
 	local actions = require("telescope.actions")
 	local action_state = require("telescope.actions.state")
 
+	local picker_opts = {}
+	if opts.compact then
+		picker_opts = require("telescope.themes").get_dropdown({
+			previewer = false,
+			layout_config = { height = M.calculate_compact_picker_height(#entries) },
+		})
+	end
 	pickers
-		.new({}, {
+		.new(picker_opts, {
 			prompt_title = opts.title,
 			finder = finders.new_table({
 				results = entries,
@@ -886,6 +907,7 @@ function M.confirm_stack(base, callback)
 	pick_entry(M.build_stack_choices(), {
 		prompt = "Stack the PR on " .. base .. "?",
 		title = "Stack the PR on " .. base .. "?",
+		compact = true,
 	}, function(value)
 		if value == nil then
 			callback(nil)
@@ -918,6 +940,7 @@ function M.confirm_non_top_stack(base, top_branch, stack_number, callback)
 	pick_entry(M.build_non_top_choices(base, top_branch, stack_number), {
 		prompt = prompt,
 		title = prompt,
+		compact = true,
 	}, callback)
 end
 
@@ -990,6 +1013,7 @@ function M.select_base_branch(entries, callback)
 	pick_entry(entries, {
 		prompt = "Select base branch:",
 		title = "Base Branch",
+		compact = true,
 	}, callback)
 end
 

@@ -386,7 +386,7 @@ File opening position                                 *fude-file-position*
     3. All other branches, most recently committed first.
     The current branch itself is not listed. Pressing `<CR>` right away
     accepts the default; type to fuzzy-filter and pick another branch.
-    Uses Telescope when
+    Uses a compact Telescope dropdown sized to the entries when
     available, otherwise |vim.ui.select()|. Cancelling the picker aborts
     the command. Only branches on the remote are offered, except in a
     repository without remote branches, where a default branch resolved

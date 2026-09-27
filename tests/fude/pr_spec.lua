@@ -1241,6 +1241,18 @@ describe("build_footer_text", function()
 	end)
 end)
 
+describe("calculate_compact_picker_height", function()
+	it("fits the entries plus the prompt and borders", function()
+		assert.are.equal(6, pr.calculate_compact_picker_height(2))
+	end)
+
+	it("caps the rows for long lists and keeps one row when empty", function()
+		assert.are.equal(19, pr.calculate_compact_picker_height(100))
+		assert.are.equal(5, pr.calculate_compact_picker_height(0))
+		assert.are.equal(5, pr.calculate_compact_picker_height(nil))
+	end)
+end)
+
 describe("build_stack_choices", function()
 	it("puts Yes first so a bare <CR> stacks the PR", function()
 		assert.are.same(
