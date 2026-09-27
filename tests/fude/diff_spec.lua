@@ -140,7 +140,8 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		-- stack: main -> a -> b -> (HEAD) feature
 		git("checkout", "-q", "-b", "feature")
 		git("commit", "-q", "--allow-empty", "-m", "a1")
-		git("update-ref", "refs/remotes/origin/a", "HEAD")
+		-- nested name: `--decorate-refs=refs/remotes/origin/` must match it as a prefix
+		git("update-ref", "refs/remotes/origin/feat/a", "HEAD")
 		git("commit", "-q", "--allow-empty", "-m", "b1")
 		git("update-ref", "refs/remotes/origin/b", "HEAD")
 		git("commit", "-q", "--allow-empty", "-m", "f1")
@@ -159,7 +160,7 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 	end)
 
 	it("lists branches between the default branch and HEAD, nearest first", function()
-		assert.are.same({ "b", "a" }, diff.get_ancestor_branches("main"))
+		assert.are.same({ "b", "feat/a" }, diff.get_ancestor_branches("main"))
 	end)
 
 	it("returns an empty list when the default branch cannot be resolved", function()
