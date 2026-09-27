@@ -632,12 +632,14 @@ function M.create_draft_pr(title, body, attachments, base, callback)
 end
 
 local OPEN_PR_STACK_QUERY = [[
-query($owner: String!, $name: String!, $head: String!) {
+query($owner: String!, $name: String!, $ref: String!) {
   repository(owner: $owner, name: $name) {
-    pullRequests(headRefName: $head, states: OPEN, first: 10) {
-      nodes {
-        url baseRefName isCrossRepository stackEntry { position }
-        stack { number size entries(last: 1) { nodes { pullRequest { url headRefName } } } }
+    ref(qualifiedName: $ref) {
+      associatedPullRequests(states: OPEN, first: 1) {
+        nodes {
+          url baseRefName stackEntry { position }
+          stack { number size entries(last: 1) { nodes { pullRequest { url headRefName } } } }
+        }
       }
     }
   }
@@ -658,35 +660,33 @@ function M.parse_stack_top(stack)
 end
 
 --- Parse the `get_open_pr_stack` GraphQL response.
---- `headRefName` also matches PRs opened from forks with a branch of the same
---- name, so only same-repository PRs (`isCrossRepository == false`) count.
+--- The PRs come from the branch ref of this repository
+--- (`ref.associatedPullRequests`), so PRs opened from forks with a branch of
+--- the same name never appear and need no filtering.
 --- @param data table|nil decoded response
 --- @return table|nil info { url: string, base_ref: string|nil, stack_number: number|nil,
 ---   stack_size: number|nil, stack_position: number|nil (1-based, bottom first),
 ---   stack_top: { url: string, branch: string }|nil (the PR at the top of the stack) }, nil when there is no open PR
 function M.parse_open_pr_stack(data)
 	local repo = type(data) == "table" and type(data.data) == "table" and data.data.repository
-	local prs = type(repo) == "table" and repo.pullRequests
+	local ref = type(repo) == "table" and repo.ref
+	local prs = type(ref) == "table" and ref.associatedPullRequests
 	local nodes = type(prs) == "table" and prs.nodes
-	if type(nodes) ~= "table" then
+	local node = type(nodes) == "table" and nodes[1]
+	if type(node) ~= "table" or type(node.url) ~= "string" then
 		return nil
 	end
 	local function number_field(t, key)
 		return type(t) == "table" and type(t[key]) == "number" and t[key] or nil
 	end
-	for _, node in ipairs(nodes) do
-		if type(node) == "table" and node.isCrossRepository == false and type(node.url) == "string" then
-			return {
-				url = node.url,
-				base_ref = type(node.baseRefName) == "string" and node.baseRefName or nil,
-				stack_number = number_field(node.stack, "number"),
-				stack_size = number_field(node.stack, "size"),
-				stack_position = number_field(node.stackEntry, "position"),
-				stack_top = M.parse_stack_top(node.stack),
-			}
-		end
-	end
-	return nil
+	return {
+		url = node.url,
+		base_ref = type(node.baseRefName) == "string" and node.baseRefName or nil,
+		stack_number = number_field(node.stack, "number"),
+		stack_size = number_field(node.stack, "size"),
+		stack_position = number_field(node.stackEntry, "position"),
+		stack_top = M.parse_stack_top(node.stack),
+	}
 end
 
 --- Get the open PR whose head is `branch`, with the GitHub stack it belongs to.
@@ -705,7 +705,7 @@ function M.get_open_pr_stack(branch, callback)
 		"-F",
 		"name={repo}",
 		"-f",
-		"head=" .. branch,
+		"ref=refs/heads/" .. branch,
 		"-f",
 		"query=" .. OPEN_PR_STACK_QUERY,
 	}, function(err, data)
