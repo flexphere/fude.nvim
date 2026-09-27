@@ -46,8 +46,8 @@ describe("create passes default title to open_pr_float", function()
 		end)
 		stack_prompts = {}
 		stack_answer = false
-		helpers.mock(pr, "confirm_stack", function(base, relation, callback)
-			table.insert(stack_prompts, { base = base, relation = relation })
+		helpers.mock(pr, "confirm_stack", function(base, callback)
+			table.insert(stack_prompts, base)
 			callback(stack_answer)
 		end)
 		lookup_branches = {}
@@ -143,7 +143,7 @@ describe("create passes default title to open_pr_float", function()
 		pick = "feat/parent"
 		stack_answer = true
 		pr.create()
-		assert.are.same({ base = "feat/parent", relation = "stack parent" }, stack_prompts[1])
+		assert.are.same({ "feat/parent" }, stack_prompts)
 		assert.are.same({ "feat/parent" }, lookup_branches)
 		assert.are.same({}, new_stack_prompts)
 		assert.are.equal("feat/parent", captured_opts.base)
@@ -152,7 +152,7 @@ describe("create passes default title to open_pr_float", function()
 		pick = "feat/base"
 		stack_answer = false
 		pr.create()
-		assert.are.same({ base = "feat/base", relation = "ancestor" }, stack_prompts[2])
+		assert.are.same({ "feat/parent", "feat/base" }, stack_prompts)
 		assert.are.same({ "feat/parent" }, lookup_branches)
 		assert.are.equal("feat/base", captured_opts.base)
 		assert.is_nil(captured_opts.stack)
@@ -1198,117 +1198,88 @@ describe("build_footer_text", function()
 end)
 
 describe("build_stack_choices", function()
-	it("puts Yes first for the gh-stack parent", function()
-		local choices = pr.build_stack_choices("stack parent")
-		assert.are.same({ true, false }, { choices[1].stack, choices[2].stack })
-	end)
-
-	it("puts No first for other branches", function()
-		for _, relation in ipairs({ "ancestor", false }) do
-			local choices = pr.build_stack_choices(relation or nil)
-			assert.are.same({ false, true }, { choices[1].stack, choices[2].stack })
-		end
+	it("puts Yes first so a bare <CR> stacks the PR", function()
+		assert.are.same(
+			{ "yes", "no" },
+			vim.tbl_map(function(e)
+				return e.value
+			end, pr.build_stack_choices())
+		)
 	end)
 end)
 
-describe("confirm_stack (vim.ui.select)", function()
-	local orig_select
-
-	before_each(function()
-		orig_select = vim.ui.select
-	end)
-
-	after_each(function()
-		vim.ui.select = orig_select
-	end)
-
-	it("prompts with the base branch and returns the chosen answer", function()
-		local captured_prompt, captured_labels
-		vim.ui.select = function(items, sopts, on_choice)
-			captured_prompt = sopts.prompt
-			captured_labels = vim.tbl_map(sopts.format_item, items)
-			on_choice(items[1], 1)
-		end
-		local answer = "unset"
-		pr.confirm_stack("feat/parent", "stack parent", function(stack)
-			answer = stack
-		end)
-		assert.are.equal("Stack the PR on feat/parent?", captured_prompt)
-		assert.are.same({ "Yes (stacked PR)", "No (ordinary PR)" }, captured_labels)
-		assert.is_true(answer)
-	end)
-
-	it("returns nil on cancel", function()
-		vim.ui.select = function(_, _, on_choice)
-			on_choice(nil, nil)
-		end
-		local answer = "unset"
-		pr.confirm_stack("x", nil, function(stack)
-			answer = stack
-		end)
-		assert.is_nil(answer)
+describe("build_new_stack_choices", function()
+	it("puts Yes first so a bare <CR> creates a new stack", function()
+		assert.are.same(
+			{ "yes", "no" },
+			vim.tbl_map(function(e)
+				return e.value
+			end, pr.build_new_stack_choices())
+		)
 	end)
 end)
 
-describe("confirm_new_stack (vim.ui.select)", function()
-	local original_select
+-- Telescope is not loaded in the test environment, so these cover the
+-- vim.ui.select fallback of the shared picker
+for _, case in ipairs({
+	{
+		name = "confirm_stack",
+		call = function(base, cb)
+			pr.confirm_stack(base, cb)
+		end,
+		prompt = "Stack the PR on feat/parent?",
+		labels = { "Yes (stacked PR)", "No (ordinary PR)" },
+	},
+	{
+		name = "confirm_new_stack",
+		call = function(base, cb)
+			pr.confirm_new_stack(base, cb)
+		end,
+		prompt = "The PR of feat/parent is not in a stack. Create a new stack?",
+		labels = { "Yes (create a new stack)", "No (ordinary PR)" },
+	},
+}) do
+	describe(case.name .. " (picker fallback)", function()
+		local orig_select
 
-	before_each(function()
-		original_select = vim.ui.select
-	end)
-
-	after_each(function()
-		vim.ui.select = original_select
-	end)
-
-	it("offers Yes first and passes the answer", function()
-		local labels, prompt
-		vim.ui.select = function(items, opts, on_choice)
-			labels = vim.tbl_map(opts.format_item, items)
-			prompt = opts.prompt
-			on_choice(items[1])
-		end
-		local answer
-		pr.confirm_new_stack("feat/parent", function(new_stack)
-			answer = new_stack
+		before_each(function()
+			orig_select = vim.ui.select
 		end)
-		assert.are.same({ "Yes (create a new stack)", "No (ordinary PR)" }, labels)
-		assert.is_not_nil(prompt:find("feat/parent", 1, true))
-		assert.is_true(answer)
-	end)
 
-	it("passes nil on cancel", function()
-		vim.ui.select = function(_, _, on_choice)
-			on_choice(nil)
-		end
-		local answer = "unset"
-		pr.confirm_new_stack("x", function(new_stack)
-			answer = new_stack
+		after_each(function()
+			vim.ui.select = orig_select
 		end)
-		assert.is_nil(answer)
-	end)
-end)
 
-describe("find_entry_relation", function()
-	local entries = {
-		{ value = "main", is_default = true },
-		{ value = "p", relation = "stack parent" },
-		{ value = "a", relation = "ancestor" },
-		{ value = "x" },
-	}
+		local function answer_with(idx)
+			local captured = {}
+			vim.ui.select = function(items, sopts, on_choice)
+				captured.prompt = sopts.prompt
+				captured.labels = items
+				on_choice(idx and items[idx], idx)
+			end
+			local answer = "unset"
+			case.call("feat/parent", function(v)
+				answer = v
+			end)
+			return answer, captured
+		end
 
-	it("returns the relation of the matching entry", function()
-		assert.are.equal("stack parent", pr.find_entry_relation(entries, "p"))
-		assert.are.equal("ancestor", pr.find_entry_relation(entries, "a"))
-	end)
+		it("offers Yes first with the base branch in the prompt", function()
+			local answer, captured = answer_with(1)
+			assert.are.equal(case.prompt, captured.prompt)
+			assert.are.same(case.labels, captured.labels)
+			assert.is_true(answer)
+		end)
 
-	it("returns nil for unrelated, default, or unknown values", function()
-		assert.is_nil(pr.find_entry_relation(entries, "x"))
-		assert.is_nil(pr.find_entry_relation(entries, "main"))
-		assert.is_nil(pr.find_entry_relation(entries, "missing"))
-		assert.is_nil(pr.find_entry_relation(nil, "p"))
+		it("returns false for No", function()
+			assert.is_false((answer_with(2)))
+		end)
+
+		it("returns nil on cancel", function()
+			assert.is_nil((answer_with(nil)))
+		end)
 	end)
-end)
+end
 
 describe("build_base_branch_entries", function()
 	it("puts the default branch first with a marker and keeps the rest in order", function()

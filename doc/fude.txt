@@ -397,11 +397,12 @@ File opening position                                 *fude-file-position*
     default title (the subject of the first commit not on that branch).
 
     When a branch other than the default branch is picked, a Yes/No
-    prompt asks whether to create the PR as a GitHub stacked PR on top
-    of that branch (Yes comes first for the `(stack parent)` branch, No
-    for any other). Cancelling the prompt aborts the command. On Yes,
+    picker (same UI as the base branch picker, Yes preselected so `<CR>`
+    accepts it) asks whether to create the PR as a GitHub stacked PR on
+    top of that branch. Picking the default branch skips the question.
+    Cancelling the picker aborts the command. On Yes,
     the base branch's open PR is looked up before the float opens. When
-    that PR is not in a stack yet, another Yes/No prompt asks whether to
+    that PR is not in a stack yet, another Yes/No picker asks whether to
     create a new stack from it (No creates an ordinary PR, cancelling
     aborts). The footer shows `(stacked)` for an existing stack and
     `(new stack)` for a new one. After `gh pr create` succeeds the new PR

@@ -794,19 +794,6 @@ function M.build_base_branch_entries(branches, default_branch, opts)
 	return entries
 end
 
---- Find the relation marker of the entry whose value is `value`.
---- @param entries table[] entries from build_base_branch_entries
---- @param value string|nil selected branch name
---- @return string|nil relation ("stack parent" | "ancestor"), nil for unrelated or unknown branches
-function M.find_entry_relation(entries, value)
-	for _, e in ipairs(entries or {}) do
-		if e.value == value then
-			return e.relation
-		end
-	end
-	return nil
-end
-
 --- Show an entry picker using Telescope when available, otherwise vim.ui.select.
 --- Telescope preselects the first result, so callers order entries default-first.
 --- @param entries table[] entries { display: string, value: string, ... }
@@ -871,49 +858,41 @@ local function pick_entry(entries, opts, callback)
 		:find()
 end
 
---- Build the choices for the "create as stacked PR?" prompt.
---- The likely answer comes first so a bare <CR> accepts it: Yes for the
---- gh-stack parent (the branch is already the layer below in a local stack),
---- No otherwise (an arbitrary branch is usually just a merge target).
---- @param relation string|nil relation of the picked base ("stack parent" | "ancestor" | nil)
---- @return table[] choices { label: string, stack: boolean }
-function M.build_stack_choices(relation)
-	local yes = { label = "Yes (stacked PR)", stack = true }
-	local no = { label = "No (ordinary PR)", stack = false }
-	if relation == "stack parent" then
-		return { yes, no }
-	end
-	return { no, yes }
+--- Build the picker entries for the "create as stacked PR?" prompt.
+--- Yes comes first so a bare <CR> accepts it: the prompt is shown only for a
+--- non-default base, which the user usually picks to build on top of it.
+--- @return table[] entries { display: string, value: "yes"|"no" }
+function M.build_stack_choices()
+	return {
+		{ display = "Yes (stacked PR)", value = "yes" },
+		{ display = "No (ordinary PR)", value = "no" },
+	}
 end
 
 --- Ask whether to create the PR as a GitHub stacked PR on top of `base`.
 --- @param base string picked base branch
---- @param relation string|nil relation of the picked base (orders the choices)
 --- @param callback fun(stack: boolean|nil) true/false for the answer, nil on cancel
-function M.confirm_stack(base, relation, callback)
-	local choices = M.build_stack_choices(relation)
-	vim.ui.select(choices, {
+function M.confirm_stack(base, callback)
+	pick_entry(M.build_stack_choices(), {
 		prompt = "Stack the PR on " .. base .. "?",
-		format_item = function(item)
-			return item.label
-		end,
-	}, function(choice)
-		if choice then
-			callback(choice.stack)
-		else
+		title = "Stack the PR on " .. base .. "?",
+	}, function(value)
+		if value == nil then
 			callback(nil)
+		else
+			callback(value == "yes")
 		end
 	end)
 end
 
---- Build the choices for the "create a new stack?" prompt, shown when the
---- parent PR is not in a stack yet. Yes comes first: the user has just
+--- Build the picker entries for the "create a new stack?" prompt, shown when
+--- the parent PR is not in a stack yet. Yes comes first: the user has just
 --- answered that they want a stacked PR.
---- @return table[] choices { label: string, new_stack: boolean }
+--- @return table[] entries { display: string, value: "yes"|"no" }
 function M.build_new_stack_choices()
 	return {
-		{ label = "Yes (create a new stack)", new_stack = true },
-		{ label = "No (ordinary PR)", new_stack = false },
+		{ display = "Yes (create a new stack)", value = "yes" },
+		{ display = "No (ordinary PR)", value = "no" },
 	}
 end
 
@@ -921,16 +900,12 @@ end
 --- @param base string picked base branch
 --- @param callback fun(new_stack: boolean|nil) true/false for the answer, nil on cancel
 function M.confirm_new_stack(base, callback)
-	vim.ui.select(M.build_new_stack_choices(), {
-		prompt = "The PR of " .. base .. " is not in a stack. Create a new stack?",
-		format_item = function(item)
-			return item.label
-		end,
-	}, function(choice)
-		if choice then
-			callback(choice.new_stack)
-		else
+	local prompt = "The PR of " .. base .. " is not in a stack. Create a new stack?"
+	pick_entry(M.build_new_stack_choices(), { prompt = prompt, title = prompt }, function(value)
+		if value == nil then
 			callback(nil)
+		else
+			callback(value == "yes")
 		end
 	end)
 end
@@ -1064,7 +1039,7 @@ function M.create()
 			create_with_base(base, nil)
 			return
 		end
-		M.confirm_stack(base, M.find_entry_relation(entries, base), function(want_stack)
+		M.confirm_stack(base, function(want_stack)
 			if want_stack == nil then
 				return
 			end
