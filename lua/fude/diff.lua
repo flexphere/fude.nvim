@@ -251,44 +251,84 @@ function M.get_gh_stack_parent(branch)
 	return M.parse_gh_stack_parent(table.concat(lines, "\n"), branch)
 end
 
---- Parse `git log --format=%D --decorate-refs=refs/remotes/origin/` output into
---- branch names in log order (nearest to HEAD first). Each line lists the refs
---- decorating one commit, comma-separated; refs on the same commit are sorted
---- by name for a stable order. Symbolic entries (`origin/HEAD -> origin/main`)
---- and duplicates are skipped.
---- @param output string|nil git log output
+--- Parse `git log --format=%H%x00%P%x00%D --decorate-refs=refs/remotes/origin/ <default>..HEAD`
+--- output into branch names, nearest to HEAD first.
+--- The distance of a branch is the number of commits in the range that its tip
+--- cannot reach, i.e. `git rev-list --count <tip>..HEAD` limited to the range.
+--- It is computed from the parent links in the output, since log order alone
+--- (even `--topo-order`) does not follow the distance once a merge is involved.
+--- Branches at the same distance are sorted by name for a stable order.
+--- Symbolic entries (`origin/HEAD -> origin/main`) and duplicates are skipped.
+--- @param output string|nil git log output (one commit per line: hash NUL parents NUL decorations)
 --- @return string[] branch names without the `origin/` prefix
 function M.parse_ancestor_log(output)
 	local names = {}
-	local seen = {}
 	if not output or output == "" then
 		return names
 	end
+	local total = 0
+	local parents = {}
+	local tips = {} -- { sha, name }
 	for _, line in ipairs(vim.split(output, "\n", { plain = true })) do
-		local on_commit = {}
-		for _, ref in ipairs(vim.split(line, ",", { plain = true })) do
-			ref = vim.trim(ref)
-			local name = ref:match("^origin/(.+)$")
-			if name and not ref:find("->", 1, true) and name ~= "HEAD" then
-				table.insert(on_commit, name)
-			end
-		end
-		table.sort(on_commit)
-		for _, name in ipairs(on_commit) do
-			if not seen[name] then
-				seen[name] = true
-				table.insert(names, name)
+		local fields = vim.split(line, "\0", { plain = true })
+		local sha = vim.trim(fields[1] or "")
+		if sha ~= "" then
+			total = total + 1
+			parents[sha] = vim.split(vim.trim(fields[2] or ""), " ", { trimempty = true })
+			for _, ref in ipairs(vim.split(fields[3] or "", ",", { plain = true })) do
+				ref = vim.trim(ref)
+				local name = ref:match("^origin/(.+)$")
+				if name and not ref:find("->", 1, true) and name ~= "HEAD" then
+					table.insert(tips, { sha = sha, name = name })
+				end
 			end
 		end
 	end
-	return names
+
+	-- commits in the range reachable from `sha` (itself included); parents
+	-- outside the range are absent from `parents` and not followed
+	local function count_reachable(sha)
+		local seen = { [sha] = true }
+		local stack = { sha }
+		local count = 0
+		while #stack > 0 do
+			local current = table.remove(stack)
+			count = count + 1
+			for _, parent in ipairs(parents[current]) do
+				if parents[parent] and not seen[parent] then
+					seen[parent] = true
+					table.insert(stack, parent)
+				end
+			end
+		end
+		return count
+	end
+
+	local distance = {}
+	local by_sha = {}
+	local ordered = {}
+	for _, tip in ipairs(tips) do
+		if not distance[tip.name] then
+			by_sha[tip.sha] = by_sha[tip.sha] or (total - count_reachable(tip.sha))
+			distance[tip.name] = by_sha[tip.sha]
+			table.insert(ordered, tip.name)
+		end
+	end
+	table.sort(ordered, function(a, b)
+		if distance[a] ~= distance[b] then
+			return distance[a] < distance[b]
+		end
+		return a < b
+	end)
+	return ordered
 end
 
 --- Get the `origin` branches that HEAD was built on top of: branch tips in
 --- `<default>..HEAD`, i.e. between the default branch and HEAD in `git log`
 --- (e.g. the lower layers of a stack), nearest first.
---- One `git log` walk from HEAD yields both membership and order, so the cost
---- does not grow with the number of candidate branches. The range excludes
+--- One `git log` walk yields both membership and the commit graph the distances
+--- are computed from, so the number of git processes does not grow with the
+--- number of candidate branches. The range excludes
 --- branches already merged into the default branch.
 --- Returns an empty list when the default branch ref cannot be resolved: without
 --- the range bound every branch in HEAD's history would match.
@@ -313,8 +353,7 @@ function M.get_ancestor_branches(default_branch)
 		.system({
 			"git",
 			"log",
-			"--topo-order",
-			"--format=%D",
+			"--format=%H%x00%P%x00%D",
 			"--decorate-refs=refs/remotes/origin/",
 			"--decorate-refs-exclude=refs/remotes/origin/HEAD",
 			default_ref .. "..HEAD",

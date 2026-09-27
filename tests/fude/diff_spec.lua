@@ -100,12 +100,42 @@ describe("parse_gh_stack_parent", function()
 end)
 
 describe("parse_ancestor_log", function()
-	it("returns branches in log order, nearest to HEAD first", function()
-		assert.are.same({ "feature", "b", "a" }, diff.parse_ancestor_log("origin/feature\n\norigin/b\norigin/a\n"))
+	--- Build one `%H%x00%P%x00%D` line.
+	local function line(sha, parents, refs)
+		return sha .. "\0" .. parents .. "\0" .. (refs or "")
+	end
+
+	it("returns branches nearest to HEAD first on a linear history", function()
+		-- h -> f -> b -> a (-> outside the range)
+		local out = table.concat({
+			line("h", "f", "origin/feature"),
+			line("f", "b"),
+			line("b", "a", "origin/b"),
+			line("a", "root", "origin/a"),
+		}, "\n") .. "\n"
+		assert.are.same({ "feature", "b", "a" }, diff.parse_ancestor_log(out))
 	end)
 
-	it("sorts refs on the same commit by name and skips symbolic refs and duplicates", function()
-		local out = "origin/z, origin/m\norigin/HEAD -> origin/main, origin/m\n"
+	it("orders by distance, not log order, across a merge", function()
+		-- m merges the side chain s2 -> s1 into the first-parent chain m -> c3 -> c2 -> x.
+		-- far (x) is listed first but cannot reach 5 commits (m c3 c2 s2 s1),
+		-- while near (s2) cannot reach only 4 (m c3 c2 x)
+		local out = table.concat({
+			line("m", "c3 s2", ""),
+			line("c3", "c2"),
+			line("c2", "x"),
+			line("x", "root", "origin/far"),
+			line("s2", "s1", "origin/near"),
+			line("s1", "root"),
+		}, "\n")
+		assert.are.same({ "near", "far" }, diff.parse_ancestor_log(out))
+	end)
+
+	it("sorts refs at the same distance by name and skips symbolic refs and duplicates", function()
+		local out = table.concat({
+			line("h", "p", "origin/z, origin/m"),
+			line("p", "root", "origin/HEAD -> origin/main, origin/m"),
+		}, "\n")
 		assert.are.same({ "m", "z" }, diff.parse_ancestor_log(out))
 	end)
 

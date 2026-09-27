@@ -381,7 +381,8 @@ File opening position                                 *fude-file-position*
        gh-stack stack (read from `.git/gh-stack`), marked
        `(stack parent)`, then the branches the current branch was built
        on top of in `git log` (tips between the default branch and
-       HEAD), nearest first, marked `(ancestor)`.
+       HEAD), nearest first (fewest commits between the branch and
+       HEAD), marked `(ancestor)`.
     3. All other branches, most recently committed first.
     The current branch itself is not listed. Pressing `<CR>` right away
     accepts the default; type to fuzzy-filter and pick another branch.
