@@ -1,5 +1,6 @@
 local pr = require("fude.pr")
 local diff = require("fude.diff")
+local gh = require("fude.gh")
 local helpers = require("tests.helpers")
 
 describe("create passes default title to open_pr_float", function()
@@ -10,6 +11,11 @@ describe("create passes default title to open_pr_float", function()
 	local base_callback
 	local stack_prompts
 	local stack_answer
+	local lookup_branches
+	local lookup_result
+	local new_stack_prompts
+	local new_stack_answer
+	local notifications
 
 	before_each(function()
 		captured_title_lines = nil
@@ -43,6 +49,22 @@ describe("create passes default title to open_pr_float", function()
 		helpers.mock(pr, "confirm_stack", function(base, relation, callback)
 			table.insert(stack_prompts, { base = base, relation = relation })
 			callback(stack_answer)
+		end)
+		lookup_branches = {}
+		lookup_result = { nil, { url = "https://github.com/o/r/pull/1", stack_number = 3 } }
+		helpers.mock(gh, "get_open_pr_stack", function(branch, callback)
+			table.insert(lookup_branches, branch)
+			callback(lookup_result[1], lookup_result[2])
+		end)
+		new_stack_prompts = {}
+		new_stack_answer = true
+		helpers.mock(pr, "confirm_new_stack", function(base, callback)
+			table.insert(new_stack_prompts, base)
+			callback(new_stack_answer)
+		end)
+		notifications = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notifications, { msg = msg, level = level })
 		end)
 		helpers.mock(diff, "get_first_commit_subject", function(_)
 			return "Initial commit message"
@@ -122,22 +144,83 @@ describe("create passes default title to open_pr_float", function()
 		stack_answer = true
 		pr.create()
 		assert.are.same({ base = "feat/parent", relation = "stack parent" }, stack_prompts[1])
+		assert.are.same({ "feat/parent" }, lookup_branches)
+		assert.are.same({}, new_stack_prompts)
 		assert.are.equal("feat/parent", captured_opts.base)
-		assert.is_true(captured_opts.stack)
+		assert.are.same({ parent_url = "https://github.com/o/r/pull/1", new_stack = false }, captured_opts.stack)
 
 		pick = "feat/base"
 		stack_answer = false
 		pr.create()
 		assert.are.same({ base = "feat/base", relation = "ancestor" }, stack_prompts[2])
+		assert.are.same({ "feat/parent" }, lookup_branches)
 		assert.are.equal("feat/base", captured_opts.base)
-		assert.is_false(captured_opts.stack)
+		assert.is_nil(captured_opts.stack)
 	end)
 
 	it("does not ask about stacking when the default branch is picked", function()
 		pr.create()
 		assert.are.same({}, stack_prompts)
+		assert.are.same({}, lookup_branches)
 		assert.are.equal("main", captured_opts.base)
-		assert.is_false(captured_opts.stack)
+		assert.is_nil(captured_opts.stack)
+	end)
+
+	describe("when the parent PR is not in a stack yet", function()
+		before_each(function()
+			helpers.mock(pr, "select_base_branch", function(_, callback)
+				callback("feat/other")
+			end)
+			stack_answer = true
+			lookup_result = { nil, { url = "https://github.com/o/r/pull/1", stack_number = nil } }
+		end)
+
+		it("asks whether to create a new stack and stacks on Yes", function()
+			pr.create()
+			assert.are.same({ "feat/other" }, new_stack_prompts)
+			assert.are.same({ parent_url = "https://github.com/o/r/pull/1", new_stack = true }, captured_opts.stack)
+		end)
+
+		it("creates an ordinary PR on No", function()
+			new_stack_answer = false
+			pr.create()
+			assert.are.same({ "feat/other" }, new_stack_prompts)
+			assert.are.equal("feat/other", captured_opts.base)
+			assert.is_nil(captured_opts.stack)
+		end)
+
+		it("aborts without opening the float when the prompt is cancelled", function()
+			new_stack_answer = nil
+			pr.create()
+			assert.is_nil(captured_opts)
+		end)
+	end)
+
+	it("warns and creates an ordinary PR when the parent has no open PR", function()
+		helpers.mock(pr, "select_base_branch", function(_, callback)
+			callback("feat/other")
+		end)
+		stack_answer = true
+		lookup_result = { nil, nil }
+		pr.create()
+		assert.are.same({}, new_stack_prompts)
+		assert.is_nil(captured_opts.stack)
+		assert.are.equal("feat/other", captured_opts.base)
+		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+		assert.is_not_nil(notifications[1].msg:find("feat/other has no open PR", 1, true))
+	end)
+
+	it("warns with gh's error, not 'no open PR', when the parent lookup fails", function()
+		helpers.mock(pr, "select_base_branch", function(_, callback)
+			callback("feat/other")
+		end)
+		stack_answer = true
+		lookup_result = { "HTTP 401: Bad credentials\n", nil }
+		pr.create()
+		assert.is_nil(captured_opts.stack)
+		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+		assert.is_not_nil(notifications[1].msg:find("failed to look up the PR of feat/other: HTTP 401", 1, true))
+		assert.is_nil(notifications[1].msg:find("has no open PR", 1, true))
 	end)
 
 	it("aborts without opening the float when the stack prompt is cancelled", function()
@@ -922,7 +1005,6 @@ describe("open_pr_float cancel confirmation", function()
 end)
 
 describe("create submit draft cleanup", function()
-	local gh = require("fude.gh")
 	local orig_paste
 
 	local function get_cr_callback(buf)
@@ -1009,18 +1091,12 @@ describe("create submit draft cleanup", function()
 		local PARENT_URL = "https://github.com/o/r/pull/1"
 		local notifications
 		local link_calls
-		local lookup_branch
 
 		before_each(function()
 			notifications = {}
 			link_calls = {}
-			lookup_branch = nil
 			helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
 				callback(nil, { url = NEW_URL })
-			end)
-			helpers.mock(gh, "get_open_pr_url", function(branch, callback)
-				lookup_branch = branch
-				callback(nil, PARENT_URL)
 			end)
 			helpers.mock(gh, "link_stack", function(refs, callback)
 				table.insert(link_calls, refs)
@@ -1045,48 +1121,28 @@ describe("create submit draft cleanup", function()
 			return nil
 		end
 
-		it("links the new PR on top of the parent's open PR", function()
-			submit({ base = "feat/parent", stack = true })
-			assert.are.equal("feat/parent", lookup_branch)
+		it("links the new PR on top of the parent PR resolved before the float opened", function()
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false } })
 			assert.are.same({ { PARENT_URL, NEW_URL } }, link_calls)
 			assert.is_not_nil(find_notification("Stacked on " .. PARENT_URL))
 		end)
 
+		it("reports a newly created stack", function()
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = true } })
+			assert.are.same({ { PARENT_URL, NEW_URL } }, link_calls)
+			assert.is_not_nil(find_notification("New stack created on " .. PARENT_URL))
+		end)
+
 		it("does not link when stack is not set", function()
 			submit({ base = "feat/parent" })
-			assert.is_nil(lookup_branch)
 			assert.are.same({}, link_calls)
-		end)
-
-		it("skips linking with a warning when the parent has no open PR", function()
-			helpers.mock(gh, "get_open_pr_url", function(_, callback)
-				callback(nil, nil)
-			end)
-			submit({ base = "feat/parent", stack = true })
-			assert.are.same({}, link_calls)
-			local n = find_notification("Not stacked: feat/parent has no open PR")
-			assert.is_not_nil(n)
-			assert.are.equal(vim.log.levels.WARN, n.level)
-		end)
-
-		it("warns with gh's error, not 'no open PR', when the parent lookup fails", function()
-			helpers.mock(gh, "get_open_pr_url", function(_, callback)
-				callback("HTTP 401: Bad credentials\n", nil)
-			end)
-			submit({ base = "feat/parent", stack = true })
-			assert.are.same({}, link_calls)
-			local n = find_notification("failed to look up the PR of feat/parent")
-			assert.is_not_nil(n)
-			assert.are.equal(vim.log.levels.WARN, n.level)
-			assert.is_not_nil(n.msg:find("HTTP 401: Bad credentials", 1, true))
-			assert.is_nil(find_notification("has no open PR"))
 		end)
 
 		it("warns and keeps the created PR when linking fails", function()
 			helpers.mock(gh, "link_stack", function(_, callback)
 				callback('unknown command "stack" for "gh"\n')
 			end)
-			submit({ base = "feat/parent", stack = true })
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false } })
 			local n = find_notification("Stacking failed (the PR was created unstacked)")
 			assert.is_not_nil(n)
 			assert.are.equal(vim.log.levels.WARN, n.level)
@@ -1097,8 +1153,7 @@ describe("create submit draft cleanup", function()
 			helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
 				callback("boom", nil)
 			end)
-			submit({ base = "feat/parent", stack = true })
-			assert.is_nil(lookup_branch)
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false } })
 			assert.are.same({}, link_calls)
 		end)
 	end)
@@ -1124,13 +1179,20 @@ describe("build_footer_text", function()
 	it("ignores the base in edit mode", function()
 		assert.are.equal(" <CR> update | q cancel ", pr.build_footer_text("edit", false, "main"))
 		assert.are.equal(" <CR> update | q cancel (draft restored) ", pr.build_footer_text("edit", true, nil))
-		assert.are.equal(" <CR> update | q cancel ", pr.build_footer_text("edit", false, "p", true))
+		assert.are.equal(" <CR> update | q cancel ", pr.build_footer_text("edit", false, "p", { new_stack = false }))
 	end)
 
 	it("marks a stacked PR in create mode", function()
 		assert.are.equal(
 			" <CR> create draft → feat/parent (stacked) | q cancel ",
-			pr.build_footer_text("create", false, "feat/parent", true)
+			pr.build_footer_text("create", false, "feat/parent", { new_stack = false })
+		)
+	end)
+
+	it("marks a PR that starts a new stack in create mode", function()
+		assert.are.equal(
+			" <CR> create draft → feat/parent (new stack) | q cancel ",
+			pr.build_footer_text("create", false, "feat/parent", { new_stack = true })
 		)
 	end)
 end)
@@ -1183,6 +1245,45 @@ describe("confirm_stack (vim.ui.select)", function()
 		local answer = "unset"
 		pr.confirm_stack("x", nil, function(stack)
 			answer = stack
+		end)
+		assert.is_nil(answer)
+	end)
+end)
+
+describe("confirm_new_stack (vim.ui.select)", function()
+	local original_select
+
+	before_each(function()
+		original_select = vim.ui.select
+	end)
+
+	after_each(function()
+		vim.ui.select = original_select
+	end)
+
+	it("offers Yes first and passes the answer", function()
+		local labels, prompt
+		vim.ui.select = function(items, opts, on_choice)
+			labels = vim.tbl_map(opts.format_item, items)
+			prompt = opts.prompt
+			on_choice(items[1])
+		end
+		local answer
+		pr.confirm_new_stack("feat/parent", function(new_stack)
+			answer = new_stack
+		end)
+		assert.are.same({ "Yes (create a new stack)", "No (ordinary PR)" }, labels)
+		assert.is_not_nil(prompt:find("feat/parent", 1, true))
+		assert.is_true(answer)
+	end)
+
+	it("passes nil on cancel", function()
+		vim.ui.select = function(_, _, on_choice)
+			on_choice(nil)
+		end
+		local answer = "unset"
+		pr.confirm_new_stack("x", function(new_stack)
+			answer = new_stack
 		end)
 		assert.is_nil(answer)
 	end)
@@ -1381,7 +1482,6 @@ describe("draft management", function()
 end)
 
 describe("edit", function()
-	local gh = require("fude.gh")
 	local config = require("fude.config")
 	local captured_pr_number
 	local captured_title_lines
@@ -1562,7 +1662,6 @@ describe("edit", function()
 end)
 
 describe("edit draft persistence", function()
-	local gh = require("fude.gh")
 	local config = require("fude.config")
 	local drafts = require("fude.drafts")
 	local captured_title_lines

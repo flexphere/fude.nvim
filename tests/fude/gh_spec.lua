@@ -529,54 +529,84 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
 	end)
 
-	it("get_open_pr_url returns the URL only for an open PR", function()
+	it("get_open_pr_stack queries the open PR of the branch via GraphQL", function()
 		local captured_args
-		local response
 		helpers.mock(gh, "run_json", function(args, callback)
 			captured_args = args
-			callback(response.err, response.data)
+			callback(nil, {
+				data = {
+					repository = {
+						pullRequests = {
+							nodes = { { url = "https://github.com/o/r/pull/1", isCrossRepository = false, stack = { number = 3 } } },
+						},
+					},
+				},
+			})
 		end)
-		local got = "unset"
-		local got_err = "unset"
-		local function lookup()
-			gh.get_open_pr_url("feat/a", function(err, url)
-				got_err = err
-				got = url
-			end)
-		end
-
-		response = { data = { state = "OPEN", url = "https://github.com/o/r/pull/1" } }
-		lookup()
-		assert.are.same({ "pr", "view", "feat/a", "--json", "url,state" }, captured_args)
-		assert.are.equal("https://github.com/o/r/pull/1", got)
-
-		response = { data = { state = "MERGED", url = "https://github.com/o/r/pull/1" } }
-		lookup()
-		assert.is_nil(got)
-
-		-- gh pr view exits non-zero when the branch has no PR: not an error
-		response = { err = 'no pull requests found for branch "feat/a"\n' }
-		lookup()
-		assert.is_nil(got)
+		local got_err, got = "unset", "unset"
+		gh.get_open_pr_stack("feat/a", function(err, info)
+			got_err, got = err, info
+		end)
+		assert.are.same({ "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "head=feat/a" }, {
+			unpack(captured_args, 1, 8),
+		})
+		assert.is_not_nil(captured_args[10]:find("stack", 1, true))
 		assert.is_nil(got_err)
+		assert.are.same({ url = "https://github.com/o/r/pull/1", stack_number = 3 }, got)
 	end)
 
-	it("get_open_pr_url reports a failed lookup as an error, not as no PR", function()
+	it("get_open_pr_stack reports a failed lookup as an error, not as no PR", function()
 		helpers.mock(gh, "run_json", function(_, callback)
 			callback("HTTP 401: Bad credentials", nil)
 		end)
-		local got_err, got_url = "unset", "unset"
-		gh.get_open_pr_url("feat/a", function(err, url)
-			got_err, got_url = err, url
+		local got_err, got = "unset", "unset"
+		gh.get_open_pr_stack("feat/a", function(err, info)
+			got_err, got = err, info
 		end)
 		assert.are.equal("HTTP 401: Bad credentials", got_err)
-		assert.is_nil(got_url)
+		assert.is_nil(got)
 	end)
 
-	it("is_no_pr_error matches only gh's no-PR message", function()
-		assert.is_true(gh.is_no_pr_error('no pull requests found for branch "x"'))
-		assert.is_false(gh.is_no_pr_error("HTTP 401: Bad credentials"))
-		assert.is_false(gh.is_no_pr_error(nil))
+	it("parse_open_pr_stack returns the PR with its stack number", function()
+		local function response(nodes)
+			return { data = { repository = { pullRequests = { nodes = nodes } } } }
+		end
+		assert.are.same(
+			{ url = "u", stack_number = 3 },
+			gh.parse_open_pr_stack(response({ { url = "u", isCrossRepository = false, stack = { number = 3 } } }))
+		)
+		-- stack is JSON null (vim.NIL) for a PR in no stack
+		assert.are.same(
+			{ url = "u" },
+			gh.parse_open_pr_stack(response({ { url = "u", isCrossRepository = false, stack = vim.NIL } }))
+		)
+	end)
+
+	it("parse_open_pr_stack skips PRs opened from forks with the same branch name", function()
+		local data = {
+			data = {
+				repository = {
+					pullRequests = {
+						nodes = {
+							{ url = "fork", isCrossRepository = true, stack = vim.NIL },
+							{ url = "own", isCrossRepository = false, stack = { number = 2 } },
+						},
+					},
+				},
+			},
+		}
+		assert.are.same({ url = "own", stack_number = 2 }, gh.parse_open_pr_stack(data))
+		data.data.repository.pullRequests.nodes = { data.data.repository.pullRequests.nodes[1] }
+		assert.is_nil(gh.parse_open_pr_stack(data))
+	end)
+
+	it("parse_open_pr_stack returns nil when there is no open PR or the response is unexpected", function()
+		assert.is_nil(gh.parse_open_pr_stack({ data = { repository = { pullRequests = { nodes = {} } } } }))
+		assert.is_nil(gh.parse_open_pr_stack({ data = { repository = vim.NIL } }))
+		assert.is_nil(gh.parse_open_pr_stack(nil))
+		assert.is_nil(gh.parse_open_pr_stack({
+			data = { repository = { pullRequests = { nodes = { { url = 1, isCrossRepository = false } } } } },
+		}))
 	end)
 
 	it("link_stack runs gh stack link with the refs bottom to top", function()

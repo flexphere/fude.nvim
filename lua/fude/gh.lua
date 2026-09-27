@@ -631,43 +631,68 @@ function M.create_draft_pr(title, body, attachments, base, callback)
 	end)
 end
 
---- Whether a `gh pr view` error means "the branch has no PR" rather than a
---- failed lookup (auth, network, repository resolution, ...).
---- @param err string|nil error text from gh
---- @return boolean
-function M.is_no_pr_error(err)
-	return type(err) == "string" and err:find("no pull requests found", 1, true) ~= nil
+local OPEN_PR_STACK_QUERY = [[
+query($owner: String!, $name: String!, $head: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(headRefName: $head, states: OPEN, first: 10) {
+      nodes { url isCrossRepository stack { number } }
+    }
+  }
+}]]
+
+--- Parse the `get_open_pr_stack` GraphQL response.
+--- `headRefName` also matches PRs opened from forks with a branch of the same
+--- name, so only same-repository PRs (`isCrossRepository == false`) count.
+--- @param data table|nil decoded response
+--- @return table|nil info { url: string, stack_number: number|nil }, nil when there is no open PR
+function M.parse_open_pr_stack(data)
+	local repo = type(data) == "table" and type(data.data) == "table" and data.data.repository
+	local prs = type(repo) == "table" and repo.pullRequests
+	local nodes = type(prs) == "table" and prs.nodes
+	if type(nodes) ~= "table" then
+		return nil
+	end
+	for _, node in ipairs(nodes) do
+		if type(node) == "table" and node.isCrossRepository == false and type(node.url) == "string" then
+			local stack = node.stack
+			local number = type(stack) == "table" and type(stack.number) == "number" and stack.number or nil
+			return { url = node.url, stack_number = number }
+		end
+	end
+	return nil
 end
 
---- Get the URL of the open PR whose head is `branch`.
---- "No PR" and a failed lookup are reported differently so callers can tell
---- the user which one happened.
+--- Get the open PR whose head is `branch`, with the GitHub stack it belongs to.
+--- A missing PR is an empty result rather than an error, so "no PR" and a
+--- failed lookup (auth, network, ...) reach the caller separately.
 --- @param branch string head branch name
---- @param callback fun(err: string|nil, url: string|nil) err is set only when the lookup failed;
----   url is nil (with no err) when the branch has no open PR
-function M.get_open_pr_url(branch, callback)
-	M.run_json({ "pr", "view", branch, "--json", "url,state" }, function(err, data)
+--- @param callback fun(err: string|nil, info: table|nil) err is set only when the lookup failed;
+---   info is { url, stack_number|nil } (stack_number nil when the PR is in no stack), nil when there is no open PR
+function M.get_open_pr_stack(branch, callback)
+	M.run_json({
+		"api",
+		"graphql",
+		"-F",
+		"owner={owner}",
+		"-F",
+		"name={repo}",
+		"-f",
+		"head=" .. branch,
+		"-f",
+		"query=" .. OPEN_PR_STACK_QUERY,
+	}, function(err, data)
 		if err then
-			-- `gh pr view` exits non-zero both when the branch has no PR and
-			-- when the lookup itself fails; only the former means "no PR"
-			if M.is_no_pr_error(err) then
-				callback(nil, nil)
-			else
-				callback(err, nil)
-			end
+			callback(err, nil)
 			return
 		end
-		if type(data) == "table" and data.state == "OPEN" and type(data.url) == "string" then
-			callback(nil, data.url)
-		else
-			callback(nil, nil)
-		end
+		callback(nil, M.parse_open_pr_stack(data))
 	end)
 end
 
 --- Link PRs into a GitHub stacked PR chain via the gh-stack extension
 --- (`gh stack link`, which does not depend on gh-stack's local tracking state).
---- Existing stacks containing any of the PRs are extended, never shrunk.
+--- Existing stacks containing any of the PRs are extended, never shrunk;
+--- when none of them is in a stack yet, a new stack is created.
 --- @param refs string[] PR URLs in stack order (bottom → top)
 --- @param callback fun(err: string|nil)
 function M.link_stack(refs, callback)
