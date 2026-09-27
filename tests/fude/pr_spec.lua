@@ -1219,10 +1219,14 @@ describe("build_base_branch_entries", function()
 		}, entries)
 	end)
 
-	it("lists a default branch missing from the branch list", function()
+	it("does not list a default branch that is missing from the remote branches", function()
 		local entries = pr.build_base_branch_entries({ "feat/a" }, "main")
-		assert.are.same({ "main", "feat/a" }, { entries[1].value, entries[2].value })
-		assert.is_true(entries[1].is_default)
+		assert.are.same({ { display = "feat/a", value = "feat/a", is_default = false } }, entries)
+	end)
+
+	it("lists a locally resolved default branch when there are no remote branches", function()
+		local entries = pr.build_base_branch_entries({}, "main")
+		assert.are.same({ { display = "main (default)", value = "main", is_default = true } }, entries)
 	end)
 
 	it("returns the branches unchanged when there is no default branch", function()

@@ -388,9 +388,11 @@ File opening position                                 *fude-file-position*
     accepts the default; type to fuzzy-filter and pick another branch.
     Uses Telescope when
     available, otherwise |vim.ui.select()|. Cancelling the picker aborts
-    the command. Without a remote, a default branch resolved from local
-    refs (`main`/`master`) is still offered; only when no candidate exists
-    at all is the picker skipped and `gh` left to choose the base. The chosen
+    the command. Only branches on the remote are offered, except in a
+    repository without remote branches, where a default branch resolved
+    from local refs (`main`/`master`) is offered. Only when no candidate
+    exists at all is the picker skipped and `gh` left to choose the base.
+    The chosen
     branch is passed as `gh pr create --base` and also decides the
     default title (the subject of the first commit not on that branch).
 

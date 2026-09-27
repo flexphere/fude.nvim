@@ -753,11 +753,12 @@ end
 --- with a "(default)" marker, then related branches right after it (the gh-stack
 --- parent, then branches HEAD was built on top of, nearest first) with a marker
 --- naming the relation, then the remaining branches in the given order.
---- A default branch missing from `branches` is still listed first, since
---- `get_default_branch` can resolve it from a source other than the remote refs.
---- Related branches are listed only when present in `branches`: gh can only
---- target a branch that exists on the remote. The current branch is never
---- listed, since a PR cannot target its own head branch.
+--- Every branch, the default one included, is listed only when present in
+--- `branches`: gh can only target a branch that exists on the remote. The one
+--- exception is an empty `branches` (a repo without a remote), where the
+--- default branch `get_default_branch` resolved from local refs is still
+--- listed so the default title keeps its commit range. The current branch is
+--- never listed, since a PR cannot target its own head branch.
 --- @param branches string[] candidate branch names (e.g. from diff.get_remote_branches)
 --- @param default_branch string|nil repository default branch
 --- @param opts table|nil { current_branch: string|nil, stack_parent: string|nil, ancestors: string[]|nil }
@@ -769,14 +770,20 @@ function M.build_base_branch_entries(branches, default_branch, opts)
 	if opts.current_branch then
 		seen[opts.current_branch] = true
 	end
-	if default_branch and default_branch ~= "" and not seen[default_branch] then
-		table.insert(entries, { display = default_branch .. " (default)", value = default_branch, is_default = true })
-		seen[default_branch] = true
-	end
-
 	local on_remote = {}
 	for _, name in ipairs(branches or {}) do
 		on_remote[name] = true
+	end
+	local has_remote = next(on_remote) ~= nil
+
+	if
+		default_branch
+		and default_branch ~= ""
+		and not seen[default_branch]
+		and (on_remote[default_branch] or not has_remote)
+	then
+		table.insert(entries, { display = default_branch .. " (default)", value = default_branch, is_default = true })
+		seen[default_branch] = true
 	end
 	local related = {}
 	if opts.stack_parent then
