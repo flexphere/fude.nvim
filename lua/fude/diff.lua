@@ -156,6 +156,215 @@ function M.get_default_branch()
 	return nil
 end
 
+--- Parse `git for-each-ref --format=%(refname:strip=3) refs/remotes/origin/` output
+--- into branch names, preserving order. Skips blank lines and the symbolic `HEAD`
+--- ref (origin/HEAD is a pointer to the default branch, not a branch itself).
+--- @param output string|nil for-each-ref output
+--- @return string[] branch names (e.g. { "main", "feat/foo" })
+function M.parse_remote_branches(output)
+	local branches = {}
+	if not output or output == "" then
+		return branches
+	end
+	for _, line in ipairs(vim.split(output, "\n", { plain = true })) do
+		local name = vim.trim(line)
+		if name ~= "" and name ~= "HEAD" then
+			table.insert(branches, name)
+		end
+	end
+	return branches
+end
+
+--- Get the branch names on the `origin` remote, most recently committed first.
+--- Uses the local remote-tracking refs (no network), so the list is as fresh as
+--- the last `git fetch`.
+--- @return string[] branch names without the `origin/` prefix (empty when there is no remote)
+function M.get_remote_branches()
+	local result = vim
+		.system({
+			"git",
+			"for-each-ref",
+			"--sort=-committerdate",
+			"--format=%(refname:strip=3)",
+			"refs/remotes/origin/",
+		}, { text = true })
+		:wait()
+	if result.code ~= 0 then
+		return {}
+	end
+	return M.parse_remote_branches(result.stdout)
+end
+
+--- Find the parent of `branch` in gh-stack's local metadata (`.git/gh-stack`).
+--- Stacks list their branches bottom → top, so the parent is the previous
+--- branch, or the stack's trunk for the bottom branch. The file format is
+--- gh-stack's internal state, so every field is type-checked and anything
+--- unexpected yields nil rather than an error.
+--- @param text string|nil contents of `.git/gh-stack`
+--- @param branch string|nil current branch name
+--- @return string|nil parent branch name
+function M.parse_gh_stack_parent(text, branch)
+	if not text or text == "" or not branch then
+		return nil
+	end
+	local ok, data = pcall(vim.json.decode, text)
+	if not ok or type(data) ~= "table" or type(data.stacks) ~= "table" then
+		return nil
+	end
+	for _, stack in ipairs(data.stacks) do
+		if type(stack) == "table" and type(stack.branches) == "table" then
+			for i, b in ipairs(stack.branches) do
+				if type(b) == "table" and b.branch == branch then
+					if i > 1 then
+						local prev = stack.branches[i - 1]
+						return type(prev) == "table" and type(prev.branch) == "string" and prev.branch or nil
+					end
+					local trunk = stack.trunk
+					return type(trunk) == "table" and type(trunk.branch) == "string" and trunk.branch or nil
+				end
+			end
+		end
+	end
+	return nil
+end
+
+--- Get the parent branch of `branch` recorded by the gh-stack extension.
+--- Reads `.git/gh-stack` from the common git dir (shared by worktrees) directly,
+--- which avoids `gh stack view` (it refreshes PR state over the network).
+--- @param branch string|nil current branch name
+--- @return string|nil parent branch name (nil when not in a stack or gh-stack is unused)
+function M.get_gh_stack_parent(branch)
+	if not branch then
+		return nil
+	end
+	local result = vim
+		.system({ "git", "rev-parse", "--path-format=absolute", "--git-common-dir" }, { text = true })
+		:wait()
+	if result.code ~= 0 or not result.stdout then
+		return nil
+	end
+	local path = vim.trim(result.stdout) .. "/gh-stack"
+	local ok, lines = pcall(vim.fn.readfile, path)
+	if not ok then
+		return nil
+	end
+	return M.parse_gh_stack_parent(table.concat(lines, "\n"), branch)
+end
+
+--- Parse `git log --format=%H%x00%P%x00%D --decorate-refs=refs/remotes/origin/ <default>..HEAD`
+--- output into branch names, nearest to HEAD first.
+--- The distance of a branch is the number of commits in the range that its tip
+--- cannot reach, i.e. `git rev-list --count <tip>..HEAD` limited to the range.
+--- It is computed from the parent links in the output, since log order alone
+--- (even `--topo-order`) does not follow the distance once a merge is involved.
+--- Branches at the same distance are sorted by name for a stable order.
+--- Symbolic entries (`origin/HEAD -> origin/main`) and duplicates are skipped.
+--- @param output string|nil git log output (one commit per line: hash NUL parents NUL decorations)
+--- @return string[] branch names without the `origin/` prefix
+function M.parse_ancestor_log(output)
+	local names = {}
+	if not output or output == "" then
+		return names
+	end
+	local total = 0
+	local parents = {}
+	local tips = {} -- { sha, name }
+	for _, line in ipairs(vim.split(output, "\n", { plain = true })) do
+		local fields = vim.split(line, "\0", { plain = true })
+		local sha = vim.trim(fields[1] or "")
+		if sha ~= "" then
+			total = total + 1
+			parents[sha] = vim.split(vim.trim(fields[2] or ""), " ", { trimempty = true })
+			for _, ref in ipairs(vim.split(fields[3] or "", ",", { plain = true })) do
+				ref = vim.trim(ref)
+				local name = ref:match("^origin/(.+)$")
+				if name and not ref:find("->", 1, true) and name ~= "HEAD" then
+					table.insert(tips, { sha = sha, name = name })
+				end
+			end
+		end
+	end
+
+	-- commits in the range reachable from `sha` (itself included); parents
+	-- outside the range are absent from `parents` and not followed
+	local function count_reachable(sha)
+		local seen = { [sha] = true }
+		local stack = { sha }
+		local count = 0
+		while #stack > 0 do
+			local current = table.remove(stack)
+			count = count + 1
+			for _, parent in ipairs(parents[current]) do
+				if parents[parent] and not seen[parent] then
+					seen[parent] = true
+					table.insert(stack, parent)
+				end
+			end
+		end
+		return count
+	end
+
+	local distance = {}
+	local by_sha = {}
+	local ordered = {}
+	for _, tip in ipairs(tips) do
+		if not distance[tip.name] then
+			by_sha[tip.sha] = by_sha[tip.sha] or (total - count_reachable(tip.sha))
+			distance[tip.name] = by_sha[tip.sha]
+			table.insert(ordered, tip.name)
+		end
+	end
+	table.sort(ordered, function(a, b)
+		if distance[a] ~= distance[b] then
+			return distance[a] < distance[b]
+		end
+		return a < b
+	end)
+	return ordered
+end
+
+--- Get the `origin` branches that HEAD was built on top of: branch tips in
+--- `<default>..HEAD`, i.e. between the default branch and HEAD in `git log`
+--- (e.g. the lower layers of a stack), nearest first.
+--- One `git log` walk yields both membership and the commit graph the distances
+--- are computed from, so the number of git processes does not grow with the
+--- number of candidate branches. The range excludes
+--- branches already merged into the default branch.
+--- Returns an empty list when the default branch ref cannot be resolved: without
+--- the range bound every branch in HEAD's history would match.
+--- May include the current branch's own remote ref; callers filter it out.
+--- @param default_branch string|nil repository default branch
+--- @return string[] branch names without the `origin/` prefix
+function M.get_ancestor_branches(default_branch)
+	if not default_branch or default_branch == "" then
+		return {}
+	end
+	local default_ref
+	for _, ref in ipairs({ "origin/" .. default_branch, default_branch }) do
+		if vim.system({ "git", "rev-parse", "--verify", "--quiet", ref }, { text = true }):wait().code == 0 then
+			default_ref = ref
+			break
+		end
+	end
+	if not default_ref then
+		return {}
+	end
+	local result = vim
+		.system({
+			"git",
+			"log",
+			"--format=%H%x00%P%x00%D",
+			"--decorate-refs=refs/remotes/origin/",
+			"--decorate-refs-exclude=refs/remotes/origin/HEAD",
+			default_ref .. "..HEAD",
+		}, { text = true })
+		:wait()
+	if result.code ~= 0 then
+		return {}
+	end
+	return M.parse_ancestor_log(result.stdout)
+end
+
 --- Get the current branch name (nil when detached HEAD).
 --- @return string|nil branch name
 function M.get_current_branch()
@@ -278,40 +487,20 @@ function M.get_review_patch(base_sha, path, cwd)
 end
 
 --- Get the subject of the first commit since base branch.
+--- `origin/<base>` is tried before the local ref: the PR targets the branch on
+--- GitHub, and a stale local branch of the same name would give a title based
+--- on a different commit range. The local ref is the fallback for repos
+--- without a remote.
 --- @param base_ref string base branch name (e.g., "main")
 --- @return string|nil subject first commit message subject
 function M.get_first_commit_subject(base_ref)
-	-- Get first commit (oldest) since diverging from base
-	-- Note: --reverse without -1, then parse_log_first_subject takes the first line
-	local result = vim
-		.system({
-			"git",
-			"log",
-			base_ref .. "..HEAD",
-			"--reverse",
-			"--format=%s",
-		}, { text = true })
-		:wait()
-
-	if result.code == 0 and result.stdout then
-		return M.parse_log_first_subject(result.stdout)
+	for _, ref in ipairs({ "origin/" .. base_ref, base_ref }) do
+		-- --reverse without -1, then parse_log_first_subject takes the first line
+		local result = vim.system({ "git", "log", ref .. "..HEAD", "--reverse", "--format=%s" }, { text = true }):wait()
+		if result.code == 0 and result.stdout then
+			return M.parse_log_first_subject(result.stdout)
+		end
 	end
-
-	-- Try with origin/ prefix
-	local result2 = vim
-		.system({
-			"git",
-			"log",
-			"origin/" .. base_ref .. "..HEAD",
-			"--reverse",
-			"--format=%s",
-		}, { text = true })
-		:wait()
-
-	if result2.code == 0 and result2.stdout then
-		return M.parse_log_first_subject(result2.stdout)
-	end
-
 	return nil
 end
 

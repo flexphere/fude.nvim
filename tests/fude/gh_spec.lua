@@ -478,7 +478,7 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			captured_args = args
 			callback(nil, "https://github.com/o/r/pull/1\n")
 		end)
-		gh.create_draft_pr("t", "b", { "./a.png", "./b.mp4" }, function() end)
+		gh.create_draft_pr("t", "b", { "./a.png", "./b.mp4" }, nil, function() end)
 		assert.are.same({
 			"pr",
 			"create",
@@ -500,10 +500,138 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			captured_args = args
 			callback(nil, "")
 		end)
-		gh.create_draft_pr("t", "b", nil, function() end)
+		gh.create_draft_pr("t", "b", nil, nil, function() end)
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
-		gh.create_draft_pr("t", "b", {}, function() end)
+		gh.create_draft_pr("t", "b", {}, nil, function() end)
 		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
+	end)
+
+	it("create_draft_pr passes --base before --attach when a base branch is given", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "https://github.com/o/r/pull/1\n")
+		end)
+		gh.create_draft_pr("t", "b", { "./a.png" }, "develop", function() end)
+		assert.are.same(
+			{ "pr", "create", "--draft", "--title", "t", "--body", "b", "--base", "develop", "--attach", "./a.png" },
+			captured_args
+		)
+	end)
+
+	it("create_draft_pr omits --base when base is nil or empty", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		gh.create_draft_pr("t", "b", nil, "", function() end)
+		assert.are.same({ "pr", "create", "--draft", "--title", "t", "--body", "b" }, captured_args)
+	end)
+
+	--- Wrap PR nodes in the `ref.associatedPullRequests` response shape.
+	local function pr_response(nodes)
+		return { data = { repository = { ref = { associatedPullRequests = { nodes = nodes } } } } }
+	end
+
+	it("get_open_pr_stack queries the open PRs of the branch ref via GraphQL", function()
+		local captured_args
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, pr_response({ { url = "https://github.com/o/r/pull/1", stack = { number = 3 } } }))
+		end)
+		local got_err, got = "unset", "unset"
+		gh.get_open_pr_stack("feat/a", function(err, info)
+			got_err, got = err, info
+		end)
+		-- the ref of this repository excludes fork PRs with the same branch name
+		assert.are.same(
+			{ "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", "ref=refs/heads/feat/a" },
+			{ unpack(captured_args, 1, 8) }
+		)
+		assert.is_not_nil(captured_args[10]:find("associatedPullRequests", 1, true))
+		assert.is_nil(got_err)
+		assert.are.same({ url = "https://github.com/o/r/pull/1", stack_number = 3 }, got)
+	end)
+
+	it("get_open_pr_stack reports a failed lookup as an error, not as no PR", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback("HTTP 401: Bad credentials", nil)
+		end)
+		local got_err, got = "unset", "unset"
+		gh.get_open_pr_stack("feat/a", function(err, info)
+			got_err, got = err, info
+		end)
+		assert.are.equal("HTTP 401: Bad credentials", got_err)
+		assert.is_nil(got)
+	end)
+
+	it("parse_open_pr_stack returns the PR with its stack", function()
+		assert.are.same(
+			{
+				url = "u",
+				base_ref = "dev",
+				stack_number = 3,
+				stack_size = 4,
+				stack_position = 2,
+				stack_top = { url = "t", branch = "feat/top" },
+			},
+			gh.parse_open_pr_stack(pr_response({
+				{
+					url = "u",
+					baseRefName = "dev",
+					stack = {
+						number = 3,
+						size = 4,
+						entries = { nodes = { { pullRequest = { url = "t", headRefName = "feat/top" } } } },
+					},
+					stackEntry = { position = 2 },
+				},
+			}))
+		)
+		-- stack is JSON null (vim.NIL) for a PR in no stack
+		assert.are.same({ url = "u" }, gh.parse_open_pr_stack(pr_response({ { url = "u", stack = vim.NIL } })))
+	end)
+
+	it("parse_stack_top returns the last entry's PR, nil when missing or malformed", function()
+		local function stack(nodes)
+			return { entries = { nodes = nodes } }
+		end
+		assert.are.same(
+			{ url = "b", branch = "top" },
+			gh.parse_stack_top(stack({ { pullRequest = { url = "b", headRefName = "top" } } }))
+		)
+		assert.is_nil(gh.parse_stack_top(nil))
+		assert.is_nil(gh.parse_stack_top(vim.NIL))
+		assert.is_nil(gh.parse_stack_top(stack({})))
+		assert.is_nil(gh.parse_stack_top(stack({ { pullRequest = { url = "b" } } })))
+	end)
+
+	it("parse_open_pr_stack returns nil when there is no open PR or the response is unexpected", function()
+		assert.is_nil(gh.parse_open_pr_stack(pr_response({})))
+		-- ref is null when the branch does not exist on GitHub
+		assert.is_nil(gh.parse_open_pr_stack({ data = { repository = { ref = vim.NIL } } }))
+		assert.is_nil(gh.parse_open_pr_stack({ data = { repository = vim.NIL } }))
+		assert.is_nil(gh.parse_open_pr_stack(nil))
+		assert.is_nil(gh.parse_open_pr_stack(pr_response({ { url = 1 } })))
+	end)
+
+	it("link_stack runs gh stack link with the refs bottom to top", function()
+		local calls = {}
+		helpers.mock(gh, "run", function(args, callback)
+			table.insert(calls, args)
+			callback(nil, "")
+		end)
+		local done_err = "unset"
+		gh.link_stack({ "7", "https://github.com/o/r/pull/2" }, nil, function(err)
+			done_err = err
+		end)
+		gh.link_stack({ "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" }, "dev", function() end)
+		assert.are.same({
+			{ "stack", "link", "7", "https://github.com/o/r/pull/2" },
+			{ "stack", "link", "--base", "dev", "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" },
+		}, calls)
+		assert.is_nil(done_err)
 	end)
 
 	it("edit_pr inserts the PR number before flags and appends --attach pairs", function()

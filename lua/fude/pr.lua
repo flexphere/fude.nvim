@@ -339,11 +339,46 @@ function M.find_templates()
 	return templates
 end
 
+--- Stack a freshly created PR on top of the parent PR as a GitHub stacked PR.
+--- The parent PR was looked up before the float opened (see `resolve_stack`),
+--- so this only links: an existing stack is grown with
+--- `gh stack link <stack number> <new PR>` (append mode — the update mode
+--- without a stack number would require every PR already in the stack), a new
+--- stack is created with `gh stack link --base <parent's base> <parent PR> <new PR>`
+--- (without `--base` gh-stack would retarget the parent PR to the default branch).
+--- The parent is passed as its PR URL, never as a branch name: `gh stack link`
+--- pushes branch arguments and creates PRs for branches without one, which
+--- would open an unrequested PR for the parent.
+--- The PR itself is already created at this point, so a failure is a WARN
+--- that leaves it in place as an ordinary (unstacked) PR.
+--- @param stack table { parent_url: string, new_stack: boolean, stack_number: number|nil, parent_base: string|nil }
+--- @param pr_url string URL of the PR just created
+--- @private
+local function link_to_stack(stack, pr_url)
+	local refs, base
+	if stack.new_stack then
+		refs, base = { stack.parent_url, pr_url }, stack.parent_base
+	else
+		refs = { tostring(stack.stack_number), pr_url }
+	end
+	gh.link_stack(refs, base, function(err)
+		if err then
+			vim.notify("fude.nvim: Stacking failed (the PR was created unstacked): " .. vim.trim(err), vim.log.levels.WARN)
+			return
+		end
+		local what = stack.new_stack and "New stack created on " or "Stacked on "
+		vim.notify("fude.nvim: " .. what .. stack.parent_url, vim.log.levels.INFO)
+	end)
+end
+
 --- Open the PR float with explicit title and body content.
 --- @param title_lines string[]|nil initial title lines (default: {""})
 --- @param body_lines string[]|nil initial body lines (default: {""})
 --- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...),
----   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun() }
+---   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun(),
+---   base: string|nil (create mode: base branch passed to `gh pr create --base`; nil lets gh choose),
+---   stack: table|nil (create mode: the `resolve_stack` result when the user chose to stack the PR;
+---   after creation it is linked on top of `parent_url` as a GitHub stacked PR) }
 function M.open_pr_float(title_lines, body_lines, opts)
 	title_lines = title_lines or { "" }
 	body_lines = body_lines or { "" }
@@ -381,18 +416,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	local lower_border = { "├", "─", "┤", "│", "╯", "─", "╰", "│" }
 
 	-- Determine footer text
-	local footer_text = opts.footer
-	if not footer_text then
-		if is_edit and opts.from_draft then
-			footer_text = " <CR> update | q cancel (draft restored) "
-		elseif is_edit then
-			footer_text = " <CR> update | q cancel "
-		elseif opts.from_draft then
-			footer_text = " <CR> create draft | q cancel (draft restored) "
-		else
-			footer_text = " <CR> create draft | q cancel "
-		end
-	end
+	local footer_text = opts.footer or M.build_footer_text(mode, opts.from_draft, opts.base, opts.stack)
 
 	-- Open title window (focused)
 	local title_win = vim.api.nvim_open_win(title_buf, true, {
@@ -530,7 +554,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 
 		local extracted = M.parse_body_attachments(parsed.body, expand_home)
-		gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, function(err, data)
+		gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, opts.base, function(err, data)
 			if err then
 				vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
 				return
@@ -543,6 +567,9 @@ function M.open_pr_float(title_lines, body_lines, opts)
 			local url = data and data.url or ""
 			local suffix = M.format_attach_suffix(#extracted.attachments)
 			vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
+			if opts.stack and url ~= "" then
+				link_to_stack(opts.stack, url)
+			end
 		end)
 	end
 
@@ -658,84 +685,147 @@ function M.open_pr_float(title_lines, body_lines, opts)
 end
 
 --- Open the float from a draft selection.
+--- @param float_opts table|nil extra open_pr_float opts (e.g. { base = "main" })
 --- @private
-local function open_from_draft()
+local function open_from_draft(float_opts)
 	local d = M.get_draft()
 	if d then
 		-- "Discard & close" deletes the stored draft too, matching the edit
 		-- mode and comment input semantics. Opening from a template instead
 		-- leaves an unrelated stored draft alone (no on_discard_draft there).
-		M.open_pr_float(d.title_lines, d.body_lines, { from_draft = true, on_discard_draft = M.clear_draft })
+		local opts = vim.tbl_extend("force", float_opts or {}, { from_draft = true, on_discard_draft = M.clear_draft })
+		M.open_pr_float(d.title_lines, d.body_lines, opts)
 	end
 end
 
 --- Open the float from a template file.
 --- @param path string template file path
 --- @param default_title string|nil default title from first commit
+--- @param float_opts table|nil extra open_pr_float opts (e.g. { base = "main" })
 --- @private
-local function open_from_template(path, default_title)
+local function open_from_template(path, default_title, float_opts)
 	local lines = vim.fn.readfile(path)
 	local title_lines = default_title and { default_title } or nil
-	M.open_pr_float(title_lines, lines)
+	M.open_pr_float(title_lines, lines, float_opts)
 end
 
---- Get default PR title from first commit message (lazy helper).
+--- Get default PR title from the first commit not on the base branch (lazy helper).
+--- @param base string|nil base branch; nil yields nil (no commit range to derive the title from)
 --- @return string|nil default_title
-local function get_default_title()
-	local default_branch = diff.get_default_branch()
-	if default_branch then
-		return diff.get_first_commit_subject(default_branch)
+local function get_default_title(base)
+	if base then
+		return diff.get_first_commit_subject(base)
 	end
 	return nil
 end
 
---- Show PR creation flow: find templates, select if multiple, open float.
---- When a draft exists, it is shown as a selectable option alongside templates.
-function M.create()
-	local repo_root = diff.get_repo_root()
-	if not repo_root then
-		vim.notify("fude.nvim: Not in a git repository", vim.log.levels.ERROR)
-		return
+--- Build the footer for the two-pane PR float when no explicit footer is given.
+--- Create mode shows the base branch so the user can confirm the target picked
+--- in the preceding picker before submitting.
+--- @param mode string "create"|"edit"
+--- @param from_draft boolean|nil whether the float was opened from a restored draft
+--- @param base string|nil base branch (create mode only)
+--- @param stack table|nil { new_stack: boolean } when the PR will be stacked on `base` (create mode only)
+--- @return string footer_text
+function M.build_footer_text(mode, from_draft, base, stack)
+	local action = mode == "edit" and "<CR> update" or "<CR> create draft"
+	if mode ~= "edit" and base and base ~= "" then
+		action = action .. " → " .. base
+		if stack then
+			action = action .. (stack.new_stack and " (new stack)" or " (stacked)")
+		end
 	end
-
-	local templates = M.find_templates()
-	local has_draft = M.get_draft() ~= nil
-	local total = #templates + (has_draft and 1 or 0)
-
-	if total == 0 then
-		-- No templates, no draft: open with empty body
-		local default_title = get_default_title()
-		local title_lines = default_title and { default_title } or nil
-		M.open_pr_float(title_lines, { "" })
-	elseif total == 1 and not has_draft then
-		-- Single template, no draft: read and open
-		local default_title = get_default_title()
-		open_from_template(templates[1], default_title)
-	elseif total == 1 and has_draft then
-		-- Only draft, no templates: open from draft
-		open_from_draft()
-	else
-		-- Multiple options: show picker with draft + templates
-		local entries = M.build_picker_entries(templates, has_draft)
-		M.select_template(entries, function(selected)
-			if not selected then
-				return
-			end
-			if selected == "__draft__" then
-				open_from_draft()
-			else
-				-- Lazy: only fetch default title when template is selected
-				local default_title = get_default_title()
-				open_from_template(selected, default_title)
-			end
-		end)
-	end
+	local cancel = from_draft and "q cancel (draft restored)" or "q cancel"
+	return " " .. action .. " | " .. cancel .. " "
 end
 
---- Show template/draft picker using Telescope or vim.ui.select.
---- @param entries table[] entries from build_picker_entries
---- @param callback fun(selected: string|nil) receives entry value or nil
-function M.select_template(entries, callback)
+--- Build picker entries for base branch selection.
+--- Order: the default branch first (so pressing <CR> in a fresh picker accepts it)
+--- with a "(default)" marker, then related branches right after it (the gh-stack
+--- parent, then branches HEAD was built on top of, nearest first) with a marker
+--- naming the relation, then the remaining branches in the given order.
+--- Every branch, the default one included, is listed only when present in
+--- `branches`: gh can only target a branch that exists on the remote. The one
+--- exception is an empty `branches` (a repo without a remote), where the
+--- default branch `get_default_branch` resolved from local refs is still
+--- listed so the default title keeps its commit range. The current branch is
+--- never listed, since a PR cannot target its own head branch.
+--- @param branches string[] candidate branch names (e.g. from diff.get_remote_branches)
+--- @param default_branch string|nil repository default branch
+--- @param opts table|nil { current_branch: string|nil, stack_parent: string|nil, ancestors: string[]|nil }
+--- @return table[] entries { display: string, value: string, is_default: boolean, relation: string|nil }
+function M.build_base_branch_entries(branches, default_branch, opts)
+	opts = opts or {}
+	local entries = {}
+	local seen = {}
+	if opts.current_branch then
+		seen[opts.current_branch] = true
+	end
+	local on_remote = {}
+	for _, name in ipairs(branches or {}) do
+		on_remote[name] = true
+	end
+	local has_remote = next(on_remote) ~= nil
+
+	if
+		default_branch
+		and default_branch ~= ""
+		and not seen[default_branch]
+		and (on_remote[default_branch] or not has_remote)
+	then
+		table.insert(entries, { display = default_branch .. " (default)", value = default_branch, is_default = true })
+		seen[default_branch] = true
+	end
+	local related = {}
+	if opts.stack_parent then
+		table.insert(related, { name = opts.stack_parent, relation = "stack parent" })
+	end
+	for _, name in ipairs(opts.ancestors or {}) do
+		table.insert(related, { name = name, relation = "ancestor" })
+	end
+	for _, r in ipairs(related) do
+		if on_remote[r.name] and not seen[r.name] then
+			table.insert(entries, {
+				display = r.name .. " (" .. r.relation .. ")",
+				value = r.name,
+				is_default = false,
+				relation = r.relation,
+			})
+			seen[r.name] = true
+		end
+	end
+
+	for _, name in ipairs(branches or {}) do
+		if not seen[name] then
+			table.insert(entries, { display = name, value = name, is_default = false })
+			seen[name] = true
+		end
+	end
+	return entries
+end
+
+--- Maximum number of result rows a compact picker shows before scrolling.
+local COMPACT_PICKER_MAX_ROWS = 15
+
+--- Calculate the total height of a compact (dropdown) Telescope picker so it
+--- fits its entries: one row per entry, capped, plus the prompt and borders.
+--- @param entry_count number number of entries
+--- @return number height in lines
+function M.calculate_compact_picker_height(entry_count)
+	local rows = math.max(1, math.min(entry_count or 0, COMPACT_PICKER_MAX_ROWS))
+	-- prompt line + prompt/results borders
+	return rows + 4
+end
+
+--- Show an entry picker using Telescope when available, otherwise vim.ui.select.
+--- Telescope preselects the first result, so callers order entries default-first.
+--- @param entries table[] entries { display: string, value: string, ... }
+--- @param opts table { prompt: string (vim.ui.select prompt), title: string (Telescope prompt title),
+---   make_previewer: (fun(): table)|nil (Telescope only; called lazily so the fallback path never requires Telescope),
+---   compact: boolean|nil (Telescope only; a small dropdown sized to the entries, for pickers without a preview) }
+--- @param callback fun(selected: string|nil) receives entry value or nil on cancel
+--- @private
+local function pick_entry(entries, opts, callback)
 	local has_telescope, pickers = pcall(require, "telescope.pickers")
 	if not has_telescope then
 		-- Fallback to vim.ui.select
@@ -744,7 +834,7 @@ function M.select_template(entries, callback)
 			table.insert(items, e.display)
 		end
 		vim.ui.select(items, {
-			prompt = "Select PR template:",
+			prompt = opts.prompt,
 		}, function(_, idx)
 			if idx then
 				callback(entries[idx].value)
@@ -759,11 +849,17 @@ function M.select_template(entries, callback)
 	local conf = require("telescope.config").values
 	local actions = require("telescope.actions")
 	local action_state = require("telescope.actions.state")
-	local previewers = require("telescope.previewers")
 
+	local picker_opts = {}
+	if opts.compact then
+		picker_opts = require("telescope.themes").get_dropdown({
+			previewer = false,
+			layout_config = { height = M.calculate_compact_picker_height(#entries) },
+		})
+	end
 	pickers
-		.new({}, {
-			prompt_title = "PR Templates",
+		.new(picker_opts, {
+			prompt_title = opts.title,
 			finder = finders.new_table({
 				results = entries,
 				entry_maker = function(entry)
@@ -776,7 +872,252 @@ function M.select_template(entries, callback)
 				end,
 			}),
 			sorter = conf.generic_sorter({}),
-			previewer = previewers.new_buffer_previewer({
+			previewer = opts.make_previewer and opts.make_previewer() or nil,
+			attach_mappings = function(prompt_bufnr)
+				actions.select_default:replace(function()
+					actions.close(prompt_bufnr)
+					local selection = action_state.get_selected_entry()
+					if selection then
+						callback(selection.value)
+					else
+						callback(nil)
+					end
+				end)
+				return true
+			end,
+		})
+		:find()
+end
+
+--- Build the picker entries for the "create as stacked PR?" prompt.
+--- Yes comes first so a bare <CR> accepts it: the prompt is shown only for a
+--- non-default base, which the user usually picks to build on top of it.
+--- @return table[] entries { display: string, value: "yes"|"no" }
+function M.build_stack_choices()
+	return {
+		{ display = "Yes (stacked PR)", value = "yes" },
+		{ display = "No (ordinary PR)", value = "no" },
+	}
+end
+
+--- Ask whether to create the PR as a GitHub stacked PR on top of `base`.
+--- @param base string picked base branch
+--- @param callback fun(stack: boolean|nil) true/false for the answer, nil on cancel
+function M.confirm_stack(base, callback)
+	pick_entry(M.build_stack_choices(), {
+		prompt = "Stack the PR on " .. base .. "?",
+		title = "Stack the PR on " .. base .. "?",
+		compact = true,
+	}, function(value)
+		if value == nil then
+			callback(nil)
+		else
+			callback(value == "yes")
+		end
+	end)
+end
+
+--- Build the picker entries shown when the picked base's PR is below the
+--- top of its stack (a stacked PR can only be added at the top).
+--- @param base string picked base branch
+--- @param top_branch string head branch of the stack's top PR
+--- @param stack_number number stack number
+--- @return table[] entries { display: string, value: "ordinary"|"top" }
+function M.build_non_top_choices(base, top_branch, stack_number)
+	return {
+		{ display = "Ordinary PR on " .. base .. " (no stack)", value = "ordinary" },
+		{ display = "Stacked PR on " .. top_branch .. " (top of stack #" .. stack_number .. ")", value = "top" },
+	}
+end
+
+--- Ask how to continue when the picked base's PR is below the top of its stack.
+--- @param base string picked base branch
+--- @param top_branch string head branch of the stack's top PR
+--- @param stack_number number stack number
+--- @param callback fun(choice: "ordinary"|"top"|nil) nil on cancel
+function M.confirm_non_top_stack(base, top_branch, stack_number, callback)
+	local prompt = "Stacked PRs can only be added to the top of stack #" .. stack_number .. "."
+	pick_entry(M.build_non_top_choices(base, top_branch, stack_number), {
+		prompt = prompt,
+		title = prompt,
+		compact = true,
+	}, callback)
+end
+
+--- Look up the parent PR of `base` before the float opens: a parent at the
+--- top of a stack is appended to, a parent in no stack starts a new stack,
+--- and the footer shows which one happens before the PR is created.
+--- A parent below the top of its stack cannot take a stacked PR (a stack only
+--- grows at its top), so the user picks between an ordinary PR on `base` and
+--- a stacked PR on the stack's top branch, which replaces `base`.
+--- The PR cannot be stacked when `base` has no open PR (a stack links PRs, not
+--- branches) or when the lookup fails; both get a WARN (the latter with gh's
+--- error, so it is not mistaken for "no PR") and continue as an ordinary PR,
+--- since nothing is lost by creating it unstacked.
+--- @param base string picked base branch
+--- @param callback fun(result: table|nil) { base: string, stack: table|nil } — `stack` is
+---   { parent_url, new_stack, stack_number?, parent_base? } to stack, nil for an ordinary PR;
+---   nil when the user cancelled
+--- @private
+local function resolve_stack(base, callback)
+	local function ordinary(msg)
+		vim.notify("fude.nvim: Not stacked (creating an ordinary PR): " .. msg, vim.log.levels.WARN)
+		callback({ base = base })
+	end
+	gh.get_open_pr_stack(base, function(err, info)
+		if err then
+			ordinary("failed to look up the PR of " .. base .. ": " .. vim.trim(err))
+			return
+		end
+		if not info then
+			ordinary(base .. " has no open PR")
+			return
+		end
+		if not info.stack_number then
+			-- the user already answered Yes to stacking, so a parent in no stack
+			-- starts a new one without asking again
+			callback({ base = base, stack = { parent_url = info.url, new_stack = true, parent_base = info.base_ref } })
+			return
+		end
+		if info.stack_position == info.stack_size then
+			callback({
+				base = base,
+				stack = { parent_url = info.url, new_stack = false, stack_number = info.stack_number },
+			})
+			return
+		end
+		local top = info.stack_top
+		if not top then
+			ordinary("the PR of " .. base .. " is not the top of stack #" .. info.stack_number)
+			return
+		end
+		M.confirm_non_top_stack(base, top.branch, info.stack_number, function(choice)
+			if choice == nil then
+				callback(nil)
+			elseif choice == "top" then
+				callback({
+					base = top.branch,
+					stack = { parent_url = top.url, new_stack = false, stack_number = info.stack_number },
+				})
+			else
+				callback({ base = base })
+			end
+		end)
+	end)
+end
+
+--- Show the base branch picker (Telescope or vim.ui.select).
+--- @param entries table[] entries from build_base_branch_entries
+--- @param callback fun(selected: string|nil) receives the branch name or nil on cancel
+function M.select_base_branch(entries, callback)
+	pick_entry(entries, {
+		prompt = "Select base branch:",
+		title = "Base Branch",
+		compact = true,
+	}, callback)
+end
+
+--- Continue the creation flow after the base branch is settled: find templates,
+--- select if multiple, open the float.
+--- When a draft exists, it is shown as a selectable option alongside templates.
+--- @param base string|nil base branch (nil: gh chooses)
+--- @param stack table|nil `resolve_stack` result when the PR is stacked on `base` (linked after creation)
+--- @private
+local function create_with_base(base, stack)
+	local templates = M.find_templates()
+	local has_draft = M.get_draft() ~= nil
+	local total = #templates + (has_draft and 1 or 0)
+	local float_opts = { base = base, stack = stack }
+
+	if total == 0 then
+		-- No templates, no draft: open with empty body
+		local default_title = get_default_title(base)
+		local title_lines = default_title and { default_title } or nil
+		M.open_pr_float(title_lines, { "" }, float_opts)
+	elseif total == 1 and not has_draft then
+		-- Single template, no draft: read and open
+		local default_title = get_default_title(base)
+		open_from_template(templates[1], default_title, float_opts)
+	elseif total == 1 and has_draft then
+		-- Only draft, no templates: open from draft
+		open_from_draft(float_opts)
+	else
+		-- Multiple options: show picker with draft + templates
+		local entries = M.build_picker_entries(templates, has_draft)
+		M.select_template(entries, function(selected)
+			if not selected then
+				return
+			end
+			if selected == "__draft__" then
+				open_from_draft(float_opts)
+			else
+				-- Lazy: only fetch default title when template is selected
+				local default_title = get_default_title(base)
+				open_from_template(selected, default_title, float_opts)
+			end
+		end)
+	end
+end
+
+--- Show PR creation flow: pick the base branch, then templates, then open the float.
+--- The base picker lists remote branches with the default branch preselected and
+--- related branches (gh-stack parent, branches HEAD is built on) right after it
+--- (a default branch resolved from local refs is listed even without a remote,
+--- so the default title keeps its commit range). It is skipped only when there
+--- are no candidates at all, in which case gh chooses the base as before.
+function M.create()
+	local repo_root = diff.get_repo_root()
+	if not repo_root then
+		vim.notify("fude.nvim: Not in a git repository", vim.log.levels.ERROR)
+		return
+	end
+
+	local default_branch = diff.get_default_branch()
+	local current_branch = diff.get_current_branch()
+	local entries = M.build_base_branch_entries(diff.get_remote_branches(), default_branch, {
+		current_branch = current_branch,
+		stack_parent = diff.get_gh_stack_parent(current_branch),
+		ancestors = diff.get_ancestor_branches(default_branch),
+	})
+	if #entries == 0 then
+		create_with_base(nil)
+		return
+	end
+	M.select_base_branch(entries, function(base)
+		if not base then
+			return
+		end
+		if base == default_branch then
+			create_with_base(base, nil)
+			return
+		end
+		M.confirm_stack(base, function(want_stack)
+			if want_stack == nil then
+				return
+			end
+			if not want_stack then
+				create_with_base(base, nil)
+				return
+			end
+			resolve_stack(base, function(result)
+				if result then
+					create_with_base(result.base, result.stack)
+				end
+			end)
+		end)
+	end)
+end
+
+--- Show template/draft picker using Telescope or vim.ui.select.
+--- @param entries table[] entries from build_picker_entries
+--- @param callback fun(selected: string|nil) receives entry value or nil
+function M.select_template(entries, callback)
+	pick_entry(entries, {
+		prompt = "Select PR template:",
+		title = "PR Templates",
+		make_previewer = function()
+			local previewers = require("telescope.previewers")
+			return previewers.new_buffer_previewer({
 				title = "Preview",
 				get_buffer_by_name = function(_, entry)
 					return entry.value
@@ -803,21 +1144,9 @@ function M.select_template(entries, callback)
 					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 					vim.bo[self.state.bufnr].filetype = "markdown"
 				end,
-			}),
-			attach_mappings = function(prompt_bufnr)
-				actions.select_default:replace(function()
-					actions.close(prompt_bufnr)
-					local selection = action_state.get_selected_entry()
-					if selection then
-						callback(selection.value)
-					else
-						callback(nil)
-					end
-				end)
-				return true
-			end,
-		})
-		:find()
+			})
+		end,
+	}, callback)
 end
 
 --- Edit the current PR's title and body.

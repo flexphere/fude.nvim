@@ -611,9 +611,13 @@ end
 --- @param title string PR title
 --- @param body string PR body
 --- @param attachments string[]|nil local file paths to upload via --attach (requires gh >= 2.99.0)
+--- @param base string|nil base branch name; nil lets gh pick the repository default
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.create_draft_pr(title, body, attachments, callback)
+function M.create_draft_pr(title, body, attachments, base, callback)
 	local args = { "pr", "create", "--draft", "--title", title, "--body", body }
+	if base and base ~= "" then
+		vim.list_extend(args, { "--base", base })
+	end
 	for _, path in ipairs(attachments or {}) do
 		vim.list_extend(args, { "--attach", path })
 	end
@@ -624,6 +628,113 @@ function M.create_draft_pr(title, body, attachments, callback)
 		end
 		local url = stdout and vim.trim(stdout) or ""
 		callback(nil, { url = url })
+	end)
+end
+
+local OPEN_PR_STACK_QUERY = [[
+query($owner: String!, $name: String!, $ref: String!) {
+  repository(owner: $owner, name: $name) {
+    ref(qualifiedName: $ref) {
+      associatedPullRequests(states: OPEN, first: 1) {
+        nodes {
+          url baseRefName stackEntry { position }
+          stack { number size entries(last: 1) { nodes { pullRequest { url headRefName } } } }
+        }
+      }
+    }
+  }
+}]]
+
+--- Parse the top PR of a GraphQL `PullRequestStack` fetched with `entries(last: 1)`.
+--- @param stack table|nil `stack` object
+--- @return table|nil { url: string, branch: string }, nil when missing or malformed
+function M.parse_stack_top(stack)
+	local entries = type(stack) == "table" and stack.entries
+	local nodes = type(entries) == "table" and entries.nodes
+	local node = type(nodes) == "table" and nodes[#nodes]
+	local pr = type(node) == "table" and node.pullRequest
+	if type(pr) ~= "table" or type(pr.url) ~= "string" or type(pr.headRefName) ~= "string" then
+		return nil
+	end
+	return { url = pr.url, branch = pr.headRefName }
+end
+
+--- Parse the `get_open_pr_stack` GraphQL response.
+--- The PRs come from the branch ref of this repository
+--- (`ref.associatedPullRequests`), so PRs opened from forks with a branch of
+--- the same name never appear and need no filtering.
+--- @param data table|nil decoded response
+--- @return table|nil info { url: string, base_ref: string|nil, stack_number: number|nil,
+---   stack_size: number|nil, stack_position: number|nil (1-based, bottom first),
+---   stack_top: { url: string, branch: string }|nil (the PR at the top of the stack) }, nil when there is no open PR
+function M.parse_open_pr_stack(data)
+	local repo = type(data) == "table" and type(data.data) == "table" and data.data.repository
+	local ref = type(repo) == "table" and repo.ref
+	local prs = type(ref) == "table" and ref.associatedPullRequests
+	local nodes = type(prs) == "table" and prs.nodes
+	local node = type(nodes) == "table" and nodes[1]
+	if type(node) ~= "table" or type(node.url) ~= "string" then
+		return nil
+	end
+	local function number_field(t, key)
+		return type(t) == "table" and type(t[key]) == "number" and t[key] or nil
+	end
+	return {
+		url = node.url,
+		base_ref = type(node.baseRefName) == "string" and node.baseRefName or nil,
+		stack_number = number_field(node.stack, "number"),
+		stack_size = number_field(node.stack, "size"),
+		stack_position = number_field(node.stackEntry, "position"),
+		stack_top = M.parse_stack_top(node.stack),
+	}
+end
+
+--- Get the open PR whose head is `branch`, with the GitHub stack it belongs to.
+--- A missing PR is an empty result rather than an error, so "no PR" and a
+--- failed lookup (auth, network, ...) reach the caller separately.
+--- @param branch string head branch name
+--- @param callback fun(err: string|nil, info: table|nil) err is set only when the lookup failed;
+---   info is the `parse_open_pr_stack` result (stack fields nil when the PR is in no stack),
+---   nil when there is no open PR
+function M.get_open_pr_stack(branch, callback)
+	M.run_json({
+		"api",
+		"graphql",
+		"-F",
+		"owner={owner}",
+		"-F",
+		"name={repo}",
+		"-f",
+		"ref=refs/heads/" .. branch,
+		"-f",
+		"query=" .. OPEN_PR_STACK_QUERY,
+	}, function(err, data)
+		if err then
+			callback(err, nil)
+			return
+		end
+		callback(nil, M.parse_open_pr_stack(data))
+	end)
+end
+
+--- Link PRs into a GitHub stacked PR chain via the gh-stack extension
+--- (`gh stack link`, which does not depend on gh-stack's local tracking state).
+--- `refs` are PR URLs in stack order (bottom → top); a first ref that is an
+--- existing stack number appends the rest to the top of that stack. Without a
+--- stack number, gh-stack creates a new stack, or updates the stack the PRs
+--- belong to only when every PR already in it is listed.
+--- @param refs string[] stack number and/or PR URLs
+--- @param base string|nil base branch for the bottom of a new stack (`--base`; gh-stack
+---   defaults to the default branch and retargets the bottom PR to it)
+--- @param callback fun(err: string|nil)
+function M.link_stack(refs, base, callback)
+	local args = { "stack", "link" }
+	if base then
+		vim.list_extend(args, { "--base", base })
+	end
+	vim.list_extend(args, refs)
+	M.run(args, function(err)
+		callback(err)
 	end)
 end
 
