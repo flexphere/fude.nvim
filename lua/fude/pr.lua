@@ -339,19 +339,29 @@ function M.find_templates()
 	return templates
 end
 
---- Stack a freshly created PR on top of the parent PR as a GitHub stacked PR
---- (`gh stack link <parent PR> <new PR>`). The parent PR was looked up before
---- the float opened (see `resolve_stack`), so this only links.
+--- Stack a freshly created PR on top of the parent PR as a GitHub stacked PR.
+--- The parent PR was looked up before the float opened (see `resolve_stack`),
+--- so this only links: an existing stack is grown with
+--- `gh stack link <stack number> <new PR>` (append mode — the update mode
+--- without a stack number would require every PR already in the stack), a new
+--- stack is created with `gh stack link --base <parent's base> <parent PR> <new PR>`
+--- (without `--base` gh-stack would retarget the parent PR to the default branch).
 --- The parent is passed as its PR URL, never as a branch name: `gh stack link`
 --- pushes branch arguments and creates PRs for branches without one, which
 --- would open an unrequested PR for the parent.
 --- The PR itself is already created at this point, so a failure is a WARN
 --- that leaves it in place as an ordinary (unstacked) PR.
---- @param stack table { parent_url: string, new_stack: boolean }
+--- @param stack table { parent_url: string, new_stack: boolean, stack_number: number|nil, parent_base: string|nil }
 --- @param pr_url string URL of the PR just created
 --- @private
 local function link_to_stack(stack, pr_url)
-	gh.link_stack({ stack.parent_url, pr_url }, function(err)
+	local refs, base
+	if stack.new_stack then
+		refs, base = { stack.parent_url, pr_url }, stack.parent_base
+	else
+		refs = { tostring(stack.stack_number), pr_url }
+	end
+	gh.link_stack(refs, base, function(err)
 		if err then
 			vim.notify("fude.nvim: Stacking failed (the PR was created unstacked): " .. vim.trim(err), vim.log.levels.WARN)
 			return
@@ -367,7 +377,7 @@ end
 --- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...),
 ---   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun(),
 ---   base: string|nil (create mode: base branch passed to `gh pr create --base`; nil lets gh choose),
----   stack: table|nil (create mode: { parent_url, new_stack } when the user chose to stack the PR;
+---   stack: table|nil (create mode: the `resolve_stack` result when the user chose to stack the PR;
 ---   after creation it is linked on top of `parent_url` as a GitHub stacked PR) }
 function M.open_pr_float(title_lines, body_lines, opts)
 	title_lines = title_lines or { "" }
@@ -885,71 +895,89 @@ function M.confirm_stack(base, callback)
 	end)
 end
 
---- Build the picker entries for the "create a new stack?" prompt, shown when
---- the parent PR is not in a stack yet. Yes comes first: the user has just
---- answered that they want a stacked PR.
---- @return table[] entries { display: string, value: "yes"|"no" }
-function M.build_new_stack_choices()
+--- Build the picker entries shown when the picked base's PR is below the
+--- top of its stack (a stacked PR can only be added at the top).
+--- @param base string picked base branch
+--- @param top_branch string head branch of the stack's top PR
+--- @param stack_number number stack number
+--- @return table[] entries { display: string, value: "ordinary"|"top" }
+function M.build_non_top_choices(base, top_branch, stack_number)
 	return {
-		{ display = "Yes (create a new stack)", value = "yes" },
-		{ display = "No (ordinary PR)", value = "no" },
+		{ display = "Ordinary PR on " .. base .. " (no stack)", value = "ordinary" },
+		{ display = "Stacked PR on " .. top_branch .. " (top of stack #" .. stack_number .. ")", value = "top" },
 	}
 end
 
---- Ask whether to create a new stack from the parent PR of `base` and the new PR.
+--- Ask how to continue when the picked base's PR is below the top of its stack.
 --- @param base string picked base branch
---- @param callback fun(new_stack: boolean|nil) true/false for the answer, nil on cancel
-function M.confirm_new_stack(base, callback)
-	local prompt = "The PR of " .. base .. " is not in a stack. Create a new stack?"
-	pick_entry(M.build_new_stack_choices(), { prompt = prompt, title = prompt }, function(value)
-		if value == nil then
-			callback(nil)
-		else
-			callback(value == "yes")
-		end
-	end)
+--- @param top_branch string head branch of the stack's top PR
+--- @param stack_number number stack number
+--- @param callback fun(choice: "ordinary"|"top"|nil) nil on cancel
+function M.confirm_non_top_stack(base, top_branch, stack_number, callback)
+	local prompt = "Stacked PRs can only be added to the top of stack #" .. stack_number .. "."
+	pick_entry(M.build_non_top_choices(base, top_branch, stack_number), {
+		prompt = prompt,
+		title = prompt,
+	}, callback)
 end
 
---- Look up the parent PR of `base` before the float opens, so the user learns
---- whether stacking will extend an existing stack or create a new one while
---- they can still decline.
+--- Look up the parent PR of `base` before the float opens: a parent at the
+--- top of a stack is appended to, a parent in no stack starts a new stack,
+--- and the footer shows which one happens before the PR is created.
+--- A parent below the top of its stack cannot take a stacked PR (a stack only
+--- grows at its top), so the user picks between an ordinary PR on `base` and
+--- a stacked PR on the stack's top branch, which replaces `base`.
 --- The PR cannot be stacked when `base` has no open PR (a stack links PRs, not
 --- branches) or when the lookup fails; both get a WARN (the latter with gh's
 --- error, so it is not mistaken for "no PR") and continue as an ordinary PR,
 --- since nothing is lost by creating it unstacked.
 --- @param base string picked base branch
---- @param callback fun(stack: table|false|nil) { parent_url, new_stack } to stack,
----   false for an ordinary PR, nil when the user cancelled
+--- @param callback fun(result: table|nil) { base: string, stack: table|nil } — `stack` is
+---   { parent_url, new_stack, stack_number?, parent_base? } to stack, nil for an ordinary PR;
+---   nil when the user cancelled
 --- @private
 local function resolve_stack(base, callback)
+	local function ordinary(msg)
+		vim.notify("fude.nvim: Not stacked (creating an ordinary PR): " .. msg, vim.log.levels.WARN)
+		callback({ base = base })
+	end
 	gh.get_open_pr_stack(base, function(err, info)
 		if err then
-			vim.notify(
-				"fude.nvim: Not stacked (creating an ordinary PR): failed to look up the PR of "
-					.. base
-					.. ": "
-					.. vim.trim(err),
-				vim.log.levels.WARN
-			)
-			callback(false)
+			ordinary("failed to look up the PR of " .. base .. ": " .. vim.trim(err))
 			return
 		end
 		if not info then
-			vim.notify("fude.nvim: Not stacked (creating an ordinary PR): " .. base .. " has no open PR", vim.log.levels.WARN)
-			callback(false)
+			ordinary(base .. " has no open PR")
 			return
 		end
-		if info.stack_number then
-			callback({ parent_url = info.url, new_stack = false })
+		if not info.stack_number then
+			-- the user already answered Yes to stacking, so a parent in no stack
+			-- starts a new one without asking again
+			callback({ base = base, stack = { parent_url = info.url, new_stack = true, parent_base = info.base_ref } })
 			return
 		end
-		M.confirm_new_stack(base, function(new_stack)
-			if new_stack == nil then
+		if info.stack_position == info.stack_size then
+			callback({
+				base = base,
+				stack = { parent_url = info.url, new_stack = false, stack_number = info.stack_number },
+			})
+			return
+		end
+		local top = info.stack_top
+		if not top then
+			ordinary("the PR of " .. base .. " is not the top of stack #" .. info.stack_number)
+			return
+		end
+		M.confirm_non_top_stack(base, top.branch, info.stack_number, function(choice)
+			if choice == nil then
 				callback(nil)
-			elseif new_stack then
-				callback({ parent_url = info.url, new_stack = true })
+			elseif choice == "top" then
+				callback({
+					base = top.branch,
+					stack = { parent_url = top.url, new_stack = false, stack_number = info.stack_number },
+				})
 			else
-				callback(false)
+				callback({ base = base })
 			end
 		end)
 	end)
@@ -969,7 +997,7 @@ end
 --- select if multiple, open the float.
 --- When a draft exists, it is shown as a selectable option alongside templates.
 --- @param base string|nil base branch (nil: gh chooses)
---- @param stack table|nil { parent_url, new_stack } when the PR is stacked on `base` (linked after creation)
+--- @param stack table|nil `resolve_stack` result when the PR is stacked on `base` (linked after creation)
 --- @private
 local function create_with_base(base, stack)
 	local templates = M.find_templates()
@@ -1047,11 +1075,10 @@ function M.create()
 				create_with_base(base, nil)
 				return
 			end
-			resolve_stack(base, function(stack)
-				if stack == nil then
-					return
+			resolve_stack(base, function(result)
+				if result then
+					create_with_base(result.base, result.stack)
 				end
-				create_with_base(base, stack or nil)
 			end)
 		end)
 	end)

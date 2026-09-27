@@ -13,8 +13,6 @@ describe("create passes default title to open_pr_float", function()
 	local stack_answer
 	local lookup_branches
 	local lookup_result
-	local new_stack_prompts
-	local new_stack_answer
 	local notifications
 
 	before_each(function()
@@ -51,16 +49,13 @@ describe("create passes default title to open_pr_float", function()
 			callback(stack_answer)
 		end)
 		lookup_branches = {}
-		lookup_result = { nil, { url = "https://github.com/o/r/pull/1", stack_number = 3 } }
+		lookup_result = {
+			nil,
+			{ url = "https://github.com/o/r/pull/1", stack_number = 3, stack_size = 2, stack_position = 2 },
+		}
 		helpers.mock(gh, "get_open_pr_stack", function(branch, callback)
 			table.insert(lookup_branches, branch)
 			callback(lookup_result[1], lookup_result[2])
-		end)
-		new_stack_prompts = {}
-		new_stack_answer = true
-		helpers.mock(pr, "confirm_new_stack", function(base, callback)
-			table.insert(new_stack_prompts, base)
-			callback(new_stack_answer)
 		end)
 		notifications = {}
 		helpers.mock(vim, "notify", function(msg, level)
@@ -145,9 +140,11 @@ describe("create passes default title to open_pr_float", function()
 		pr.create()
 		assert.are.same({ "feat/parent" }, stack_prompts)
 		assert.are.same({ "feat/parent" }, lookup_branches)
-		assert.are.same({}, new_stack_prompts)
 		assert.are.equal("feat/parent", captured_opts.base)
-		assert.are.same({ parent_url = "https://github.com/o/r/pull/1", new_stack = false }, captured_opts.stack)
+		assert.are.same(
+			{ parent_url = "https://github.com/o/r/pull/1", new_stack = false, stack_number = 3 },
+			captured_opts.stack
+		)
 
 		pick = "feat/base"
 		stack_answer = false
@@ -166,33 +163,77 @@ describe("create passes default title to open_pr_float", function()
 		assert.is_nil(captured_opts.stack)
 	end)
 
-	describe("when the parent PR is not in a stack yet", function()
+	it("creates a new stack without asking again when the parent PR is in no stack", function()
+		helpers.mock(pr, "select_base_branch", function(_, callback)
+			callback("feat/other")
+		end)
+		stack_answer = true
+		lookup_result = { nil, { url = "https://github.com/o/r/pull/1", base_ref = "feat/grand" } }
+		pr.create()
+		assert.are.same({ "feat/other" }, stack_prompts)
+		assert.are.same(
+			{ parent_url = "https://github.com/o/r/pull/1", new_stack = true, parent_base = "feat/grand" },
+			captured_opts.stack
+		)
+	end)
+
+	describe("when the parent PR is below the top of its stack", function()
+		local non_top_prompts
+		local non_top_answer
+
 		before_each(function()
 			helpers.mock(pr, "select_base_branch", function(_, callback)
 				callback("feat/other")
 			end)
 			stack_answer = true
-			lookup_result = { nil, { url = "https://github.com/o/r/pull/1", stack_number = nil } }
+			lookup_result = {
+				nil,
+				{
+					url = "https://github.com/o/r/pull/1",
+					stack_number = 3,
+					stack_size = 3,
+					stack_position = 1,
+					stack_top = { url = "https://github.com/o/r/pull/9", branch = "feat/top" },
+				},
+			}
+			non_top_prompts = {}
+			non_top_answer = "top"
+			helpers.mock(pr, "confirm_non_top_stack", function(base, top_branch, stack_number, callback)
+				table.insert(non_top_prompts, { base, top_branch, stack_number })
+				callback(non_top_answer)
+			end)
 		end)
 
-		it("asks whether to create a new stack and stacks on Yes", function()
+		it("stacks on the top branch, which replaces the base, when chosen", function()
 			pr.create()
-			assert.are.same({ "feat/other" }, new_stack_prompts)
-			assert.are.same({ parent_url = "https://github.com/o/r/pull/1", new_stack = true }, captured_opts.stack)
+			assert.are.same({ { "feat/other", "feat/top", 3 } }, non_top_prompts)
+			assert.are.equal("feat/top", captured_opts.base)
+			assert.are.same(
+				{ parent_url = "https://github.com/o/r/pull/9", new_stack = false, stack_number = 3 },
+				captured_opts.stack
+			)
 		end)
 
-		it("creates an ordinary PR on No", function()
-			new_stack_answer = false
+		it("creates an ordinary PR on the picked base when chosen", function()
+			non_top_answer = "ordinary"
 			pr.create()
-			assert.are.same({ "feat/other" }, new_stack_prompts)
 			assert.are.equal("feat/other", captured_opts.base)
 			assert.is_nil(captured_opts.stack)
 		end)
 
-		it("aborts without opening the float when the prompt is cancelled", function()
-			new_stack_answer = nil
+		it("aborts without opening the float when the picker is cancelled", function()
+			non_top_answer = nil
 			pr.create()
 			assert.is_nil(captured_opts)
+		end)
+
+		it("warns and creates an ordinary PR when the top PR is unknown", function()
+			lookup_result[2].stack_top = nil
+			pr.create()
+			assert.are.same({}, non_top_prompts)
+			assert.is_nil(captured_opts.stack)
+			assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+			assert.is_not_nil(notifications[1].msg:find("is not the top of stack #3", 1, true))
 		end)
 	end)
 
@@ -203,7 +244,6 @@ describe("create passes default title to open_pr_float", function()
 		stack_answer = true
 		lookup_result = { nil, nil }
 		pr.create()
-		assert.are.same({}, new_stack_prompts)
 		assert.is_nil(captured_opts.stack)
 		assert.are.equal("feat/other", captured_opts.base)
 		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
@@ -1098,8 +1138,8 @@ describe("create submit draft cleanup", function()
 			helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
 				callback(nil, { url = NEW_URL })
 			end)
-			helpers.mock(gh, "link_stack", function(refs, callback)
-				table.insert(link_calls, refs)
+			helpers.mock(gh, "link_stack", function(refs, base, callback)
+				table.insert(link_calls, { refs = refs, base = base })
 				callback(nil)
 			end)
 			helpers.mock(vim, "notify", function(msg, level)
@@ -1121,15 +1161,19 @@ describe("create submit draft cleanup", function()
 			return nil
 		end
 
-		it("links the new PR on top of the parent PR resolved before the float opened", function()
-			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false } })
-			assert.are.same({ { PARENT_URL, NEW_URL } }, link_calls)
+		it("appends the new PR to the parent's existing stack by stack number", function()
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false, stack_number = 7 } })
+			-- the update mode without a stack number would need every PR already in the stack
+			assert.are.same({ { refs = { "7", NEW_URL } } }, link_calls)
 			assert.is_not_nil(find_notification("Stacked on " .. PARENT_URL))
 		end)
 
-		it("reports a newly created stack", function()
-			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = true } })
-			assert.are.same({ { PARENT_URL, NEW_URL } }, link_calls)
+		it("creates a new stack keeping the parent's base branch", function()
+			submit({
+				base = "feat/parent",
+				stack = { parent_url = PARENT_URL, new_stack = true, parent_base = "feat/grand" },
+			})
+			assert.are.same({ { refs = { PARENT_URL, NEW_URL }, base = "feat/grand" } }, link_calls)
 			assert.is_not_nil(find_notification("New stack created on " .. PARENT_URL))
 		end)
 
@@ -1139,10 +1183,10 @@ describe("create submit draft cleanup", function()
 		end)
 
 		it("warns and keeps the created PR when linking fails", function()
-			helpers.mock(gh, "link_stack", function(_, callback)
+			helpers.mock(gh, "link_stack", function(_, _, callback)
 				callback('unknown command "stack" for "gh"\n')
 			end)
-			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false } })
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false, stack_number = 7 } })
 			local n = find_notification("Stacking failed (the PR was created unstacked)")
 			assert.is_not_nil(n)
 			assert.are.equal(vim.log.levels.WARN, n.level)
@@ -1153,7 +1197,7 @@ describe("create submit draft cleanup", function()
 			helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
 				callback("boom", nil)
 			end)
-			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false } })
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false, stack_number = 7 } })
 			assert.are.same({}, link_calls)
 		end)
 	end)
@@ -1208,78 +1252,83 @@ describe("build_stack_choices", function()
 	end)
 end)
 
-describe("build_new_stack_choices", function()
-	it("puts Yes first so a bare <CR> creates a new stack", function()
-		assert.are.same(
-			{ "yes", "no" },
-			vim.tbl_map(function(e)
-				return e.value
-			end, pr.build_new_stack_choices())
-		)
+describe("build_non_top_choices", function()
+	it("offers an ordinary PR on the base first, then a stacked PR on the top branch", function()
+		assert.are.same({
+			{ display = "Ordinary PR on feat/mid (no stack)", value = "ordinary" },
+			{ display = "Stacked PR on feat/top (top of stack #3)", value = "top" },
+		}, pr.build_non_top_choices("feat/mid", "feat/top", 3))
 	end)
 end)
 
--- Telescope is not loaded in the test environment, so these cover the
--- vim.ui.select fallback of the shared picker
-for _, case in ipairs({
-	{
-		name = "confirm_stack",
-		call = function(base, cb)
-			pr.confirm_stack(base, cb)
-		end,
-		prompt = "Stack the PR on feat/parent?",
-		labels = { "Yes (stacked PR)", "No (ordinary PR)" },
-	},
-	{
-		name = "confirm_new_stack",
-		call = function(base, cb)
-			pr.confirm_new_stack(base, cb)
-		end,
-		prompt = "The PR of feat/parent is not in a stack. Create a new stack?",
-		labels = { "Yes (create a new stack)", "No (ordinary PR)" },
-	},
-}) do
-	describe(case.name .. " (picker fallback)", function()
-		local orig_select
+describe("confirm_non_top_stack (picker fallback)", function()
+	local orig_select
 
-		before_each(function()
-			orig_select = vim.ui.select
-		end)
-
-		after_each(function()
-			vim.ui.select = orig_select
-		end)
-
-		local function answer_with(idx)
-			local captured = {}
-			vim.ui.select = function(items, sopts, on_choice)
-				captured.prompt = sopts.prompt
-				captured.labels = items
-				on_choice(idx and items[idx], idx)
-			end
-			local answer = "unset"
-			case.call("feat/parent", function(v)
-				answer = v
-			end)
-			return answer, captured
-		end
-
-		it("offers Yes first with the base branch in the prompt", function()
-			local answer, captured = answer_with(1)
-			assert.are.equal(case.prompt, captured.prompt)
-			assert.are.same(case.labels, captured.labels)
-			assert.is_true(answer)
-		end)
-
-		it("returns false for No", function()
-			assert.is_false((answer_with(2)))
-		end)
-
-		it("returns nil on cancel", function()
-			assert.is_nil((answer_with(nil)))
-		end)
+	before_each(function()
+		orig_select = vim.ui.select
 	end)
-end
+
+	after_each(function()
+		vim.ui.select = orig_select
+	end)
+
+	it("explains the top-only rule and returns the chosen value", function()
+		local prompt
+		vim.ui.select = function(items, sopts, on_choice)
+			prompt = sopts.prompt
+			on_choice(items[2], 2)
+		end
+		local answer
+		pr.confirm_non_top_stack("feat/mid", "feat/top", 3, function(v)
+			answer = v
+		end)
+		assert.are.equal("Stacked PRs can only be added to the top of stack #3.", prompt)
+		assert.are.equal("top", answer)
+	end)
+end)
+
+-- Telescope is not loaded in the test environment, so this covers the
+-- vim.ui.select fallback of the shared picker
+describe("confirm_stack (picker fallback)", function()
+	local orig_select
+
+	before_each(function()
+		orig_select = vim.ui.select
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+	end)
+
+	local function answer_with(idx)
+		local captured = {}
+		vim.ui.select = function(items, sopts, on_choice)
+			captured.prompt = sopts.prompt
+			captured.labels = items
+			on_choice(idx and items[idx], idx)
+		end
+		local answer = "unset"
+		pr.confirm_stack("feat/parent", function(v)
+			answer = v
+		end)
+		return answer, captured
+	end
+
+	it("offers Yes first with the base branch in the prompt", function()
+		local answer, captured = answer_with(1)
+		assert.are.equal("Stack the PR on feat/parent?", captured.prompt)
+		assert.are.same({ "Yes (stacked PR)", "No (ordinary PR)" }, captured.labels)
+		assert.is_true(answer)
+	end)
+
+	it("returns false for No", function()
+		assert.is_false((answer_with(2)))
+	end)
+
+	it("returns nil on cancel", function()
+		assert.is_nil((answer_with(nil)))
+	end)
+end)
 
 describe("build_base_branch_entries", function()
 	it("puts the default branch first with a marker and keeps the rest in order", function()

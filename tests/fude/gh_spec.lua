@@ -572,14 +572,47 @@ describe("create_draft_pr / edit_pr --attach args", function()
 			return { data = { repository = { pullRequests = { nodes = nodes } } } }
 		end
 		assert.are.same(
-			{ url = "u", stack_number = 3 },
-			gh.parse_open_pr_stack(response({ { url = "u", isCrossRepository = false, stack = { number = 3 } } }))
+			{
+				url = "u",
+				base_ref = "dev",
+				stack_number = 3,
+				stack_size = 4,
+				stack_position = 2,
+				stack_top = { url = "t", branch = "feat/top" },
+			},
+			gh.parse_open_pr_stack(response({
+				{
+					url = "u",
+					baseRefName = "dev",
+					isCrossRepository = false,
+					stack = {
+						number = 3,
+						size = 4,
+						entries = { nodes = { { pullRequest = { url = "t", headRefName = "feat/top" } } } },
+					},
+					stackEntry = { position = 2 },
+				},
+			}))
 		)
 		-- stack is JSON null (vim.NIL) for a PR in no stack
 		assert.are.same(
 			{ url = "u" },
 			gh.parse_open_pr_stack(response({ { url = "u", isCrossRepository = false, stack = vim.NIL } }))
 		)
+	end)
+
+	it("parse_stack_top returns the last entry's PR, nil when missing or malformed", function()
+		local function stack(nodes)
+			return { entries = { nodes = nodes } }
+		end
+		assert.are.same(
+			{ url = "b", branch = "top" },
+			gh.parse_stack_top(stack({ { pullRequest = { url = "b", headRefName = "top" } } }))
+		)
+		assert.is_nil(gh.parse_stack_top(nil))
+		assert.is_nil(gh.parse_stack_top(vim.NIL))
+		assert.is_nil(gh.parse_stack_top(stack({})))
+		assert.is_nil(gh.parse_stack_top(stack({ { pullRequest = { url = "b" } } })))
 	end)
 
 	it("parse_open_pr_stack skips PRs opened from forks with the same branch name", function()
@@ -589,13 +622,18 @@ describe("create_draft_pr / edit_pr --attach args", function()
 					pullRequests = {
 						nodes = {
 							{ url = "fork", isCrossRepository = true, stack = vim.NIL },
-							{ url = "own", isCrossRepository = false, stack = { number = 2 } },
+							{
+								url = "own",
+								isCrossRepository = false,
+								stack = { number = 2, size = 2 },
+								stackEntry = { position = 2 },
+							},
 						},
 					},
 				},
 			},
 		}
-		assert.are.same({ url = "own", stack_number = 2 }, gh.parse_open_pr_stack(data))
+		assert.are.same({ url = "own", stack_number = 2, stack_size = 2, stack_position = 2 }, gh.parse_open_pr_stack(data))
 		data.data.repository.pullRequests.nodes = { data.data.repository.pullRequests.nodes[1] }
 		assert.is_nil(gh.parse_open_pr_stack(data))
 	end)
@@ -610,19 +648,20 @@ describe("create_draft_pr / edit_pr --attach args", function()
 	end)
 
 	it("link_stack runs gh stack link with the refs bottom to top", function()
-		local captured_args
+		local calls = {}
 		helpers.mock(gh, "run", function(args, callback)
-			captured_args = args
+			table.insert(calls, args)
 			callback(nil, "")
 		end)
 		local done_err = "unset"
-		gh.link_stack({ "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" }, function(err)
+		gh.link_stack({ "7", "https://github.com/o/r/pull/2" }, nil, function(err)
 			done_err = err
 		end)
-		assert.are.same(
-			{ "stack", "link", "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" },
-			captured_args
-		)
+		gh.link_stack({ "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" }, "dev", function() end)
+		assert.are.same({
+			{ "stack", "link", "7", "https://github.com/o/r/pull/2" },
+			{ "stack", "link", "--base", "dev", "https://github.com/o/r/pull/1", "https://github.com/o/r/pull/2" },
+		}, calls)
 		assert.is_nil(done_err)
 	end)
 

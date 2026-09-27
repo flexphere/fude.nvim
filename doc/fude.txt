@@ -402,17 +402,22 @@ File opening position                                 *fude-file-position*
     top of that branch. Picking the default branch skips the question.
     Cancelling the picker aborts the command. On Yes,
     the base branch's open PR is looked up before the float opens. When
-    that PR is not in a stack yet, another Yes/No picker asks whether to
-    create a new stack from it (No creates an ordinary PR, cancelling
-    aborts). The footer shows `(stacked)` for an existing stack and
+    that PR is not in a stack yet, a new stack is created from it without
+    asking again. The footer shows `(stacked)` for an existing stack and
     `(new stack)` for a new one. After `gh pr create` succeeds the new PR
-    is linked on top of the base branch's PR with `gh stack link`
-    (requires the gh-stack extension and stacked PRs enabled on the
-    repository). When the base branch has no open PR or its PR cannot be
-    looked up (the warning shows gh's error), a warning is shown before
-    the float opens and the PR is created as an ordinary one. When
-    linking fails (e.g. the base PR already has another PR stacked on
-    it), a warning is shown and the created PR stays unstacked.
+    is linked with `gh stack link` (requires the gh-stack extension and
+    stacked PRs enabled on the repository): appended to the top of the
+    existing stack (`gh stack link <stack number> <new PR>`), or put in a
+    new stack above the base branch's PR, keeping that PR's own base
+    branch (`--base`). When the base branch has no open PR or its PR
+    cannot be looked up (the warning shows gh's error), a
+    warning is shown before the float opens and the PR is created as an
+    ordinary one. When linking fails, a warning is shown and the created
+    PR stays unstacked.
+    When the base branch's PR is in a stack but not at its top, a picker
+    explains that stacked PRs can only be added to the top and offers an
+    ordinary PR on the picked branch, or a stacked PR on the stack's top
+    branch (which then becomes the base). Cancelling it aborts.
 
     Then searches for GitHub PR templates in standard locations
     (`.github/PULL_REQUEST_TEMPLATE/`, `PULL_REQUEST_TEMPLATE.md`,
