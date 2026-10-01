@@ -280,6 +280,33 @@ File opening position                                 *fude-file-position*
     while the switch was in progress.
     Requires an active review session.
 
+:FudeReviewStack                                    *:FudeReviewStack*
+    Pick another open PR of the current PR's GitHub stack (bottom first,
+    `[i/n] #number title (base ← head)` where `i/n` is the position in the
+    whole stack including merged PRs, the current PR marked with `▶`)
+    and switch the review to it. The picker follows `file_list_mode`
+    (Telescope, snacks, or |vim.ui.select|). How the review moves depends
+    on where the selected PR's head branch is checked out:
+
+    - In no worktree: the review is stopped, the branch is checked out in
+      the current worktree with `gh pr checkout`, buffers are reloaded
+      (|:checktime|), and the review is started again. If the checkout
+      fails (e.g. the local branch cannot be fast-forwarded after a stack
+      rebase), the original branch is checked out again and its review
+      restarts.
+    - In another worktree: the review is stopped, Neovim's global working
+      directory is changed to that worktree (|:cd|), the buffers of files
+      under the old worktree are wiped, and the review is started again.
+      Windows that showed those buffers stay open with the same file in
+      the new worktree (an empty buffer when it does not exist there).
+      Buffers of a worktree nested inside the old one are not touched.
+
+    Nothing is changed when a buffer under the current worktree is
+    unsaved, or, when checking out in the current worktree, when tracked
+    files have uncommitted changes: save, commit, or stash first.
+    Requires an active GitHub review session (not available in local
+    review mode).
+
 :FudeReviewOverview                                *:FudeReviewOverview*
     Show PR overview in a split-pane floating window. The left pane
     displays title, state, author, base/head branches, description,
@@ -821,11 +848,12 @@ Default configuration: >lua
 Options:
 
 `file_list_mode`    "telescope" (default), "quickfix", or "snacks"
-                  Controls which picker `:FudeReviewFiles` and
-                  `:FudeReviewScope` use. "snacks" requires snacks.nvim;
-                  it falls back to quickfix if not installed. For
-                  `:FudeReviewScope`, "quickfix" falls back to
-                  `vim.ui.select`.
+                  Controls which picker `:FudeReviewFiles`,
+                  `:FudeReviewScope`, and `:FudeReviewStack` use.
+                  "snacks" requires snacks.nvim; it falls back to
+                  quickfix if not installed. For `:FudeReviewScope` and
+                  `:FudeReviewStack`, "quickfix" and a missing picker
+                  plugin fall back to `vim.ui.select`.
 
 `diff_filler_char`  Character for diff filler lines (default: nil).
                   Set to " " to hide the filler indicators.
