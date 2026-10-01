@@ -48,7 +48,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewNextFile", "FudeReviewPrevFile",
     "FudeReviewNextUnviewedFile", "FudeReviewPrevUnviewedFile",
-    "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev", "FudeReviewStack",
+    "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev", "FudeReviewStackSwitch",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
     "FudeReviewToggleFileTree", "FudeCreatePR", "FudeEditPR",
@@ -120,7 +120,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewScope` | Select review scope (full PR or specific commit) |
 | `:FudeReviewScopeNext` | Move to next review scope and open its first file |
 | `:FudeReviewScopePrev` | Move to previous review scope and open its first file |
-| `:FudeReviewStack` | Switch the review to another open PR of the current PR's GitHub stack (checks out the branch here, or `:cd`s to the worktree that already has it) |
+| `:FudeReviewStackSwitch` | Switch the review to another open PR of the current PR's GitHub stack (checks out the branch here, or `:cd`s to the worktree that already has it) |
 | `:FudeReviewOverview` | Show PR overview and issue-level comments |
 | `:FudeReviewListComments` | Browse all PR review and issue comments in 3-pane floating window |
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |

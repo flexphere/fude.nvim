@@ -86,7 +86,7 @@ vim.api.nvim_create_user_command("FudeReviewScopePrev", function()
 	require("fude.scope").prev_scope()
 end, { desc = "Move to previous review scope" })
 
-vim.api.nvim_create_user_command("FudeReviewStack", function()
+vim.api.nvim_create_user_command("FudeReviewStackSwitch", function()
 	require("fude.stack").select_stack()
 end, { desc = "Switch the review to another PR of the stack" })
 

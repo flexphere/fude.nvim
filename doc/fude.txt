@@ -280,7 +280,7 @@ File opening position                                 *fude-file-position*
     while the switch was in progress.
     Requires an active review session.
 
-:FudeReviewStack                                    *:FudeReviewStack*
+:FudeReviewStackSwitch                        *:FudeReviewStackSwitch*
     Pick another open PR of the current PR's GitHub stack (bottom first,
     `[i/n] #number title (base ← head)` where `i/n` is the position in the
     whole stack including merged PRs, the current PR marked with `▶`)
@@ -849,10 +849,10 @@ Options:
 
 `file_list_mode`    "telescope" (default), "quickfix", or "snacks"
                   Controls which picker `:FudeReviewFiles`,
-                  `:FudeReviewScope`, and `:FudeReviewStack` use.
+                  `:FudeReviewScope`, and `:FudeReviewStackSwitch` use.
                   "snacks" requires snacks.nvim; it falls back to
                   quickfix if not installed. For `:FudeReviewScope` and
-                  `:FudeReviewStack`, "quickfix" and a missing picker
+                  `:FudeReviewStackSwitch`, "quickfix" and a missing picker
                   plugin fall back to `vim.ui.select`.
 
 `diff_filler_char`  Character for diff filler lines (default: nil).

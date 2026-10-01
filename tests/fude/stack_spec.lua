@@ -444,10 +444,10 @@ describe("stack switching", function()
 		assert.are.equal(0, calls.stop)
 	end)
 
-	it(":FudeReviewStack is wired to select_stack", function()
+	it(":FudeReviewStackSwitch is wired to select_stack", function()
 		vim.cmd("runtime plugin/fude.lua")
 		config.state.active = false
-		vim.cmd("FudeReviewStack")
+		vim.cmd("FudeReviewStackSwitch")
 		assert.is_true(has_notification("Not active", vim.log.levels.WARN))
 	end)
 end)
