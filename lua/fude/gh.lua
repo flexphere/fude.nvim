@@ -717,6 +717,85 @@ function M.get_open_pr_stack(branch, callback)
 	end)
 end
 
+-- `first: 100`: a stack taller than that loses its top PRs in the picker
+local PR_STACK_QUERY = [[
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      stack {
+        entries(first: 100) {
+          nodes { pullRequest { number title state headRefName baseRefName } }
+        }
+      }
+    }
+  }
+}]]
+
+--- Parse the `get_pr_stack` GraphQL response.
+--- Entries come bottom first (the order `entries(last: 1)` relies on for the top).
+--- Malformed nodes are skipped.
+--- @param data table|nil decoded response
+--- @return table[]|nil prs { number, title, state, head_ref, base_ref }[] bottom first,
+---   nil when the PR is in no stack
+function M.parse_pr_stack(data)
+	local repo = type(data) == "table" and type(data.data) == "table" and data.data.repository
+	local pr = type(repo) == "table" and repo.pullRequest
+	local stack = type(pr) == "table" and pr.stack
+	local entries = type(stack) == "table" and stack.entries
+	local nodes = type(entries) == "table" and entries.nodes
+	if type(nodes) ~= "table" then
+		return nil
+	end
+	local prs = {}
+	for _, node in ipairs(nodes) do
+		local p = type(node) == "table" and node.pullRequest
+		if type(p) == "table" and type(p.number) == "number" and type(p.headRefName) == "string" then
+			table.insert(prs, {
+				number = p.number,
+				title = type(p.title) == "string" and p.title or "",
+				state = type(p.state) == "string" and p.state or "",
+				head_ref = p.headRefName,
+				base_ref = type(p.baseRefName) == "string" and p.baseRefName or "",
+			})
+		end
+	end
+	return prs
+end
+
+--- Get the GitHub stack the PR belongs to.
+--- @param pr_number number
+--- @param callback fun(err: string|nil, prs: table[]|nil) prs is the `parse_pr_stack` result
+---   (nil when the PR is in no stack); err is set only when the lookup failed
+function M.get_pr_stack(pr_number, callback)
+	M.run_json({
+		"api",
+		"graphql",
+		"-F",
+		"owner={owner}",
+		"-F",
+		"name={repo}",
+		"-F",
+		"number=" .. pr_number,
+		"-f",
+		"query=" .. PR_STACK_QUERY,
+	}, function(err, data)
+		if err then
+			callback(err, nil)
+			return
+		end
+		callback(nil, M.parse_pr_stack(data))
+	end)
+end
+
+--- Check out a PR's head branch in the current worktree (`gh pr checkout`).
+--- @param pr_number number
+--- @param callback fun(err: string|nil)
+function M.checkout_pr(pr_number, callback)
+	M.run({ "pr", "checkout", tostring(pr_number) }, function(err)
+		callback(err)
+	end)
+end
+
 --- Link PRs into a GitHub stacked PR chain via the gh-stack extension
 --- (`gh stack link`, which does not depend on gh-stack's local tracking state).
 --- `refs` are PR URLs in stack order (bottom → top); a first ref that is an
