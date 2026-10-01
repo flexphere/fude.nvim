@@ -62,7 +62,7 @@ describe("gh.parse_pr_stack", function()
 end)
 
 describe("diff.parse_worktree_list", function()
-	it("keeps worktrees with a branch and skips prunable, bare, and detached ones", function()
+	it("keeps worktrees with a branch, prunable ones included, and skips bare and detached ones", function()
 		local output = table.concat({
 			"worktree /repo",
 			"HEAD aaa",
@@ -87,6 +87,7 @@ describe("diff.parse_worktree_list", function()
 		}, "\n")
 		assert.are.same({
 			{ path = "/repo", branch = "main" },
+			{ path = "/wt/gone", branch = "gone" },
 			{ path = "/wt/feat", branch = "feat/b" },
 		}, diff.parse_worktree_list(output))
 	end)

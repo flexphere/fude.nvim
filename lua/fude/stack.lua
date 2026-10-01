@@ -173,7 +173,10 @@ function M.switch_to(entry)
 			return
 		end
 	elseif vim.fn.isdirectory(target.path) == 0 then
-		vim.notify("fude.nvim: Worktree not found: " .. target.path, vim.log.levels.WARN)
+		vim.notify(
+			"fude.nvim: Worktree not found: " .. target.path .. " (run `git worktree prune` if it was deleted)",
+			vim.log.levels.WARN
+		)
 		return
 	end
 

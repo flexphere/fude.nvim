@@ -303,6 +303,8 @@ File opening position                                 *fude-file-position*
 
     Nothing is changed when a buffer under the current worktree is
     unsaved, or, when checking out in the current worktree, when tracked
+      A worktree whose directory was deleted still holds its branch until
+      `git worktree prune`, so selecting its PR is refused.
     files have uncommitted changes: save, commit, or stash first.
     Requires an active GitHub review session (not available in local
     review mode).

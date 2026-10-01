@@ -505,8 +505,9 @@ function M.get_first_commit_subject(base_ref)
 end
 
 --- Parse `git worktree list --porcelain` output.
---- Prunable (directory gone), bare, and detached worktrees are skipped: none of
---- them holds a branch that can be switched to.
+--- Bare and detached worktrees are skipped: neither holds a branch. Prunable
+--- ones (directory gone) are kept, since git still reserves their branch
+--- until `git worktree prune`.
 --- @param output string|nil
 --- @return table[] { path: string, branch: string }[] (branch without `refs/heads/`)
 function M.parse_worktree_list(output)
@@ -527,7 +528,7 @@ function M.parse_worktree_list(output)
 			local branch = line:match("^branch refs/heads/(.+)$")
 			if branch then
 				current.branch = branch
-			elseif line == "bare" or line == "detached" or line:match("^prunable") then
+			elseif line == "bare" or line == "detached" then
 				current.skip = true
 			end
 		end
