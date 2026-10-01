@@ -158,6 +158,50 @@ describe("stack.find_owning_root", function()
 	end)
 end)
 
+describe("review start during a PR switch", function()
+	local notifications
+
+	before_each(function()
+		notifications = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notifications, { msg = msg, level = level })
+		end)
+		helpers.mock(stack, "is_switching", function()
+			return true
+		end)
+		helpers.mock(diff, "get_repo_root", function()
+			error("start must refuse before touching git")
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	for _, case in ipairs({
+		{
+			"github review",
+			function()
+				require("fude").start()
+			end,
+		},
+		{
+			"local review",
+			function()
+				require("fude.local.session").start()
+			end,
+		},
+	}) do
+		it("refuses to start a " .. case[1], function()
+			case[2]()
+			assert.is_false(config.state.active)
+			assert.are.equal(1, #notifications)
+			assert.truthy(notifications[1].msg:find("PR switch is checking out"))
+			assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+		end)
+	end
+end)
+
 describe("stack switching", function()
 	local init = require("fude")
 	local root, other_wt
@@ -170,14 +214,14 @@ describe("stack switching", function()
 		return buf
 	end
 
-	local function mock_git_status(stdout)
+	local function mock_git_status(stdout, checkout_code)
 		local original = vim.system
 		helpers.mock(vim, "system", function(cmd, opts, cb)
 			if cmd[1] == "git" and cmd[2] == "checkout" then
 				table.insert(calls.git_checkout, cmd[3])
 				return {
 					wait = function()
-						return { code = 0, stdout = "", stderr = "" }
+						return { code = checkout_code or 0, stdout = "", stderr = "conflict" }
 					end,
 				}
 			end
@@ -293,17 +337,30 @@ describe("stack switching", function()
 		assert.are.same({ "checktime" }, cmds)
 	end)
 
-	it("does not restart when a review was started while checking out", function()
+	it("reports switching only while the checkout runs", function()
 		mock_git_status("")
 		local checkout_cb
 		helpers.mock(gh, "checkout_pr", function(_, cb)
 			checkout_cb = cb
 		end)
+		assert.is_false(stack.is_switching())
 		stack.switch_to({ number = 4, head_ref = "d", is_current = false })
-		config.state.active = true
-		checkout_cb("failed")
+		assert.is_true(stack.is_switching())
+		checkout_cb(nil)
+		assert.is_false(stack.is_switching())
+		assert.are.equal(1, calls.start)
+	end)
+
+	it("keeps the review stopped when the original branch cannot be restored", function()
+		mock_git_status("", 1)
+		helpers.mock(gh, "checkout_pr", function(_, cb)
+			cb("ff failed")
+		end)
+		stack.switch_to({ number = 4, head_ref = "d", is_current = false })
+		assert.are.same({ "b" }, calls.git_checkout)
+		assert.are.same({ "checktime" }, cmds)
 		assert.are.equal(0, calls.start)
-		assert.are.same({}, calls.git_checkout)
+		assert.is_true(has_notification("Failed to restore b: conflict", vim.log.levels.ERROR))
 	end)
 
 	it("refuses to switch with uncommitted changes", function()

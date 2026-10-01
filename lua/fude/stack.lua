@@ -2,6 +2,26 @@ local config = require("fude.config")
 
 local M = {}
 
+-- True while `gh pr checkout` runs with the review stopped: a review started
+-- then would read the branch mid-switch, and the checkout callback starts one
+local checking_out = false
+
+--- Whether a PR switch is checking out its branch (review start must wait).
+--- @return boolean
+function M.is_switching()
+	return checking_out
+end
+
+--- Refuse a review start while a PR switch is checking out its branch.
+--- @return boolean refused true (after a WARN) when the caller must not start
+function M.refuse_while_switching()
+	if not M.is_switching() then
+		return false
+	end
+	vim.notify("fude.nvim: A PR switch is checking out its branch; try again when it finishes", vim.log.levels.WARN)
+	return true
+end
+
 --- Build picker entries for the PRs of a stack.
 --- Merged/closed PRs cannot be reviewed and are left out, except the current PR
 --- so the picker always shows where the review is. `[i/n]` is the position in
@@ -207,35 +227,38 @@ function M.switch_to(entry)
 	end
 
 	vim.notify("fude.nvim: Checking out PR #" .. entry.number .. "...", vim.log.levels.INFO)
+	checking_out = true
 	require("fude.gh").checkout_pr(entry.number, function(err)
+		checking_out = false
 		if err then
-			vim.notify(
-				"fude.nvim: Failed to check out PR #"
-					.. entry.number
-					.. ": "
-					.. vim.trim(err)
-					.. ". Resuming the review of the previous PR.",
-				vim.log.levels.ERROR
-			)
-		end
-		-- A review started by hand while the checkout ran is left alone
-		if config.state.active then
-			return
+			vim.notify("fude.nvim: Failed to check out PR #" .. entry.number .. ": " .. vim.trim(err), vim.log.levels.ERROR)
 		end
 		-- gh may have switched to an existing local branch before failing
 		-- (e.g. `merge --ff-only` after a stack rebase), so go back explicitly
+		local restored = true
 		if err and restore_ref then
 			local result = vim.system({ "git", "checkout", restore_ref }, { text = true }):wait()
 			if result.code ~= 0 then
+				restored = false
 				vim.notify(
-					"fude.nvim: Failed to restore " .. restore_ref .. ": " .. (result.stderr or ""),
+					"fude.nvim: Failed to restore "
+						.. restore_ref
+						.. ": "
+						.. vim.trim(result.stderr or "")
+						.. ". The review stays stopped; check out "
+						.. restore_ref
+						.. " manually.",
 					vim.log.levels.ERROR
 				)
 			end
 		end
 		-- Reload buffers whose files changed on disk with the branch
 		pcall(vim.cmd, "checktime")
-		init.start()
+		-- After a failed restore HEAD may still be on the target branch, so a
+		-- start would review a PR other than the one the user is told about
+		if restored then
+			init.start()
+		end
 	end)
 end
 
