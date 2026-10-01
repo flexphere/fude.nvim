@@ -141,6 +141,9 @@ function M.start()
 		vim.notify("fude.nvim: Already active", vim.log.levels.WARN)
 		return
 	end
+	if require("fude.stack").refuse_while_switching() then
+		return
+	end
 
 	local diff_mod = require("fude.diff")
 	local repo_root = diff_mod.get_repo_root()

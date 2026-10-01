@@ -504,4 +504,48 @@ function M.get_first_commit_subject(base_ref)
 	return nil
 end
 
+--- Parse `git worktree list --porcelain` output.
+--- Bare and detached worktrees are skipped: neither holds a branch. Prunable
+--- ones (directory gone) are kept, since git still reserves their branch
+--- until `git worktree prune`.
+--- @param output string|nil
+--- @return table[] { path: string, branch: string }[] (branch without `refs/heads/`)
+function M.parse_worktree_list(output)
+	local worktrees = {}
+	local current
+	local function flush()
+		if current and current.branch and not current.skip then
+			table.insert(worktrees, { path = current.path, branch = current.branch })
+		end
+		current = nil
+	end
+	for line in ((output or "") .. "\n"):gmatch("(.-)\n") do
+		local path = line:match("^worktree (.+)$")
+		if path then
+			flush()
+			current = { path = path }
+		elseif current then
+			local branch = line:match("^branch refs/heads/(.+)$")
+			if branch then
+				current.branch = branch
+			elseif line == "bare" or line == "detached" then
+				current.skip = true
+			end
+		end
+	end
+	flush()
+	return worktrees
+end
+
+--- List the worktrees of the current repository that have a branch checked out.
+--- @return table[]|nil worktrees see `parse_worktree_list`, nil when git fails
+--- @return string|nil err
+function M.get_worktrees()
+	local result = vim.system({ "git", "worktree", "list", "--porcelain" }, { text = true }):wait()
+	if result.code ~= 0 then
+		return nil, result.stderr or "git worktree list failed"
+	end
+	return M.parse_worktree_list(result.stdout), nil
+end
+
 return M
