@@ -575,6 +575,447 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(1, #config.state.comments)
 		assert.equals("keep me", config.state.comments[1].body)
 	end)
+
+	-- === commit scope: HEAD moves ===
+
+	local COMMITS = {
+		{ sha = "c1sha", short_sha = "c1", subject = "first" },
+		{ sha = "c2sha", short_sha = "c2", subject = "second" },
+	}
+
+	--- Mock the git helpers the commit scope drives, recording every checkout.
+	--- @return table calls { checkout = string[] }
+	local function mock_commit_git(overrides)
+		local calls = { checkout = {} }
+		mock_local_git(vim.tbl_extend("force", {
+			get_commit_log = function()
+				return vim.deepcopy(COMMITS)
+			end,
+			is_worktree_dirty = function()
+				return false
+			end,
+			has_parent = function()
+				return true
+			end,
+			checkout = function(ref)
+				table.insert(calls.checkout, ref)
+				return true
+			end,
+		}, overrides or {}))
+		return calls
+	end
+
+	it("set_scope commit checks the commit out and diffs it against its parent", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+
+		assert.is_true(session.set_scope("commit", { commit_sha = "c2sha" }))
+		local s = config.state.local_session
+		assert.same({ "c2sha" }, calls.checkout)
+		assert.equals("commit", s.scope)
+		assert.equals("c2sha", s.scope_commit_sha)
+		assert.equals(2, s.scope_commit_index)
+		assert.equals("c2sha^", s.base_sha)
+		assert.equals("c2sha^", config.state.merge_base_sha)
+		assert.equals("feat/x", s.original_branch)
+		assert.is_true(session.in_commit_scope())
+		assert.equals("Local: 2/2", require("fude.scope").statusline())
+
+		-- The picker flags the checked-out commit, not its sibling
+		local current = vim.tbl_filter(function(spec)
+			return spec.is_current
+		end, session.scope_specs(s))
+		assert.equals(1, #current)
+		assert.equals("c2sha", current[1].commit_sha)
+	end)
+
+	it("set_scope commit without a sha is refused", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		assert.is_false(session.set_scope("commit"))
+		assert.same({}, calls.checkout)
+		assert.equals("base", config.state.local_session.scope)
+	end)
+
+	it("re-selecting the checked-out commit is a no-op", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({ "c1sha" }, calls.checkout)
+	end)
+
+	it("switching between commits checks the tree again and refuses a dirty one", function()
+		local dirty = false
+		local calls = mock_commit_git({
+			is_worktree_dirty = function()
+				return dirty
+			end,
+		})
+		session.start(nil)
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+
+		-- A file saved while the commit was checked out must not be carried
+		-- onto the next commit by the second checkout.
+		dirty = true
+		assert.is_false(session.set_scope("commit", { commit_sha = "c2sha" }))
+		assert.same({ "c1sha" }, calls.checkout)
+		assert.equals("c1sha", config.state.local_session.scope_commit_sha)
+
+		dirty = false
+		assert.is_true(session.set_scope("commit", { commit_sha = "c2sha" }))
+		assert.same({ "c1sha", "c2sha" }, calls.checkout)
+		assert.equals("c2sha", config.state.local_session.scope_commit_sha)
+	end)
+
+	it("refuses the commit scope while a buffer under the worktree is unsaved", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+
+		-- git status cannot see this edit; the checkout would leave the buffer
+		-- showing neither commit and write it onto whatever is checked out.
+		local buf = vim.fn.bufadd(tmp_repo .. "/f.lua")
+		vim.fn.bufload(buf)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "edited" })
+		assert.is_true(vim.bo[buf].modified)
+
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({}, calls.checkout)
+		assert.equals("base", config.state.local_session.scope)
+
+		vim.api.nvim_buf_delete(buf, { force = true })
+		-- A modified buffer elsewhere does not block
+		local other = vim.fn.bufadd(vim.fn.tempname() .. "/elsewhere.lua")
+		vim.fn.bufload(other)
+		vim.api.nvim_buf_set_lines(other, 0, -1, false, { "edited" })
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+		vim.api.nvim_buf_delete(other, { force = true })
+	end)
+
+	it("leaving the commit scope restores the branch first", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		assert.is_true(session.set_scope("uncommitted"))
+		local s = config.state.local_session
+		assert.same({ "c1sha", "feat/x" }, calls.checkout)
+		assert.equals("uncommitted", s.scope)
+		assert.is_nil(s.scope_commit_sha)
+		assert.is_nil(s.scope_commit_index)
+		assert.is_nil(s.original_branch)
+		assert.is_false(session.in_commit_scope())
+	end)
+
+	it("stop restores the branch left by the commit scope", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		session.stop()
+		assert.same({ "c1sha", "feat/x" }, calls.checkout)
+		assert.is_false(config.state.active)
+	end)
+
+	it("stop keeps the session when the branch cannot be restored", function()
+		local fail_restore = false
+		mock_commit_git({
+			checkout = function()
+				if fail_restore then
+					return false, "conflict"
+				end
+				return true
+			end,
+		})
+		helpers.mock(vim, "notify", function() end)
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- Tearing down anyway would strand the user on the detached HEAD with
+		-- no pointer and no original_branch left to retry from.
+		fail_restore = true
+		session.stop()
+		assert.is_true(config.state.active)
+		assert.equals("feat/x", config.state.local_session.original_branch)
+		assert.is_not_nil(store.read_current(tmp_repo, "feat/x"))
+
+		fail_restore = false
+		session.stop()
+		assert.is_false(config.state.active)
+		assert.is_nil(store.read_current(tmp_repo, "feat/x"))
+	end)
+
+	it("offers the unpushed scope from a detached commit by asking for the branch's upstream", function()
+		local asked = {}
+		mock_commit_git({
+			get_upstream_ref = function(_, branch)
+				table.insert(asked, branch)
+				return "origin/feat/x"
+			end,
+		})
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		asked = {}
+		local specs = session.scope_specs(config.state.local_session)
+		local has_unpushed = vim.tbl_contains(
+			vim.tbl_map(function(s)
+				return s.scope
+			end, specs),
+			"unpushed"
+		)
+		assert.is_true(has_unpushed)
+		-- A bare @{upstream} would not resolve on the detached HEAD
+		assert.same({ "feat/x" }, asked)
+	end)
+
+	it("caps the unbounded commit list at the newest COMMIT_LIST_LIMIT", function()
+		local limits = {}
+		mock_commit_git({
+			get_default_branch = function()
+				return nil
+			end,
+			get_upstream_ref = function()
+				return nil
+			end,
+			get_commit_log = function(_, _, _, limit)
+				table.insert(limits, limit)
+				return vim.deepcopy(COMMITS)
+			end,
+		})
+		session.start(nil)
+		assert.same({ session.COMMIT_LIST_LIMIT }, limits)
+		assert.equals(100, session.COMMIT_LIST_LIMIT)
+	end)
+
+	it("does not cap a commit list that has a range", function()
+		local limits = {}
+		mock_commit_git({
+			get_commit_log = function(_, _, _, limit)
+				table.insert(limits, limit == nil and "none" or limit)
+				return vim.deepcopy(COMMITS)
+			end,
+		})
+		session.start(nil)
+		assert.same({ "none" }, limits)
+	end)
+
+	it("re-enters the commit when the target scope cannot be resolved", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- No upstream in the temp repo → unpushed is unavailable. HEAD was
+		-- already moved back to the branch, so it has to move again.
+		assert.is_false(session.set_scope("unpushed"))
+		local s = config.state.local_session
+		assert.same({ "c1sha", "feat/x", "c1sha" }, calls.checkout)
+		assert.equals("commit", s.scope)
+		assert.equals("c1sha", s.scope_commit_sha)
+		assert.equals(1, s.scope_commit_index)
+		assert.equals("feat/x", s.original_branch)
+	end)
+
+	it("lands on uncommitted when the commit cannot be re-entered after a failed switch", function()
+		local dirty = false
+		local calls = mock_commit_git({
+			is_worktree_dirty = function()
+				return dirty
+			end,
+		})
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- Edits made in the commit scope are carried back to the branch by the
+		-- restore; the commit is then refused, so the session must not keep
+		-- claiming a scope it no longer shows.
+		dirty = true
+		assert.is_false(session.set_scope("unpushed"))
+		local s = config.state.local_session
+		assert.same({ "c1sha", "feat/x" }, calls.checkout)
+		assert.equals("uncommitted", s.scope)
+		assert.equals("HEAD", s.base_sha)
+		assert.is_nil(s.scope_commit_sha)
+		assert.is_false(session.in_commit_scope())
+	end)
+
+	it("a failed checkout leaves the scope untouched", function()
+		mock_commit_git({
+			checkout = function()
+				return false, "conflict"
+			end,
+		})
+		helpers.mock(vim, "notify", function() end)
+		session.start(nil)
+
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		local s = config.state.local_session
+		assert.equals("base", s.scope)
+		assert.is_nil(s.scope_commit_sha)
+		assert.equals("basesha", s.base_sha)
+	end)
+
+	it("does not resume into a persisted commit scope", function()
+		mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		assert.equals("commit", store.read_current(tmp_repo, "feat/x").scope)
+
+		-- Simulate a crash: the pointer outlives the checkout and stop() never
+		-- ran. Resuming must land on a branch scope, never a detached commit.
+		config.state.active = false
+		config.state.review_mode = nil
+		session.start(nil)
+		assert.equals("base", config.state.local_session.scope)
+		assert.is_nil(config.state.local_session.scope_commit_sha)
+	end)
+
+	-- === commit scope: comment layer is read-only ===
+
+	it("the local backend refuses mutations in the commit scope", function()
+		mock_commit_git()
+		session.start(nil)
+		store.append_event(
+			config.state.local_session.file,
+			store.build_comment_event({ id = "c1", path = "f.lua", start_line = 1, end_line = 1, body = "root" })
+		)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		local local_sync = require("fude.comments.local_sync")
+		local errs = {}
+		local function collect(err)
+			table.insert(errs, err)
+		end
+		-- The comment browser calls these directly, so the facade guard alone
+		-- would not stop them.
+		local_sync.create_comment("f.lua", 1, 1, "new", nil, collect)
+		local_sync.reply_to_comment("c1", "reply", collect)
+		local_sync.edit_comment("c1", "edited", collect)
+		local_sync.delete_comment("c1", collect)
+		local_sync.move_comments({ { id = "c1", path = "f.lua", start_line = 2, end_line = 2 } }, collect)
+		local_sync.toggle_resolved("c1", false, collect)
+		assert.equals(6, #errs)
+		for _, err in ipairs(errs) do
+			assert.equals(local_sync.COMMIT_SCOPE_ERROR, err)
+		end
+
+		-- Nothing reached the JSONL
+		local events = store.read_events(config.state.local_session.file)
+		assert.equals(2, #events) -- session header + the seeded comment
+
+		-- Mutations work again once the branch is back
+		session.set_scope("uncommitted")
+		local reply_err = "unset"
+		local_sync.reply_to_comment("c1", "reply", function(err)
+			reply_err = err
+		end)
+		assert.is_nil(reply_err)
+	end)
+
+	it("the comment facade refuses the browser and navigation in the commit scope", function()
+		mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		local opened = false
+		helpers.mock(require("fude.ui.comment_browser"), "open", function()
+			opened = true
+		end)
+		local warned = {}
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(warned, msg)
+		end)
+		local comments = require("fude.comments")
+		comments.list_comments()
+		comments.view_comments()
+		comments.next_comment()
+		comments.prev_comment()
+		assert.is_false(opened)
+		assert.equals(4, #warned)
+		for _, msg in ipairs(warned) do
+			assert.truthy(msg:find("read-only in the commit scope", 1, true))
+		end
+	end)
+
+	-- === commit list ===
+
+	it("lists the unpushed commits when reviewing the base branch itself", function()
+		local ranges = {}
+		mock_commit_git({
+			get_current_branch = function()
+				return "main"
+			end,
+			get_upstream_ref = function()
+				return "origin/main"
+			end,
+			get_commit_log = function(base, tip)
+				table.insert(ranges, { base = base, tip = tip })
+				return vim.deepcopy(COMMITS)
+			end,
+		})
+		session.start(nil)
+		assert.same({ { base = "origin/main", tip = "main" } }, ranges)
+		assert.equals(2, #config.state.local_session.commits)
+	end)
+
+	it("lists every commit when there is neither a base nor an upstream", function()
+		local ranges = {}
+		mock_commit_git({
+			get_default_branch = function()
+				return nil
+			end,
+			get_upstream_ref = function()
+				return nil
+			end,
+			get_commit_log = function(base, tip)
+				table.insert(ranges, { base = base, tip = tip })
+				return vim.deepcopy(COMMITS)
+			end,
+		})
+		session.start(nil)
+		assert.equals(1, #ranges)
+		assert.is_nil(ranges[1].base)
+		assert.equals("feat/x", ranges[1].tip)
+	end)
+
+	it("keeps the cached commit list while a commit is checked out", function()
+		local log_calls = 0
+		mock_commit_git({
+			get_commit_log = function()
+				log_calls = log_calls + 1
+				return vim.deepcopy(COMMITS)
+			end,
+		})
+		session.start(nil)
+		assert.equals(1, log_calls)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- @{upstream} does not resolve on a detached HEAD, so re-reading here
+		-- would silently change the range under the user.
+		session.reload(true)
+		assert.equals(1, log_calls)
+		assert.equals(2, #config.state.local_session.commits)
+		assert.equals("Local: 1/2", require("fude.scope").statusline())
+	end)
+end)
+
+describe("session.resolve_commit_range_base", function()
+	it("uses the base branch on a feature branch", function()
+		assert.equals("main", session.resolve_commit_range_base("main", "feat/x", "origin/feat/x"))
+	end)
+
+	it("uses the upstream on the base branch itself", function()
+		assert.equals("origin/main", session.resolve_commit_range_base("main", "main", "origin/main"))
+	end)
+
+	it("uses the upstream when there is no base", function()
+		assert.equals("origin/main", session.resolve_commit_range_base(nil, "main", "origin/main"))
+	end)
+
+	it("lists everything when there is neither", function()
+		assert.is_nil(session.resolve_commit_range_base(nil, "main", nil))
+		assert.is_nil(session.resolve_commit_range_base("main", "main", nil))
+	end)
 end)
 
 describe("session.resolve_scope_base", function()
