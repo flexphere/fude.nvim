@@ -61,6 +61,49 @@ describe("check_docs.extract_registered_commands", function()
 	end)
 end)
 
+describe("check_docs.extract_registry_commands", function()
+	it("extracts double- and single-quoted registry names", function()
+		local src = '{ name = "FudeA", desc = "a" },\n' .. "{ name = 'FudeB', desc = 'b' },\n"
+		local set = check.extract_registry_commands(src)
+		assert.is_true(set.FudeA)
+		assert.is_true(set.FudeB)
+	end)
+
+	it("ignores commented-out entries", function()
+		local src = '-- { name = "FudeRemoved" },\n' .. '--[[ name = "FudeBlocked" ]]\n' .. '{ name = "FudeKept" },\n'
+		local set = check.extract_registry_commands(src)
+		assert.is_nil(set.FudeRemoved)
+		assert.is_nil(set.FudeBlocked)
+		assert.is_true(set.FudeKept)
+	end)
+
+	it("allows whitespace around =", function()
+		local set = check.extract_registry_commands('name   =   "FudeSpaced"')
+		assert.is_true(set.FudeSpaced)
+	end)
+
+	it("ignores fields that merely end in name", function()
+		local src = '{ filename = "NotACommand", source_name = "AlsoNot", name = "FudeReal" },\n'
+		local set = check.extract_registry_commands(src)
+		assert.is_nil(set.NotACommand)
+		assert.is_nil(set.AlsoNot)
+		assert.is_true(set.FudeReal)
+	end)
+
+	it("returns empty set for source with no entries", function()
+		assert.are.equal(0, vim.tbl_count(check.extract_registry_commands("local x = 1\n")))
+	end)
+end)
+
+describe("check_docs.union", function()
+	it("merges two sets", function()
+		local set = check.union({ A = true }, { B = true, A = true })
+		assert.is_true(set.A)
+		assert.is_true(set.B)
+		assert.are.equal(2, vim.tbl_count(set))
+	end)
+end)
+
 describe("check_docs.extract_documented_commands", function()
 	it("extracts a single tag", function()
 		local set = check.extract_documented_commands(":FudeReviewStart  *:FudeReviewStart*\n")
