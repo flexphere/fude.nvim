@@ -20,6 +20,27 @@ describe("build_local_scope_entries", function()
 		assert.same({}, scope.build_local_scope_entries({}))
 		assert.same({}, scope.build_local_scope_entries(nil))
 	end)
+
+	it("keys commit specs by sha so several commits stay distinct", function()
+		local entries = scope.build_local_scope_entries({
+			{ scope = "uncommitted", label = "Uncommitted (staged + unstaged)", is_current = false },
+			{ scope = "commit", commit_sha = "aaa111", commit_index = 1, label = "Commit [1/2] aaa1 a", is_current = false },
+			{ scope = "commit", commit_sha = "bbb222", commit_index = 2, label = "Commit [2/2] bbb2 b", is_current = true },
+		})
+		assert.equals(3, #entries)
+		-- Non-commit scopes keep the scope name as value and carry no sha
+		assert.equals("uncommitted", entries[1].value)
+		assert.is_nil(entries[1].sha)
+		-- Commit scopes share local_scope but differ by value/sha
+		assert.equals("commit", entries[2].local_scope)
+		assert.equals("aaa111", entries[2].value)
+		assert.equals("aaa111", entries[2].sha)
+		assert.equals("commit", entries[3].local_scope)
+		assert.equals("bbb222", entries[3].value)
+		assert.equals("bbb222", entries[3].sha)
+		assert.is_false(entries[2].is_current)
+		assert.is_true(entries[3].is_current)
+	end)
 end)
 
 describe("format_local_scope_label", function()
