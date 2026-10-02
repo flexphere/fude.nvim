@@ -193,6 +193,52 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.are.same({ "b", "feat/a" }, diff.get_ancestor_branches("main"))
 	end)
 
+	it("lists the commits of base..tip oldest first", function()
+		local commits = diff.get_commit_log("main", "feature", repo)
+		assert.equals(3, #commits)
+		assert.equals("a1", commits[1].subject)
+		assert.equals("b1", commits[2].subject)
+		assert.equals("f1", commits[3].subject)
+		assert.equals(git("rev-parse", "feature"), commits[3].sha)
+	end)
+
+	it("falls back to origin/<base> when the base exists only on the remote", function()
+		-- The usual clone: origin/main is there, a local main is not
+		git("branch", "-D", "main")
+		local commits = diff.get_commit_log("main", "feature", repo)
+		assert.equals(3, #commits)
+		assert.equals("a1", commits[1].subject)
+	end)
+
+	it("lists every commit of the tip when there is no base", function()
+		local commits = diff.get_commit_log(nil, "feature", repo)
+		assert.equals(4, #commits)
+		assert.equals("root", commits[1].subject)
+		assert.equals("f1", commits[4].subject)
+	end)
+
+	it("returns an empty list when the base resolves nowhere", function()
+		assert.same({}, diff.get_commit_log("no-such-branch", "feature", repo))
+	end)
+
+	it("keeps only the newest commits when a limit is given, still oldest first", function()
+		local commits = diff.get_commit_log(nil, "feature", repo, 2)
+		assert.equals(2, #commits)
+		assert.equals("b1", commits[1].subject)
+		assert.equals("f1", commits[2].subject)
+	end)
+
+	it("resolves another branch's upstream while HEAD is detached", function()
+		-- feature tracks main through a local "remote" so @{upstream} resolves
+		git("config", "branch.feature.remote", ".")
+		git("config", "branch.feature.merge", "refs/heads/main")
+		assert.equals("main", diff.get_upstream_ref(repo))
+
+		git("checkout", "-q", "--detach")
+		assert.is_nil(diff.get_upstream_ref(repo))
+		assert.equals("main", diff.get_upstream_ref(repo, "feature"))
+	end)
+
 	it("bases the first commit subject on origin/<base> over a stale local branch", function()
 		-- local main stays at root while origin/main moves up to a1
 		git("update-ref", "refs/remotes/origin/main", "refs/remotes/origin/feat/a")

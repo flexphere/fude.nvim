@@ -137,21 +137,30 @@ end
 
 --- List the commits reachable from `tip` but not from `base_ref`, oldest first.
 --- `tip` is taken explicitly (rather than HEAD) so the list stays stable while
---- the local review's commit scope has a commit checked out.
---- @param base_ref string base commit SHA or ref
+--- the local review's commit scope has a commit checked out. A `base_ref` that
+--- only exists on the remote (the usual clone: `origin/main` without a local
+--- `main`) is retried as `origin/<base_ref>`, like `get_merge_base`. With no
+--- `base_ref` every commit reachable from `tip` is listed (root commit first);
+--- `limit` then keeps only the newest N (git applies `-n` before `--reverse`).
+--- @param base_ref string|nil base commit SHA or ref
 --- @param tip string|nil tip ref (default: "HEAD")
 --- @param cwd string|nil repo root
+--- @param limit number|nil keep only the newest `limit` commits of the range
 --- @return table[] commits { sha, short_sha, subject }
-function M.get_commit_log(base_ref, tip, cwd)
-	local result = vim
-		.system({
-			"git",
-			"log",
-			base_ref .. ".." .. (tip or "HEAD"),
-			"--reverse",
-			"--format=%H%x1f%h%x1f%s",
-		}, { text = true, cwd = cwd })
-		:wait()
+function M.get_commit_log(base_ref, tip, cwd, limit)
+	tip = tip or "HEAD"
+	local function run(range)
+		local cmd = { "git", "log", range, "--reverse", "--format=%H%x1f%h%x1f%s" }
+		if limit then
+			table.insert(cmd, "-n")
+			table.insert(cmd, tostring(limit))
+		end
+		return vim.system(cmd, { text = true, cwd = cwd }):wait()
+	end
+	local result = run(base_ref and (base_ref .. ".." .. tip) or tip)
+	if result.code ~= 0 and base_ref then
+		result = run("origin/" .. base_ref .. ".." .. tip)
+	end
 	if result.code ~= 0 then
 		return {}
 	end
@@ -492,11 +501,18 @@ end
 --- Get the upstream tracking ref of the current branch (e.g. "origin/feat/a"),
 --- used as the diff base for the "unpushed" local review scope. Returns nil
 --- when the branch has no upstream (never pushed / no tracking configured).
+--- `branch` names another branch instead of HEAD — needed while the local
+--- commit scope holds HEAD detached, where a bare `@{upstream}` resolves to
+--- nothing.
 --- @param cwd string|nil repo root
+--- @param branch string|nil branch whose upstream to resolve (default: HEAD)
 --- @return string|nil upstream ref
-function M.get_upstream_ref(cwd)
+function M.get_upstream_ref(cwd, branch)
 	local result = vim
-		.system({ "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}" }, { text = true, cwd = cwd })
+		.system(
+			{ "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", (branch or "") .. "@{upstream}" },
+			{ text = true, cwd = cwd }
+		)
 		:wait()
 	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
 		return vim.trim(result.stdout)
