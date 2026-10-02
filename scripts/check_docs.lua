@@ -4,7 +4,9 @@
 --
 -- Verifies that user-facing surfaces in code are documented in `doc/fude.txt`:
 --   1. Commands registered via `nvim_create_user_command("FudeXxx", ...)` in
---      `plugin/fude.lua` have a matching `*:FudeXxx*` helptag (bidirectional)
+--      `plugin/fude.lua` or declared as `name = "FudeXxx"` registry entries in
+--      `lua/fude/commands.lua` have a matching `*:FudeXxx*` helptag
+--      (bidirectional)
 --   2. Top-level config keys defined in `M.defaults = { ... }` in
 --      `lua/fude/config.lua` appear as `` `<key>` `` backtick references in
 --      `doc/fude.txt` (forward only — see "Known limitations" below)
@@ -59,6 +61,39 @@ function M.extract_registered_commands(plugin_text)
 	end
 	for name in cleaned:gmatch("nvim_create_user_command%(%s*'([%w_]+)'") do
 		set[name] = true
+	end
+	return set
+end
+
+--- Extract command names declared as registry entries (`name = "FudeXxx"`)
+--- in lua/fude/commands.lua. Comments are stripped first so commented-out
+--- entries are excluded; string literals are kept because the name lives in one.
+--- @param registry_text string  raw Lua source of lua/fude/commands.lua
+--- @return table<string, boolean>  set of command names
+function M.extract_registry_commands(registry_text)
+	local cleaned = lua_source.strip_comments_only(registry_text)
+	local set = {}
+	-- `%f[%w_]` keeps fields that merely end in "name" (`filename = "x"`) out
+	for name in cleaned:gmatch('%f[%w_]name%s*=%s*"([%w_]+)"') do
+		set[name] = true
+	end
+	for name in cleaned:gmatch("%f[%w_]name%s*=%s*'([%w_]+)'") do
+		set[name] = true
+	end
+	return set
+end
+
+--- Union of two sets.
+--- @param a table<string, boolean>
+--- @param b table<string, boolean>
+--- @return table<string, boolean>
+function M.union(a, b)
+	local set = {}
+	for k in pairs(a) do
+		set[k] = true
+	end
+	for k in pairs(b) do
+		set[k] = true
 	end
 	return set
 end
@@ -184,9 +219,9 @@ end
 local SECTION_LABELS = {
 	commands = {
 		undoc_label = "Undocumented commands",
-		undoc_hint = "registered in plugin/fude.lua but missing from doc/fude.txt",
+		undoc_hint = "registered in plugin/fude.lua or lua/fude/commands.lua but missing from doc/fude.txt",
 		stale_label = "Stale documentation",
-		stale_hint = "documented in doc/fude.txt but not registered in plugin/fude.lua",
+		stale_hint = "documented in doc/fude.txt but not registered in plugin/fude.lua or lua/fude/commands.lua",
 		item_prefix = ":",
 	},
 	options = {
@@ -257,7 +292,10 @@ function M.format_report(input)
 	end
 
 	if total == 0 then
-		table.insert(lines, "OK: doc/fude.txt matches plugin/fude.lua and lua/fude/config.lua (0 discrepancies).")
+		table.insert(
+			lines,
+			"OK: doc/fude.txt matches plugin/fude.lua, lua/fude/commands.lua and lua/fude/config.lua (0 discrepancies)."
+		)
 	else
 		table.insert(lines, "")
 		table.insert(lines, string.format("FAIL: %d documentation discrepancies found.", total))
@@ -297,8 +335,14 @@ function M.main()
 		io.stderr:write("Error: cannot open lua/fude/config.lua: " .. (cerr or "") .. "\n")
 		return 2
 	end
+	local registry_text, rerr = read_file("lua/fude/commands.lua")
+	if not registry_text then
+		io.stderr:write("Error: cannot open lua/fude/commands.lua: " .. (rerr or "") .. "\n")
+		return 2
+	end
 
-	local registered_commands = M.extract_registered_commands(plugin_text)
+	local registered_commands =
+		M.union(M.extract_registered_commands(plugin_text), M.extract_registry_commands(registry_text))
 	local documented_commands = M.extract_documented_commands(doc_text)
 	local config_options = M.extract_config_options(config_text)
 	local documented_options = M.extract_documented_options(doc_text)
