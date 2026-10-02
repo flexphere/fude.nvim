@@ -15,6 +15,24 @@ local function now_iso()
 	return os.date("!%Y-%m-%dT%H:%M:%SZ")
 end
 
+--- Error every comment mutation returns while the commit scope is active.
+M.COMMIT_SCOPE_ERROR = "Comments are read-only in the commit scope — switch scope to comment"
+
+--- Refuse a mutation while the local review is in the commit scope. The
+--- checked-out commit is not the working tree comments anchor to, so any event
+--- written now would record a meaningless position. Enforced here, not only
+--- in the `comments.lua` facade, because the comment browser calls this
+--- backend directly.
+--- @param callback fun(err: string|nil, ...)
+--- @return boolean blocked true when the callback already got the error
+local function blocked_by_commit_scope(callback)
+	if not require("fude.local.session").in_commit_scope() then
+		return false
+	end
+	callback(M.COMMIT_SCOPE_ERROR)
+	return true
+end
+
 --- Read the current lines of each commented file. Returns two maps:
 ---   `lines`  — buffer contents when loaded (so an in-progress edit doesn't
 ---              falsely mark a comment outdated), else the on-disk file. Used
@@ -196,6 +214,9 @@ function M.create_comment(path, start_line, end_line, body, context, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_comment_event({
 			id = store.generate_uuid(),
@@ -222,6 +243,9 @@ function M.reply_to_comment(comment_id, body, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_reply_event({
 			id = store.generate_uuid(),
@@ -245,6 +269,9 @@ function M.edit_comment(comment_id, body, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_edit_event({
 			id = comment_id,
@@ -266,6 +293,9 @@ function M.delete_comment(comment_id, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_delete_event({
 			id = comment_id,
@@ -285,6 +315,9 @@ function M.move_comments(moves, callback)
 	local session = state.local_session
 	if not state.active or not session then
 		callback("Not active")
+		return
+	end
+	if blocked_by_commit_scope(callback) then
 		return
 	end
 	local created_at = now_iso()
@@ -339,6 +372,9 @@ function M.toggle_resolved(thread_id, currently_resolved, callback)
 	local state = config.state
 	if not state.active or not state.local_session then
 		callback("Not active")
+		return
+	end
+	if blocked_by_commit_scope(callback) then
 		return
 	end
 	local kind = currently_resolved and "reopen" or "resolve"

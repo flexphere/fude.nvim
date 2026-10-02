@@ -29,9 +29,6 @@ M.load_comments = sync.load_comments
 M.sync_pending_review = sync.sync_pending_review
 M.reply_to_comment_sync = sync.reply_to_comment
 
--- Re-export picker functions (facade)
-M.list_comments = pickers.list_comments
-
 --- Whether the active session is a local (pre-PR) review.
 --- @return boolean
 local function is_local_mode()
@@ -59,15 +56,25 @@ end
 --- Whether comment actions must be refused because the local review is in the
 --- commit scope. That scope checks a past commit out, so the buffer is not the
 --- working tree comments anchor to — creating or moving one there would record
---- a position that means nothing once the branch is restored. Notifies when it
---- blocks, so callers just `return`.
+--- a position that means nothing once the branch is restored, and showing or
+--- jumping to one would point at unrelated lines. Notifies when it blocks, so
+--- callers just `return`. The local backend refuses mutations on its own too
+--- (`local_sync`), since the comment browser bypasses this facade.
 --- @return boolean blocked
 local function blocked_by_commit_scope()
 	if not require("fude.local.session").in_commit_scope() then
 		return false
 	end
-	vim.notify("fude.nvim: Comments are read-only in the commit scope — switch scope to comment", vim.log.levels.WARN)
+	vim.notify("fude.nvim: " .. require("fude.comments.local_sync").COMMIT_SCOPE_ERROR, vim.log.levels.WARN)
 	return true
+end
+
+--- List all comments in the comment browser (facade over `pickers`).
+function M.list_comments()
+	if blocked_by_commit_scope() then
+		return
+	end
+	pickers.list_comments()
 end
 
 --- Toggle editor visibility of resolved comments.
@@ -270,6 +277,9 @@ end
 function M.view_comments()
 	local state = config.state
 	if not state.active then
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 
@@ -592,6 +602,9 @@ function M.next_comment()
 	if not state.active then
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	-- Close float window if called from within one, but avoid closing modifiable floats (e.g. comment input)
 	local win_config = vim.api.nvim_win_get_config(0)
@@ -779,6 +792,9 @@ end
 function M.prev_comment()
 	local state = config.state
 	if not state.active then
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 
