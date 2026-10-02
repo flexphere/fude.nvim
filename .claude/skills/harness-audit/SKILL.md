@@ -58,8 +58,8 @@ argument-hint: [対象PR件数（省略時は10）]
    git log --oneline --since="$SINCE" -- CLAUDE.md | grep -E "State Dependencies|ドリフト|R に|W に"
    # check_purity 発火 = 純粋性違反の refactor / ui/format.lua → inline 等
    git log --oneline --since="$SINCE" | grep -E "純粋性|impure|inline"
-   # check_docs 発火 = doc/fude.txt と plugin/fude.lua の整合修正
-   git log --oneline --since="$SINCE" -- doc/fude.txt plugin/fude.lua
+   # check_docs 発火 = doc/fude.txt と lua/fude/commands.lua / plugin/fude.lua の整合修正
+   git log --oneline --since="$SINCE" -- doc/fude.txt lua/fude/commands.lua plugin/fude.lua
    # luacov 発火 = coverage 関連 (将来段階 3 の閾値違反含む)
    git log --oneline --since="$SINCE" | grep -E "coverage|カバレッジ"
    ```

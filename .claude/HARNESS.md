@@ -45,7 +45,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `bash run_tests.sh` (plenary busted) | 開発中・pre-commit・CI | 単体・統合テスト失敗 |
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
 | 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
-| 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性、および `lua/fude/config.lua` `M.defaults` の top-level 設定キーが `doc/fude.txt` に backtick 形式で文書化されているかの forward 検証 |
+| 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `lua/fude/commands.lua` のレジストリ + `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性、および `lua/fude/config.lua` `M.defaults` の top-level 設定キーが `doc/fude.txt` に backtick 形式で文書化されているかの forward 検証 |
 | 計算的 | `make coverage` (luacov) | 開発中（手動）・CI | `lua/fude/` のテストカバレッジ計測。`make all` には未組み込み（報告のみ・閾値強制なし）。CI artifact `coverage-report` に保管 |
 | 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 6 つを順次実行する **ローカルゲート** |
 | 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |

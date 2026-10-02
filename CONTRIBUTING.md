@@ -49,7 +49,7 @@ make test              # plenary-busted テスト
 make all               # lint + format-check + test + check-state-deps + check-purity + check-docs
 make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
 make check-purity      # `*/data.lua` `*/format.lua` の純粋性 (vim API / state 不参照) 検証
-make check-docs        # plugin/fude.lua のコマンド登録と doc/fude.txt のタグの双方向整合性検証
+make check-docs        # lua/fude/commands.lua / plugin/fude.lua のコマンド登録と doc/fude.txt のタグの双方向整合性検証
 make coverage          # luacov でテストカバレッジ計測 (要 `luarocks install --local luacov`)
 ```
 
@@ -70,6 +70,8 @@ push 前に `make all` が通ることを必ず確認してください。`make 
 - `after_each` で `helpers.cleanup()` を呼び、モックと state を復元
 
 ## ドキュメント
+
+コマンドは `lua/fude/commands.lua` のレジストリに 1 エントリ追加します（`name` / `desc` / `category` / `available` / `run`）。`plugin/fude.lua` の登録と `:FudeCommandPalette` コマンドパレットの両方に自動で反映されます。
 
 コマンド・キーマップ・設定を追加/変更したときは以下を更新してください:
 
