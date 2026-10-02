@@ -332,7 +332,7 @@ function M.start(base_arg)
 	if existing and base_ref and existing.base_ref ~= base_ref then
 		vim.notify(
 			string.format(
-				"fude.nvim: Resuming existing local session (base: %s). Run :FudeReviewLocalStop to start over.",
+				"fude.nvim: Resuming existing local session (base: %s). Run :FudeReviewStop to start over.",
 				existing.base_ref
 			),
 			vim.log.levels.WARN

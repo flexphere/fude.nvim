@@ -146,7 +146,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewStop",
-		desc = "Stop PR review mode",
+		desc = "Stop review mode",
 		category = "Session",
 		available = when_active,
 		run = function()
@@ -174,20 +174,11 @@ M.list = {
 		end,
 	},
 	{
-		name = "FudeReviewLocalStop",
-		desc = "Stop local review mode",
-		category = "Session",
-		available = when_local,
-		run = function()
-			require("fude.local.session").stop()
-		end,
-	},
-	{
 		name = "FudeReviewLocalToggle",
 		desc = "Toggle local (pre-PR) review mode against a base ref",
 		category = "Session",
 		available = always,
-		palette = false, -- Local/LocalStop already cover both states
+		palette = false, -- Local/Stop already cover both states
 		nargs = "?",
 		run = function(opts)
 			require("fude.local.session").toggle(opts.args ~= "" and opts.args or nil)
@@ -195,7 +186,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewReload",
-		desc = "Reload review data from GitHub",
+		desc = "Reload review data",
 		category = "Session",
 		available = when_active,
 		run = function()
