@@ -151,13 +151,17 @@ Using lazy.nvim: >lua
                     shown only when the branch has an upstream.
       `uncommitted` HEAD (staged + unstaged only); always available.
       `commit`      a single commit on the branch (<sha>^ vs <sha>); one
-                    picker entry per commit. It checks the commit out, so
-                    it needs a clean working tree and detaches HEAD until
-                    you switch back (fude restores the branch on scope
-                    switch, |:FudeReviewLocalStop| and quit). The working
-                    tree is then a past snapshot, not your work, so
-                    comments are read-only: none are shown and none can
-                    be created.
+                    picker entry per commit of `base..branch` (on the
+                    base branch itself: the unpushed commits; in a
+                    remote-less repo: the newest 100). It checks the commit
+                    out, so every switch needs a clean working tree (no
+                    staged/unstaged changes, no unsaved buffers) and
+                    detaches HEAD until you switch back (fude restores
+                    the branch on scope switch, |:FudeReviewLocalStop|
+                    and quit). The working tree is then a past snapshot,
+                    not your work, so comments are read-only: none are
+                    shown and none can be created, including from the
+                    comment browser.
 
 :FudeReviewResolve                                   *:FudeReviewResolve*
     Toggle resolved status of the comment thread on the current line.

@@ -352,12 +352,15 @@ happens in this mode:
     pushed. Shown only when the branch has an upstream.
   - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes. Always
     available.
-  - `commit` — one entry per commit on the branch, showing that commit alone
-    (`<sha>^` vs `<sha>`). It checks the commit out, so it needs a clean
-    working tree and leaves HEAD detached until you switch back; fude restores
-    the branch on scope switch, `:FudeReviewLocalStop`, and quit. Because the
-    working tree is then a past snapshot rather than your work, comments are
-    read-only in this scope: none are shown and none can be created.
+  - `commit` — one entry per commit on the branch (`base..branch`; on the base
+    branch itself the unpushed commits; in a remote-less repo the newest 100),
+    showing that commit alone (`<sha>^` vs `<sha>`). It checks the commit out,
+    so every switch needs a clean working tree (no staged/unstaged changes, no
+    unsaved buffers) and leaves HEAD detached until you switch back; fude
+    restores the branch on scope switch, `:FudeReviewLocalStop`, and quit.
+    Because the working tree is then a past snapshot rather than your work,
+    comments are read-only in this scope: none are shown and none can be
+    created, including from the comment browser.
   The side panel / picker lists only the scopes valid for the current git
   state, and the statusline shows the active one. When no base branch can be
   found (a fresh, remote-less repo), the session starts in `uncommitted`; in a
