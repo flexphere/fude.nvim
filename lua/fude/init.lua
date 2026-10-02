@@ -65,7 +65,13 @@ function M.apply_gitsigns_base_for_buffer(bufnr)
 
 	-- Determine the base ref to use
 	local base_ref
-	if state.scope == "commit" and state.scope_commit_sha then
+	if state.review_mode == "local" then
+		-- Local review: every scope resolves to one SHA (merge-base, upstream,
+		-- HEAD, <sha>^ or the empty tree) kept in merge_base_sha, and added files
+		-- must diff against it too — `base_ref` is the base *branch*, which may
+		-- hold a same-named file (or be nil), so it would show the wrong hunks.
+		base_ref = state.merge_base_sha
+	elseif state.scope == "commit" and state.scope_commit_sha then
 		-- Commit scope: all files use commit^ as base
 		base_ref = state.scope_commit_sha .. "^"
 	else

@@ -804,6 +804,30 @@ describe("init integration", function()
 			vim.api.nvim_buf_delete(bufnr, { force = true })
 		end)
 
+		it("uses merge_base_sha for an added file in local review mode", function()
+			config.state.active = true
+			config.state.review_mode = "local"
+			-- base_ref is the base *branch*; the local commit scope resolved the
+			-- diff base to the commit's parent, which may also hold this file.
+			config.state.base_ref = "main"
+			config.state.merge_base_sha = "c1sha^"
+			config.state.changed_files = {
+				{ path = "lua/fude/new.lua", status = "added" },
+			}
+			diff_mock.to_repo_relative = function()
+				return "lua/fude/new.lua"
+			end
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(1, #change_base_calls)
+			assert.equals("c1sha^", change_base_calls[1].base)
+			assert.equals(false, change_base_calls[1].global)
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+		end)
+
 		it("calls change_base with merge_base_sha for existing file", function()
 			config.state.active = true
 			config.state.base_ref = "main"
