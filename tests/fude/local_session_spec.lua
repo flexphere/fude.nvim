@@ -1144,6 +1144,21 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_false(config.state.active)
 	end)
 
+	it("restores the branch by name, not merely its commit", function()
+		local opts_seen = {}
+		mock_commit_git({
+			checkout = function(ref, _, opts)
+				table.insert(opts_seen, { ref = ref, branch = (opts and opts.branch) or false })
+				return true
+			end,
+		})
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		session.set_scope("uncommitted")
+		-- entering a commit: a SHA, any HEAD on it will do; leaving: the branch
+		assert.same({ { ref = "c1sha", branch = false }, { ref = "feat/x", branch = true } }, opts_seen)
+	end)
+
 	it("stop keeps the session when the branch cannot be restored", function()
 		local fail_restore = false
 		mock_commit_git({

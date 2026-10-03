@@ -218,24 +218,53 @@ function M.head_is(ref, cwd)
 	return M.get_head_sha(cwd) == vim.trim(target.stdout)
 end
 
---- Checkout a ref in the working tree (synchronous).
---- `git checkout` exits non-zero when the post-checkout hook fails even though
---- HEAD and the tree already moved; reporting that as "nothing happened" would
---- leave callers rolling back state that no longer matches HEAD. When HEAD is
---- on `ref` after a non-zero exit the checkout counts as done, with the hook's
---- output returned as a warning.
+--- The branch HEAD is on, or nil when detached.
+--- @param cwd string|nil repo root
+--- @return string|nil branch
+function M.head_branch(cwd)
+	local result = vim.system({ "git", "symbolic-ref", "--short", "-q", "HEAD" }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		return nil
+	end
+	local branch = vim.trim(result.stdout or "")
+	return branch ~= "" and branch or nil
+end
+
+--- Checkout a ref in the working tree (synchronous), then verify where HEAD
+--- ended up — the exit code alone says too little in both directions:
+---   - non-zero: `git checkout` fails when the post-checkout hook fails even
+---     though HEAD and the tree already moved; treating that as "nothing
+---     happened" would make callers roll back state that no longer matches
+---     HEAD. When HEAD is on `ref` the checkout counts as done, with the hook's
+---     output returned as a warning.
+---   - zero: `git checkout <name>` happily detaches onto a tag or remote ref
+---     of that name when the local branch is gone. A caller restoring a
+---     *branch* (`opts.branch`) needs symbolic HEAD on it, not merely the
+---     same commit, or the "restore" leaves the user detached while the
+---     recovery information is dropped as if it had succeeded.
 --- @param ref string branch name or commit SHA
 --- @param cwd string|nil repo root
+--- @param opts table|nil { branch = boolean } require HEAD to be *on the branch* `ref`
 --- @return boolean ok
 --- @return string|nil err error when `ok` is false, hook warning when true
-function M.checkout(ref, cwd)
+function M.checkout(ref, cwd, opts)
+	local function landed()
+		if opts and opts.branch then
+			return M.head_branch(cwd) == ref
+		end
+		return M.head_is(ref, cwd)
+	end
 	local result = vim.system({ "git", "checkout", ref }, { text = true, cwd = cwd }):wait()
 	if result.code ~= 0 then
 		local stderr = vim.trim(result.stderr or "")
-		if M.head_is(ref, cwd) then
+		if landed() then
 			return true, "checkout done but a hook failed: " .. stderr
 		end
 		return false, stderr
+	end
+	if not landed() then
+		local now = M.head_branch(cwd) or ("detached at " .. ((M.get_head_sha(cwd) or "?"):sub(1, 7)))
+		return false, string.format("checkout of %s left HEAD %s — is there a tag or remote ref of that name?", ref, now)
 	end
 	return true, nil
 end

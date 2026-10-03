@@ -305,6 +305,30 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.truthy(err3 and #err3 > 0)
 	end)
 
+	it("checkout with branch=true refuses to call a detached checkout onto a same-named tag a restore", function()
+		-- The branch is gone, a tag of the same name points at its old tip
+		local tip = git("rev-parse", "feature")
+		git("checkout", "-q", "--detach")
+		git("branch", "-D", "feature")
+		git("tag", "feature", tip)
+
+		-- git itself is happy: exit 0, HEAD detached on the tag
+		local ok, err = diff.checkout("feature", repo, { branch = true })
+		assert.is_false(ok)
+		assert.truthy(err and err:find("left HEAD detached at", 1, true))
+		assert.truthy(err and err:find("tag or remote ref", 1, true))
+		assert.is_nil(diff.head_branch(repo))
+
+		-- Without the branch requirement the same checkout is a legitimate
+		-- detached checkout of that commit
+		assert.is_true(diff.checkout("feature", repo))
+		assert.equals(tip, git("rev-parse", "HEAD"))
+
+		-- A real branch lands symbolically
+		assert.is_true(diff.checkout("main", repo, { branch = true }))
+		assert.equals("main", diff.head_branch(repo))
+	end)
+
 	it("head_is distinguishes a branch from a detached HEAD on its commit", function()
 		assert.is_true(diff.head_is("feature", repo))
 		assert.is_true(diff.head_is(git("rev-parse", "feature"), repo))

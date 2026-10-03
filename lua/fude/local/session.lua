@@ -579,7 +579,9 @@ local function restore_head(session, opts)
 			vim.log.levels.WARN
 		)
 	end
-	local ok, err = require("fude.diff").checkout(target, session.worktree_root)
+	-- `target` is a branch name unless the session started detached (then it
+	-- is the SHA HEAD was on); a branch restore must land *on the branch*.
+	local ok, err = require("fude.diff").checkout(target, session.worktree_root, { branch = session.branch ~= nil })
 	if not ok then
 		vim.notify("fude.nvim: Failed to return to " .. target .. ": " .. (err or "?"), vim.log.levels.ERROR)
 		return false
@@ -788,7 +790,7 @@ function M.start(base_arg)
 				return
 			end
 			local return_to = stranded.original_branch
-			local ok, err = diff_mod.checkout(return_to, repo_root)
+			local ok, err = diff_mod.checkout(return_to, repo_root, { branch = stranded.branch ~= nil })
 			if not ok then
 				vim.notify("fude.nvim: Failed to return to " .. return_to .. ": " .. (err or "?"), vim.log.levels.ERROR)
 				return
