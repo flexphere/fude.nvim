@@ -379,7 +379,12 @@ File opening position                                 *fude-file-position*
 :FudeReviewOverview                                *:FudeReviewOverview*
     Show PR overview in a split-pane floating window. The left pane
     displays title, state, author, base/head branches, description,
-    and issue-level comments. The right pane shows reviewers with
+    and PR-level comments: issue comments plus the body of every
+    submitted review (Approve / Request changes / Comment summaries,
+    bot review overviews), merged oldest first as GitHub's
+    Conversation tab shows them. A review body is headed with its
+    state, e.g. `### @alice  2024-01-01 [approved]`.
+    The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count.
     Requires an active review session.
@@ -409,7 +414,8 @@ File opening position                                 *fude-file-position*
 
 :FudeReviewListComments                        *:FudeReviewListComments*
     Open a 3-pane floating comment browser showing all PR review
-    comments and PR-level (issue) comments. Does not require
+    comments and PR-level comments (issue comments plus submitted
+    review bodies, see |:FudeReviewOverview|). Does not require
     Telescope.
 
     Left pane: comment list sorted by time (newest first).
@@ -418,10 +424,13 @@ File opening position                                 *fude-file-position*
       - Pending comments: `date  [pending]  path:line`
       - Resolved threads additionally show a trailing `[resolved]`
         label (see `resolved` options).
-    Right upper: thread display for the selected comment.
+    Right upper: thread display for the selected comment. A review
+      body is headed `@author (date): [approved]` etc.
     Right lower: input area for reply/edit/new comment.
       For review comments, defaults to Reply mode.
       For PR-level comments, defaults to New PR Comment mode.
+      `e`/`d` act on your most recent issue comment; review bodies
+      cannot be edited or deleted here.
 
     Cursor movement in the left pane auto-updates the right side.
 
