@@ -27,7 +27,11 @@ function M.open_preview(source_win)
 	end
 
 	local filepath = vim.api.nvim_buf_get_name(source_buf)
-	local rel_path = diff.to_repo_relative(filepath)
+	-- Local review: path and `git show` are relative to the session's worktree
+	-- root, like extmarks, tracker and gitsigns — a `:cd` out of the worktree
+	-- must not leave the preview closed after a scope switch.
+	local local_session = state.review_mode == "local" and state.local_session or nil
+	local rel_path = require("fude.local.session").relative_path(filepath)
 
 	if not rel_path then
 		M.close_preview()
@@ -36,14 +40,14 @@ function M.open_preview(source_win)
 	end
 
 	local base_ref = state.base_ref
-	if state.review_mode == "local" and state.local_session and state.local_session.content_ref then
+	if local_session and local_session.content_ref then
 		-- Local review: base pane follows the scope (base branch vs HEAD)
-		base_ref = state.local_session.content_ref
+		base_ref = local_session.content_ref
 	elseif state.scope == "commit" and state.scope_commit_sha then
 		base_ref = state.scope_commit_sha .. "^"
 	end
 
-	local content, _ = diff.get_base_content(base_ref, rel_path)
+	local content, _ = diff.get_base_content(base_ref, rel_path, local_session and local_session.worktree_root or nil)
 	local source_view = vim.api.nvim_win_call(source_win, vim.fn.winsaveview)
 	local source_foldenable = vim.wo[source_win].foldenable
 	local source_foldlevel = vim.wo[source_win].foldlevel

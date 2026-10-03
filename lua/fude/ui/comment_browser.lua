@@ -74,6 +74,13 @@ local function close_browser()
 	state.comment_browser = nil
 end
 
+--- Close the browser from outside (no-op when it is not open). Used when the
+--- local review enters the commit scope, where the cached comments it shows
+--- no longer apply.
+function M.close()
+	close_browser()
+end
+
 --- Get text from lower buffer.
 --- @param buf number buffer handle
 --- @return string

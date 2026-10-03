@@ -1,4 +1,7 @@
 local diff = require("fude.diff")
+-- Loaded up front: some specs below `:cd` into a temp repo, where the
+-- relative package.path cannot find modules that were not required yet.
+local config = require("fude.config")
 
 describe("parse_log_first_subject", function()
 	it("returns first line from single-line output", function()
@@ -191,6 +194,225 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 
 	it("lists branches between the default branch and HEAD, nearest first", function()
 		assert.are.same({ "b", "feat/a" }, diff.get_ancestor_branches("main"))
+	end)
+
+	it("lists the commits of base..tip oldest first", function()
+		local commits = diff.get_commit_log("main", "feature", repo)
+		assert.equals(3, #commits)
+		assert.equals("a1", commits[1].subject)
+		assert.equals("b1", commits[2].subject)
+		assert.equals("f1", commits[3].subject)
+		assert.equals(git("rev-parse", "feature"), commits[3].sha)
+	end)
+
+	it("falls back to origin/<base> when the base exists only on the remote", function()
+		-- The usual clone: origin/main is there, a local main is not
+		git("branch", "-D", "main")
+		local commits = diff.get_commit_log("main", "feature", repo)
+		assert.equals(3, #commits)
+		assert.equals("a1", commits[1].subject)
+	end)
+
+	it("lists every commit of the tip when there is no base", function()
+		local commits = diff.get_commit_log(nil, "feature", repo)
+		assert.equals(4, #commits)
+		assert.equals("root", commits[1].subject)
+		assert.equals("f1", commits[4].subject)
+	end)
+
+	it("returns an empty list when the base resolves nowhere", function()
+		assert.same({}, diff.get_commit_log("no-such-branch", "feature", repo))
+	end)
+
+	it("keeps only the newest commits when a limit is given, still oldest first", function()
+		local commits = diff.get_commit_log(nil, "feature", repo, 2)
+		assert.equals(2, #commits)
+		assert.equals("b1", commits[1].subject)
+		assert.equals("f1", commits[2].subject)
+	end)
+
+	it("get_parent returns the parent sha for an ordinary commit and root for the first", function()
+		local parent, status = diff.get_parent(git("rev-parse", "feature"), repo)
+		assert.equals("parent", status)
+		assert.equals(git("rev-parse", "feature^"), parent)
+
+		local root_parent, root_status = diff.get_parent(git("rev-parse", "main"), repo)
+		assert.is_nil(root_parent)
+		assert.equals("root", root_status)
+	end)
+
+	it("get_parent tells a shallow clone's boundary apart from a root commit", function()
+		local shallow = vim.fn.tempname()
+		local res = vim.system({ "git", "clone", "-q", "--depth", "1", "file://" .. repo, shallow }, { text = true }):wait()
+		assert(res.code == 0, res.stderr)
+		local head = vim.trim(vim.system({ "git", "rev-parse", "HEAD" }, { cwd = shallow, text = true }):wait().stdout)
+
+		-- `rev-parse HEAD^` fails here just like on a root commit, but the
+		-- object header still names the parent — the object is just not there.
+		local parent, status = diff.get_parent(head, shallow)
+		assert.is_nil(parent)
+		assert.equals("missing", status)
+		vim.fn.delete(shallow, "rf")
+	end)
+
+	it("get_worktree_roots lists detached worktrees too and takes the repo root as cwd", function()
+		local detached = vim.fn.tempname()
+		git("worktree", "add", "-q", "--detach", detached, "main")
+		-- Asked from an unrelated cwd: the explicit root decides the repository
+		local roots = diff.get_worktree_roots(repo)
+		assert.is_not_nil(roots)
+		local resolved = vim.tbl_map(vim.fn.resolve, roots)
+		assert.truthy(vim.tbl_contains(resolved, vim.fn.resolve(repo)))
+		assert.truthy(vim.tbl_contains(resolved, vim.fn.resolve(detached)))
+		-- get_worktrees (branch worktrees only) leaves the detached one out
+		local branch_paths = vim.tbl_map(function(wt)
+			return vim.fn.resolve(wt.path)
+		end, diff.get_worktrees())
+		assert.is_false(vim.tbl_contains(branch_paths, vim.fn.resolve(detached)))
+		git("worktree", "remove", "--force", detached)
+	end)
+
+	it("get_merge_base runs in the given worktree regardless of the cwd", function()
+		vim.cmd.cd(original_cwd) -- fude.nvim's own repo: a different history
+		assert.equals(git("rev-parse", "main"), diff.get_merge_base("main", repo))
+		vim.cmd.cd(repo)
+	end)
+
+	it("get_empty_tree runs in the given worktree", function()
+		local sha1_empty = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+		assert.equals(sha1_empty, diff.get_empty_tree(repo))
+	end)
+
+	it("checkout counts a completed checkout whose post-checkout hook failed as done", function()
+		local hook = repo .. "/.git/hooks/post-checkout"
+		vim.fn.writefile({ "#!/bin/sh", "echo hook says no >&2", "exit 1" }, hook)
+		vim.uv.fs_chmod(hook, 493) -- 0755
+		local target = git("rev-parse", "main")
+
+		local ok, err = diff.checkout(target, repo)
+		assert.is_true(ok)
+		assert.truthy(err and err:find("hook failed", 1, true))
+		assert.truthy(err and err:find("hook says no", 1, true))
+		assert.equals(target, git("rev-parse", "HEAD"))
+
+		-- Back onto the branch by name: symbolic HEAD must match, not just the sha
+		local ok2, err2 = diff.checkout("feature", repo)
+		assert.is_true(ok2)
+		assert.truthy(err2 and err2:find("hook failed", 1, true))
+		assert.equals("feature", git("symbolic-ref", "--short", "HEAD"))
+
+		-- A checkout that truly did nothing stays a failure
+		vim.fn.delete(hook)
+		local ok3, err3 = diff.checkout("no-such-ref", repo)
+		assert.is_false(ok3)
+		assert.truthy(err3 and #err3 > 0)
+	end)
+
+	it("checkout with branch=true refuses to call a detached checkout onto a same-named tag a restore", function()
+		-- The branch is gone, a tag of the same name points at its old tip
+		local tip = git("rev-parse", "feature")
+		git("checkout", "-q", "--detach")
+		git("branch", "-D", "feature")
+		git("tag", "feature", tip)
+
+		-- git itself is happy: exit 0, HEAD detached on the tag
+		local ok, err = diff.checkout("feature", repo, { branch = true })
+		assert.is_false(ok)
+		assert.truthy(err and err:find("left HEAD detached at", 1, true))
+		assert.truthy(err and err:find("tag or remote ref", 1, true))
+		assert.is_nil(diff.head_branch(repo))
+
+		-- Without the branch requirement the same checkout is a legitimate
+		-- detached checkout of that commit
+		assert.is_true(diff.checkout("feature", repo))
+		assert.equals(tip, git("rev-parse", "HEAD"))
+
+		-- A real branch lands symbolically
+		assert.is_true(diff.checkout("main", repo, { branch = true }))
+		assert.equals("main", diff.head_branch(repo))
+	end)
+
+	it("checkout with detach=true lands detached even when the target is the branch tip", function()
+		local tip = git("rev-parse", "feature") -- HEAD is on feature, at this very commit
+		assert.equals("feature", diff.head_branch(repo))
+		assert.is_true(diff.checkout(tip, repo, { detach = true }))
+		assert.is_nil(diff.head_branch(repo))
+		assert.equals(tip, git("rev-parse", "HEAD"))
+	end)
+
+	it("get_repo_root answers the local session's worktree root regardless of the cwd", function()
+		config.state.review_mode = "local"
+		config.state.local_session = { worktree_root = "/wt/elsewhere" }
+		assert.equals("/wt/elsewhere", diff.get_repo_root())
+		config.state.review_mode = nil
+		config.state.local_session = nil
+		assert.equals(vim.fn.resolve(repo), vim.fn.resolve(diff.get_repo_root()))
+	end)
+
+	it("get_untracked_conflicts lists what a checkout would overwrite, ignored files included", function()
+		-- feature tracks shared.txt and .env; main tracks neither
+		vim.fn.writefile({ "x" }, repo .. "/shared.txt")
+		vim.fn.writefile({ "SECRET=1" }, repo .. "/.env")
+		git("add", "shared.txt", ".env")
+		git("commit", "-q", "-m", "track shared and .env")
+		git("checkout", "-q", "--detach", "main")
+		-- Now untracked: one the target tracks, one nothing tracks, one ignored
+		-- that the target tracks (git would overwrite it silently by default)
+		vim.fn.writefile({ "y" }, repo .. "/shared.txt")
+		vim.fn.writefile({ "z" }, repo .. "/scratch.txt")
+		vim.fn.writefile({ ".env", "scratch-ignored.txt" }, repo .. "/.gitignore")
+		vim.fn.writefile({ "SECRET=local" }, repo .. "/.env")
+		vim.fn.writefile({ "w" }, repo .. "/scratch-ignored.txt")
+
+		assert.same({ ".env", "shared.txt" }, diff.get_untracked_conflicts("feature", repo))
+		assert.same({}, diff.get_untracked_conflicts("main", repo))
+		local nothing, err = diff.get_untracked_conflicts("no-such-ref", repo)
+		assert.is_nil(nothing)
+		assert.truthy(err and #err > 0)
+
+		-- and git itself refuses to overwrite the ignored file through our checkout
+		local ok, cerr = diff.checkout("feature", repo, { branch = true })
+		assert.is_false(ok)
+		assert.truthy(cerr and cerr:find("would be overwritten", 1, true))
+		assert.same({ "SECRET=local" }, vim.fn.readfile(repo .. "/.env"))
+	end)
+
+	it("head_is distinguishes a branch from a detached HEAD on its commit", function()
+		assert.is_true(diff.head_is("feature", repo))
+		assert.is_true(diff.head_is(git("rev-parse", "feature"), repo))
+		assert.is_false(diff.head_is("main", repo))
+		git("checkout", "-q", "--detach")
+		-- same commit, but no longer "on the branch"
+		assert.is_false(diff.head_is("feature", repo))
+		assert.is_true(diff.head_is(git("rev-parse", "HEAD"), repo))
+	end)
+
+	it("is_reachable_from_branch tells a saved commit from an orphan on a detached HEAD", function()
+		assert.is_true(diff.is_reachable_from_branch(git("rev-parse", "feature"), repo))
+		git("checkout", "-q", "--detach")
+		git("commit", "-q", "--allow-empty", "-m", "made while detached")
+		local orphan = git("rev-parse", "HEAD")
+		assert.is_false(diff.is_reachable_from_branch(orphan, repo))
+		-- `git branch <name>` keeps HEAD detached but saves the commit
+		git("branch", "saved", orphan)
+		assert.is_true(diff.is_reachable_from_branch(orphan, repo))
+	end)
+
+	it("get_parent reports an error for an unknown object", function()
+		local parent, status = diff.get_parent("0000000000000000000000000000000000000000", repo)
+		assert.is_nil(parent)
+		assert.equals("error", status)
+	end)
+
+	it("resolves another branch's upstream while HEAD is detached", function()
+		-- feature tracks main through a local "remote" so @{upstream} resolves
+		git("config", "branch.feature.remote", ".")
+		git("config", "branch.feature.merge", "refs/heads/main")
+		assert.equals("main", diff.get_upstream_ref(repo))
+
+		git("checkout", "-q", "--detach")
+		assert.is_nil(diff.get_upstream_ref(repo))
+		assert.equals("main", diff.get_upstream_ref(repo, "feature"))
 	end)
 
 	it("bases the first commit subject on origin/<base> over a stale local branch", function()
@@ -422,5 +644,174 @@ describe("get_review_patch", function()
 			}
 		end
 		assert.is_nil(diff.get_review_patch("basesha", "unchanged.lua"))
+	end)
+end)
+
+describe("parse_commit_log", function()
+	local SEP = "\31"
+
+	it("parses sha, short sha and subject per line", function()
+		local out = table.concat({
+			"aaa111" .. SEP .. "aaa1" .. SEP .. "feat: add scope",
+			"bbb222" .. SEP .. "bbb2" .. SEP .. "fix: handle nil",
+		}, "\n") .. "\n"
+		local commits = diff.parse_commit_log(out)
+		assert.equals(2, #commits)
+		assert.same({ sha = "aaa111", short_sha = "aaa1", subject = "feat: add scope" }, commits[1])
+		assert.equals("fix: handle nil", commits[2].subject)
+	end)
+
+	it("keeps a subject containing tabs and pipes", function()
+		local commits = diff.parse_commit_log("aaa111" .. SEP .. "aaa1" .. SEP .. "fix: a\tb | c\n")
+		assert.equals("fix: a\tb | c", commits[1].subject)
+	end)
+
+	it("keeps an empty subject rather than dropping the commit", function()
+		local commits = diff.parse_commit_log("aaa111" .. SEP .. "aaa1" .. SEP .. "\n")
+		assert.equals(1, #commits)
+		assert.equals("", commits[1].subject)
+	end)
+
+	it("returns an empty list for empty or nil output", function()
+		assert.same({}, diff.parse_commit_log(""))
+		assert.same({}, diff.parse_commit_log(nil))
+	end)
+
+	it("skips malformed lines", function()
+		local commits = diff.parse_commit_log("garbage without separators\n")
+		assert.same({}, commits)
+	end)
+end)
+
+describe("make_relative", function()
+	it("strips the root with a path boundary", function()
+		assert.equals("lua/a.lua", diff.make_relative("/repo/lua/a.lua", "/repo"))
+		assert.equals("lua/a.lua", diff.make_relative("/repo/lua/a.lua", "/repo/"))
+		assert.equals("", diff.make_relative("/repo", "/repo"))
+	end)
+
+	it("does not treat a sibling directory sharing the prefix as inside the root", function()
+		assert.is_nil(diff.make_relative("/repo-other/x.lua", "/repo"))
+		assert.is_nil(diff.make_relative("/repository/x.lua", "/repo"))
+		assert.is_nil(diff.make_relative("/elsewhere/x.lua", "/repo"))
+	end)
+end)
+
+describe("find_checkout_collisions", function()
+	local function kinds(map)
+		return function(path)
+			return map[path]
+		end
+	end
+
+	it("reports target paths that exist here untracked, ignored or not", function()
+		local target = { "a.lua", "b/c.lua", "d.lua", ".env" }
+		local here = { ["d.lua"] = true }
+		local on_disk = kinds({ ["a.lua"] = "file", ["b/c.lua"] = "file", ["d.lua"] = "file", [".env"] = "file" })
+		assert.same({ ".env", "a.lua", "b/c.lua" }, diff.find_checkout_collisions(target, here, on_disk))
+	end)
+
+	it("ignores target paths that are absent here", function()
+		assert.same({}, diff.find_checkout_collisions({ "a.lua" }, {}, kinds({})))
+		assert.same({}, diff.find_checkout_collisions({}, {}, kinds({ ["x"] = "file" })))
+	end)
+
+	it("catches file/directory collisions in both directions", function()
+		-- target wants a file where an untracked directory sits
+		assert.same({ "foo" }, diff.find_checkout_collisions({ "foo" }, {}, kinds({ ["foo"] = "directory" })))
+		-- target wants a directory where an untracked file sits
+		assert.same({ "foo" }, diff.find_checkout_collisions({ "foo/bar" }, {}, kinds({ ["foo"] = "file" })))
+		assert.same({ "a" }, diff.find_checkout_collisions({ "a/b/c" }, {}, kinds({ ["a"] = "file" })))
+		-- a tracked directory on the way is fine
+		assert.same({}, diff.find_checkout_collisions({ "foo/bar" }, { ["foo"] = true }, kinds({ ["foo"] = "directory" })))
+	end)
+end)
+
+describe("parse_worktree_roots", function()
+	it("keeps branch and detached worktrees, skips bare ones", function()
+		local out = table.concat({
+			"worktree /repo",
+			"HEAD aaaa",
+			"branch refs/heads/main",
+			"",
+			"worktree /repo/.claude/worktrees/x",
+			"HEAD bbbb",
+			"detached",
+			"",
+			"worktree /srv/repo.git",
+			"bare",
+			"",
+		}, "\n")
+		assert.same({ "/repo", "/repo/.claude/worktrees/x" }, diff.parse_worktree_roots(out))
+	end)
+
+	it("returns nothing for empty or nil output", function()
+		assert.same({}, diff.parse_worktree_roots(""))
+		assert.same({}, diff.parse_worktree_roots(nil))
+	end)
+end)
+
+describe("parse_commit_parents", function()
+	it("reads parent headers in order and ignores the message", function()
+		local object = table.concat({
+			"tree 1111111111111111111111111111111111111111",
+			"parent aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"parent bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"author t <t@t> 0 +0000",
+			"committer t <t@t> 0 +0000",
+			"",
+			"merge: parent cccccccccccccccccccccccccccccccccccccccc in the message must not count",
+		}, "\n")
+		assert.same({
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		}, diff.parse_commit_parents(object))
+	end)
+
+	it("returns no parents for a root commit object or bad input", function()
+		assert.same({}, diff.parse_commit_parents("tree 1111\nauthor t\n\nroot"))
+		assert.same({}, diff.parse_commit_parents(nil))
+		assert.same({}, diff.parse_commit_parents(""))
+	end)
+end)
+
+describe("is_worktree_dirty", function()
+	local original_system = vim.system
+
+	after_each(function()
+		vim.system = original_system
+	end)
+
+	it("is false for clean porcelain output", function()
+		vim.system = function()
+			return {
+				wait = function()
+					return { code = 0, stdout = "" }
+				end,
+			}
+		end
+		assert.is_false(diff.is_worktree_dirty("/repo"))
+	end)
+
+	it("is true when porcelain reports changes", function()
+		vim.system = function()
+			return {
+				wait = function()
+					return { code = 0, stdout = " M lua/fude/init.lua\n" }
+				end,
+			}
+		end
+		assert.is_true(diff.is_worktree_dirty("/repo"))
+	end)
+
+	it("is true when git itself fails, so no checkout runs over unknown state", function()
+		vim.system = function()
+			return {
+				wait = function()
+					return { code = 128, stdout = "" }
+				end,
+			}
+		end
+		assert.is_true(diff.is_worktree_dirty("/repo"))
 	end)
 end)

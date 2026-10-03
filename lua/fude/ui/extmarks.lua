@@ -137,9 +137,18 @@ function M.refresh_extmarks()
 	end
 
 	local buf = vim.api.nvim_get_current_buf()
+	-- The local commit scope has a past commit checked out, so the buffer is not
+	-- the working tree the comments anchor to. Rendering them would point at
+	-- unrelated lines; clear instead.
+	if require("fude.local.session").in_commit_scope() then
+		vim.api.nvim_buf_clear_namespace(buf, state.ns_id, 0, -1)
+		return
+	end
+
 	local filepath = vim.api.nvim_buf_get_name(buf)
-	local diff = require("fude.diff")
-	local rel_path = diff.to_repo_relative(filepath)
+	-- Relative to the local session's worktree root when there is one, so a
+	-- `:cd` out of the worktree does not blank every reviewed buffer.
+	local rel_path = require("fude.local.session").relative_path(filepath)
 	if not rel_path then
 		return
 	end
@@ -234,6 +243,26 @@ function M.clear_extmarks(buf)
 	local state = config.state
 	if state.ns_id then
 		pcall(vim.api.nvim_buf_clear_namespace, buf or 0, state.ns_id, 0, -1)
+	end
+end
+
+--- Re-render comment extmarks in every window showing a normal file buffer.
+--- `refresh_extmarks` works on the current buffer; after a change that affects
+--- all buffers at once (a local scope switch) the other visible ones must not
+--- wait for their next BufEnter.
+function M.refresh_visible_extmarks()
+	local current = vim.api.nvim_get_current_win()
+	for _, win in ipairs(vim.api.nvim_list_wins()) do
+		if vim.api.nvim_win_is_valid(win) then
+			local buf = vim.api.nvim_win_get_buf(win)
+			if vim.bo[buf].buftype == "" then
+				if win == current then
+					M.refresh_extmarks()
+				else
+					pcall(vim.api.nvim_win_call, win, M.refresh_extmarks)
+				end
+			end
+		end
 	end
 end
 

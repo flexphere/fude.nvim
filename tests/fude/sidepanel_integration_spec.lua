@@ -30,6 +30,66 @@ describe("sidepanel integration", function()
 		helpers.cleanup()
 	end)
 
+	it("select and toggle_reviewed pass the commit sha to set_scope for a local commit entry", function()
+		config.state.review_mode = "local"
+		config.state.local_session = {
+			scope = "base",
+			base_ref = "main",
+			branch = "feat/x",
+			worktree_root = "/mock/repo",
+			commits = {
+				{ sha = "c1sha", short_sha = "c1", subject = "first" },
+				{ sha = "c2sha", short_sha = "c2", subject = "second" },
+			},
+		}
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_upstream_ref", function()
+			return nil
+		end)
+		local session = require("fude.local.session")
+		local calls = {}
+		helpers.mock(session, "set_scope", function(scope, opts)
+			table.insert(calls, { scope = scope, sha = opts and opts.commit_sha })
+			return false
+		end)
+
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		-- Find the panel line that resolves to the second commit entry
+		local target_line
+		for line = 1, vim.api.nvim_buf_line_count(panel.buf) do
+			vim.api.nvim_win_set_cursor(panel.win, { line, 0 })
+			local info = sidepanel.get_current_entry(panel)
+			if info and info.type == "scope" and info.entry.sha == "c2sha" then
+				target_line = line
+				break
+			end
+		end
+		assert.is_not_nil(target_line)
+
+		local function callback_for(lhs)
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(panel.buf, "n")) do
+				if map.lhs == lhs or map.lhs == vim.api.nvim_replace_termcodes(lhs, true, true, true) then
+					return map.callback
+				end
+			end
+		end
+		local select_cb = callback_for(config.opts.sidepanel.keymaps.select)
+		local toggle_cb = callback_for(config.opts.sidepanel.keymaps.toggle_reviewed)
+		assert.is_function(select_cb)
+		assert.is_function(toggle_cb)
+
+		vim.api.nvim_win_set_cursor(panel.win, { target_line, 0 })
+		select_cb()
+		toggle_cb()
+		-- Both wire the entry's sha through; dropping `opts` here would hand
+		-- set_scope a bare "commit" that it refuses.
+		assert.same({
+			{ scope = "commit", sha = "c2sha" },
+			{ scope = "commit", sha = "c2sha" },
+		}, calls)
+	end)
+
 	it("open creates window and sets state.sidepanel", function()
 		sidepanel.open()
 		local panel = config.state.sidepanel

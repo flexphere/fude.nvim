@@ -145,7 +145,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
-| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted`) |
+| `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted` / `commit`) |
 | `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
 ### File opening position
@@ -342,8 +342,9 @@ typically to review AI-agent-generated code locally. No GitHub interaction
 happens in this mode:
 
 - Changed files come from the local git diff, plus untracked files. The diff
-  base depends on the **scope** (switch with `:FudeReviewLocalScope`). Every
-  scope compares the working tree against a ref, so comments stay anchored:
+  base depends on the **scope** (switch with `:FudeReviewLocalScope`). The
+  first three compare the working tree against a ref, so comments stay
+  anchored:
   - `base` — merge-base with `base` (default: the remote default branch, else
     a local `main`/`master`): the whole branch diff, including committed work.
     Shown only on a branch that differs from its base ref.
@@ -351,6 +352,28 @@ happens in this mode:
     pushed. Shown only when the branch has an upstream.
   - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes. Always
     available.
+  - `commit` — one entry per commit on the branch (`base..branch`; on the base
+    branch itself the unpushed commits; in a remote-less repo the newest 100),
+    showing that commit alone (`<sha>^` vs `<sha>`; a commit whose parent is
+    not in the clone, as at a shallow clone's boundary, cannot be selected). It
+    checks the commit out,
+    so every switch needs a clean working tree (no staged/unstaged changes, no
+    untracked or ignored file where the target would write, no unsaved
+    buffers, no comment
+    input with unsent text) — leaving it too, so
+    an edit made on the checked-out commit is not carried onto the branch by a
+    scope switch or `:FudeReviewLocalStop` — and leaves HEAD detached until you
+    switch back; fude restores the branch on scope switch,
+    `:FudeReviewLocalStop`, and quit. Quitting is the one exception: rather
+    than leave HEAD detached it restores the branch anyway, letting git carry
+    non-conflicting changes along and warning about it. Committing on the
+    detached HEAD blocks every restore until a branch holds that commit
+    (`git branch <name> <sha>`); the restore then proceeds on the next switch.
+    Because the working tree is then a past snapshot rather than your work,
+    comments are read-only in this scope: none are shown (no boxes, no
+    per-file counts) and none can be created, including from the comment
+    browser. If Neovim exits without restoring the branch (a crash), the next
+    `:FudeReviewLocal` on that detached HEAD returns to the branch first.
   The side panel / picker lists only the scopes valid for the current git
   state, and the statusline shows the active one. When no base branch can be
   found (a fresh, remote-less repo), the session starts in `uncommitted`; in a

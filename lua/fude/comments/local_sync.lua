@@ -15,6 +15,24 @@ local function now_iso()
 	return os.date("!%Y-%m-%dT%H:%M:%SZ")
 end
 
+--- Error every comment mutation returns while the commit scope is active.
+M.COMMIT_SCOPE_ERROR = "Comments are read-only in the commit scope — switch scope to comment"
+
+--- Refuse a mutation while the local review is in the commit scope. The
+--- checked-out commit is not the working tree comments anchor to, so any event
+--- written now would record a meaningless position. Enforced here, not only
+--- in the `comments.lua` facade, because the comment browser calls this
+--- backend directly.
+--- @param callback fun(err: string|nil, ...)
+--- @return boolean blocked true when the callback already got the error
+local function blocked_by_commit_scope(callback)
+	if not require("fude.local.session").in_commit_scope() then
+		return false
+	end
+	callback(M.COMMIT_SCOPE_ERROR)
+	return true
+end
+
 --- Read the current lines of each commented file. Returns two maps:
 ---   `lines`  — buffer contents when loaded (so an in-progress edit doesn't
 ---              falsely mark a comment outdated), else the on-disk file. Used
@@ -88,6 +106,35 @@ function M.load_comments(callback, opts)
 	local events = store.read_events(session.file)
 	local result = store.materialize(events)
 	local comments = result.comments
+
+	-- The commit scope has a past commit checked out, so the files on disk are
+	-- not the working tree these comments anchor to: re-anchoring or the
+	-- outdated check would corrupt the store, and showing the comments (boxes,
+	-- per-file counts in the side panel and pickers) would overlay working-tree
+	-- positions on a past snapshot. Expose none; the next load after leaving the
+	-- scope (`apply_scope`) brings them back. Viewed state is per file, not per
+	-- line, so it stays.
+	if require("fude.local.session").is_commit_scope(session) then
+		state.comments = {}
+		state.comment_map = {}
+		state.viewed_files = result.viewed
+		-- Every buffer, not just the current one, and any comment UI opened
+		-- before the switch (reply/edit window, comment browser) still holds
+		-- the cached comments — take them all down.
+		require("fude.ui").clear_all_extmarks()
+		-- The cursor-following hint lives in its own namespace and would stay
+		-- on screen until the next CursorMoved otherwise.
+		require("fude.ui.extmarks").clear_inline_hint()
+		require("fude.ui").close_comment_ui()
+		-- teardown, not sync_all: the latter only reaches buffers it can map
+		-- to the repo, so marks in the others would survive and feed bogus
+		-- moves on the next write. The next load after leaving re-syncs.
+		require("fude.local.tracker").teardown()
+		if callback then
+			callback()
+		end
+		return
+	end
 
 	-- Context-based re-anchor: recover comments whose line drifted while the
 	-- buffer was CLOSED (e.g. an external agent edit) and persist the confident
@@ -185,6 +232,9 @@ function M.create_comment(path, start_line, end_line, body, context, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_comment_event({
 			id = store.generate_uuid(),
@@ -211,6 +261,9 @@ function M.reply_to_comment(comment_id, body, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_reply_event({
 			id = store.generate_uuid(),
@@ -234,6 +287,9 @@ function M.edit_comment(comment_id, body, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_edit_event({
 			id = comment_id,
@@ -255,6 +311,9 @@ function M.delete_comment(comment_id, callback)
 		callback("Not active")
 		return
 	end
+	if blocked_by_commit_scope(callback) then
+		return
+	end
 	append_and_refresh(
 		store.build_delete_event({
 			id = comment_id,
@@ -274,6 +333,9 @@ function M.move_comments(moves, callback)
 	local session = state.local_session
 	if not state.active or not session then
 		callback("Not active")
+		return
+	end
+	if blocked_by_commit_scope(callback) then
 		return
 	end
 	local created_at = now_iso()
@@ -328,6 +390,9 @@ function M.toggle_resolved(thread_id, currently_resolved, callback)
 	local state = config.state
 	if not state.active or not state.local_session then
 		callback("Not active")
+		return
+	end
+	if blocked_by_commit_scope(callback) then
 		return
 	end
 	local kind = currently_resolved and "reopen" or "resolve"

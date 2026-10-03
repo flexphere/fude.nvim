@@ -57,15 +57,23 @@ function M.apply_gitsigns_base_for_buffer(bufnr)
 		return
 	end
 
-	local diff_mod = require("fude.diff")
-	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(bufnr))
+	-- Local review: relative to the session's worktree root, like extmarks and
+	-- the tracker — a `:cd` out of the worktree must not leave gitsigns on its
+	-- HEAD base for every buffer.
+	local rel_path = require("fude.local.session").relative_path(vim.api.nvim_buf_get_name(bufnr))
 	if not rel_path then
 		return
 	end
 
 	-- Determine the base ref to use
 	local base_ref
-	if state.scope == "commit" and state.scope_commit_sha then
+	if state.review_mode == "local" then
+		-- Local review: every scope resolves to one SHA (merge-base, upstream,
+		-- HEAD, <sha>^ or the empty tree) kept in merge_base_sha, and added files
+		-- must diff against it too — `base_ref` is the base *branch*, which may
+		-- hold a same-named file (or be nil), so it would show the wrong hunks.
+		base_ref = state.merge_base_sha
+	elseif state.scope == "commit" and state.scope_commit_sha then
 		-- Commit scope: all files use commit^ as base
 		base_ref = state.scope_commit_sha .. "^"
 	else

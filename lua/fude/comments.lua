@@ -29,9 +29,6 @@ M.load_comments = sync.load_comments
 M.sync_pending_review = sync.sync_pending_review
 M.reply_to_comment_sync = sync.reply_to_comment
 
--- Re-export picker functions (facade)
-M.list_comments = pickers.list_comments
-
 --- Whether the active session is a local (pre-PR) review.
 --- @return boolean
 local function is_local_mode()
@@ -54,6 +51,30 @@ end
 --- @return boolean
 local function has_review_target(state)
 	return state.active and (state.pr_number ~= nil or state.local_session ~= nil)
+end
+
+--- Whether comment actions must be refused because the local review is in the
+--- commit scope. That scope checks a past commit out, so the buffer is not the
+--- working tree comments anchor to — creating or moving one there would record
+--- a position that means nothing once the branch is restored, and showing or
+--- jumping to one would point at unrelated lines. Notifies when it blocks, so
+--- callers just `return`. The local backend refuses mutations on its own too
+--- (`local_sync`), since the comment browser bypasses this facade.
+--- @return boolean blocked
+local function blocked_by_commit_scope()
+	if not require("fude.local.session").in_commit_scope() then
+		return false
+	end
+	vim.notify("fude.nvim: " .. require("fude.comments.local_sync").COMMIT_SCOPE_ERROR, vim.log.levels.WARN)
+	return true
+end
+
+--- List all comments in the comment browser (facade over `pickers`).
+function M.list_comments()
+	if blocked_by_commit_scope() then
+		return
+	end
+	pickers.list_comments()
 end
 
 --- Toggle editor visibility of resolved comments.
@@ -172,6 +193,9 @@ function M.create_comment(is_visual)
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	local buf = vim.api.nvim_get_current_buf()
 	local filepath = vim.api.nvim_buf_get_name(buf)
@@ -255,6 +279,9 @@ function M.view_comments()
 	if not state.active then
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	local buf = vim.api.nvim_get_current_buf()
 	local filepath = vim.api.nvim_buf_get_name(buf)
@@ -282,6 +309,9 @@ end
 function M.reply_to_comment(comment_id)
 	local state = config.state
 	if not has_review_target(state) then
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 
@@ -384,6 +414,9 @@ function M.edit_comment(comment_id)
 	local state = config.state
 	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 
@@ -494,6 +527,9 @@ function M.delete_comment(comment_id)
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	if not state.github_user then
 		vim.notify("fude.nvim: GitHub user not available yet", vim.log.levels.WARN)
@@ -566,6 +602,9 @@ function M.next_comment()
 	if not state.active then
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 
 	-- Close float window if called from within one, but avoid closing modifiable floats (e.g. comment input)
 	local win_config = vim.api.nvim_win_get_config(0)
@@ -607,6 +646,9 @@ function M.suggest_change(is_visual)
 	local state = config.state
 	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 
@@ -711,6 +753,9 @@ function M.toggle_resolve()
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
+	if blocked_by_commit_scope() then
+		return
+	end
 	if not is_local_mode() then
 		vim.notify("fude.nvim: Resolve is available in local review mode only", vim.log.levels.WARN)
 		return
@@ -747,6 +792,9 @@ end
 function M.prev_comment()
 	local state = config.state
 	if not state.active then
+		return
+	end
+	if blocked_by_commit_scope() then
 		return
 	end
 

@@ -429,8 +429,98 @@ describe("store IO round-trip", function()
 		assert.equals("s1", loaded.id)
 		assert.equals("main", loaded.base_ref)
 
-		store.clear_current("/repo", "feat/x")
+		assert.is_true(store.clear_current("/repo", "feat/x"))
 		assert.is_nil(store.read_current("/repo", "feat/x"))
+		-- Clearing an absent entry is a no-op success
+		assert.is_true(store.clear_current("/repo", "feat/x"))
+	end)
+
+	it("writes the pointer atomically and leaves no temp file behind", function()
+		assert.is_true(store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" }))
+		local dir = vim.fn.fnamemodify(store.current_file("/repo"), ":h")
+		local leftovers = vim.fn.glob(dir .. "/*.tmp", false, true)
+		assert.same({}, leftovers)
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
+
+		-- A failed rename removes the temp file and reports the failure
+		local original = vim.uv.fs_rename
+		vim.uv.fs_rename = function()
+			return nil, "EXDEV: cross-device"
+		end
+		local ok, err = store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })
+		vim.uv.fs_rename = original
+		assert.is_false(ok)
+		assert.truthy(err:find("could not replace", 1, true))
+		assert.same({}, vim.fn.glob(dir .. "/*.tmp", false, true))
+		assert.is_nil(store.read_current("/repo", "feat/b"))
+	end)
+
+	it("write_current and clear_current treat writefile's -1 as a failure", function()
+		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
+		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })
+		local original = vim.fn.writefile
+		vim.fn.writefile = function()
+			return -1 -- the non-throwing failure mode
+		end
+		local ok, err = store.write_current("/repo", "feat/c", { id = "sc", base_ref = "main", branch = "feat/c" })
+		assert.is_false(ok)
+		assert.truthy(err:find("could not write", 1, true))
+		local cleared, cerr = store.clear_current("/repo", "feat/a")
+		assert.is_false(cleared)
+		assert.truthy(cerr:find("could not write", 1, true))
+		vim.fn.writefile = original
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
+		assert.is_nil(store.read_current("/repo", "feat/c"))
+	end)
+
+	it("an unreadable pointer file is an error for writers, not an empty map", function()
+		local path = store.current_file("/repo")
+		vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
+		vim.fn.writefile({ "{oops" }, path)
+
+		-- Readers degrade to "nothing there"
+		assert.is_nil(store.read_current("/repo", "feat/x"))
+		assert.is_nil(store.read_stranded_commit_session("/repo", "c1sha"))
+		-- Writers must not claim success: the stale entries are still on disk
+		local cleared, cerr = store.clear_current("/repo", "feat/x")
+		assert.is_false(cleared)
+		assert.truthy(cerr:find("cannot decode", 1, true))
+		local ok, werr = store.write_current("/repo", "feat/x", { id = "s", base_ref = "main", branch = "feat/x" })
+		assert.is_false(ok)
+		assert.truthy(werr:find("cannot decode", 1, true))
+		-- and the file was left alone
+		assert.same({ "{oops" }, vim.fn.readfile(path))
+	end)
+
+	it("a pointer file that cannot be stat'ed is an error, only ENOENT is an empty map", function()
+		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
+		local original = vim.uv.fs_stat
+		vim.uv.fs_stat = function()
+			return nil, "EACCES: permission denied"
+		end
+		local cleared, err = store.clear_current("/repo", "feat/a")
+		vim.uv.fs_stat = original
+		assert.is_false(cleared)
+		assert.truthy(err:find("cannot stat", 1, true))
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
+
+		-- A genuinely missing file stays a clean no-op
+		assert.is_true(store.clear_current("/nowhere", "feat/a"))
+	end)
+
+	it("clear_current reports a failed rewrite when other entries remain", function()
+		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
+		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })
+		local original = vim.fn.writefile
+		vim.fn.writefile = function()
+			error("read-only")
+		end
+		local ok, err = store.clear_current("/repo", "feat/a")
+		vim.fn.writefile = original
+		assert.is_false(ok)
+		assert.truthy(err:find("read-only", 1, true))
+		-- and the entry is indeed still there
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
 	end)
 
 	it("keeps separate pointers for different branches (no collision)", function()
@@ -451,6 +541,74 @@ describe("store IO round-trip", function()
 		vim.fn.writefile({ vim.json.encode({ id = "old", base_ref = "main", branch = "feat/x" }) }, path)
 		assert.equals("old", store.read_current("/repo", "feat/x").id)
 		assert.is_nil(store.read_current("/repo", "other"))
+	end)
+
+	it("finds the commit-scope session a detached HEAD was left on", function()
+		local map = {
+			["feat/a"] = { id = "sa", scope = "base", worktree_root = "/repo" },
+			["feat/b"] = {
+				id = "sb",
+				scope = "commit",
+				worktree_root = "/repo",
+				scope_commit_sha = "c1sha",
+				original_branch = "feat/b",
+			},
+		}
+		assert.equals("sb", store.find_stranded_commit_session(map, "/repo", "c1sha").id)
+		-- A HEAD the user detached on purpose is never claimed
+		assert.is_nil(store.find_stranded_commit_session(map, "/repo", "elsewhere"))
+		-- A commit-to-commit switch that died before its checkout landed left
+		-- HEAD on the previous commit, recorded as pending_from_sha
+		map["feat/b"].pending_from_sha = "c0sha"
+		assert.equals("sb", store.find_stranded_commit_session(map, "/repo", "c0sha").id)
+		map["feat/b"].pending_from_sha = nil
+		-- Another worktree's session, or no HEAD, or a non-table map: nothing
+		assert.is_nil(store.find_stranded_commit_session(map, "/other", "c1sha"))
+		assert.is_nil(store.find_stranded_commit_session(map, "/repo", nil))
+		assert.is_nil(store.find_stranded_commit_session("junk", "/repo", "c1sha"))
+		-- Without a recorded return branch there is nothing to restore
+		map["feat/b"].original_branch = nil
+		assert.is_nil(store.find_stranded_commit_session(map, "/repo", "c1sha"))
+	end)
+
+	it("refuses to pick when several sessions name the same commit", function()
+		local map = {
+			["feat/a"] = {
+				id = "sa",
+				scope = "commit",
+				worktree_root = "/repo",
+				scope_commit_sha = "shared",
+				original_branch = "feat/a",
+			},
+			["feat/b"] = {
+				id = "sb",
+				scope = "commit",
+				worktree_root = "/repo",
+				scope_commit_sha = "shared",
+				original_branch = "feat/b",
+			},
+		}
+		local match, candidates = store.find_stranded_commit_session(map, "/repo", "shared")
+		assert.is_nil(match)
+		assert.equals(2, #candidates)
+		assert.same({ "feat/a", "feat/b" }, { candidates[1].original_branch, candidates[2].original_branch })
+		-- No match at all is an empty candidate list, not an ambiguity
+		local none, empty = store.find_stranded_commit_session(map, "/repo", "other")
+		assert.is_nil(none)
+		assert.same({}, empty)
+	end)
+
+	it("read_stranded_commit_session scans the pointer file across branches", function()
+		store.write_current("/repo", "feat/b", {
+			id = "sb",
+			scope = "commit",
+			worktree_root = "/repo",
+			scope_commit_sha = "c1sha",
+			original_branch = "feat/b",
+		})
+		-- The detached lookup by branch misses it, the scan finds it
+		assert.is_nil(store.read_current("/repo", nil))
+		assert.equals("sb", store.read_stranded_commit_session("/repo", "c1sha").id)
 	end)
 
 	it("read_current returns nil for malformed pointer files", function()

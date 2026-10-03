@@ -1,8 +1,16 @@
 local M = {}
 
 --- Get the git repository root directory.
+--- During a local review this is the session's worktree root rather than
+--- whatever `git rev-parse` finds from Neovim's cwd: the commit scope checks
+--- past commits out, which can delete the very directory Neovim sits in, and
+--- a `:cd` elsewhere must not make every file operation silently give up.
 --- @return string|nil
 function M.get_repo_root()
+	local state = require("fude.config").state
+	if state.review_mode == "local" and state.local_session and state.local_session.worktree_root then
+		return state.local_session.worktree_root
+	end
 	local result = vim.system({ "git", "rev-parse", "--show-toplevel" }, { text = true }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)
@@ -15,7 +23,17 @@ end
 --- @param root string repository root directory (no trailing slash)
 --- @return string|nil relative path, or nil if filepath is not under root
 function M.make_relative(filepath, root)
-	if filepath:sub(1, #root) == root then
+	-- Boundary-aware: `/repo-other/x.lua` is not inside `/repo`, so a plain
+	-- prefix test would hand a sibling repository's file back as `other/x.lua`.
+	root = root:gsub("/+$", "")
+	if root == "" then
+		-- Filesystem root: everything absolute is inside it
+		return (filepath:gsub("^/+", ""))
+	end
+	if filepath == root then
+		return ""
+	end
+	if filepath:sub(1, #root + 1) == root .. "/" then
 		return filepath:sub(#root + 2)
 	end
 	return nil
@@ -43,20 +61,22 @@ end
 --- Get file content from a specific git ref.
 --- @param ref string branch name or commit SHA
 --- @param file_path string repo-relative file path
+--- @param cwd string|nil repo root (default: Neovim's cwd; the local review
+--- passes its worktree root so a `:cd` elsewhere does not break the preview)
 --- @return string|nil content, string|nil err
-function M.get_base_content(ref, file_path)
+function M.get_base_content(ref, file_path, cwd)
 	-- Try the ref directly first, then origin/<ref> as fallback
-	local result = vim.system({ "git", "show", ref .. ":" .. file_path }, { text = true }):wait()
+	local result = vim.system({ "git", "show", ref .. ":" .. file_path }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return result.stdout, nil
 	end
 
-	local result2 = vim.system({ "git", "show", "origin/" .. ref .. ":" .. file_path }, { text = true }):wait()
+	local result2 = vim.system({ "git", "show", "origin/" .. ref .. ":" .. file_path }, { text = true, cwd = cwd }):wait()
 	if result2.code == 0 then
 		return result2.stdout, nil
 	end
 
-	return nil, result.stderr or "File not found in " .. ref
+	return nil, result.stderr or ("File not found in " .. ref)
 end
 
 --- Get the unified diff for a specific file between base and HEAD.
@@ -104,19 +124,334 @@ function M.parse_log_first_subject(output)
 	return subject
 end
 
+--- Field separator used by `get_commit_log` (git's %x1f). A control character
+--- keeps the parser safe against commit subjects containing tabs or pipes.
+local COMMIT_LOG_SEP = "\31"
+
+--- Parse `git log --format=%H%x1f%h%x1f%s` output.
+--- @param output string|nil git log output
+--- @return table[] commits { sha, short_sha, subject }
+function M.parse_commit_log(output)
+	local commits = {}
+	if not output or output == "" then
+		return commits
+	end
+	for line in output:gmatch("[^\r\n]+") do
+		local sha, short_sha, subject = line:match(
+			"^([^"
+				.. COMMIT_LOG_SEP
+				.. "]+)"
+				.. COMMIT_LOG_SEP
+				.. "([^"
+				.. COMMIT_LOG_SEP
+				.. "]+)"
+				.. COMMIT_LOG_SEP
+				.. "(.*)$"
+		)
+		if sha then
+			table.insert(commits, { sha = sha, short_sha = short_sha, subject = subject })
+		end
+	end
+	return commits
+end
+
+--- List the commits reachable from `tip` but not from `base_ref`, oldest first.
+--- `tip` is taken explicitly (rather than HEAD) so the list stays stable while
+--- the local review's commit scope has a commit checked out. A `base_ref` that
+--- only exists on the remote (the usual clone: `origin/main` without a local
+--- `main`) is retried as `origin/<base_ref>`, like `get_merge_base`. With no
+--- `base_ref` every commit reachable from `tip` is listed (root commit first);
+--- `limit` then keeps only the newest N (git applies `-n` before `--reverse`).
+--- @param base_ref string|nil base commit SHA or ref
+--- @param tip string|nil tip ref (default: "HEAD")
+--- @param cwd string|nil repo root
+--- @param limit number|nil keep only the newest `limit` commits of the range
+--- @return table[] commits { sha, short_sha, subject }
+function M.get_commit_log(base_ref, tip, cwd, limit)
+	tip = tip or "HEAD"
+	local function run(range)
+		local cmd = { "git", "log", range, "--reverse", "--format=%H%x1f%h%x1f%s" }
+		if limit then
+			table.insert(cmd, "-n")
+			table.insert(cmd, tostring(limit))
+		end
+		return vim.system(cmd, { text = true, cwd = cwd }):wait()
+	end
+	local result = run(base_ref and (base_ref .. ".." .. tip) or tip)
+	if result.code ~= 0 and base_ref then
+		result = run("origin/" .. base_ref .. ".." .. tip)
+	end
+	if result.code ~= 0 then
+		return {}
+	end
+	return M.parse_commit_log(result.stdout)
+end
+
+--- Whether the working tree has staged or unstaged changes.
+--- Untracked files do not count here: `git checkout` carries them across —
+--- except when the target tracks a file of the same path, which
+--- `get_untracked_conflicts` checks separately.
+--- @param cwd string|nil repo root
+--- @return boolean dirty
+function M.is_worktree_dirty(cwd)
+	local result = vim.system({ "git", "status", "--porcelain", "-uno" }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		-- Unknown state: treat as dirty so we never checkout over real work.
+		return true
+	end
+	return vim.trim(result.stdout or "") ~= ""
+end
+
+--- Whether HEAD currently points at `ref`: the branch itself for a branch
+--- name (symbolic HEAD), else the commit `ref` resolves to.
+--- @param ref string branch name or commit SHA
+--- @param cwd string|nil repo root
+--- @return boolean
+function M.head_is(ref, cwd)
+	local symbolic = vim.system({ "git", "symbolic-ref", "--short", "-q", "HEAD" }, { text = true, cwd = cwd }):wait()
+	if symbolic.code == 0 and vim.trim(symbolic.stdout or "") == ref then
+		return true
+	end
+	local target = vim
+		.system({ "git", "rev-parse", "--verify", "--quiet", ref .. "^{commit}" }, { text = true, cwd = cwd })
+		:wait()
+	if target.code ~= 0 then
+		return false
+	end
+	-- A branch name must match symbolically; matching only its commit would
+	-- call a detached HEAD on the same commit "on the branch".
+	local is_branch = vim.system({ "git", "show-ref", "--verify", "--quiet", "refs/heads/" .. ref }, { cwd = cwd }):wait()
+	if is_branch.code == 0 then
+		return false
+	end
+	return M.get_head_sha(cwd) == vim.trim(target.stdout)
+end
+
+--- Every ancestor directory of a slash-separated path (`a/b/c` → `a`, `a/b`).
+--- @param path string
+--- @return string[]
+local function ancestors_of(path)
+	local dirs = {}
+	local pos = path:find("/", 1, true)
+	while pos do
+		table.insert(dirs, path:sub(1, pos - 1))
+		pos = path:find("/", pos + 1, true)
+	end
+	return dirs
+end
+
+--- Paths a `git checkout` to `target_paths` would have to create but that
+--- already exist in the worktree without being tracked here (pure). Defined
+--- from the target's side, so it covers every shape at once — an untracked
+--- file (ignored or not) at a path the target tracks, a file where the
+--- target has a directory, and a file under a path the target tracks as a
+--- file — without listing the worktree's untracked files, which for ignored
+--- build output can be enormous.
+--- @param target_paths string[] paths tracked at the target ref
+--- @param tracked_here table<string, boolean> paths tracked at HEAD/index
+--- @param kind_of fun(path: string): "file"|"directory"|nil what exists on disk
+--- @return string[] conflicts sorted, as worktree paths
+function M.find_checkout_collisions(target_paths, tracked_here, kind_of)
+	local conflicts, seen = {}, {}
+	local function add(path)
+		if not seen[path] then
+			seen[path] = true
+			table.insert(conflicts, path)
+		end
+	end
+	for _, path in ipairs(target_paths or {}) do
+		if not tracked_here[path] then
+			local kind = kind_of(path)
+			if kind then
+				-- a file or a directory sits where the target wants a file
+				add(path)
+			end
+		end
+		-- a file sits where the target needs a directory
+		for _, dir in ipairs(ancestors_of(path)) do
+			if not tracked_here[dir] and kind_of(dir) == "file" then
+				add(dir)
+			end
+		end
+	end
+	table.sort(conflicts)
+	return conflicts
+end
+
+--- Untracked paths in the worktree that a `git checkout ref` would collide
+--- with: anything `ref` tracks that is not tracked here yet already exists on
+--- disk, ignored files included — git overwrites ignored files *silently* by
+--- default, so an ignored `.env` that the target happens to track would be
+--- lost, and the `.fude/` recovery pointer with it. `checkout` additionally
+--- passes `--no-overwrite-ignore` so git itself refuses whatever slips past
+--- this check. nil when git fails, so a failure is not mistaken for "no
+--- conflicts".
+--- @param ref string branch name or commit SHA
+--- @param cwd string|nil repo root
+--- @return string[]|nil conflicts
+--- @return string|nil err
+function M.get_untracked_conflicts(ref, cwd)
+	local target = vim.system({ "git", "ls-tree", "-r", "--name-only", ref }, { text = true, cwd = cwd }):wait()
+	if target.code ~= 0 then
+		return nil, vim.trim(target.stderr or "git ls-tree failed")
+	end
+	local here = vim.system({ "git", "ls-files" }, { text = true, cwd = cwd }):wait()
+	if here.code ~= 0 then
+		return nil, vim.trim(here.stderr or "git ls-files failed")
+	end
+	local tracked_here = {}
+	for _, path in ipairs(vim.split(here.stdout or "", "\n", { trimempty = true })) do
+		tracked_here[path] = true
+		for _, dir in ipairs(ancestors_of(path)) do
+			tracked_here[dir] = true -- a tracked file's directories are tracked ground
+		end
+	end
+	local root = cwd or vim.fn.getcwd()
+	local function kind_of(path)
+		local stat = vim.uv.fs_stat(root .. "/" .. path)
+		return stat and stat.type or nil
+	end
+	return M.find_checkout_collisions(vim.split(target.stdout or "", "\n", { trimempty = true }), tracked_here, kind_of),
+		nil
+end
+
+--- The branch HEAD is on, or nil when detached.
+--- @param cwd string|nil repo root
+--- @return string|nil branch
+function M.head_branch(cwd)
+	local result = vim.system({ "git", "symbolic-ref", "--short", "-q", "HEAD" }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		return nil
+	end
+	local branch = vim.trim(result.stdout or "")
+	return branch ~= "" and branch or nil
+end
+
+--- Checkout a ref in the working tree (synchronous), then verify where HEAD
+--- ended up — the exit code alone says too little in both directions:
+---   - non-zero: `git checkout` fails when the post-checkout hook fails even
+---     though HEAD and the tree already moved; treating that as "nothing
+---     happened" would make callers roll back state that no longer matches
+---     HEAD. When HEAD is on `ref` the checkout counts as done, with the hook's
+---     output returned as a warning.
+---   - zero: `git checkout <name>` happily detaches onto a tag or remote ref
+---     of that name when the local branch is gone. A caller restoring a
+---     *branch* (`opts.branch`) needs symbolic HEAD on it, not merely the
+---     same commit, or the "restore" leaves the user detached while the
+---     recovery information is dropped as if it had succeeded.
+---   - `opts.detach` checks the commit out detached (`--detach`) and requires
+---     HEAD to be detached afterwards. Without it, a target equal to the
+---     current branch tip is indistinguishable from "still on the branch":
+---     a checkout that failed before moving (index lock) would pass the
+---     commit check while the user's next commit lands on the real branch.
+--- @param ref string branch name or commit SHA
+--- @param cwd string|nil repo root
+--- @param opts table|nil { branch = boolean, detach = boolean } require HEAD to be
+--- *on the branch* `ref`, or detached on the commit `ref`
+--- @return boolean ok
+--- @return string|nil err error when `ok` is false, hook warning when true
+function M.checkout(ref, cwd, opts)
+	local function landed()
+		if opts and opts.branch then
+			return M.head_branch(cwd) == ref
+		end
+		if opts and opts.detach then
+			return M.head_branch(cwd) == nil and M.head_is(ref, cwd)
+		end
+		return M.head_is(ref, cwd)
+	end
+	-- --no-overwrite-ignore: git overwrites ignored untracked files silently by
+	-- default; refusing instead is the backstop behind get_untracked_conflicts.
+	local cmd = { "git", "checkout", "--no-overwrite-ignore" }
+	if opts and opts.detach then
+		table.insert(cmd, "--detach")
+	end
+	table.insert(cmd, ref)
+	local result = vim.system(cmd, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		local stderr = vim.trim(result.stderr or "")
+		if landed() then
+			return true, "checkout done but a hook failed: " .. stderr
+		end
+		return false, stderr
+	end
+	if not landed() then
+		local now = M.head_branch(cwd) or ("detached at " .. ((M.get_head_sha(cwd) or "?"):sub(1, 7)))
+		return false, string.format("checkout of %s left HEAD %s — is there a tag or remote ref of that name?", ref, now)
+	end
+	return true, nil
+end
+
+--- Whether some local branch can reach `sha`, i.e. checking out away from a
+--- detached HEAD sitting on it would not orphan it.
+--- @param sha string commit SHA
+--- @param cwd string|nil repo root
+--- @return boolean
+function M.is_reachable_from_branch(sha, cwd)
+	local cmd = { "git", "for-each-ref", "--format=%(refname)", "--contains", sha, "refs/heads/" }
+	local result = vim.system(cmd, { text = true, cwd = cwd }):wait()
+	return result.code == 0 and vim.trim(result.stdout or "") ~= ""
+end
+
+--- Parse the parent SHAs out of a raw commit object (`git cat-file -p`).
+--- @param object string|nil raw commit object text
+--- @return string[] parents in header order
+function M.parse_commit_parents(object)
+	local parents = {}
+	if type(object) ~= "string" then
+		return parents
+	end
+	-- Headers end at the first blank line; only `parent` lines there count.
+	local header = object:match("^(.-)\n\n") or object
+	for sha in header:gmatch("\nparent (%x+)") do
+		table.insert(parents, sha)
+	end
+	for sha in header:gmatch("^parent (%x+)") do
+		table.insert(parents, 1, sha)
+	end
+	return parents
+end
+
+--- The first parent of a commit, distinguishing a true root commit from a
+--- parent that is recorded but unreachable. `rev-parse <sha>^` fails in both
+--- cases — a shallow clone's boundary commit still names its parent in the
+--- object header, the object just is not there — so read the header itself
+--- and then check the object exists.
+--- @param sha string commit SHA
+--- @param cwd string|nil repo root
+--- @return string|nil parent first parent SHA, nil for root/missing/error
+--- @return "parent"|"root"|"missing"|"error" status
+function M.get_parent(sha, cwd)
+	local object = vim.system({ "git", "cat-file", "-p", sha }, { text = true, cwd = cwd }):wait()
+	if object.code ~= 0 then
+		return nil, "error"
+	end
+	local parents = M.parse_commit_parents(object.stdout)
+	if #parents == 0 then
+		return nil, "root"
+	end
+	local exists = vim.system({ "git", "cat-file", "-e", parents[1] .. "^{commit}" }, { text = true, cwd = cwd }):wait()
+	if exists.code ~= 0 then
+		return nil, "missing"
+	end
+	return parents[1], "parent"
+end
+
 --- Get the merge-base between a ref and HEAD.
 --- @param ref string|nil branch name or commit SHA
+--- @param cwd string|nil repo root (default: Neovim's cwd; the local review
+--- passes its worktree root so a `:cd` elsewhere does not break scope switches)
 --- @return string|nil merge-base SHA
-function M.get_merge_base(ref)
+function M.get_merge_base(ref, cwd)
 	if not ref then
 		return nil
 	end
-	local result = vim.system({ "git", "merge-base", ref, "HEAD" }, { text = true }):wait()
+	local result = vim.system({ "git", "merge-base", ref, "HEAD" }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)
 	end
 	-- Fallback to origin/<ref>
-	local result2 = vim.system({ "git", "merge-base", "origin/" .. ref, "HEAD" }, { text = true }):wait()
+	local result2 = vim.system({ "git", "merge-base", "origin/" .. ref, "HEAD" }, { text = true, cwd = cwd }):wait()
 	if result2.code == 0 then
 		return vim.trim(result2.stdout)
 	end
@@ -376,9 +711,10 @@ function M.get_current_branch()
 end
 
 --- Get the HEAD commit SHA (synchronous, local git operation).
+--- @param cwd string|nil repo root (default: Neovim's cwd)
 --- @return string|nil sha
-function M.get_head_sha()
-	local result = vim.system({ "git", "rev-parse", "HEAD" }, { text = true }):wait()
+function M.get_head_sha(cwd)
+	local result = vim.system({ "git", "rev-parse", "HEAD" }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)
 	end
@@ -389,9 +725,13 @@ end
 --- zero-commit repos (no HEAD), where diffing against the empty tree shows
 --- every tracked/staged file as added. Computed via `git hash-object` so it
 --- is correct for both SHA-1 and SHA-256 repositories.
+--- @param cwd string|nil repo root (default: Neovim's cwd)
 --- @return string|nil hash
-function M.get_empty_tree()
-	local result = vim.system({ "git", "hash-object", "-t", "tree", "/dev/null" }, { text = true }):wait()
+function M.get_empty_tree(cwd)
+	-- `cwd` matters: the hash depends on the repository's object format
+	-- (SHA-1 vs SHA-256), so it must be computed inside the reviewed worktree,
+	-- not wherever Neovim's cwd happens to be.
+	local result = vim.system({ "git", "hash-object", "-t", "tree", "/dev/null" }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
 		return vim.trim(result.stdout)
 	end
@@ -401,11 +741,18 @@ end
 --- Get the upstream tracking ref of the current branch (e.g. "origin/feat/a"),
 --- used as the diff base for the "unpushed" local review scope. Returns nil
 --- when the branch has no upstream (never pushed / no tracking configured).
+--- `branch` names another branch instead of HEAD — needed while the local
+--- commit scope holds HEAD detached, where a bare `@{upstream}` resolves to
+--- nothing.
 --- @param cwd string|nil repo root
+--- @param branch string|nil branch whose upstream to resolve (default: HEAD)
 --- @return string|nil upstream ref
-function M.get_upstream_ref(cwd)
+function M.get_upstream_ref(cwd, branch)
 	local result = vim
-		.system({ "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}" }, { text = true, cwd = cwd })
+		.system(
+			{ "git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", (branch or "") .. "@{upstream}" },
+			{ text = true, cwd = cwd }
+		)
 		:wait()
 	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
 		return vim.trim(result.stdout)
@@ -546,6 +893,48 @@ function M.get_worktrees()
 		return nil, result.stderr or "git worktree list failed"
 	end
 	return M.parse_worktree_list(result.stdout), nil
+end
+
+--- Parse `git worktree list --porcelain` output into every checkout directory,
+--- detached ones included; only bare entries (no working tree) are skipped.
+--- For file *ownership* a detached worktree is as real as a branch one, which
+--- is why this does not reuse `parse_worktree_list`.
+--- @param output string|nil
+--- @return string[] paths
+function M.parse_worktree_roots(output)
+	local roots = {}
+	local current
+	local function flush()
+		if current and not current.bare then
+			table.insert(roots, current.path)
+		end
+		current = nil
+	end
+	for line in ((output or "") .. "\n"):gmatch("(.-)\n") do
+		local path = line:match("^worktree (.+)$")
+		if path then
+			flush()
+			current = { path = path }
+		elseif current and line == "bare" then
+			current.bare = true
+		end
+	end
+	flush()
+	return roots
+end
+
+--- Every worktree directory of the repository that contains `cwd`, detached
+--- ones included (see `parse_worktree_roots`). Takes the repo root explicitly
+--- so the answer does not change when the user `:cd`s elsewhere mid-session.
+--- @param cwd string|nil repo root
+--- @return string[]|nil roots nil when git fails
+--- @return string|nil err
+function M.get_worktree_roots(cwd)
+	local result = vim.system({ "git", "worktree", "list", "--porcelain" }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		return nil, result.stderr or "git worktree list failed"
+	end
+	return M.parse_worktree_roots(result.stdout), nil
 end
 
 return M

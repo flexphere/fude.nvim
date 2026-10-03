@@ -131,10 +131,60 @@ end
 
 -- === Session helpers ===
 
---- Scope labels understood by the local session. Every scope compares the
---- working tree against a ref (right side = working tree), so comment anchors
---- stay valid across all of them.
-M.SCOPES = { "base", "unpushed", "uncommitted" }
+--- Scope labels understood by the local session.
+---
+--- `base` / `unpushed` / `uncommitted` compare the working tree against a ref
+--- (right side = working tree), so comment anchors stay valid across them.
+---
+--- `commit` is the exception: it checks the commit out, making the right side
+--- that commit's snapshot instead of the user's work. Comments anchor to the
+--- working tree (extmarks in `local/tracker`, context re-anchor and the
+--- outdated check in `local/store`), so the whole comment layer is disabled
+--- while this scope is active — it is a read-only diff view.
+M.SCOPES = { "base", "unpushed", "uncommitted", "commit" }
+
+--- Whether the session is currently in the (read-only) commit scope.
+--- @param session table|nil local session
+--- @return boolean
+function M.is_commit_scope(session)
+	return (session and session.scope) == "commit"
+end
+
+--- Whether the active session is in the commit scope. Convenience wrapper for
+--- the comment layer, which only has `config.state` at hand.
+--- @return boolean
+function M.in_commit_scope()
+	local state = config.state
+	return state.review_mode == "local" and M.is_commit_scope(state.local_session)
+end
+
+--- Repo-relative path of a file for the active review. In a local session the
+--- reference is the session's worktree root, not Neovim's cwd — the user may
+--- `:cd` out of the worktree mid-review, and `diff.to_repo_relative` would then
+--- return nil for every reviewed file (dropping extmarks and tracking marks).
+--- Falls back to `diff.to_repo_relative` outside local mode.
+--- @param filepath string|nil absolute or cwd-relative file path
+--- @return string|nil rel_path
+function M.relative_path(filepath)
+	local state = config.state
+	local session = state.review_mode == "local" and state.local_session or nil
+	local diff_mod = require("fude.diff")
+	if not session or not session.worktree_root then
+		return diff_mod.to_repo_relative(filepath)
+	end
+	if not filepath or filepath == "" then
+		return nil
+	end
+	-- Both sides resolved: Neovim stores buffer names with symlinks resolved
+	-- (`/private/var/...` for a `/var/...` path on macOS), while the root may
+	-- not be, and a plain string match would then miss every buffer.
+	local rel =
+		diff_mod.make_relative(vim.fn.resolve(vim.fn.fnamemodify(filepath, ":p")), vim.fn.resolve(session.worktree_root))
+	if not rel or rel == "" then
+		return nil
+	end
+	return rel
+end
 
 --- Resolve the diff base for a local review scope.
 ---   "base"        → merge-base with the base branch (the whole branch diff)
@@ -142,6 +192,12 @@ M.SCOPES = { "base", "unpushed", "uncommitted" }
 ---   "uncommitted" → HEAD (only staged + unstaged working-tree changes), or
 ---                   the empty tree when the repo has no commits yet (so a
 ---                   fresh repo of agent work is still reviewable)
+---   "commit"      → the parent SHA of `commit_sha` (that single commit's
+---                   diff), or the empty tree for a true root commit; nil when
+---                   the parent is recorded but unreachable (shallow clone).
+---                   The caller checks `commit_sha` out, so the working tree is
+---                   its snapshot and `git diff <parent>` yields exactly that
+---                   commit.
 --- `diff_base` is the ref passed to `git diff` (used for the changed-files
 --- list and per-file patches); `content_ref` is the ref passed to `git show`
 --- for the side-by-side preview's base pane. Every scope returns the same ref
@@ -150,20 +206,43 @@ M.SCOPES = { "base", "unpushed", "uncommitted" }
 --- moves on (the same three-dot semantics the GitHub flow gets from
 --- `state.merge_base_sha`). Returns nil when the scope is not available
 --- (no base branch / no upstream / no commits).
---- @param scope string "base"|"unpushed"|"uncommitted"
+--- @param scope string "base"|"unpushed"|"uncommitted"|"commit"
 --- @param base_ref string|nil the session's base branch
 --- @param cwd string|nil repo root (for upstream resolution)
+--- @param commit_sha string|nil target commit (required for the "commit" scope)
 --- @return string|nil diff_base, string|nil content_ref
-function M.resolve_scope_base(scope, base_ref, cwd)
+function M.resolve_scope_base(scope, base_ref, cwd, commit_sha)
 	local diff_mod = require("fude.diff")
+	if scope == "commit" then
+		if not commit_sha then
+			return nil, nil
+		end
+		local parent, status = diff_mod.get_parent(commit_sha, cwd)
+		if parent then
+			return parent, parent
+		end
+		if status ~= "root" then
+			-- A recorded but unreachable parent (shallow clone boundary) or a
+			-- git failure: diffing against the empty tree would show the whole
+			-- tree as added, so refuse instead.
+			return nil, nil
+		end
+		-- Root commit: everything in it is an addition. The empty-tree hash
+		-- depends on the repo's object format, so compute it in the worktree.
+		local empty = diff_mod.get_empty_tree(cwd)
+		if not empty then
+			return nil, nil
+		end
+		return empty, empty
+	end
 	if scope == "uncommitted" then
-		if diff_mod.get_head_sha() then
+		if diff_mod.get_head_sha(cwd) then
 			-- Literal HEAD so the view always reflects the current commit, even
 			-- after the user commits mid-session.
 			return "HEAD", "HEAD"
 		end
 		-- Zero-commit repo: diff against the empty tree (all files show as added).
-		local empty = diff_mod.get_empty_tree()
+		local empty = diff_mod.get_empty_tree(cwd)
 		if not empty then
 			return nil, nil
 		end
@@ -181,19 +260,93 @@ function M.resolve_scope_base(scope, base_ref, cwd)
 	if not base_ref then
 		return nil, nil
 	end
-	local merge_base = diff_mod.get_merge_base(base_ref)
+	-- In the worktree, like every other git call here: after a `:cd` out of it
+	-- the cwd-based lookup fails and a commit → base switch could not complete.
+	local merge_base = diff_mod.get_merge_base(base_ref, cwd)
 	if not merge_base then
 		return nil, nil
 	end
 	return merge_base, merge_base
 end
 
+--- Build the commit-scope specs from a commit list (pure).
+--- @param commits table[] { sha, short_sha, subject } oldest first
+--- @return table[] specs { { scope = "commit", commit_sha, commit_index, label } }
+function M.build_commit_specs(commits)
+	local specs = {}
+	local total = #(commits or {})
+	for i, c in ipairs(commits or {}) do
+		table.insert(specs, {
+			scope = "commit",
+			commit_sha = c.sha,
+			commit_index = i,
+			label = string.format("Commit [%d/%d] %s %s", i, total, c.short_sha, c.subject),
+		})
+	end
+	return specs
+end
+
+--- Newest commits kept when the commit list has no range to bound it.
+M.COMMIT_LIST_LIMIT = 100
+
+--- Decide what the commit list is measured against (pure).
+--- On a feature branch it is the base branch. On the base branch itself (or
+--- with no base at all) the branch diff is empty, but the branch may still
+--- hold unpushed commits, so the upstream takes over; with neither, every
+--- commit of the branch is listed (a remote-less fresh repo), which is the
+--- only path on which a root commit — and so the empty-tree diff base — can
+--- appear in the picker.
+--- @param base_ref string|nil the session's base branch
+--- @param branch string|nil the reviewed branch
+--- @param upstream string|nil the branch's `@{upstream}` ref
+--- @return string|nil range_base ref to exclude; nil = list everything (capped
+--- at `COMMIT_LIST_LIMIT` newest commits by `refresh_commits`)
+function M.resolve_commit_range_base(base_ref, branch, upstream)
+	if base_ref and branch ~= base_ref then
+		return base_ref
+	end
+	return upstream
+end
+
+--- Re-read the session's commit list (oldest first; see
+--- `resolve_commit_range_base` for the range) and cache it on the session.
+--- Cached because `scope_specs` runs on every side panel render (BufEnter
+--- included) and `git log` is too heavy for that path. The tip is the branch
+--- name, not HEAD, so the list stays put while the commit scope has a commit
+--- checked out — and while it does, the cached list is kept as-is: HEAD is
+--- detached, so `@{upstream}` does not resolve and the branch cannot gain
+--- commits anyway.
+--- @param session table the active local session
+--- @return table[] commits
+function M.refresh_commits(session)
+	local diff_mod = require("fude.diff")
+	if not session then
+		return {}
+	end
+	if not session.branch then
+		session.commits = {}
+		return session.commits
+	end
+	if M.is_commit_scope(session) then
+		return session.commits or {}
+	end
+	local root = session.worktree_root
+	local range_base = M.resolve_commit_range_base(session.base_ref, session.branch, diff_mod.get_upstream_ref(root))
+	-- Unbounded range (no base, no upstream): a long-lived remote-less repo
+	-- would otherwise pour its whole history into the side panel, which
+	-- re-renders scope_specs on every BufEnter.
+	local limit = (range_base == nil) and M.COMMIT_LIST_LIMIT or nil
+	session.commits = diff_mod.get_commit_log(range_base, session.branch, root, limit)
+	return session.commits
+end
+
 --- Build the list of scopes available for the current git state, with labels,
 --- for the side-panel / picker. `base` is offered only on a branch that
 --- differs from its base ref; `unpushed` only when the branch has an upstream;
---- `uncommitted` always. The current scope is flagged.
+--- `uncommitted` always; one `commit` entry per commit on the branch. The
+--- current scope is flagged (commits by SHA, since they share a scope name).
 --- @param session table the active local session
---- @return table[] specs { { scope, label, is_current } }
+--- @return table[] specs { { scope, label, is_current, commit_sha?, commit_index? } }
 function M.scope_specs(session)
 	local diff_mod = require("fude.diff")
 	local root = session.worktree_root
@@ -201,13 +354,19 @@ function M.scope_specs(session)
 	if session.base_ref and session.branch ~= session.base_ref then
 		table.insert(specs, { scope = "base", label = string.format("Base branch (%s)", session.base_ref) })
 	end
-	local upstream = diff_mod.get_upstream_ref(root)
+	-- While a commit is checked out HEAD is detached and a bare `@{upstream}`
+	-- resolves to nothing, so ask for the branch's upstream explicitly — the
+	-- unpushed entry must stay available as a way back.
+	local upstream = diff_mod.get_upstream_ref(root, session.original_branch)
 	if upstream then
 		table.insert(specs, { scope = "unpushed", label = string.format("Unpushed (%s)", upstream) })
 	end
 	table.insert(specs, { scope = "uncommitted", label = "Uncommitted (staged + unstaged)" })
+	for _, s in ipairs(M.build_commit_specs(session.commits)) do
+		table.insert(specs, s)
+	end
 	for _, s in ipairs(specs) do
-		s.is_current = s.scope == session.scope
+		s.is_current = s.scope == session.scope and (s.scope ~= "commit" or s.commit_sha == session.scope_commit_sha)
 	end
 	return specs
 end
@@ -223,11 +382,322 @@ local function load_changed_files_into_state(state)
 	end
 	-- Pass the worktree root as cwd so git paths resolve regardless of nvim's cwd.
 	local root = session.worktree_root
-	state.changed_files = M.build_changed_files(
-		diff_mod.get_name_status(base_sha, root),
-		diff_mod.get_numstat(base_sha, root),
-		diff_mod.get_untracked(root)
+	-- The commit scope checks the commit out, so the working tree *is* the
+	-- commit's snapshot: untracked files are leftovers from the user's branch,
+	-- not part of the commit under review.
+	local untracked = (session.scope ~= "commit") and diff_mod.get_untracked(root) or nil
+	state.changed_files =
+		M.build_changed_files(diff_mod.get_name_status(base_sha, root), diff_mod.get_numstat(base_sha, root), untracked)
+end
+
+--- Loaded normal file buffers owned by the worktree at `root` — not by a
+--- worktree nested inside it (e.g. `.claude/worktrees/x`), whose files a plain
+--- prefix test would claim. Ownership is the deepest worktree root containing
+--- the file (`stack.find_owning_root`), over every worktree git knows about.
+--- @param root string worktree root
+--- @return integer[] bufs
+local function file_buffers_under(root)
+	local stack = require("fude.stack")
+	local resolved_root = vim.fn.resolve(root)
+	local roots = { resolved_root }
+	-- Listed from the session's root, not Neovim's cwd (the user may have
+	-- `:cd`ed away), and including detached worktrees: a nested worktree owns
+	-- its files whether or not it has a branch checked out.
+	for _, path in ipairs(require("fude.diff").get_worktree_roots(root) or {}) do
+		local resolved = vim.fn.resolve(path)
+		if resolved ~= resolved_root then
+			table.insert(roots, resolved)
+		end
+	end
+	local bufs = {}
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		local name = vim.api.nvim_buf_get_name(buf)
+		if
+			vim.api.nvim_buf_is_loaded(buf)
+			and vim.bo[buf].buftype == ""
+			and name ~= ""
+			and stack.find_owning_root(vim.fn.resolve(name), roots) == resolved_root
+		then
+			table.insert(bufs, buf)
+		end
+	end
+	return bufs
+end
+
+--- Reload the worktree's file buffers after HEAD moved under them.
+--- `:checktime` would prompt without 'autoread', so re-edit explicitly. Only
+--- unmodified buffers are touched, and the commit scope requires a clean
+--- working tree, so nothing unsaved can be lost here. A file absent from the
+--- checked-out commit reloads as an empty buffer (`edit!` on a missing file).
+--- @param root string worktree root
+local function reload_open_buffers(root)
+	for _, buf in ipairs(file_buffers_under(root)) do
+		if not vim.bo[buf].modified then
+			vim.api.nvim_buf_call(buf, function()
+				pcall(vim.cmd, "silent! edit!")
+			end)
+		end
+	end
+end
+
+--- 1-based position of a commit in the session's cached commit list.
+--- @param session table the active local session
+--- @param sha string|nil commit SHA
+--- @return number|nil index
+local function commit_index_of(session, sha)
+	for i, c in ipairs(session.commits or {}) do
+		if c.sha == sha then
+			return i
+		end
+	end
+	return nil
+end
+
+--- Whether a loaded file buffer under `root` has unsaved changes. `git status`
+--- cannot see those, yet `reload_open_buffers` has to skip them, so after a
+--- checkout they would keep showing content that belongs to neither commit and
+--- would be written onto whatever is checked out when the user saves.
+--- @param root string worktree root
+--- @return boolean
+local function has_unsaved_buffers_under(root)
+	for _, buf in ipairs(file_buffers_under(root)) do
+		if vim.bo[buf].modified then
+			return true
+		end
+	end
+	return false
+end
+
+--- Why the working tree is not clean enough to move HEAD, or nil when it is.
+--- Checked before *every* checkout, not only the first: edits made while a
+--- commit is checked out would otherwise be carried onto the next commit (or
+--- make the checkout fail halfway).
+--- @param root string worktree root
+--- @param expected_head string|nil the commit the scope checked out; when HEAD
+--- no longer is that commit the user committed on the detached HEAD, and a
+--- checkout away from it would make that commit unreachable (reflog only)
+--- @param target string|nil the ref about to be checked out; untracked files
+--- it tracks would make `git checkout` refuse ("would be overwritten"), so
+--- they block too — other untracked files are carried across and do not
+--- @return string|nil reason
+local function checkout_blocker(root, expected_head, target)
+	-- Comment input is checked first: the commit scope's teardown wipes those
+	-- buffers, so unsent text would be lost without a word.
+	if require("fude.ui").has_unsent_comment_input() then
+		return "an unsent comment — submit or close it first"
+	end
+	if has_unsaved_buffers_under(root) then
+		return "unsaved buffers — save or discard them first"
+	end
+	local diff_mod = require("fude.diff")
+	if diff_mod.is_worktree_dirty(root) then
+		-- Not "commit": committing on the detached HEAD would only trade this
+		-- blocker for the one below.
+		return "uncommitted changes — stash or discard them first"
+	end
+	if target then
+		local conflicts, err = diff_mod.get_untracked_conflicts(target, root)
+		if not conflicts then
+			return "cannot check for untracked files in the way: " .. (err or "?")
+		end
+		if #conflicts > 0 then
+			local shown = vim.list_slice(conflicts, 1, 3)
+			return string.format(
+				"untracked files that %s tracks would be overwritten (%s%s) — move or remove them first",
+				target:sub(1, 7),
+				table.concat(shown, ", "),
+				#conflicts > #shown and ", …" or ""
+			)
+		end
+	end
+	if expected_head then
+		local head = diff_mod.get_head_sha(root)
+		-- A HEAD that moved is only a problem while no branch holds it: once
+		-- the user ran `git branch <name>` the commit survives the checkout.
+		if head ~= expected_head and not (head and diff_mod.is_reachable_from_branch(head, root)) then
+			local short = head and head:sub(1, 7) or "?"
+			return string.format(
+				"HEAD moved off the reviewed commit to %s — save it with `git branch <name> %s` first, then switch again",
+				short,
+				short
+			)
+		end
+	end
+	return nil
+end
+
+--- Rewrite the pointer to a non-commit state, or remove it when the write
+--- fails. A pointer that still says `scope = "commit"` with a SHA after HEAD
+--- is back on the branch is worse than no pointer: a later deliberate detach
+--- onto that SHA would be taken for a crash and checked out from under the
+--- user. Losing the pointer only costs the next start a resume.
+--- @param session table the active local session
+--- @param overrides table|nil passed to `persist_current`
+local function persist_non_commit_or_clear(session, overrides)
+	if M.persist_current(session, overrides) then
+		return
+	end
+	local cleared, err = store.clear_current(session.worktree_root, session.branch)
+	if cleared then
+		vim.notify(
+			"fude.nvim: Could not update .fude/current.json; removed the pointer so no stale commit-scope entry is left",
+			vim.log.levels.WARN
+		)
+		return
+	end
+	-- Both the rewrite and the removal failed (the same write, typically), so
+	-- the stale entry is still there: say so and how to get rid of it.
+	vim.notify(
+		string.format(
+			"fude.nvim: Could not update or remove .fude/current.json (%s). A stale commit-scope entry remains — "
+				.. "delete the `%s` entry (or the file) by hand, or the next start on this commit will treat it as a crash",
+			err or "?",
+			session.branch or "__detached__"
+		),
+		vim.log.levels.ERROR
 	)
+end
+
+--- Return the working tree to the branch saved on entering the commit scope.
+--- A no-op success when no checkout is outstanding, so every scope switch and
+--- `stop()` can call it unconditionally. Like entering, it refuses while the
+--- tree is not clean (`checkout_blocker`): unsaved buffers cannot be carried
+--- back by git and `reload_open_buffers` skips them, so they would keep the
+--- past commit's content and overwrite the branch on the next save. Only
+--- `VimLeavePre` forces the restore — there the alternative is leaving the
+--- user on a detached HEAD — and warns about what it carried back.
+--- @param session table the active local session
+--- @param opts table|nil { reload_buffers = boolean, force = boolean }
+--- reload_buffers default true (false on VimLeavePre, where re-reading every
+--- buffer only slows the exit); force = true restores despite a dirty tree —
+--- never despite a HEAD that moved off the commit, since that checkout would
+--- orphan the user's new commit, and a detached HEAD on their own commit is
+--- the state they chose
+--- @return boolean ok
+local function restore_head(session, opts)
+	local target = session.original_branch
+	if not target then
+		return true
+	end
+	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha, target)
+	if blocker then
+		-- Some blockers are never forced over, not even on quit: a moved HEAD
+		-- that no branch holds (the checkout would orphan the user's commit),
+		-- a HEAD that cannot be read at all (it might be such a commit), and
+		-- untracked files the branch tracks (git refuses the checkout anyway,
+		-- so forcing would only hide the reason).
+		local diff_mod = require("fude.diff")
+		local head = session.scope_commit_sha ~= nil and diff_mod.get_head_sha(session.worktree_root) or nil
+		local head_unknown = session.scope_commit_sha ~= nil and head == nil
+		local head_orphaned = head ~= nil
+			and head ~= session.scope_commit_sha
+			and not diff_mod.is_reachable_from_branch(head, session.worktree_root)
+		local in_the_way = blocker:find("would be overwritten", 1, true) ~= nil
+			or blocker:find("cannot check for untracked", 1, true) ~= nil
+		if head_unknown or head_orphaned or in_the_way or not (opts and opts.force) then
+			vim.notify("fude.nvim: Cannot leave the commit scope yet: " .. blocker, vim.log.levels.WARN)
+			return false
+		end
+		vim.notify(
+			string.format("fude.nvim: Working tree changed in the commit scope (%s); carrying it back to %s", blocker, target),
+			vim.log.levels.WARN
+		)
+	end
+	-- `target` is a branch name unless the session started detached (then it
+	-- is the SHA HEAD was on); a branch restore must land *on the branch*.
+	local ok, err = require("fude.diff").checkout(target, session.worktree_root, { branch = session.branch ~= nil })
+	if not ok then
+		vim.notify("fude.nvim: Failed to return to " .. target .. ": " .. (err or "?"), vim.log.levels.ERROR)
+		return false
+	end
+	if err then
+		vim.notify("fude.nvim: " .. err, vim.log.levels.WARN) -- a hook failed; HEAD did move
+	end
+	session.original_branch = nil
+	session.scope_commit_sha = nil
+	session.scope_commit_index = nil
+	-- The pointer must stop describing a commit scope now that HEAD is back:
+	-- left as-is after a VimLeavePre restore, a later deliberate detach onto
+	-- the same SHA would be mistaken for a crash by find_stranded_commit_session.
+	-- apply_scope (scope switch) or clear_current (stop) rewrite it right after.
+	persist_non_commit_or_clear(session, { scope = session.scope_before_commit or "uncommitted" })
+	session.scope_before_commit = nil
+	if not (opts and opts.reload_buffers == false) then
+		reload_open_buffers(session.worktree_root)
+	end
+	return true
+end
+
+--- Check `sha` out so the working tree becomes that commit's snapshot, which is
+--- what makes `git diff <sha>^` the commit's own diff. Refuses on a dirty tree
+--- or unsaved buffers (see `checkout_blocker`): the checkout would either fail
+--- or carry the user's edits onto the commit.
+--- @param session table the active local session
+--- @param sha string commit SHA
+--- @return boolean ok
+local function enter_commit_scope(session, sha)
+	local diff_mod = require("fude.diff")
+	-- On a commit-to-commit switch HEAD must still be the reviewed commit.
+	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha, sha)
+	if blocker then
+		vim.notify("fude.nvim: Commit scope needs a clean working tree: " .. blocker, vim.log.levels.WARN)
+		return false
+	end
+	-- Decide where to return to, but record it on the session only once the
+	-- checkout succeeded: a leftover original_branch after a failed first
+	-- checkout would make every later restore_head run a pointless checkout
+	-- that can itself fail and then block stop().
+	local return_to = session.original_branch or session.branch or diff_mod.get_head_sha(session.worktree_root)
+	if not return_to then
+		vim.notify("fude.nvim: Cannot determine where to return to", vim.log.levels.ERROR)
+		return false
+	end
+	-- Persist the destination *before* the checkout. Should Neovim die between
+	-- the checkout and the regular persist in apply_scope, the pointer would
+	-- still say the old scope and the next start() could not recognise the
+	-- detached HEAD as ours (store.find_stranded_commit_session matches on
+	-- scope_commit_sha). When even that write fails there is no recovery
+	-- information to leave behind, so HEAD stays put. A failed checkout
+	-- rewrites the previous state.
+	if
+		not M.persist_current(session, {
+			scope = "commit",
+			scope_commit_sha = sha,
+			original_branch = return_to,
+			-- On a commit-to-commit switch HEAD stays on the previous commit
+			-- until the checkout lands; a crash in between must match that too.
+			pending_from_sha = session.scope_commit_sha,
+		})
+	then
+		vim.notify(
+			"fude.nvim: Commit scope not entered — the recovery pointer could not be written",
+			vim.log.levels.ERROR
+		)
+		return false
+	end
+	-- detach: the first commit of the range can equal the branch tip, and
+	-- only a detached HEAD makes the checkout verifiable there.
+	local ok, err = diff_mod.checkout(sha, session.worktree_root, { detach = true })
+	if not ok then
+		-- Roll the pending pointer back; HEAD never moved (diff.checkout
+		-- verifies that — a failed hook after a completed checkout is reported
+		-- as ok plus a warning), so a pointer that still names the commit must
+		-- not survive either.
+		persist_non_commit_or_clear(session)
+		vim.notify("fude.nvim: Failed to check out " .. sha:sub(1, 7) .. ": " .. (err or "?"), vim.log.levels.ERROR)
+		return false
+	end
+	if err then
+		vim.notify("fude.nvim: " .. err, vim.log.levels.WARN)
+	end
+	if not session.original_branch then
+		-- First entry: remember the scope to write back to the pointer when the
+		-- branch is restored (commit-to-commit switches keep it).
+		session.scope_before_commit = session.scope
+	end
+	session.original_branch = return_to
+	reload_open_buffers(session.worktree_root)
+	return true
 end
 
 --- Stop the auto-reload timer if running.
@@ -264,7 +734,11 @@ end
 --- Write the current-session pointer (`.fude/current.json`) from a session
 --- table. Persists `scope` so a resume restores it.
 --- @param session table the active local session
-function M.persist_current(session)
+--- @param overrides table|nil { scope, scope_commit_sha, original_branch } written
+--- in place of the session's values — `enter_commit_scope` records the pending
+--- checkout this way before HEAD moves
+function M.persist_current(session, overrides)
+	overrides = overrides or {}
 	local ok, err = store.write_current(session.worktree_root, session.branch, {
 		id = session.id,
 		base_ref = session.base_ref,
@@ -273,7 +747,14 @@ function M.persist_current(session)
 		branch = session.branch,
 		worktree_root = session.worktree_root,
 		created_at = session.created_at,
-		scope = session.scope,
+		scope = overrides.scope or session.scope,
+		-- Commit scope only: lets `start()` recognise a HEAD left detached by a
+		-- crash and return to the branch (`store.find_stranded_commit_session`).
+		scope_commit_sha = overrides.scope_commit_sha or session.scope_commit_sha,
+		original_branch = overrides.original_branch or session.original_branch,
+		-- Only while a commit-to-commit checkout is pending: the commit HEAD is
+		-- still on, so a crash before the checkout lands is recognised too.
+		pending_from_sha = overrides.pending_from_sha,
 	})
 	if not ok then
 		-- Surface the failure: without the pointer the session can't be resumed.
@@ -308,9 +789,79 @@ function M.start(base_arg)
 		return
 	end
 
-	local head_sha = diff_mod.get_head_sha()
+	local head_sha = diff_mod.get_head_sha(repo_root)
 	local branch = diff_mod.get_current_branch()
 	local now = os.time()
+
+	-- A detached HEAD sitting exactly on a commit a previous commit-scope
+	-- session checked out means that session never got to restore the branch
+	-- (crash, kill). Its pointer is keyed by the branch, which the detached
+	-- lookup below would miss, so return to the branch first and resume from
+	-- there. Any other detached HEAD is the user's own and is left alone.
+	if not branch then
+		local stranded, candidates = store.read_stranded_commit_session(repo_root, head_sha)
+		if not stranded and #candidates > 1 then
+			-- Several sessions name this commit; checking out the first would
+			-- be a guess with the user's branch at stake.
+			local branches = vim.tbl_map(function(c)
+				return c.original_branch
+			end, candidates)
+			vim.notify(
+				string.format(
+					"fude.nvim: HEAD is detached on a commit that %d commit-scope reviews left behind (%s). "
+						.. "Run `git checkout <branch>` for the one you mean before starting",
+					#candidates,
+					table.concat(branches, ", ")
+				),
+				vim.log.levels.ERROR
+			)
+			return
+		end
+		if stranded then
+			local blocker = checkout_blocker(repo_root, nil, stranded.original_branch)
+			if blocker then
+				vim.notify(
+					string.format(
+						"fude.nvim: HEAD is detached by an earlier commit-scope review of %s, but the tree has %s. "
+							.. "Clean it up and run `git checkout %s` before starting",
+						stranded.original_branch,
+						blocker,
+						stranded.original_branch
+					),
+					vim.log.levels.ERROR
+				)
+				return
+			end
+			local return_to = stranded.original_branch
+			local ok, err = diff_mod.checkout(return_to, repo_root, { branch = stranded.branch ~= nil })
+			if not ok then
+				vim.notify("fude.nvim: Failed to return to " .. return_to .. ": " .. (err or "?"), vim.log.levels.ERROR)
+				return
+			end
+			if err then
+				vim.notify("fude.nvim: " .. err, vim.log.levels.WARN)
+			end
+			-- HEAD is back on the branch: stop the pointer from describing a
+			-- commit scope *now*, before buffers are reloaded and the rest of
+			-- start() runs — should Neovim die in between, a later deliberate
+			-- detach onto that SHA must not be taken for this crash again.
+			-- With no scope recorded the resume below picks the default one.
+			stranded.scope = nil
+			stranded.scope_commit_sha = nil
+			stranded.original_branch = nil
+			persist_non_commit_or_clear(stranded)
+			reload_open_buffers(repo_root)
+			head_sha = diff_mod.get_head_sha(repo_root)
+			-- The branch is known from the pointer: re-detecting it runs git in
+			-- Neovim's cwd, which the checkout may just have deleted, and a nil
+			-- here would resume a fresh `__detached__` session instead of this one.
+			branch = diff_mod.get_current_branch() or stranded.branch
+			vim.notify(
+				"fude.nvim: Returned to " .. return_to .. " left detached by an earlier commit-scope review",
+				vim.log.levels.INFO
+			)
+		end
+	end
 
 	-- Resume the session for THIS branch only (current.json is keyed by branch),
 	-- so reviewing several branches in the same worktree does not collide.
@@ -346,6 +897,11 @@ function M.start(base_arg)
 	-- back to reviewing the uncommitted working-tree changes.
 	local on_base_branch = branch ~= nil and branch == base_ref
 	local initial_scope = (existing and existing.scope)
+	-- Never resume into the commit scope: it means HEAD was left detached by a
+	-- crash, or the pointer outlived the checkout. Both need a branch first.
+	if initial_scope == "commit" then
+		initial_scope = nil
+	end
 	local no_base_fallback = false
 	if not initial_scope then
 		if base_ref and not on_base_branch then
@@ -409,6 +965,13 @@ function M.start(base_arg)
 	session.scope = initial_scope
 	session.base_sha = base_sha
 	session.content_ref = content_ref
+	-- A resumed pointer may carry the commit-scope fields of the session it
+	-- was persisted from. HEAD is on a branch at this point (natively, or after
+	-- the stranded-HEAD restore above), so none of them describe the present:
+	-- a stale original_branch would make a later restore_head check out again.
+	session.scope_commit_sha = nil
+	session.scope_commit_index = nil
+	session.original_branch = nil
 
 	-- Persist the current-session pointer (including scope, so a resume keeps
 	-- the chosen scope instead of reverting to base).
@@ -430,6 +993,7 @@ function M.start(base_arg)
 		)
 	end
 
+	M.refresh_commits(session)
 	load_changed_files_into_state(state)
 	require("fude.comments.local_sync").load_comments(nil, { silent = true })
 
@@ -463,13 +1027,29 @@ function M.start(base_arg)
 				if not vim.api.nvim_buf_is_valid(bufnr) or vim.bo[bufnr].buftype ~= "" then
 					return
 				end
-				local rel_path = require("fude.diff").to_repo_relative(vim.api.nvim_buf_get_name(bufnr))
+				-- Worktree-root based like sync_all, so a buffer opened after a
+				-- `:cd` out of the worktree still gets its tracking marks.
+				local rel_path = M.relative_path(vim.api.nvim_buf_get_name(bufnr))
 				if rel_path then
 					tracker.sync_buffer(bufnr, rel_path)
 				end
 			end)
 		end,
 		desc = "fude.nvim: Track local review comments in opened buffers",
+	})
+	vim.api.nvim_create_autocmd("VimLeavePre", {
+		group = state.augroup,
+		callback = function()
+			-- Quitting without :FudeReviewLocalStop must not strand the user on
+			-- the detached HEAD the commit scope creates.
+			local active_session = config.state.local_session
+			if active_session then
+				-- force: a dirty tree is the lesser evil than a detached HEAD
+				-- the user did not ask for.
+				restore_head(active_session, { reload_buffers = false, force = true })
+			end
+		end,
+		desc = "fude.nvim: Return to the branch before quitting",
 	})
 	tracker.sync_all()
 
@@ -496,6 +1076,18 @@ function M.stop()
 		return
 	end
 
+	local session = state.local_session
+	-- Leave the user on their branch, never on the detached HEAD the commit
+	-- scope created. This goes first and aborts the stop when it fails (a
+	-- conflicting edit saved in the commit scope, say): tearing down anyway
+	-- would drop `original_branch` and `current.json`, leaving no way back
+	-- from inside the plugin — the same rule `init.stop()` applies to a failed
+	-- HEAD restore.
+	if session and not restore_head(session) then
+		vim.notify("fude.nvim: Local review kept running — fix the checkout and stop again", vim.log.levels.ERROR)
+		return
+	end
+
 	stop_reload_timer()
 
 	if state.augroup then
@@ -518,12 +1110,30 @@ function M.stop()
 		vim.o.diffopt = state.original_diffopt
 	end
 
-	local session = state.local_session
+	local pointer_err
 	if session and session.worktree_root then
-		store.clear_current(session.worktree_root, session.branch)
+		local cleared, err = store.clear_current(session.worktree_root, session.branch)
+		if not cleared then
+			pointer_err = err or "?"
+		end
 	end
 
 	config.reset_state()
+	if pointer_err then
+		-- The session is torn down either way (the user asked for that), but
+		-- it must not read as a clean stop: the pointer still names this
+		-- session, so the next start on this branch resumes it.
+		vim.notify(
+			string.format(
+				"fude.nvim: Local review stopped, but .fude/current.json could not be updated (%s) — "
+					.. "the next :FudeReviewLocal on this branch will resume this session unless the `%s` entry is removed by hand",
+				pointer_err,
+				(session and session.branch) or "__detached__"
+			),
+			vim.log.levels.WARN
+		)
+		return
+	end
 	vim.notify("fude.nvim: Local review stopped", vim.log.levels.INFO)
 end
 
@@ -561,6 +1171,7 @@ function M.reload(silent)
 	state.reloading = true
 
 	local ok, err = pcall(function()
+		M.refresh_commits(state.local_session)
 		load_changed_files_into_state(state)
 		require("fude.comments.local_sync").load_comments(nil, { silent = true })
 		require("fude.ui.sidepanel").refresh()
@@ -576,39 +1187,19 @@ function M.reload(silent)
 	end
 end
 
---- Switch the local review scope and refresh everything derived from the diff
---- base (changed files, per-file patches, gitsigns base, side-by-side preview).
---- Comments are unaffected — they anchor to the working tree, which does not
---- change with the scope.
---- @param scope string "base"|"unpushed"|"uncommitted"
---- @return boolean changed true when the scope was actually switched
-function M.set_scope(scope)
-	local state = config.state
-	if not state.active or state.review_mode ~= "local" then
-		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
-		return false
-	end
-	if not vim.tbl_contains(M.SCOPES, scope) then
-		vim.notify("fude.nvim: Unknown local scope: " .. tostring(scope), vim.log.levels.WARN)
-		return false
-	end
-	local session = state.local_session
-	if session.scope == scope then
-		return false
-	end
-
-	local diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root)
-	if not diff_base then
-		-- Scope unavailable for the current git state (no base branch / no
-		-- upstream). Explain rather than silently failing.
-		local why = (scope == "base") and "no base branch for this session"
-			or (scope == "unpushed") and "this branch has no upstream (nothing pushed)"
-			or ("cannot resolve base for " .. scope)
-		vim.notify("fude.nvim: Cannot switch to " .. scope .. " scope — " .. why, vim.log.levels.WARN)
-		return false
-	end
-
+--- Record a resolved scope on the session and refresh everything derived from
+--- the diff base: changed files, comments, side panel, gitsigns base and the
+--- side-by-side preview. HEAD must already be where the scope expects it.
+--- @param state table config.state
+--- @param session table the active local session
+--- @param scope string the new scope
+--- @param commit_sha string|nil the commit for the commit scope
+--- @param diff_base string resolved `git diff` base
+--- @param content_ref string resolved `git show` ref
+local function apply_scope(state, session, scope, commit_sha, diff_base, content_ref)
 	session.scope = scope
+	session.scope_commit_sha = (scope == "commit") and commit_sha or nil
+	session.scope_commit_index = (scope == "commit") and commit_index_of(session, commit_sha) or nil
 	session.base_sha = diff_base
 	session.content_ref = content_ref
 	state.merge_base_sha = diff_base
@@ -616,6 +1207,10 @@ function M.set_scope(scope)
 
 	load_changed_files_into_state(state)
 	require("fude.comments.local_sync").load_comments(nil, { silent = true })
+	-- load_comments refreshes the current buffer only; a scope switch changes
+	-- what every visible buffer should show (nothing in the commit scope, the
+	-- comments again after it), so bring the other windows up to date too.
+	require("fude.ui").refresh_visible_extmarks()
 	require("fude.ui.sidepanel").refresh()
 
 	-- Re-apply gitsigns base (local mode uses the full_pr code path with
@@ -628,8 +1223,115 @@ function M.set_scope(scope)
 	state.gitsigns_reset = false
 	require("fude").restore_gitsigns_base()
 	require("fude.scope").refresh_preview()
+end
 
-	vim.notify("fude.nvim: Local scope → " .. scope, vim.log.levels.INFO)
+--- Switch the local review scope and refresh everything derived from the diff
+--- base (changed files, per-file patches, gitsigns base, side-by-side preview).
+---
+--- For `base` / `unpushed` / `uncommitted` the comments are unaffected — they
+--- anchor to the working tree, which does not change with the scope. The
+--- `commit` scope checks the commit out instead (see `restore_head`), so the
+--- comment layer is disabled while it is active.
+--- @param scope string "base"|"unpushed"|"uncommitted"|"commit"
+--- @param opts table|nil { commit_sha = string } required for the commit scope
+--- @return boolean changed true when the scope was actually switched
+function M.set_scope(scope, opts)
+	local state = config.state
+	if not state.active or state.review_mode ~= "local" then
+		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
+		return false
+	end
+	if not vim.tbl_contains(M.SCOPES, scope) then
+		vim.notify("fude.nvim: Unknown local scope: " .. tostring(scope), vim.log.levels.WARN)
+		return false
+	end
+	local session = state.local_session
+	local commit_sha = opts and opts.commit_sha or nil
+	if scope == "commit" then
+		if not commit_sha then
+			vim.notify("fude.nvim: Commit scope needs a commit", vim.log.levels.WARN)
+			return false
+		end
+		if session.scope == "commit" and session.scope_commit_sha == commit_sha then
+			return false
+		end
+	elseif session.scope == scope then
+		return false
+	end
+
+	-- Order of "move HEAD" vs "resolve the base" differs by direction:
+	--   into a commit — the base (`<sha>^` / empty tree) needs no checkout, so
+	--     resolve first and move HEAD only once it is known to succeed; a
+	--     failure then leaves HEAD and the session exactly as they were.
+	--   out of a commit — `unpushed` reads `@{upstream}`, which does not resolve
+	--     while HEAD is detached, so the branch has to be put back first and a
+	--     failed resolve re-enters the commit below.
+	local previous_commit = session.scope_commit_sha
+	-- restore_head clears this; a re-entry below must not record "commit" as
+	-- the scope to return the pointer to.
+	local previous_scope_before_commit = session.scope_before_commit
+	local diff_base, content_ref
+	if scope == "commit" then
+		diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root, commit_sha)
+		if not diff_base then
+			vim.notify(
+				"fude.nvim: Cannot switch to commit scope — cannot resolve the parent of " .. commit_sha:sub(1, 7),
+				vim.log.levels.WARN
+			)
+			return false
+		end
+		if not enter_commit_scope(session, commit_sha) then
+			return false
+		end
+	else
+		if not restore_head(session) then
+			return false
+		end
+		diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root)
+	end
+
+	if not diff_base then
+		-- Scope unavailable for the current git state (no base branch / no
+		-- upstream). Explain rather than silently failing.
+		local why = (scope == "base") and "no base branch for this session"
+			or (scope == "unpushed") and "this branch has no upstream (nothing pushed)"
+			or ("cannot resolve base for " .. scope)
+		vim.notify("fude.nvim: Cannot switch to " .. scope .. " scope — " .. why, vim.log.levels.WARN)
+		-- The HEAD move already happened, so undo it: the session must keep
+		-- showing the scope it was on, not a branch it no longer describes.
+		if previous_commit and session.scope == "commit" then
+			if enter_commit_scope(session, previous_commit) then
+				session.scope_commit_sha = previous_commit
+				session.scope_commit_index = commit_index_of(session, previous_commit)
+				session.scope_before_commit = previous_scope_before_commit
+			else
+				-- HEAD is back on the branch but the commit cannot be re-entered
+				-- (the second checkout failed). The session must
+				-- not claim a commit scope it no longer shows, so land on the
+				-- always-available uncommitted view of that branch instead.
+				local fallback_base, fallback_ref = M.resolve_scope_base("uncommitted", session.base_ref, session.worktree_root)
+				if fallback_base then
+					apply_scope(state, session, "uncommitted", nil, fallback_base, fallback_ref)
+					vim.notify("fude.nvim: Local scope → uncommitted (could not return to the commit)", vim.log.levels.WARN)
+				end
+			end
+		end
+		return false
+	end
+
+	apply_scope(state, session, scope, commit_sha, diff_base, content_ref)
+
+	if scope == "commit" then
+		vim.notify(
+			string.format(
+				"fude.nvim: Local scope → commit %s (read-only: HEAD is detached, comments are off)",
+				commit_sha:sub(1, 7)
+			),
+			vim.log.levels.INFO
+		)
+	else
+		vim.notify("fude.nvim: Local scope → " .. scope, vim.log.levels.INFO)
+	end
 	return true
 end
 
@@ -641,16 +1343,25 @@ function M.select_scope()
 		return
 	end
 	-- Offer only the scopes available for the current git state.
-	local specs = M.scope_specs(state.local_session)
+	local session = state.local_session
+	local specs = M.scope_specs(session)
 	vim.ui.select(specs, {
 		prompt = "Local review scope:",
 		format_item = function(s)
 			return (s.is_current and "▶ " or "  ") .. s.label
 		end,
 	}, function(choice)
-		if choice then
-			M.set_scope(choice.scope)
+		if not choice then
+			return
 		end
+		-- The picker may outlive the session it was built for (stop → start
+		-- while it is open). Its commit SHAs belong to the old branch; checking
+		-- one out from the new session would review the wrong history.
+		if config.state.local_session ~= session then
+			vim.notify("fude.nvim: The review session changed while the picker was open — pick again", vim.log.levels.WARN)
+			return
+		end
+		M.set_scope(choice.scope, { commit_sha = choice.commit_sha })
 	end)
 end
 
