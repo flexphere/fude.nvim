@@ -1,4 +1,7 @@
 local diff = require("fude.diff")
+-- Loaded up front: some specs below `:cd` into a temp repo, where the
+-- relative package.path cannot find modules that were not required yet.
+local config = require("fude.config")
 
 describe("parse_log_first_subject", function()
 	it("returns first line from single-line output", function()
@@ -327,6 +330,23 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		-- A real branch lands symbolically
 		assert.is_true(diff.checkout("main", repo, { branch = true }))
 		assert.equals("main", diff.head_branch(repo))
+	end)
+
+	it("checkout with detach=true lands detached even when the target is the branch tip", function()
+		local tip = git("rev-parse", "feature") -- HEAD is on feature, at this very commit
+		assert.equals("feature", diff.head_branch(repo))
+		assert.is_true(diff.checkout(tip, repo, { detach = true }))
+		assert.is_nil(diff.head_branch(repo))
+		assert.equals(tip, git("rev-parse", "HEAD"))
+	end)
+
+	it("get_repo_root answers the local session's worktree root regardless of the cwd", function()
+		config.state.review_mode = "local"
+		config.state.local_session = { worktree_root = "/wt/elsewhere" }
+		assert.equals("/wt/elsewhere", diff.get_repo_root())
+		config.state.review_mode = nil
+		config.state.local_session = nil
+		assert.equals(vim.fn.resolve(repo), vim.fn.resolve(diff.get_repo_root()))
 	end)
 
 	it("get_untracked_conflicts lists only untracked files the target tracks", function()
@@ -676,6 +696,17 @@ describe("find_untracked_conflicts", function()
 		)
 		assert.same({}, diff.find_untracked_conflicts({ "scratch" }, { "a.lua" }))
 		assert.same({}, diff.find_untracked_conflicts({}, nil))
+	end)
+
+	it("catches file/directory collisions in both directions", function()
+		-- untracked file where the target has a directory
+		assert.same({ "foo" }, diff.find_untracked_conflicts({ "foo" }, { "foo/bar" }))
+		-- untracked file under a path the target tracks as a file
+		assert.same({ "foo/bar" }, diff.find_untracked_conflicts({ "foo/bar" }, { "foo" }))
+		assert.same({ "a/b/c" }, diff.find_untracked_conflicts({ "a/b/c" }, { "a" }))
+		-- shared prefix is not a collision
+		assert.same({}, diff.find_untracked_conflicts({ "foobar" }, { "foo/bar" }))
+		assert.same({}, diff.find_untracked_conflicts({ "foo/baz" }, { "foo/bar" }))
 	end)
 end)
 

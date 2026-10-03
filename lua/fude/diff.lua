@@ -1,8 +1,16 @@
 local M = {}
 
 --- Get the git repository root directory.
+--- During a local review this is the session's worktree root rather than
+--- whatever `git rev-parse` finds from Neovim's cwd: the commit scope checks
+--- past commits out, which can delete the very directory Neovim sits in, and
+--- a `:cd` elsewhere must not make every file operation silently give up.
 --- @return string|nil
 function M.get_repo_root()
+	local state = require("fude.config").state
+	if state.review_mode == "local" and state.local_session and state.local_session.worktree_root then
+		return state.local_session.worktree_root
+	end
 	local result = vim.system({ "git", "rev-parse", "--show-toplevel" }, { text = true }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)
@@ -219,21 +227,48 @@ function M.head_is(ref, cwd)
 	return M.get_head_sha(cwd) == vim.trim(target.stdout)
 end
 
---- Untracked paths that `ref` tracks (pure): `git checkout ref` refuses to
---- overwrite these ("untracked working tree file would be overwritten"), so
---- they must block a checkout, while every other untracked file is carried
---- across and must not.
+--- Every ancestor directory of a slash-separated path (`a/b/c` → `a`, `a/b`).
+--- @param path string
+--- @return string[]
+local function ancestors_of(path)
+	local dirs = {}
+	local pos = path:find("/", 1, true)
+	while pos do
+		table.insert(dirs, path:sub(1, pos - 1))
+		pos = path:find("/", pos + 1, true)
+	end
+	return dirs
+end
+
+--- Untracked paths that a `git checkout ref` would refuse to overwrite
+--- ("untracked working tree file would be overwritten"), pure. Three shapes
+--- collide: the same path tracked at `ref`; an untracked file where `ref`
+--- has a directory (`foo` vs tracked `foo/bar`); and an untracked file under
+--- a path `ref` tracks as a file (`foo/bar` vs tracked `foo`). Every other
+--- untracked file is carried across and must not block.
 --- @param untracked string[] untracked, non-ignored paths
 --- @param tracked string[] paths tracked at the target ref
 --- @return string[] conflicts sorted
 function M.find_untracked_conflicts(untracked, tracked)
-	local set = {}
+	local tracked_files, tracked_dirs = {}, {}
 	for _, path in ipairs(tracked or {}) do
-		set[path] = true
+		tracked_files[path] = true
+		for _, dir in ipairs(ancestors_of(path)) do
+			tracked_dirs[dir] = true
+		end
 	end
 	local conflicts = {}
 	for _, path in ipairs(untracked or {}) do
-		if set[path] then
+		local hit = tracked_files[path] or tracked_dirs[path]
+		if not hit then
+			for _, dir in ipairs(ancestors_of(path)) do
+				if tracked_files[dir] then
+					hit = true
+					break
+				end
+			end
+		end
+		if hit then
 			table.insert(conflicts, path)
 		end
 	end
@@ -291,9 +326,15 @@ end
 ---     *branch* (`opts.branch`) needs symbolic HEAD on it, not merely the
 ---     same commit, or the "restore" leaves the user detached while the
 ---     recovery information is dropped as if it had succeeded.
+---   - `opts.detach` checks the commit out detached (`--detach`) and requires
+---     HEAD to be detached afterwards. Without it, a target equal to the
+---     current branch tip is indistinguishable from "still on the branch":
+---     a checkout that failed before moving (index lock) would pass the
+---     commit check while the user's next commit lands on the real branch.
 --- @param ref string branch name or commit SHA
 --- @param cwd string|nil repo root
---- @param opts table|nil { branch = boolean } require HEAD to be *on the branch* `ref`
+--- @param opts table|nil { branch = boolean, detach = boolean } require HEAD to be
+--- *on the branch* `ref`, or detached on the commit `ref`
 --- @return boolean ok
 --- @return string|nil err error when `ok` is false, hook warning when true
 function M.checkout(ref, cwd, opts)
@@ -301,9 +342,17 @@ function M.checkout(ref, cwd, opts)
 		if opts and opts.branch then
 			return M.head_branch(cwd) == ref
 		end
+		if opts and opts.detach then
+			return M.head_branch(cwd) == nil and M.head_is(ref, cwd)
+		end
 		return M.head_is(ref, cwd)
 	end
-	local result = vim.system({ "git", "checkout", ref }, { text = true, cwd = cwd }):wait()
+	local cmd = { "git", "checkout" }
+	if opts and opts.detach then
+		table.insert(cmd, "--detach")
+	end
+	table.insert(cmd, ref)
+	local result = vim.system(cmd, { text = true, cwd = cwd }):wait()
 	if result.code ~= 0 then
 		local stderr = vim.trim(result.stderr or "")
 		if landed() then
