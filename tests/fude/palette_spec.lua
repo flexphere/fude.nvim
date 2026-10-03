@@ -391,6 +391,127 @@ describe("palette.open (vim.ui.select)", function()
 		assert.are.equal("<leader>zz", keys.FudeReviewLocal)
 	end)
 
+	it("runs the chosen command through a mocked Telescope picker without a preview pane", function()
+		config.opts.file_list_mode = "telescope"
+		config.state.active = true
+		config.state.review_mode = "github"
+		local theme_opts, picker_opts, selected, confirm, closed
+		helpers.mock(package.loaded, "telescope.themes", {
+			get_dropdown = function(opts)
+				theme_opts = opts
+				return opts
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.pickers", {
+			new = function(_, opts)
+				picker_opts = opts
+				return {
+					find = function()
+						for _, entry in ipairs(opts.finder.results) do
+							if entry.name == "FudeReviewComment" then
+								selected = entry
+							end
+						end
+						opts.attach_mappings(0, function() end)
+					end,
+				}
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.finders", {
+			new_table = function(opts)
+				return opts
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.config", { values = { generic_sorter = function() end } })
+		helpers.mock(package.loaded, "telescope.pickers.entry_display", {
+			create = function()
+				return function() end
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.actions.state", {
+			get_selected_entry = function()
+				return selected
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.actions", {
+			select_default = {
+				replace = function(_, fn)
+					confirm = fn
+				end,
+			},
+			close = function()
+				closed = true
+			end,
+		})
+
+		palette.open({ range = { 3, 5 } })
+		assert.is_false(theme_opts.previewer)
+		assert.are.equal("number", type(theme_opts.layout_config.width))
+		assert.are.equal("number", type(theme_opts.layout_config.height))
+		assert.are.equal("Fude Command Palette", picker_opts.prompt_title)
+		-- entries carry the display/ordinal fields Telescope needs
+		assert.are.equal("function", type(picker_opts.finder.results[1].display))
+		assert.are.equal("string", type(picker_opts.finder.results[1].ordinal))
+		assert.are.same({}, captured)
+
+		confirm()
+		assert.is_true(closed)
+		assert.are.same({ { cmd = "FudeReviewComment", range = { 3, 5 } } }, captured)
+	end)
+
+	it("runs the chosen command through a mocked snacks picker without a preview pane", function()
+		config.opts.file_list_mode = "snacks"
+		config.state.active = true
+		config.state.review_mode = "github"
+		local picker_opts
+		helpers.mock(package.loaded, "snacks.picker", {
+			pick = function(opts)
+				picker_opts = opts
+			end,
+		})
+
+		palette.open()
+		assert.are.equal("Fude Command Palette", picker_opts.title)
+		assert.are.equal("select", picker_opts.layout.preset)
+		assert.is_false(picker_opts.layout.preview)
+		assert.are.equal("number", type(picker_opts.layout.layout.width))
+		assert.are.equal("number", type(picker_opts.layout.layout.height))
+		-- items carry the text snacks matches on, and format returns highlight chunks
+		local item = picker_opts.items[1]
+		assert.are.equal("string", type(item.text))
+		local chunks = picker_opts.format(item, nil)
+		assert.are.equal("table", type(chunks[1]))
+		assert.are.same({}, captured)
+
+		local target
+		for _, it in ipairs(picker_opts.items) do
+			if it.name == "FudeReviewDiff" then
+				target = it
+			end
+		end
+		local closed = false
+		picker_opts.confirm({
+			close = function()
+				closed = true
+			end,
+		}, target)
+		assert.is_true(closed)
+		assert.are.same({ { cmd = "FudeReviewDiff" } }, captured)
+	end)
+
+	it("falls back to vim.ui.select when the configured picker is not installed", function()
+		config.opts.file_list_mode = "telescope"
+		helpers.mock(package.loaded, "telescope.pickers", nil)
+		local notified
+		helpers.mock(vim, "notify", function(msg)
+			notified = msg
+		end)
+		select_named("FudeReviewStart")
+		palette.open()
+		assert.is_truthy(notified and notified:find("falling back to vim.ui.select", 1, true))
+		assert.are.same({ { cmd = "FudeReviewStart" } }, captured)
+	end)
+
 	it("shows the user's own mapping next to the command", function()
 		vim.keymap.set("n", "<leader>zz", "<cmd>FudeReviewStart<cr>")
 		local shown
