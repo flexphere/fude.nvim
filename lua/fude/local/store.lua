@@ -585,6 +585,25 @@ local function read_current_map(repo_root)
 	return data
 end
 
+--- Write `data` as JSON to `path`. `vim.fn.writefile` reports a failed write
+--- either by throwing or by returning -1 (e.g. a directory that vanished, a
+--- read-only file), so the pcall result alone is not a success signal — the
+--- pointer callers rely on this to decide whether HEAD may move.
+--- @param path string
+--- @param data table
+--- @return boolean ok
+--- @return string|nil err
+local function write_json_lines(path, data)
+	local ok, result = pcall(vim.fn.writefile, vim.split(vim.json.encode(data), "\n"), path)
+	if not ok then
+		return false, tostring(result)
+	end
+	if result ~= 0 then
+		return false, "could not write " .. path
+	end
+	return true, nil
+end
+
 --- Write the current-session pointer for a branch, preserving other branches'
 --- entries so reviews on different branches in the same worktree don't collide.
 --- @param repo_root string
@@ -599,11 +618,7 @@ function M.write_current(repo_root, branch, session)
 	if vim.fn.isdirectory(dir) == 0 then
 		vim.fn.mkdir(dir, "p")
 	end
-	local ok, err = pcall(vim.fn.writefile, vim.split(vim.json.encode(map), "\n"), path)
-	if not ok then
-		return false, tostring(err)
-	end
-	return true
+	return write_json_lines(path, map)
 end
 
 --- Read the current-session pointer for a branch. Returns nil when there is no
@@ -684,11 +699,7 @@ function M.clear_current(repo_root, branch)
 		end
 		return true, nil
 	end
-	local ok, err = pcall(vim.fn.writefile, vim.split(vim.json.encode(map), "\n"), path)
-	if not ok then
-		return false, tostring(err)
-	end
-	return true, nil
+	return write_json_lines(path, map)
 end
 
 return M

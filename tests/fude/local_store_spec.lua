@@ -435,6 +435,24 @@ describe("store IO round-trip", function()
 		assert.is_true(store.clear_current("/repo", "feat/x"))
 	end)
 
+	it("write_current and clear_current treat writefile's -1 as a failure", function()
+		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
+		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })
+		local original = vim.fn.writefile
+		vim.fn.writefile = function()
+			return -1 -- the non-throwing failure mode
+		end
+		local ok, err = store.write_current("/repo", "feat/c", { id = "sc", base_ref = "main", branch = "feat/c" })
+		assert.is_false(ok)
+		assert.truthy(err:find("could not write", 1, true))
+		local cleared, cerr = store.clear_current("/repo", "feat/a")
+		assert.is_false(cleared)
+		assert.truthy(cerr:find("could not write", 1, true))
+		vim.fn.writefile = original
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
+		assert.is_nil(store.read_current("/repo", "feat/c"))
+	end)
+
 	it("clear_current reports a failed rewrite when other entries remain", function()
 		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
 		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })
