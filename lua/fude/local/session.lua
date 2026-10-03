@@ -431,6 +431,11 @@ end
 --- @param root string worktree root
 --- @return string|nil reason
 local function checkout_blocker(root)
+	-- Comment input is checked first: the commit scope's teardown wipes those
+	-- buffers, so unsent text would be lost without a word.
+	if require("fude.ui").has_unsent_comment_input() then
+		return "an unsent comment — submit or close it first"
+	end
 	if has_unsaved_buffers_under(root) then
 		return "unsaved buffers — save or discard them first"
 	end
@@ -503,8 +508,16 @@ local function enter_commit_scope(session, sha)
 	-- the checkout and the regular persist in apply_scope, the pointer would
 	-- still say the old scope and the next start() could not recognise the
 	-- detached HEAD as ours (store.find_stranded_commit_session matches on
-	-- scope_commit_sha). A failed checkout rewrites the previous state.
-	M.persist_current(session, { scope = "commit", scope_commit_sha = sha, original_branch = return_to })
+	-- scope_commit_sha). When even that write fails there is no recovery
+	-- information to leave behind, so HEAD stays put. A failed checkout
+	-- rewrites the previous state.
+	if not M.persist_current(session, { scope = "commit", scope_commit_sha = sha, original_branch = return_to }) then
+		vim.notify(
+			"fude.nvim: Commit scope not entered — the recovery pointer could not be written",
+			vim.log.levels.ERROR
+		)
+		return false
+	end
 	local ok, err = diff_mod.checkout(sha, session.worktree_root)
 	if not ok then
 		M.persist_current(session)

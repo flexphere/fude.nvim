@@ -870,6 +870,58 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(1, checkouts) -- stop did not try a restore
 	end)
 
+	it("does not move HEAD when the pending pointer cannot be written", function()
+		local calls = mock_commit_git()
+		helpers.mock(vim, "notify", function() end)
+		session.start(nil)
+		helpers.mock(store, "write_current", function()
+			return false, "read-only"
+		end)
+
+		-- Without the pointer a crash could never find the way back, so the
+		-- checkout must not happen at all.
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({}, calls.checkout)
+		assert.equals("base", config.state.local_session.scope)
+		assert.is_nil(config.state.local_session.original_branch)
+	end)
+
+	it("refuses the commit scope while a comment input holds unsent text", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+
+		-- A single-pane comment input float with text typed into it
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.b[buf].fude_comment = true
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "half-written thought" })
+		local win = vim.api.nvim_open_win(buf, false, { relative = "editor", row = 1, col = 1, width = 20, height = 2 })
+
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({}, calls.checkout)
+
+		-- An empty input does not block; the teardown just closes it
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({ "c1sha" }, calls.checkout)
+
+		pcall(vim.api.nvim_win_close, win, true)
+		pcall(vim.api.nvim_buf_delete, buf, { force = true })
+	end)
+
+	it("refuses the commit scope while the reply window holds unsent text", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		local lower = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_lines(lower, 0, -1, false, { "reply in progress" })
+		config.state.reply_window = { upper_win = 1, lower_buf = lower }
+
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({}, calls.checkout)
+
+		config.state.reply_window = nil
+		pcall(vim.api.nvim_buf_delete, lower, { force = true })
+	end)
+
 	it("persists the pending commit before HEAD moves", function()
 		local during = nil
 		mock_commit_git({

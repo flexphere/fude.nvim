@@ -700,6 +700,46 @@ local function close_reply_window(state_reply)
 	state_reply.closing = false
 end
 
+--- Whether a buffer holds text (any non-blank line).
+--- @param buf number|nil
+--- @return boolean
+local function buf_has_text(buf)
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		return false
+	end
+	for _, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+		if line:match("%S") then
+			return true
+		end
+	end
+	return false
+end
+
+--- Whether a comment input somewhere holds unsent text: a single-pane input
+--- float (`open_comment_input`, marked `b:fude_comment`) shown in a window,
+--- the reply/edit window's lower pane, or the comment browser's lower pane.
+--- The local commit scope refuses to switch while this is true, because its
+--- teardown (`close_comment_ui`) wipes those buffers and the backend would
+--- refuse the submit anyway — either way the text would be lost.
+--- @return boolean
+function M.has_unsent_comment_input()
+	local state = config.state
+	if state.reply_window and state.reply_window.upper_win and buf_has_text(state.reply_window.lower_buf) then
+		return true
+	end
+	if state.comment_browser and buf_has_text(state.comment_browser.lower_buf) then
+		return true
+	end
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_loaded(buf) and vim.b[buf].fude_comment and vim.fn.bufwinid(buf) ~= -1 then
+			if buf_has_text(buf) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 --- Close every open comment UI that shows cached comments: the reply/edit
 --- window and the comment browser. The local commit scope calls this on
 --- entry, since the comments it would show anchor to a working tree that is
