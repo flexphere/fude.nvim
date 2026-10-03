@@ -326,6 +326,9 @@ File opening position                                 *fude-file-position*
 
     Note: Uncommitted changes must be committed or stashed before
     switching to a commit scope.
+
+    In local review mode this opens the local scope picker instead, the
+    same as |:FudeReviewLocalScope| without an argument.
     Requires an active review session.
 
 :FudeReviewScopeNext                            *:FudeReviewScopeNext*
@@ -334,6 +337,15 @@ File opening position                                 *fude-file-position*
     After the switch, opens the first changed file of the new scope (as
     selecting a scope in the side panel does), unless focus moved elsewhere
     while the switch was in progress.
+
+    In local review mode it walks the scopes |:FudeReviewLocalScope| offers
+    for the current git state, in picker order:
+    base → unpushed → uncommitted → commit 1 → ... → commit N → base.
+    Moving onto a commit checks it out, so the switch can be refused for
+    the reasons listed under |:FudeReviewLocalScope| (dirty working tree,
+    unsaved buffers, unsent comment input); the refusal is reported and
+    the scope and the open file stay as they are. With only one scope
+    available nothing happens.
     Requires an active review session.
 
 :FudeReviewScopePrev                            *:FudeReviewScopePrev*
@@ -342,6 +354,9 @@ File opening position                                 *fude-file-position*
     After the switch, opens the first changed file of the new scope (as
     selecting a scope in the side panel does), unless focus moved elsewhere
     while the switch was in progress.
+
+    In local review mode it walks the same scope order as
+    |:FudeReviewScopeNext| in reverse, with the same checkout rules.
     Requires an active review session.
 
 :FudeReviewStackSwitch                        *:FudeReviewStackSwitch*
