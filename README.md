@@ -128,8 +128,8 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewScopeNext` | Move to next review scope and open its first file |
 | `:FudeReviewScopePrev` | Move to previous review scope and open its first file |
 | `:FudeReviewStackSwitch` | Switch the review to another open PR of the current PR's GitHub stack (checks out the branch here, or `:cd`s to the worktree that already has it) |
-| `:FudeReviewOverview` | Show PR overview and issue-level comments |
-| `:FudeReviewListComments` | Browse all review and PR-level comments in 3-pane floating window |
+| `:FudeReviewOverview` | Show PR overview and PR-level comments (issue comments plus submitted review bodies such as Approve / Request changes summaries) |
+| `:FudeReviewListComments` | Browse all review and PR-level comments (including submitted review bodies) in 3-pane floating window |
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
 | `:FudeReviewViewed` | Mark current file as viewed (synced to GitHub in PR review mode) |
 | `:FudeReviewUnviewed` | Unmark current file as viewed (synced to GitHub in PR review mode) |
