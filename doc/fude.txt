@@ -160,8 +160,11 @@ Using lazy.nvim: >lua
                     the branch on scope switch, |:FudeReviewLocalStop|
                     and quit). The working tree is then a past snapshot,
                     not your work, so comments are read-only: none are
-                    shown and none can be created, including from the
-                    comment browser.
+                    shown (no boxes, no per-file counts) and none can be
+                    created, including from the comment browser. If
+                    Neovim exits without restoring the branch (a crash),
+                    the next |:FudeReviewLocal| on that detached HEAD
+                    returns to the branch first.
 
 :FudeReviewResolve                                   *:FudeReviewResolve*
     Toggle resolved status of the comment thread on the current line.

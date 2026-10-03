@@ -359,8 +359,10 @@ happens in this mode:
     unsaved buffers) and leaves HEAD detached until you switch back; fude
     restores the branch on scope switch, `:FudeReviewLocalStop`, and quit.
     Because the working tree is then a past snapshot rather than your work,
-    comments are read-only in this scope: none are shown and none can be
-    created, including from the comment browser.
+    comments are read-only in this scope: none are shown (no boxes, no
+    per-file counts) and none can be created, including from the comment
+    browser. If Neovim exits without restoring the branch (a crash), the next
+    `:FudeReviewLocal` on that detached HEAD returns to the branch first.
   The side panel / picker lists only the scopes valid for the current git
   state, and the statusline shows the active one. When no base branch can be
   found (a fresh, remote-less repo), the session starts in `uncommitted`; in a
