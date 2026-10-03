@@ -1782,6 +1782,19 @@ describe("build_pr_level_comments", function()
 		local out = data.build_pr_level_comments({}, reviews)
 		assert.are.same({ 8, 9 }, { out[1].id, out[2].id })
 	end)
+
+	it("compares tie-breaking ids numerically across a digit boundary", function()
+		local ts = "2024-01-01T00:00:00Z"
+		local issue_comments = {
+			{ id = 1000000000, body = "newer", user = { login = "me" }, created_at = ts },
+			{ id = 999999999, body = "older", user = { login = "me" }, created_at = ts },
+		}
+		local out = data.build_pr_level_comments(issue_comments, {})
+		-- a string comparison would put 1000000000 first
+		assert.are.same({ 999999999, 1000000000 }, { out[1].id, out[2].id })
+		-- so e/d would otherwise target the older comment
+		assert.are.equal(1000000000, data.find_editable_comment(out, "me").id)
+	end)
 end)
 
 describe("find_editable_comment", function()

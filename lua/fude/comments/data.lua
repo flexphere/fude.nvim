@@ -592,12 +592,17 @@ function M.build_pr_level_comments(issue_comments, reviews)
 			})
 		end
 	end
-	-- table.sort is not stable; break timestamp ties by id so the order is deterministic
+	-- table.sort is not stable; break timestamp ties by id so the order is
+	-- deterministic. ids are numbers (and grow over time), so compare them
+	-- numerically: a string comparison would put 1000000000 before 999999999.
 	table.sort(merged, function(a, b)
 		local ta = type(a.created_at) == "string" and a.created_at or ""
 		local tb = type(b.created_at) == "string" and b.created_at or ""
 		if ta ~= tb then
 			return ta < tb
+		end
+		if type(a.id) == "number" and type(b.id) == "number" then
+			return a.id < b.id
 		end
 		return tostring(a.id) < tostring(b.id)
 	end)
