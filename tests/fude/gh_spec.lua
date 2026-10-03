@@ -696,6 +696,43 @@ describe("get_pr_title_body", function()
 	end)
 end)
 
+describe("review listings pagination", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	local function capture_args(invoke)
+		local captured
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured = args
+			callback(nil, {})
+		end)
+		invoke()
+		return captured
+	end
+
+	-- The reviews endpoint returns 30 per page oldest first, so without
+	-- --paginate the viewer's pending review (the newest) is never found on a
+	-- PR with more than 30 reviews.
+	it("get_reviews requests every page", function()
+		local args = capture_args(function()
+			gh.get_reviews(42, function() end)
+		end)
+		assert.are.equal("repos/{owner}/{repo}/pulls/42/reviews", args[2])
+		assert.truthy(vim.tbl_contains(args, "--paginate"))
+	end)
+
+	it("get_review_comments requests every page", function()
+		local args = capture_args(function()
+			gh.get_review_comments(42, 99, function() end)
+		end)
+		assert.are.equal("repos/{owner}/{repo}/pulls/42/reviews/99/comments", args[2])
+		assert.truthy(vim.tbl_contains(args, "--paginate"))
+	end)
+end)
+
 describe("re_request_review", function()
 	local helpers = require("tests.helpers")
 

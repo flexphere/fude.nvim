@@ -473,16 +473,21 @@ function M.get_head_sha()
 end
 
 --- Get all reviews on a PR.
+--- Paginated: the endpoint returns reviews oldest first, 30 per page, and
+--- every standalone review comment creates one COMMENTED review, so on a
+--- long-reviewed PR the viewer's pending review (the newest) sits past the
+--- first page and would otherwise never be detected.
 --- @param pr_number number
 --- @param callback fun(err: string|nil, reviews: table|nil)
 function M.get_reviews(pr_number, callback)
 	M.run_json({
 		"api",
 		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews",
+		"--paginate",
 	}, callback)
 end
 
---- Get comments for a specific review.
+--- Get comments for a specific review (paginated, 30 per page otherwise).
 --- @param pr_number number
 --- @param review_id number
 --- @param callback fun(err: string|nil, comments: table|nil)
@@ -490,6 +495,7 @@ function M.get_review_comments(pr_number, review_id, callback)
 	M.run_json({
 		"api",
 		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews/" .. review_id .. "/comments",
+		"--paginate",
 	}, callback)
 end
 
