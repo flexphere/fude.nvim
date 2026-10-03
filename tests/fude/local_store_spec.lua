@@ -571,6 +571,33 @@ describe("store IO round-trip", function()
 		assert.is_nil(store.find_stranded_commit_session(map, "/repo", "c1sha"))
 	end)
 
+	it("refuses to pick when several sessions name the same commit", function()
+		local map = {
+			["feat/a"] = {
+				id = "sa",
+				scope = "commit",
+				worktree_root = "/repo",
+				scope_commit_sha = "shared",
+				original_branch = "feat/a",
+			},
+			["feat/b"] = {
+				id = "sb",
+				scope = "commit",
+				worktree_root = "/repo",
+				scope_commit_sha = "shared",
+				original_branch = "feat/b",
+			},
+		}
+		local match, candidates = store.find_stranded_commit_session(map, "/repo", "shared")
+		assert.is_nil(match)
+		assert.equals(2, #candidates)
+		assert.same({ "feat/a", "feat/b" }, { candidates[1].original_branch, candidates[2].original_branch })
+		-- No match at all is an empty candidate list, not an ambiguity
+		local none, empty = store.find_stranded_commit_session(map, "/repo", "other")
+		assert.is_nil(none)
+		assert.same({}, empty)
+	end)
+
 	it("read_stranded_commit_session scans the pointer file across branches", function()
 		store.write_current("/repo", "feat/b", {
 			id = "sb",

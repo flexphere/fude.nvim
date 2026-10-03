@@ -665,18 +665,23 @@ end
 --- against HEAD, so a HEAD the user detached on purpose is never claimed.
 --- `pending_from_sha` — the commit HEAD was still on while a commit-to-commit
 --- checkout was pending — counts as well, since a crash before that checkout
---- landed leaves HEAD there. Keys are visited in sorted order so the result is
---- deterministic.
+--- landed leaves HEAD there. Several entries can name the same commit (stacked
+--- branches sharing it, or a stale pointer from an earlier crash the user
+--- recovered from by hand); then no single owner can be told apart, so nothing
+--- is returned and the candidates are reported instead of checking out the
+--- wrong branch. Keys are visited in sorted order so the result is deterministic.
 --- @param map table<string, table> the pointer map (`{ [branch] = session }`)
 --- @param repo_root string
 --- @param head_sha string|nil current HEAD
---- @return table|nil session with `original_branch` to return to
+--- @return table|nil session the single match, with `original_branch` to return to
+--- @return table[] candidates every match (empty, one, or several)
 function M.find_stranded_commit_session(map, repo_root, head_sha)
 	if type(map) ~= "table" or not head_sha then
-		return nil
+		return nil, {}
 	end
 	local keys = vim.tbl_keys(map)
 	table.sort(keys)
+	local candidates = {}
 	for _, key in ipairs(keys) do
 		local s = map[key]
 		if
@@ -687,16 +692,20 @@ function M.find_stranded_commit_session(map, repo_root, head_sha)
 			and (s.scope_commit_sha == head_sha or s.pending_from_sha == head_sha)
 			and type(s.original_branch) == "string"
 		then
-			return s
+			table.insert(candidates, s)
 		end
 	end
-	return nil
+	if #candidates == 1 then
+		return candidates[1], candidates
+	end
+	return nil, candidates
 end
 
 --- IO wrapper over `find_stranded_commit_session` for the repo's pointer file.
 --- @param repo_root string
 --- @param head_sha string|nil current HEAD
 --- @return table|nil session
+--- @return table[] candidates
 function M.read_stranded_commit_session(repo_root, head_sha)
 	local map = read_current_map(repo_root)
 	return M.find_stranded_commit_session(map, repo_root, head_sha)

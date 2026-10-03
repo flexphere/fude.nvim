@@ -797,7 +797,24 @@ function M.start(base_arg)
 	-- lookup below would miss, so return to the branch first and resume from
 	-- there. Any other detached HEAD is the user's own and is left alone.
 	if not branch then
-		local stranded = store.read_stranded_commit_session(repo_root, head_sha)
+		local stranded, candidates = store.read_stranded_commit_session(repo_root, head_sha)
+		if not stranded and #candidates > 1 then
+			-- Several sessions name this commit; checking out the first would
+			-- be a guess with the user's branch at stake.
+			local branches = vim.tbl_map(function(c)
+				return c.original_branch
+			end, candidates)
+			vim.notify(
+				string.format(
+					"fude.nvim: HEAD is detached on a commit that %d commit-scope reviews left behind (%s). "
+						.. "Run `git checkout <branch>` for the one you mean before starting",
+					#candidates,
+					table.concat(branches, ", ")
+				),
+				vim.log.levels.ERROR
+			)
+			return
+		end
 		if stranded then
 			local blocker = checkout_blocker(repo_root, nil, stranded.original_branch)
 			if blocker then

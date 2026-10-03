@@ -1592,6 +1592,44 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_nil(store.read_current(tmp_repo, nil)) -- no stray detached session
 	end)
 
+	it("refuses to guess when two stranded sessions name the detached commit", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		-- A second branch's session left on the very same commit
+		store.write_current(tmp_repo, "feat/y", {
+			id = "other",
+			base_ref = "main",
+			branch = "feat/y",
+			worktree_root = tmp_repo,
+			scope = "commit",
+			scope_commit_sha = "c1sha",
+			original_branch = "feat/y",
+		})
+		config.state.active = false
+		config.state.review_mode = nil
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_current_branch", function()
+			return nil
+		end)
+		helpers.mock(diff, "get_head_sha", function()
+			return "c1sha"
+		end)
+		local errors = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			if level == vim.log.levels.ERROR then
+				table.insert(errors, msg)
+			end
+		end)
+
+		session.start(nil)
+		assert.is_false(config.state.active)
+		assert.same({ "c1sha" }, calls.checkout) -- nothing checked out on a guess
+		assert.equals(1, #errors)
+		assert.truthy(errors[1]:find("feat/x", 1, true))
+		assert.truthy(errors[1]:find("feat/y", 1, true))
+	end)
+
 	it("refuses to start on a stranded detached HEAD when the tree is not clean", function()
 		local calls = mock_commit_git()
 		session.start(nil)
