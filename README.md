@@ -358,7 +358,8 @@ happens in this mode:
     not in the clone, as at a shallow clone's boundary, cannot be selected). It
     checks the commit out,
     so every switch needs a clean working tree (no staged/unstaged changes, no
-    untracked file that the target tracks, no unsaved buffers, no comment
+    untracked or ignored file where the target would write, no unsaved
+    buffers, no comment
     input with unsent text) — leaving it too, so
     an edit made on the checked-out commit is not carried onto the branch by a
     scope switch or `:FudeReviewLocalStop` — and leaves HEAD detached until you

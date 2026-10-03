@@ -240,80 +240,79 @@ local function ancestors_of(path)
 	return dirs
 end
 
---- Untracked paths that a `git checkout ref` would refuse to overwrite
---- ("untracked working tree file would be overwritten"), pure. Three shapes
---- collide: the same path tracked at `ref`; an untracked file where `ref`
---- has a directory (`foo` vs tracked `foo/bar`); and an untracked file under
---- a path `ref` tracks as a file (`foo/bar` vs tracked `foo`). Every other
---- untracked file is carried across and must not block.
---- @param untracked string[] untracked, non-ignored paths
---- @param tracked string[] paths tracked at the target ref
---- @return string[] conflicts sorted
-function M.find_untracked_conflicts(untracked, tracked)
-	local tracked_files, tracked_dirs = {}, {}
-	for _, path in ipairs(tracked or {}) do
-		tracked_files[path] = true
-		for _, dir in ipairs(ancestors_of(path)) do
-			tracked_dirs[dir] = true
+--- Paths a `git checkout` to `target_paths` would have to create but that
+--- already exist in the worktree without being tracked here (pure). Defined
+--- from the target's side, so it covers every shape at once — an untracked
+--- file (ignored or not) at a path the target tracks, a file where the
+--- target has a directory, and a file under a path the target tracks as a
+--- file — without listing the worktree's untracked files, which for ignored
+--- build output can be enormous.
+--- @param target_paths string[] paths tracked at the target ref
+--- @param tracked_here table<string, boolean> paths tracked at HEAD/index
+--- @param kind_of fun(path: string): "file"|"directory"|nil what exists on disk
+--- @return string[] conflicts sorted, as worktree paths
+function M.find_checkout_collisions(target_paths, tracked_here, kind_of)
+	local conflicts, seen = {}, {}
+	local function add(path)
+		if not seen[path] then
+			seen[path] = true
+			table.insert(conflicts, path)
 		end
 	end
-	local conflicts = {}
-	for _, path in ipairs(untracked or {}) do
-		local hit = tracked_files[path] or tracked_dirs[path]
-		if not hit then
-			for _, dir in ipairs(ancestors_of(path)) do
-				if tracked_files[dir] then
-					hit = true
-					break
-				end
+	for _, path in ipairs(target_paths or {}) do
+		if not tracked_here[path] then
+			local kind = kind_of(path)
+			if kind then
+				-- a file or a directory sits where the target wants a file
+				add(path)
 			end
 		end
-		if hit then
-			table.insert(conflicts, path)
+		-- a file sits where the target needs a directory
+		for _, dir in ipairs(ancestors_of(path)) do
+			if not tracked_here[dir] and kind_of(dir) == "file" then
+				add(dir)
+			end
 		end
 	end
 	table.sort(conflicts)
 	return conflicts
 end
 
---- Directory of the local review store, whose files must never be overwritten
---- by a checkout even though users are told to gitignore it: the write-ahead
---- recovery pointer and the comment JSONL live there.
-M.LOCAL_STORE_DIR = ".fude"
-
---- Untracked files in the worktree that a `git checkout ref` would collide
---- with. Non-ignored untracked files are what git refuses to overwrite;
---- ignored ones git overwrites *silently*, which is fine for build output but
---- not for `.fude/` — the recovery pointer and review JSONL — so ignored files
---- under the store directory are included as well. nil when git fails, so a
---- failure is not mistaken for "no conflicts".
+--- Untracked paths in the worktree that a `git checkout ref` would collide
+--- with: anything `ref` tracks that is not tracked here yet already exists on
+--- disk, ignored files included — git overwrites ignored files *silently* by
+--- default, so an ignored `.env` that the target happens to track would be
+--- lost, and the `.fude/` recovery pointer with it. `checkout` additionally
+--- passes `--no-overwrite-ignore` so git itself refuses whatever slips past
+--- this check. nil when git fails, so a failure is not mistaken for "no
+--- conflicts".
 --- @param ref string branch name or commit SHA
 --- @param cwd string|nil repo root
 --- @return string[]|nil conflicts
 --- @return string|nil err
 function M.get_untracked_conflicts(ref, cwd)
-	local untracked = vim
-		.system({ "git", "ls-files", "--others", "--exclude-standard" }, { text = true, cwd = cwd })
-		:wait()
-	if untracked.code ~= 0 then
-		return nil, vim.trim(untracked.stderr or "git ls-files failed")
+	local target = vim.system({ "git", "ls-tree", "-r", "--name-only", ref }, { text = true, cwd = cwd }):wait()
+	if target.code ~= 0 then
+		return nil, vim.trim(target.stderr or "git ls-tree failed")
 	end
-	local ignored_store = vim
-		.system(
-			{ "git", "ls-files", "--others", "--ignored", "--exclude-standard", "--", M.LOCAL_STORE_DIR },
-			{ text = true, cwd = cwd }
-		)
-		:wait()
-	if ignored_store.code ~= 0 then
-		return nil, vim.trim(ignored_store.stderr or "git ls-files failed")
+	local here = vim.system({ "git", "ls-files" }, { text = true, cwd = cwd }):wait()
+	if here.code ~= 0 then
+		return nil, vim.trim(here.stderr or "git ls-files failed")
 	end
-	local tracked = vim.system({ "git", "ls-tree", "-r", "--name-only", ref }, { text = true, cwd = cwd }):wait()
-	if tracked.code ~= 0 then
-		return nil, vim.trim(tracked.stderr or "git ls-tree failed")
+	local tracked_here = {}
+	for _, path in ipairs(vim.split(here.stdout or "", "\n", { trimempty = true })) do
+		tracked_here[path] = true
+		for _, dir in ipairs(ancestors_of(path)) do
+			tracked_here[dir] = true -- a tracked file's directories are tracked ground
+		end
 	end
-	local candidates = vim.split(untracked.stdout or "", "\n", { trimempty = true })
-	vim.list_extend(candidates, vim.split(ignored_store.stdout or "", "\n", { trimempty = true }))
-	return M.find_untracked_conflicts(candidates, vim.split(tracked.stdout or "", "\n", { trimempty = true })), nil
+	local root = cwd or vim.fn.getcwd()
+	local function kind_of(path)
+		local stat = vim.uv.fs_stat(root .. "/" .. path)
+		return stat and stat.type or nil
+	end
+	return M.find_checkout_collisions(vim.split(target.stdout or "", "\n", { trimempty = true }), tracked_here, kind_of),
+		nil
 end
 
 --- The branch HEAD is on, or nil when detached.
@@ -361,7 +360,9 @@ function M.checkout(ref, cwd, opts)
 		end
 		return M.head_is(ref, cwd)
 	end
-	local cmd = { "git", "checkout" }
+	-- --no-overwrite-ignore: git overwrites ignored untracked files silently by
+	-- default; refusing instead is the backstop behind get_untracked_conflicts.
+	local cmd = { "git", "checkout", "--no-overwrite-ignore" }
 	if opts and opts.detach then
 		table.insert(cmd, "--detach")
 	end

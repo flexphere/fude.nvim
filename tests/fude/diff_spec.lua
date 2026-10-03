@@ -349,39 +349,32 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.equals(vim.fn.resolve(repo), vim.fn.resolve(diff.get_repo_root()))
 	end)
 
-	it("get_untracked_conflicts lists only untracked files the target tracks", function()
-		-- feature tracks shared.txt; main does not
+	it("get_untracked_conflicts lists what a checkout would overwrite, ignored files included", function()
+		-- feature tracks shared.txt and .env; main tracks neither
 		vim.fn.writefile({ "x" }, repo .. "/shared.txt")
-		git("add", "shared.txt")
-		git("commit", "-q", "-m", "track shared")
+		vim.fn.writefile({ "SECRET=1" }, repo .. "/.env")
+		git("add", "shared.txt", ".env")
+		git("commit", "-q", "-m", "track shared and .env")
 		git("checkout", "-q", "--detach", "main")
-		-- Now untracked: one that feature tracks, one that nothing tracks, one ignored
+		-- Now untracked: one the target tracks, one nothing tracks, one ignored
+		-- that the target tracks (git would overwrite it silently by default)
 		vim.fn.writefile({ "y" }, repo .. "/shared.txt")
 		vim.fn.writefile({ "z" }, repo .. "/scratch.txt")
-		vim.fn.writefile({ "scratch-ignored.txt" }, repo .. "/.gitignore")
+		vim.fn.writefile({ ".env", "scratch-ignored.txt" }, repo .. "/.gitignore")
+		vim.fn.writefile({ "SECRET=local" }, repo .. "/.env")
 		vim.fn.writefile({ "w" }, repo .. "/scratch-ignored.txt")
 
-		assert.same({ "shared.txt" }, diff.get_untracked_conflicts("feature", repo))
+		assert.same({ ".env", "shared.txt" }, diff.get_untracked_conflicts("feature", repo))
 		assert.same({}, diff.get_untracked_conflicts("main", repo))
-
-		-- Ignored files are overwritten silently by git, which is fine
-		-- everywhere except the review store: a tracked .fude/ path on the
-		-- target would wipe the recovery pointer.
-		vim.fn.delete(repo .. "/shared.txt") -- git itself would refuse the checkout otherwise
-		git("checkout", "-q", "feature")
-		vim.fn.mkdir(repo .. "/.fude", "p")
-		vim.fn.writefile({ "{}" }, repo .. "/.fude/current.json")
-		git("add", "-f", ".fude/current.json")
-		git("commit", "-q", "-m", "track the store (do not do this)")
-		git("checkout", "-q", "--detach", "main")
-		vim.fn.writefile({ ".fude/", "scratch-ignored.txt" }, repo .. "/.gitignore")
-		vim.fn.mkdir(repo .. "/.fude", "p") -- the checkout removed the then-empty directory
-		vim.fn.writefile({ "{}" }, repo .. "/.fude/current.json")
-		vim.fn.writefile({ "y" }, repo .. "/shared.txt")
-		assert.same({ ".fude/current.json", "shared.txt" }, diff.get_untracked_conflicts("feature", repo))
 		local nothing, err = diff.get_untracked_conflicts("no-such-ref", repo)
 		assert.is_nil(nothing)
 		assert.truthy(err and #err > 0)
+
+		-- and git itself refuses to overwrite the ignored file through our checkout
+		local ok, cerr = diff.checkout("feature", repo, { branch = true })
+		assert.is_false(ok)
+		assert.truthy(cerr and cerr:find("would be overwritten", 1, true))
+		assert.same({ "SECRET=local" }, vim.fn.readfile(repo .. "/.env"))
 	end)
 
 	it("head_is distinguishes a branch from a detached HEAD on its commit", function()
@@ -704,25 +697,33 @@ describe("make_relative", function()
 	end)
 end)
 
-describe("find_untracked_conflicts", function()
-	it("intersects untracked paths with the target's tracked paths, sorted", function()
-		assert.same(
-			{ "a.lua", "b/c.lua" },
-			diff.find_untracked_conflicts({ "b/c.lua", "scratch", "a.lua" }, { "a.lua", "b/c.lua", "d.lua" })
-		)
-		assert.same({}, diff.find_untracked_conflicts({ "scratch" }, { "a.lua" }))
-		assert.same({}, diff.find_untracked_conflicts({}, nil))
+describe("find_checkout_collisions", function()
+	local function kinds(map)
+		return function(path)
+			return map[path]
+		end
+	end
+
+	it("reports target paths that exist here untracked, ignored or not", function()
+		local target = { "a.lua", "b/c.lua", "d.lua", ".env" }
+		local here = { ["d.lua"] = true }
+		local on_disk = kinds({ ["a.lua"] = "file", ["b/c.lua"] = "file", ["d.lua"] = "file", [".env"] = "file" })
+		assert.same({ ".env", "a.lua", "b/c.lua" }, diff.find_checkout_collisions(target, here, on_disk))
+	end)
+
+	it("ignores target paths that are absent here", function()
+		assert.same({}, diff.find_checkout_collisions({ "a.lua" }, {}, kinds({})))
+		assert.same({}, diff.find_checkout_collisions({}, {}, kinds({ ["x"] = "file" })))
 	end)
 
 	it("catches file/directory collisions in both directions", function()
-		-- untracked file where the target has a directory
-		assert.same({ "foo" }, diff.find_untracked_conflicts({ "foo" }, { "foo/bar" }))
-		-- untracked file under a path the target tracks as a file
-		assert.same({ "foo/bar" }, diff.find_untracked_conflicts({ "foo/bar" }, { "foo" }))
-		assert.same({ "a/b/c" }, diff.find_untracked_conflicts({ "a/b/c" }, { "a" }))
-		-- shared prefix is not a collision
-		assert.same({}, diff.find_untracked_conflicts({ "foobar" }, { "foo/bar" }))
-		assert.same({}, diff.find_untracked_conflicts({ "foo/baz" }, { "foo/bar" }))
+		-- target wants a file where an untracked directory sits
+		assert.same({ "foo" }, diff.find_checkout_collisions({ "foo" }, {}, kinds({ ["foo"] = "directory" })))
+		-- target wants a directory where an untracked file sits
+		assert.same({ "foo" }, diff.find_checkout_collisions({ "foo/bar" }, {}, kinds({ ["foo"] = "file" })))
+		assert.same({ "a" }, diff.find_checkout_collisions({ "a/b/c" }, {}, kinds({ ["a"] = "file" })))
+		-- a tracked directory on the way is fine
+		assert.same({}, diff.find_checkout_collisions({ "foo/bar" }, { ["foo"] = true }, kinds({ ["foo"] = "directory" })))
 	end)
 end)
 
