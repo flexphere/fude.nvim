@@ -43,6 +43,52 @@ describe("build_local_scope_entries", function()
 	end)
 end)
 
+describe("find_adjacent_local_scope", function()
+	local function specs(current)
+		return {
+			{ scope = "base", is_current = current == 1 },
+			{ scope = "unpushed", is_current = current == 2 },
+			{ scope = "uncommitted", is_current = current == 3 },
+			{ scope = "commit", commit_sha = "c1", is_current = current == 4 },
+			{ scope = "commit", commit_sha = "c2", is_current = current == 5 },
+		}
+	end
+
+	it("returns the following spec for next", function()
+		local s = scope.find_adjacent_local_scope(specs(3), "next")
+		assert.equals("commit", s.scope)
+		assert.equals("c1", s.commit_sha)
+	end)
+
+	it("returns the preceding spec for prev", function()
+		assert.equals("unpushed", scope.find_adjacent_local_scope(specs(3), "prev").scope)
+	end)
+
+	it("wraps from the last commit to the first scope on next", function()
+		assert.equals("base", scope.find_adjacent_local_scope(specs(5), "next").scope)
+	end)
+
+	it("wraps from the first scope to the last commit on prev", function()
+		assert.equals("c2", scope.find_adjacent_local_scope(specs(1), "prev").commit_sha)
+	end)
+
+	it("falls back to the first (next) / last (prev) spec when none is current", function()
+		assert.equals("base", scope.find_adjacent_local_scope(specs(0), "next").scope)
+		assert.equals("c2", scope.find_adjacent_local_scope(specs(0), "prev").commit_sha)
+	end)
+
+	it("returns the current spec itself when it is the only one", function()
+		local only = { { scope = "uncommitted", is_current = true } }
+		assert.is_true(scope.find_adjacent_local_scope(only, "next").is_current)
+		assert.is_true(scope.find_adjacent_local_scope(only, "prev").is_current)
+	end)
+
+	it("returns nil for an empty or missing list", function()
+		assert.is_nil(scope.find_adjacent_local_scope({}, "next"))
+		assert.is_nil(scope.find_adjacent_local_scope(nil, "prev"))
+	end)
+end)
+
 describe("format_local_scope_label", function()
 	it("labels each scope", function()
 		assert.equals("Local: main", scope.format_local_scope_label("main", "base"))
@@ -947,5 +993,102 @@ describe("next_scope / prev_scope open the first file", function()
 		win = 101
 		captured_on_done()
 		assert.are.equal(1, opened)
+	end)
+end)
+
+describe("next_scope / prev_scope / select_scope in local review mode", function()
+	local config = require("fude.config")
+	local helpers = require("tests.helpers")
+	local files = require("fude.files")
+	local session = require("fude.local.session")
+
+	local opened
+	local set_scope_calls
+	local set_scope_result
+	local specs
+	local notifications
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.review_mode = "local"
+		config.state.local_session = { scope = "uncommitted" }
+		specs = {
+			{ scope = "base", is_current = false },
+			{ scope = "uncommitted", is_current = true },
+			{ scope = "commit", commit_sha = "c1sha", is_current = false },
+		}
+		opened = 0
+		set_scope_calls = {}
+		set_scope_result = true
+		notifications = {}
+		helpers.mock(files, "open_first_file", function()
+			opened = opened + 1
+		end)
+		helpers.mock(session, "scope_specs", function()
+			return specs
+		end)
+		helpers.mock(session, "set_scope", function(scope_name, opts)
+			table.insert(set_scope_calls, { scope = scope_name, commit_sha = opts and opts.commit_sha })
+			return set_scope_result
+		end)
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notifications, { msg = msg, level = level })
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("next_scope switches to the following local scope and opens its first file", function()
+		scope.next_scope()
+		assert.are.same({ { scope = "commit", commit_sha = "c1sha" } }, set_scope_calls)
+		assert.are.equal(1, opened)
+	end)
+
+	it("prev_scope switches to the preceding local scope and opens its first file", function()
+		scope.prev_scope()
+		assert.are.same({ { scope = "base" } }, set_scope_calls)
+		assert.are.equal(1, opened)
+	end)
+
+	it("does not open a file when set_scope refuses the switch", function()
+		set_scope_result = false
+		scope.next_scope()
+		assert.are.equal(1, #set_scope_calls)
+		assert.are.equal(0, opened)
+	end)
+
+	it("does not call set_scope when the current scope is the only one", function()
+		specs = { { scope = "uncommitted", is_current = true } }
+		scope.next_scope()
+		assert.are.same({}, set_scope_calls)
+		assert.are.equal(0, opened)
+		assert.are.equal(1, #notifications)
+		assert.are.equal(vim.log.levels.INFO, notifications[1].level)
+	end)
+
+	it("does not open a file when focus moved to another window during the switch", function()
+		local win = 100
+		helpers.mock(vim.api, "nvim_get_current_win", function()
+			return win
+		end)
+		helpers.mock(session, "set_scope", function()
+			win = 200
+			return true
+		end)
+		scope.next_scope()
+		assert.are.equal(0, opened)
+	end)
+
+	it("select_scope opens the local scope picker instead of warning", function()
+		local picker_calls = 0
+		helpers.mock(session, "select_scope", function()
+			picker_calls = picker_calls + 1
+		end)
+		scope.select_scope()
+		assert.are.equal(1, picker_calls)
+		assert.are.same({}, notifications)
 	end)
 end)

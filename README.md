@@ -124,9 +124,9 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewPrevFile` | Open the previous changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewNextUnviewedFile` | Open the next changed file not yet marked as viewed (`]F`, wraps around) |
 | `:FudeReviewPrevUnviewedFile` | Open the previous changed file not yet marked as viewed (`[F`, wraps around) |
-| `:FudeReviewScope` | Select review scope (full PR or specific commit) |
-| `:FudeReviewScopeNext` | Move to next review scope and open its first file |
-| `:FudeReviewScopePrev` | Move to previous review scope and open its first file |
+| `:FudeReviewScope` | Select review scope (full PR or specific commit; in local mode, opens the `:FudeReviewLocalScope` picker) |
+| `:FudeReviewScopeNext` | Move to next review scope and open its first file (local mode: `base` → `unpushed` → `uncommitted` → commits, wraps around) |
+| `:FudeReviewScopePrev` | Move to previous review scope and open its first file (local mode: the same order in reverse, wraps around) |
 | `:FudeReviewStackSwitch` | Switch the review to another open PR of the current PR's GitHub stack (checks out the branch here, or `:cd`s to the worktree that already has it) |
 | `:FudeReviewOverview` | Show PR overview and PR-level comments (issue comments plus submitted review bodies such as Approve / Request changes summaries) |
 | `:FudeReviewListComments` | Browse all review and PR-level comments (including submitted review bodies) in 3-pane floating window |
@@ -342,9 +342,10 @@ typically to review AI-agent-generated code locally. No GitHub interaction
 happens in this mode:
 
 - Changed files come from the local git diff, plus untracked files. The diff
-  base depends on the **scope** (switch with `:FudeReviewLocalScope`). The
-  first three compare the working tree against a ref, so comments stay
-  anchored:
+  base depends on the **scope** (switch with `:FudeReviewLocalScope`, or step
+  through the scopes in the order below with `:FudeReviewScopeNext` /
+  `:FudeReviewScopePrev`). The first three compare the working tree against a
+  ref, so comments stay anchored:
   - `base` — merge-base with `base` (default: the remote default branch, else
     a local `main`/`master`): the whole branch diff, including committed work.
     Shown only on a branch that differs from its base ref.

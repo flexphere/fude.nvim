@@ -148,7 +148,9 @@ function M.build_local_scope_entries(specs)
 	return entries
 end
 
---- Show the scope selection picker.
+--- Show the scope selection picker. In local review mode this is the local
+--- scope picker (`:FudeReviewLocalScope` without an argument), so the one
+--- command works in both modes.
 function M.select_scope()
 	local state = config.state
 	if not state.active then
@@ -156,7 +158,7 @@ function M.select_scope()
 		return
 	end
 	if state.review_mode == "local" then
-		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
+		require("fude.local.session").select_scope()
 		return
 	end
 
@@ -840,6 +842,44 @@ function M.find_prev_scope_index(current_scope, current_index, total)
 	return idx - 1
 end
 
+--- Find the scope adjacent to the current one in a local review (pure).
+--- `specs` is the list from `local/session.scope_specs`, in display order
+--- (`base` → `unpushed` → `uncommitted` → commit 1..N) with the current one
+--- flagged `is_current`. Wraps at both ends, like `find_next_scope_index` /
+--- `find_prev_scope_index` do for the GitHub flow. With no spec flagged
+--- current, "next" is the first spec and "prev" the last. Returns nil only for
+--- an empty list; with a single spec the current one is returned, which the
+--- caller treats as "nowhere to go".
+--- @param specs table[] { { scope, is_current, commit_sha? } }
+--- @param direction "next"|"prev"
+--- @return table|nil spec
+function M.find_adjacent_local_scope(specs, direction)
+	local total = #(specs or {})
+	if total == 0 then
+		return nil
+	end
+	local current = nil
+	for i, s in ipairs(specs) do
+		if s.is_current then
+			current = i
+			break
+		end
+	end
+	local idx
+	if direction == "prev" then
+		idx = current and (current - 1) or total
+		if idx < 1 then
+			idx = total
+		end
+	else
+		idx = current and (current + 1) or 1
+		if idx > total then
+			idx = 1
+		end
+	end
+	return specs[idx]
+end
+
 --- Format the statusline label for a local review session.
 --- @param base_ref string|nil base ref of the local session
 --- @param scope string|nil "base" | "unpushed" | "uncommitted" | "commit"
@@ -897,19 +937,48 @@ local function open_first_file_after_switch()
 	end
 end
 
+--- Move to the adjacent scope of a local review: the neighbour in
+--- `local/session.scope_specs` order, applied through `set_scope`. The switch
+--- is synchronous, but `set_scope` rebuilds the diff preview (new window
+--- handle) on the way, so the same focus guard as the GitHub flow decides
+--- whether the first file opens. Failures (a commit checkout refused by the
+--- clean-tree checks, an unresolvable base) are reported by `set_scope`
+--- itself, and nothing opens then — the sidepanel's `<CR>` contract.
+--- @param direction "next"|"prev"
+local function goto_adjacent_local_scope(direction)
+	local session_mod = require("fude.local.session")
+	local state = config.state
+	if not state.local_session then
+		return
+	end
+	local spec = M.find_adjacent_local_scope(session_mod.scope_specs(state.local_session), direction)
+	if not spec then
+		return
+	end
+	if spec.is_current then
+		vim.notify("fude.nvim: No other local scope is available", vim.log.levels.INFO)
+		return
+	end
+	local on_done = open_first_file_after_switch()
+	if session_mod.set_scope(spec.scope, { commit_sha = spec.commit_sha }) then
+		on_done()
+	end
+end
+
 --- Move to the adjacent scope.
---- @param find_index fun(current_scope: string, current_index: number|nil, total: number): number
-local function goto_adjacent_scope(find_index)
+--- @param direction "next"|"prev"
+local function goto_adjacent_scope(direction)
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
 	if state.review_mode == "local" then
-		vim.notify("fude.nvim: Review scope is not available in local review mode", vim.log.levels.WARN)
+		goto_adjacent_local_scope(direction)
 		return
 	end
 
+	local find_index = direction == "prev" and M.find_prev_scope_index or M.find_next_scope_index
 	local gh_mod = require("fude.gh")
 	local commit_entries = gh_mod.parse_commit_entries(state.pr_commits)
 	local total = #commit_entries
@@ -927,12 +996,12 @@ end
 
 --- Move to the next scope and open its first file.
 function M.next_scope()
-	goto_adjacent_scope(M.find_next_scope_index)
+	goto_adjacent_scope("next")
 end
 
 --- Move to the previous scope and open its first file.
 function M.prev_scope()
-	goto_adjacent_scope(M.find_prev_scope_index)
+	goto_adjacent_scope("prev")
 end
 
 --- Format preview lines for a scope entry's changed files.

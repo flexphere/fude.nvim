@@ -43,6 +43,9 @@ local ANY_REVIEW = {
 	"FudeReviewPrevFile",
 	"FudeReviewPrevUnviewedFile",
 	"FudeReviewReload",
+	"FudeReviewScope",
+	"FudeReviewScopeNext",
+	"FudeReviewScopePrev",
 	"FudeReviewStop",
 	"FudeReviewSuggest",
 	"FudeReviewToggleCommentStyle",
@@ -130,9 +133,6 @@ describe("commands availability", function()
 	it("lists GitHub-only commands in github mode", function()
 		local expected = concat(ALWAYS, ANY_REVIEW, {
 			"FudeReviewOverview",
-			"FudeReviewScope",
-			"FudeReviewScopeNext",
-			"FudeReviewScopePrev",
 			"FudeReviewStackSwitch",
 			"FudeReviewSubmit",
 		})

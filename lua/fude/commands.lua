@@ -311,9 +311,9 @@ M.list = {
 	-- Scope ----------------------------------------------------------------
 	{
 		name = "FudeReviewScope",
-		desc = "Select review scope (full PR or specific commit)",
+		desc = "Select review scope (full PR / commit, or the local scope picker)",
 		category = "Scope",
-		available = when_github,
+		available = when_active,
 		run = function()
 			require("fude.scope").select_scope()
 		end,
@@ -322,7 +322,7 @@ M.list = {
 		name = "FudeReviewScopeNext",
 		desc = "Move to next review scope",
 		category = "Scope",
-		available = when_github,
+		available = when_active,
 		run = function()
 			require("fude.scope").next_scope()
 		end,
@@ -331,7 +331,7 @@ M.list = {
 		name = "FudeReviewScopePrev",
 		desc = "Move to previous review scope",
 		category = "Scope",
-		available = when_github,
+		available = when_active,
 		run = function()
 			require("fude.scope").prev_scope()
 		end,
