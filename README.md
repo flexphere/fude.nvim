@@ -45,14 +45,17 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   "flexphere/fude.nvim",
   opts = {},
   cmd = {
+    "FudeCommandPalette",
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
+    "FudeReviewLocal", "FudeReviewLocalToggle", "FudeReviewLocalScope", "FudeReviewResolve",
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewNextFile", "FudeReviewPrevFile",
     "FudeReviewNextUnviewedFile", "FudeReviewPrevUnviewedFile",
     "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev", "FudeReviewStackSwitch",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
-    "FudeReviewToggleFileTree", "FudeCreatePR", "FudeEditPR",
+    "FudeReviewToggleFileTree", "FudeReviewToggleCommentStyle", "FudeReviewToggleResolved",
+    "FudeReviewToggleGitsigns", "FudeCreatePR", "FudeEditPR",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
