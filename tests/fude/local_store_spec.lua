@@ -472,6 +472,22 @@ describe("store IO round-trip", function()
 		assert.same({ "{oops" }, vim.fn.readfile(path))
 	end)
 
+	it("a pointer file that cannot be stat'ed is an error, only ENOENT is an empty map", function()
+		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
+		local original = vim.uv.fs_stat
+		vim.uv.fs_stat = function()
+			return nil, "EACCES: permission denied"
+		end
+		local cleared, err = store.clear_current("/repo", "feat/a")
+		vim.uv.fs_stat = original
+		assert.is_false(cleared)
+		assert.truthy(err:find("cannot stat", 1, true))
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
+
+		-- A genuinely missing file stays a clean no-op
+		assert.is_true(store.clear_current("/nowhere", "feat/a"))
+	end)
+
 	it("clear_current reports a failed rewrite when other entries remain", function()
 		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
 		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })

@@ -570,8 +570,15 @@ end
 --- @return string|nil err
 local function read_current_map(repo_root)
 	local path = M.current_file(repo_root)
-	if not vim.uv.fs_stat(path) then
-		return {}, nil
+	local stat, stat_err = vim.uv.fs_stat(path)
+	if not stat then
+		-- Only "no such file" means an empty map. Any other stat failure
+		-- (EACCES on the directory, EIO) hides a file that may well hold stale
+		-- recovery entries, so it is an error like an unreadable file.
+		if stat_err and stat_err:match("^ENOENT") then
+			return {}, nil
+		end
+		return {}, "cannot stat " .. path .. ": " .. (stat_err or "?")
 	end
 	local ok, lines = pcall(vim.fn.readfile, path)
 	if not ok then
