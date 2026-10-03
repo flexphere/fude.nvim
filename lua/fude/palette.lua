@@ -13,43 +13,46 @@ local M = {}
 -- Pure helpers
 ----------------------------------------------------------------
 
---- Whether a mapping's rhs invokes the given user command.
---- Accepts `<cmd>Name<cr>`, `:Name<cr>`, `:<C-u>Name<cr>`, `:'<,'>Name<cr>`
---- and `... | Name<cr>`. The wrapper (`<Cmd>`, `<C-u>`, ...) is matched
+--- Whether a mapping's rhs invokes the given user command as its first Ex
+--- command. Accepts `<Cmd>Name<CR>`, `:Name<CR>`, `:<C-u>Name<CR>` and
+--- `:'<,'>Name<CR>`, optionally preceded by `<Esc>`, with arguments or
+--- further `|`-chained commands after the name. The wrapper is matched
 --- case-insensitively, but the command name is matched exactly: user
 --- commands are case-sensitive, so `<cmd>fudereviewdiff<cr>` would not run
---- `FudeReviewDiff` and must not be shown as its key. The name must not be
---- a prefix of a longer identifier either, so `FudeReviewScope` does not
---- match `<cmd>FudeReviewScopeNext<cr>`.
+--- `FudeReviewDiff` and must not be shown as its key. Anchoring at the
+--- start is what keeps a name that merely appears later in the rhs —
+--- `echo ':FudeReviewDiff'`, `lua print(">FudeReviewDiff")`,
+--- `update | FudeReviewDiff` — from being reported as the command's key;
+--- the mapping may run it, but detecting that needs an Ex parser.
 --- @param rhs string mapping rhs
 --- @param name string command name
 --- @return boolean
 function M.rhs_invokes_command(rhs, name)
 	if name == "" then
-		return false -- an empty needle would match at every position forever
+		return false
 	end
+	local lower = rhs:lower()
 	local pos = 1
-	while true do
-		local s, e = rhs:find(name, pos, true)
-		if not s then
-			return false
+	local function skip(pattern)
+		local next_pos = lower:match("^" .. pattern .. "()", pos)
+		if next_pos then
+			pos = next_pos
 		end
-		local before = rhs:sub(1, s - 1):lower()
-		local after = rhs:sub(e + 1, e + 1)
-		-- Only an Ex command start counts: `:`, `<Cmd>`, `:<C-u>`, a `'<,'>`
-		-- range, or a `|` separator. A name merely embedded in the rhs
-		-- (`lua print(">FudeReviewDiff")`) is not run by that mapping.
-		local prefix_ok = before:match(":%s*$") ~= nil
-			or before:match("<cmd>%s*$") ~= nil
-			or before:match("<c%-u>%s*$") ~= nil
-			or before:match("'<,'>%s*$") ~= nil
-			or before:match("|%s*$") ~= nil
-		local suffix_ok = not after:match("[%w_]")
-		if prefix_ok and suffix_ok then
-			return true
-		end
-		pos = e + 1
 	end
+	skip("<esc>")
+	local after_wrapper = lower:match("^<cmd>()", pos) or lower:match("^:()", pos)
+	if not after_wrapper then
+		return false
+	end
+	pos = after_wrapper
+	skip("<c%-u>")
+	skip("'<,'>")
+	skip("%s*")
+	if rhs:sub(pos, pos + #name - 1) ~= name then
+		return false
+	end
+	local after = rhs:sub(pos + #name, pos + #name)
+	return not after:match("[%w_]")
 end
 
 --- Find the lhs of the first mapping whose rhs invokes `name`.

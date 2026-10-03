@@ -41,14 +41,28 @@ describe("palette.rhs_invokes_command", function()
 		assert.is_false(palette.rhs_invokes_command('<cmd>lua print(">FudeReviewDiff")<cr>', "FudeReviewDiff"))
 		assert.is_false(palette.rhs_invokes_command("<cmd>echo >FudeReviewDiff<cr>", "FudeReviewDiff"))
 		assert.is_false(palette.rhs_invokes_command("<cmd>Telescope FudeReviewDiff<cr>", "FudeReviewDiff"))
+		-- quoted `:` / `|` inside a string are not command starts either
+		assert.is_false(palette.rhs_invokes_command("<Cmd>echo ':FudeReviewDiff'<CR>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<Cmd>echo '| FudeReviewDiff'<CR>", "FudeReviewDiff"))
 	end)
 
-	it("matches after a | command separator", function()
-		assert.is_true(palette.rhs_invokes_command("<cmd>update | FudeReviewDiff<cr>", "FudeReviewDiff"))
+	it("requires an Ex command wrapper at the start of the rhs", function()
+		assert.is_false(palette.rhs_invokes_command("FudeReviewDiff", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<Plug>FudeReviewDiff", "FudeReviewDiff"))
 	end)
 
-	it("matches after skipping an earlier non-command occurrence", function()
-		assert.is_true(palette.rhs_invokes_command(":FudeReviewDiffAll | :FudeReviewDiff<cr>", "FudeReviewDiff"))
+	it("matches with a leading <Esc> and with trailing arguments or chained commands", function()
+		assert.is_true(palette.rhs_invokes_command("<Esc>:FudeReviewDiff<CR>", "FudeReviewDiff"))
+		assert.is_true(palette.rhs_invokes_command("<cmd>FudeReviewLocal main<cr>", "FudeReviewLocal"))
+		assert.is_true(palette.rhs_invokes_command("<cmd>FudeReviewDiff | echo 1<cr>", "FudeReviewDiff"))
+	end)
+
+	it("only looks at the first Ex command of the rhs", function()
+		-- a name after a | separator may run, but detecting that would need
+		-- an Ex parser that skips strings; the palette deliberately stops at
+		-- the first command
+		assert.is_false(palette.rhs_invokes_command("<cmd>update | FudeReviewDiff<cr>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command(":FudeReviewDiffAll | :FudeReviewDiff<cr>", "FudeReviewDiff"))
 	end)
 
 	it("returns false for unrelated rhs", function()

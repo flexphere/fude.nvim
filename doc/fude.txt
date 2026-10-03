@@ -81,12 +81,13 @@ Using lazy.nvim: >lua
     built-in `vim.ui.select` offers numbered selection without search.
 
     Each entry also shows your own key mapping when one invokes the
-    command via `<Cmd>FudeXxx<CR>` or `:FudeXxx<CR>` (normal-mode
-    mappings, buffer-local first, then global — a global mapping that a
-    buffer-local one shadows in the current buffer is skipped;
-    visual-mode mappings are searched first when the palette is opened
-    with a range). The leader key is shown as `<leader>`. Mappings
-    defined with a Lua callback cannot be detected and show no key.
+    command via `<Cmd>FudeXxx<CR>` or `:FudeXxx<CR>` as its first Ex
+    command (normal-mode mappings, buffer-local first, then global; a
+    global mapping that a buffer-local one shadows in the current
+    buffer is skipped; visual-mode mappings are searched first when the
+    palette is opened with a range). The leader key is shown as
+    `<leader>`. Mappings defined with a Lua callback cannot be detected
+    and show no key.
 
     Opened from visual mode (`:'<,'>FudeCommandPalette`, or a
     `<Cmd>FudeCommandPalette<CR>` mapping while the selection is active)
