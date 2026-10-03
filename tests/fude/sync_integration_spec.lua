@@ -1031,4 +1031,104 @@ describe("sync integration", function()
 			assert.are.equal(0, calls.get)
 		end)
 	end)
+	describe("fetch_pr_level_comments", function()
+		local ISSUE_KEY = "api:repos/{owner}/{repo}/issues/42/comments"
+		local REVIEWS_KEY = "api:repos/{owner}/{repo}/pulls/42/reviews"
+
+		local function fetch()
+			local got
+			sync.fetch_pr_level_comments(42, function(pr_comments)
+				got = pr_comments
+			end)
+			assert.is_true(helpers.wait_for(function()
+				return got ~= nil
+			end))
+			return got
+		end
+
+		it("merges issue comments with submitted review bodies, oldest first", function()
+			helpers.mock_gh({
+				[ISSUE_KEY] = {
+					{ id = 10, body = "issue", user = { login = "bob" }, created_at = "2024-01-02T00:00:00Z" },
+				},
+				[REVIEWS_KEY] = {
+					{
+						id = 5,
+						state = "APPROVED",
+						body = "LGTM",
+						user = { login = "alice" },
+						submitted_at = "2024-01-03T00:00:00Z",
+					},
+					{ id = 6, state = "COMMENTED", body = "", submitted_at = "2024-01-04T00:00:00Z" },
+				},
+			})
+			local got = fetch()
+			assert.are.same({ 10, 5 }, { got[1].id, got[2].id })
+			assert.is_true(got[2].is_review_summary)
+		end)
+
+		it("falls back to issue comments alone when the reviews listing fails", function()
+			helpers.mock_gh({
+				[ISSUE_KEY] = { { id = 10, body = "issue", created_at = "2024-01-02T00:00:00Z" } },
+				[REVIEWS_KEY] = "API error",
+			})
+			local got = fetch()
+			assert.are.equal(1, #got)
+			assert.are.equal(10, got[1].id)
+		end)
+
+		it("still shows review bodies when the issue comments listing fails", function()
+			helpers.mock_gh({
+				[ISSUE_KEY] = "API error",
+				[REVIEWS_KEY] = { { id = 5, state = "APPROVED", body = "LGTM", submitted_at = "2024-01-03T00:00:00Z" } },
+			})
+			local got = fetch()
+			assert.are.equal(1, #got)
+			assert.are.equal(5, got[1].id)
+		end)
+
+		it("waits for both listings before calling back once", function()
+			local release_issue
+			local calls = 0
+			helpers.mock_gh({
+				[ISSUE_KEY] = function(_, callback)
+					release_issue = function()
+						callback(nil, { { id = 10, body = "issue", created_at = "2024-01-02T00:00:00Z" } })
+					end
+				end,
+				[REVIEWS_KEY] = { { id = 5, state = "APPROVED", body = "LGTM", submitted_at = "2024-01-03T00:00:00Z" } },
+			})
+			local got
+			sync.fetch_pr_level_comments(42, function(pr_comments)
+				calls = calls + 1
+				got = pr_comments
+			end)
+			assert.is_true(helpers.wait_for(function()
+				return release_issue ~= nil
+			end))
+			-- reviews already answered; the callback must not fire yet
+			assert.is_false(vim.wait(100, function()
+				return got ~= nil
+			end))
+			release_issue()
+			assert.is_true(helpers.wait_for(function()
+				return got ~= nil
+			end))
+			assert.are.equal(1, calls)
+			assert.are.equal(2, #got)
+		end)
+
+		it("yields an empty list without calling gh when pr_number is nil", function()
+			local called = false
+			helpers.mock(require("fude.gh"), "run_json", function()
+				called = true
+			end)
+			local got
+			sync.fetch_pr_level_comments(nil, function(pr_comments)
+				got = pr_comments
+			end)
+			assert.are.same({}, got)
+			assert.is_false(called)
+		end)
+	end)
 end)

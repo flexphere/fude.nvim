@@ -2889,3 +2889,46 @@ describe("format_comment_browser_thread draft", function()
 		assert.is_not_nil(joined:find("line two", 1, true))
 	end)
 end)
+
+describe("comment_badges review_state", function()
+	it("badges a submitted review body with its lower-cased state", function()
+		assert.are.equal(" [approved]", format.comment_badges({ review_state = "APPROVED" }))
+		assert.are.equal(" [changes requested]", format.comment_badges({ review_state = "CHANGES_REQUESTED" }))
+		assert.are.equal(
+			" [agent] [commented]",
+			format.comment_badges({ author_type = "agent", review_state = "COMMENTED" })
+		)
+	end)
+
+	it("adds nothing for plain comments or a null state", function()
+		assert.are.equal("", format.comment_badges({}))
+		assert.are.equal("", format.comment_badges({ review_state = vim.NIL }))
+		assert.are.equal("", format.comment_badges({ review_state = "" }))
+	end)
+
+	it("shows the badge in the overview comment header", function()
+		local identity = function(s)
+			return s or ""
+		end
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "LGTM", review_state = "APPROVED" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "thanks" },
+		}
+		local result = ui.build_overview_left_lines(pr, comments, identity)
+		local headers = {}
+		for _, pos in ipairs(result.comment_positions) do
+			table.insert(headers, result.lines[pos])
+		end
+		assert.are.same({ "### @alice  2024-01-01 [approved]", "### @bob  2024-01-02" }, headers)
+	end)
+
+	it("shows the badge in the thread display header", function()
+		local result = format.format_reply_comments_for_display({
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "LGTM", review_state = "APPROVED" },
+		}, function(s)
+			return s
+		end)
+		assert.are.equal("@alice (2024-01-01): [approved]", result.lines[1])
+	end)
+end)

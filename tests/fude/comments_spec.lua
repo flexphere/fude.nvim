@@ -1712,3 +1712,97 @@ describe("merge_draft_entries", function()
 		assert.is_nil(out[1].has_draft)
 	end)
 end)
+
+describe("build_pr_level_comments", function()
+	it("appends submitted review bodies as review-summary comments, oldest first", function()
+		local issue_comments = {
+			{ id = 10, body = "issue", user = { login = "bob" }, created_at = "2024-01-02T00:00:00Z" },
+		}
+		local reviews = {
+			{
+				id = 5,
+				state = "APPROVED",
+				body = "LGTM",
+				user = { login = "alice" },
+				submitted_at = "2024-01-03T00:00:00Z",
+			},
+			{
+				id = 4,
+				state = "CHANGES_REQUESTED",
+				body = "please fix",
+				user = { login = "carol" },
+				submitted_at = "2024-01-01T00:00:00Z",
+			},
+		}
+		local out = data.build_pr_level_comments(issue_comments, reviews)
+		assert.are.same({ 4, 10, 5 }, { out[1].id, out[2].id, out[3].id })
+		assert.is_true(out[1].is_review_summary)
+		assert.are.equal("CHANGES_REQUESTED", out[1].review_state)
+		assert.are.equal("2024-01-01T00:00:00Z", out[1].created_at)
+		assert.is_nil(out[2].is_review_summary)
+		assert.are.equal("alice", out[3].user.login)
+	end)
+
+	it("skips PENDING reviews and reviews with an empty or blank body", function()
+		local reviews = {
+			{ id = 1, state = "PENDING", body = "unsubmitted", submitted_at = "2024-01-01T00:00:00Z" },
+			{ id = 2, state = "COMMENTED", body = "", submitted_at = "2024-01-01T00:00:00Z" },
+			{ id = 3, state = "COMMENTED", body = " \n", submitted_at = "2024-01-01T00:00:00Z" },
+			{ id = 4, state = "COMMENTED", body = "real", submitted_at = "2024-01-01T00:00:00Z" },
+		}
+		local out = data.build_pr_level_comments({}, reviews)
+		assert.are.equal(1, #out)
+		assert.are.equal(4, out[1].id)
+	end)
+
+	it("tolerates JSON null fields and nil inputs", function()
+		local reviews = {
+			{
+				id = 1,
+				state = "COMMENTED",
+				body = "deleted user",
+				user = vim.NIL,
+				submitted_at = vim.NIL,
+			},
+			{ id = 2, state = "COMMENTED", body = vim.NIL, submitted_at = "2024-01-01T00:00:00Z" },
+			vim.NIL,
+		}
+		local out = data.build_pr_level_comments(nil, reviews)
+		assert.are.equal(1, #out)
+		assert.is_nil(out[1].user)
+		assert.are.equal("", out[1].created_at)
+		assert.are.same({}, data.build_pr_level_comments(nil, nil))
+	end)
+
+	it("orders equal timestamps by id so the result is deterministic", function()
+		local reviews = {
+			{ id = 9, state = "COMMENTED", body = "b", submitted_at = "2024-01-01T00:00:00Z" },
+			{ id = 8, state = "COMMENTED", body = "a", submitted_at = "2024-01-01T00:00:00Z" },
+		}
+		local out = data.build_pr_level_comments({}, reviews)
+		assert.are.same({ 8, 9 }, { out[1].id, out[2].id })
+	end)
+end)
+
+describe("find_editable_comment", function()
+	it("returns the user's most recent non-summary comment", function()
+		local thread = {
+			{ id = 1, user = { login = "me" } },
+			{ id = 2, user = { login = "other" } },
+			{ id = 3, user = { login = "me" } },
+			{ id = 4, user = { login = "me" }, is_review_summary = true },
+		}
+		assert.are.equal(3, data.find_editable_comment(thread, "me").id)
+	end)
+
+	it("returns nil when only review summaries or others' comments remain", function()
+		local thread = {
+			{ id = 1, user = { login = "other" } },
+			{ id = 2, user = { login = "me" }, is_review_summary = true },
+			{ id = 3, user = vim.NIL },
+		}
+		assert.is_nil(data.find_editable_comment(thread, "me"))
+		assert.is_nil(data.find_editable_comment(thread, nil))
+		assert.is_nil(data.find_editable_comment({}, "me"))
+	end)
+end)
