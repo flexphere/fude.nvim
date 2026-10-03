@@ -778,6 +778,73 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_nil(store.read_stranded_commit_session(tmp_repo, "c1sha"))
 	end)
 
+	it("ignores buffers of a worktree nested inside this one", function()
+		local calls = mock_commit_git()
+		local diff = require("fude.diff")
+		local nested = tmp_repo .. "/.claude/worktrees/x"
+		vim.fn.mkdir(nested, "p")
+		helpers.mock(diff, "get_worktrees", function()
+			return { { path = tmp_repo, branch = "feat/x" }, { path = nested, branch = "other" } }
+		end)
+		session.start(nil)
+
+		-- Lives under tmp_repo by prefix, but belongs to the nested worktree
+		local buf = vim.fn.bufadd(nested .. "/g.lua")
+		vim.fn.bufload(buf)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "edited elsewhere" })
+		assert.is_true(vim.bo[buf].modified)
+
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({ "c1sha" }, calls.checkout)
+		-- and it was not reloaded under the parent's checkout
+		assert.is_true(vim.bo[buf].modified)
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
+	it("keeps the scope to return to across a failed switch that re-enters the commit", function()
+		mock_commit_git()
+		session.start(nil)
+		session.set_scope("uncommitted")
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- unpushed is unavailable → back to the commit; the pointer must still
+		-- know the user came from uncommitted, not from "commit".
+		assert.is_false(session.set_scope("unpushed"))
+		assert.equals("commit", config.state.local_session.scope)
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		assert.equals("uncommitted", store.read_current(tmp_repo, "feat/x").scope)
+	end)
+
+	it("sees a comment input in another tab and closes empty ones everywhere", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+
+		local origin_tab = vim.api.nvim_get_current_tabpage()
+		vim.cmd("tabnew")
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.b[buf].fude_comment = true
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "typed in another tab" })
+		local win = vim.api.nvim_open_win(buf, false, { relative = "editor", row = 1, col = 1, width = 20, height = 2 })
+		vim.api.nvim_set_current_tabpage(origin_tab)
+
+		-- bufwinid() would not find it from here; win_findbuf() does
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({}, calls.checkout)
+
+		-- Emptied, it no longer blocks, and entering closes it so a later
+		-- submit cannot be refused after the float is gone
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+
+		pcall(vim.api.nvim_buf_delete, buf, { force = true })
+		for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+			if tab ~= origin_tab then
+				pcall(vim.cmd, "tabclose " .. vim.api.nvim_tabpage_get_number(tab))
+			end
+		end
+	end)
+
 	it("leaving the commit scope restores the branch first", function()
 		local calls = mock_commit_git()
 		session.start(nil)

@@ -730,26 +730,45 @@ function M.has_unsent_comment_input()
 	if state.comment_browser and buf_has_text(state.comment_browser.lower_buf) then
 		return true
 	end
-	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_loaded(buf) and vim.b[buf].fude_comment and vim.fn.bufwinid(buf) ~= -1 then
-			if buf_has_text(buf) then
-				return true
-			end
+	for _, buf in ipairs(M.comment_input_buffers()) do
+		if buf_has_text(buf) then
+			return true
 		end
 	end
 	return false
 end
 
---- Close every open comment UI that shows cached comments: the reply/edit
---- window and the comment browser. The local commit scope calls this on
---- entry, since the comments it would show anchor to a working tree that is
---- no longer checked out.
+--- Loaded single-pane comment input buffers (`open_comment_input`, marked
+--- `b:fude_comment`) that are shown in some window of *any* tabpage —
+--- `bufwinid` only searches the current tab, `win_findbuf` searches them all.
+--- @return integer[] bufs
+function M.comment_input_buffers()
+	local bufs = {}
+	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+		if vim.api.nvim_buf_is_loaded(buf) and vim.b[buf].fude_comment and #vim.fn.win_findbuf(buf) > 0 then
+			table.insert(bufs, buf)
+		end
+	end
+	return bufs
+end
+
+--- Close every open comment UI that shows or takes comments: the reply/edit
+--- window, the comment browser, and single-pane input floats in any tab. The
+--- local commit scope calls this on entry, since the comments they show anchor
+--- to a working tree that is no longer checked out and a submit from them
+--- would be refused by the backend after the float has already closed. Inputs
+--- holding text never get here (`has_unsent_comment_input` blocks first).
 function M.close_comment_ui()
 	local state = config.state
 	if state.reply_window and state.reply_window.upper_win then
 		close_reply_window(state.reply_window)
 	end
 	require("fude.ui.comment_browser").close()
+	for _, buf in ipairs(M.comment_input_buffers()) do
+		for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+			pcall(vim.api.nvim_win_close, win, true)
+		end
+	end
 end
 
 --- Open a two-pane edit window (thread above, editable comment below).

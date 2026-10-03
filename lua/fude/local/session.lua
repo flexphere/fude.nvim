@@ -359,12 +359,22 @@ local function load_changed_files_into_state(state)
 		M.build_changed_files(diff_mod.get_name_status(base_sha, root), diff_mod.get_numstat(base_sha, root), untracked)
 end
 
---- Loaded normal file buffers whose file lives under `root`.
+--- Loaded normal file buffers owned by the worktree at `root` — not by a
+--- worktree nested inside it (e.g. `.claude/worktrees/x`), whose files a plain
+--- prefix test would claim. Ownership is the deepest worktree root containing
+--- the file (`stack.find_owning_root`), over every worktree git knows about.
 --- @param root string worktree root
 --- @return integer[] bufs
 local function file_buffers_under(root)
-	local is_path_under = require("fude.stack").is_path_under
+	local stack = require("fude.stack")
 	local resolved_root = vim.fn.resolve(root)
+	local roots = { resolved_root }
+	for _, wt in ipairs(require("fude.diff").get_worktrees() or {}) do
+		local resolved = vim.fn.resolve(wt.path)
+		if resolved ~= resolved_root then
+			table.insert(roots, resolved)
+		end
+	end
 	local bufs = {}
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 		local name = vim.api.nvim_buf_get_name(buf)
@@ -372,7 +382,7 @@ local function file_buffers_under(root)
 			vim.api.nvim_buf_is_loaded(buf)
 			and vim.bo[buf].buftype == ""
 			and name ~= ""
-			and is_path_under(vim.fn.resolve(name), resolved_root)
+			and stack.find_owning_root(vim.fn.resolve(name), roots) == resolved_root
 		then
 			table.insert(bufs, buf)
 		end
@@ -1080,6 +1090,9 @@ function M.set_scope(scope, opts)
 	--     while HEAD is detached, so the branch has to be put back first and a
 	--     failed resolve re-enters the commit below.
 	local previous_commit = session.scope_commit_sha
+	-- restore_head clears this; a re-entry below must not record "commit" as
+	-- the scope to return the pointer to.
+	local previous_scope_before_commit = session.scope_before_commit
 	local diff_base, content_ref
 	if scope == "commit" then
 		diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root, commit_sha)
@@ -1113,6 +1126,7 @@ function M.set_scope(scope, opts)
 			if enter_commit_scope(session, previous_commit) then
 				session.scope_commit_sha = previous_commit
 				session.scope_commit_index = commit_index_of(session, previous_commit)
+				session.scope_before_commit = previous_scope_before_commit
 			else
 				-- HEAD is back on the branch but the commit cannot be re-entered
 				-- (the second checkout failed). The session must
