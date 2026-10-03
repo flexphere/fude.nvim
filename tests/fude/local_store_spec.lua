@@ -453,6 +453,25 @@ describe("store IO round-trip", function()
 		assert.is_nil(store.read_current("/repo", "feat/c"))
 	end)
 
+	it("an unreadable pointer file is an error for writers, not an empty map", function()
+		local path = store.current_file("/repo")
+		vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
+		vim.fn.writefile({ "{oops" }, path)
+
+		-- Readers degrade to "nothing there"
+		assert.is_nil(store.read_current("/repo", "feat/x"))
+		assert.is_nil(store.read_stranded_commit_session("/repo", "c1sha"))
+		-- Writers must not claim success: the stale entries are still on disk
+		local cleared, cerr = store.clear_current("/repo", "feat/x")
+		assert.is_false(cleared)
+		assert.truthy(cerr:find("cannot decode", 1, true))
+		local ok, werr = store.write_current("/repo", "feat/x", { id = "s", base_ref = "main", branch = "feat/x" })
+		assert.is_false(ok)
+		assert.truthy(werr:find("cannot decode", 1, true))
+		-- and the file was left alone
+		assert.same({ "{oops" }, vim.fn.readfile(path))
+	end)
+
 	it("clear_current reports a failed rewrite when other entries remain", function()
 		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
 		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })

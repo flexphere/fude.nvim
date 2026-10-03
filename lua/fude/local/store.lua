@@ -562,27 +562,30 @@ end
 --- Read the whole current-session pointer map (`{ [branch] = session }`).
 --- Migrates the pre-branch flat single-session format on read: an old pointer
 --- (a session object with a top-level `id`) is treated as the entry for its
---- own branch. Returns {} when missing or malformed.
+--- own branch. A missing file is an empty map; a file that exists but cannot
+--- be read or decoded is an empty map *plus* an error, so writers can refuse
+--- to act on (or report success over) a pointer they cannot see.
 --- @param repo_root string
---- @return table<string, table>
+--- @return table<string, table> map
+--- @return string|nil err
 local function read_current_map(repo_root)
 	local path = M.current_file(repo_root)
-	if vim.fn.filereadable(path) == 0 then
-		return {}
+	if not vim.uv.fs_stat(path) then
+		return {}, nil
 	end
 	local ok, lines = pcall(vim.fn.readfile, path)
 	if not ok then
-		return {}
+		return {}, "cannot read " .. path .. ": " .. tostring(lines)
 	end
 	local ok2, data = pcall(vim.json.decode, table.concat(lines, "\n"))
 	if not ok2 or type(data) ~= "table" then
-		return {}
+		return {}, "cannot decode " .. path
 	end
 	-- Backward compat: a legacy single-session pointer (flat object with id).
 	if type(data.id) == "string" then
-		return { [branch_key(data.branch)] = data }
+		return { [branch_key(data.branch)] = data }, nil
 	end
-	return data
+	return data, nil
 end
 
 --- Write `data` as JSON to `path`. `vim.fn.writefile` reports a failed write
@@ -611,7 +614,12 @@ end
 --- @param session table { id, base_ref, base_sha, head_sha, branch, worktree_root, created_at, scope }
 --- @return boolean ok, string|nil err
 function M.write_current(repo_root, branch, session)
-	local map = read_current_map(repo_root)
+	local map, read_err = read_current_map(repo_root)
+	if read_err then
+		-- Writing over a file we cannot read would silently drop the other
+		-- branches' entries.
+		return false, read_err
+	end
 	map[branch_key(branch)] = session
 	local path = M.current_file(repo_root)
 	local dir = vim.fn.fnamemodify(path, ":h")
@@ -627,7 +635,8 @@ end
 --- @param branch string|nil
 --- @return table|nil session
 function M.read_current(repo_root, branch)
-	local session = read_current_map(repo_root)[branch_key(branch)]
+	local map = read_current_map(repo_root)
+	local session = map[branch_key(branch)]
 	if type(session) ~= "table" or type(session.id) ~= "string" then
 		return nil
 	end
@@ -674,7 +683,8 @@ end
 --- @param head_sha string|nil current HEAD
 --- @return table|nil session
 function M.read_stranded_commit_session(repo_root, head_sha)
-	return M.find_stranded_commit_session(read_current_map(repo_root), repo_root, head_sha)
+	local map = read_current_map(repo_root)
+	return M.find_stranded_commit_session(map, repo_root, head_sha)
 end
 
 --- Remove the current-session pointer for a branch (no-op success when absent).
@@ -686,7 +696,11 @@ end
 --- @return boolean ok
 --- @return string|nil err
 function M.clear_current(repo_root, branch)
-	local map = read_current_map(repo_root)
+	local map, read_err = read_current_map(repo_root)
+	if read_err then
+		-- "Absent" cannot be claimed for an entry in a file we cannot read.
+		return false, read_err
+	end
 	local key = branch_key(branch)
 	if map[key] == nil then
 		return true, nil
