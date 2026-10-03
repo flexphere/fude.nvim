@@ -86,10 +86,13 @@ function M.sync_all()
 	if not state.active or state.review_mode ~= "local" then
 		return
 	end
-	local diff = require("fude.diff")
+	-- Relative to the session's worktree root, not Neovim's cwd: after a `:cd`
+	-- out of the worktree every buffer would otherwise be skipped, leaving
+	-- stale marks that the next write would turn into bogus moves.
+	local session = require("fude.local.session")
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
 		if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == "" then
-			local rel_path = diff.to_repo_relative(vim.api.nvim_buf_get_name(buf))
+			local rel_path = session.relative_path(vim.api.nvim_buf_get_name(buf))
 			if rel_path then
 				M.sync_buffer(buf, rel_path)
 			end

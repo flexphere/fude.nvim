@@ -158,6 +158,30 @@ function M.in_commit_scope()
 	return state.review_mode == "local" and M.is_commit_scope(state.local_session)
 end
 
+--- Repo-relative path of a file for the active review. In a local session the
+--- reference is the session's worktree root, not Neovim's cwd — the user may
+--- `:cd` out of the worktree mid-review, and `diff.to_repo_relative` would then
+--- return nil for every reviewed file (dropping extmarks and tracking marks).
+--- Falls back to `diff.to_repo_relative` outside local mode.
+--- @param filepath string|nil absolute or cwd-relative file path
+--- @return string|nil rel_path
+function M.relative_path(filepath)
+	local state = config.state
+	local session = state.review_mode == "local" and state.local_session or nil
+	local diff_mod = require("fude.diff")
+	if not session or not session.worktree_root then
+		return diff_mod.to_repo_relative(filepath)
+	end
+	if not filepath or filepath == "" then
+		return nil
+	end
+	local rel = diff_mod.make_relative(vim.fn.fnamemodify(filepath, ":p"), session.worktree_root)
+	if not rel or rel == "" then
+		return nil
+	end
+	return rel
+end
+
 --- Resolve the diff base for a local review scope.
 ---   "base"        → merge-base with the base branch (the whole branch diff)
 ---   "unpushed"    → the upstream tracking ref (changes not yet pushed)
@@ -728,19 +752,26 @@ function M.start(base_arg)
 				)
 				return
 			end
-			local ok, err = diff_mod.checkout(stranded.original_branch, repo_root)
+			local return_to = stranded.original_branch
+			local ok, err = diff_mod.checkout(return_to, repo_root)
 			if not ok then
-				vim.notify(
-					"fude.nvim: Failed to return to " .. stranded.original_branch .. ": " .. (err or "?"),
-					vim.log.levels.ERROR
-				)
+				vim.notify("fude.nvim: Failed to return to " .. return_to .. ": " .. (err or "?"), vim.log.levels.ERROR)
 				return
 			end
+			-- HEAD is back on the branch: stop the pointer from describing a
+			-- commit scope *now*, before buffers are reloaded and the rest of
+			-- start() runs — should Neovim die in between, a later deliberate
+			-- detach onto that SHA must not be taken for this crash again.
+			-- With no scope recorded the resume below picks the default one.
+			stranded.scope = nil
+			stranded.scope_commit_sha = nil
+			stranded.original_branch = nil
+			persist_non_commit_or_clear(stranded)
 			reload_open_buffers(repo_root)
 			head_sha = diff_mod.get_head_sha(repo_root)
 			branch = diff_mod.get_current_branch()
 			vim.notify(
-				"fude.nvim: Returned to " .. stranded.original_branch .. " left detached by an earlier commit-scope review",
+				"fude.nvim: Returned to " .. return_to .. " left detached by an earlier commit-scope review",
 				vim.log.levels.INFO
 			)
 		end
@@ -1205,16 +1236,25 @@ function M.select_scope()
 		return
 	end
 	-- Offer only the scopes available for the current git state.
-	local specs = M.scope_specs(state.local_session)
+	local session = state.local_session
+	local specs = M.scope_specs(session)
 	vim.ui.select(specs, {
 		prompt = "Local review scope:",
 		format_item = function(s)
 			return (s.is_current and "▶ " or "  ") .. s.label
 		end,
 	}, function(choice)
-		if choice then
-			M.set_scope(choice.scope, { commit_sha = choice.commit_sha })
+		if not choice then
+			return
 		end
+		-- The picker may outlive the session it was built for (stop → start
+		-- while it is open). Its commit SHAs belong to the old branch; checking
+		-- one out from the new session would review the wrong history.
+		if config.state.local_session ~= session then
+			vim.notify("fude.nvim: The review session changed while the picker was open — pick again", vim.log.levels.WARN)
+			return
+		end
+		M.set_scope(choice.scope, { commit_sha = choice.commit_sha })
 	end)
 end
 

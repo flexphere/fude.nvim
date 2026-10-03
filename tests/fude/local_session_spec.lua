@@ -959,6 +959,83 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.truthy(errors[1]:find("feat/x", 1, true))
 	end)
 
+	it("relative_path resolves against the session root even after :cd elsewhere", function()
+		mock_commit_git()
+		session.start(nil)
+		local elsewhere = vim.fn.tempname()
+		vim.fn.mkdir(elsewhere, "p")
+		local original_cwd = vim.fn.getcwd()
+		vim.cmd.cd(elsewhere)
+
+		assert.equals("f.lua", session.relative_path(tmp_repo .. "/f.lua"))
+		assert.equals("sub/dir/g.lua", session.relative_path(tmp_repo .. "/sub/dir/g.lua"))
+		assert.is_nil(session.relative_path(elsewhere .. "/x.lua"))
+		assert.is_nil(session.relative_path(""))
+		assert.is_nil(session.relative_path(nil))
+
+		vim.cmd.cd(original_cwd)
+		vim.fn.delete(elsewhere, "rf")
+	end)
+
+	it("ignores a scope picked from a picker built for an earlier session", function()
+		local calls = mock_commit_git()
+		local captured
+		helpers.mock(vim.ui, "select", function(_, _, on_choice)
+			captured = on_choice
+		end)
+		session.start(nil)
+		session.select_scope()
+		assert.is_function(captured)
+
+		-- stop → start while the picker is still open
+		session.stop()
+		session.start(nil)
+		helpers.mock(vim, "notify", function() end)
+		captured({ scope = "commit", commit_sha = "c1sha" })
+		assert.same({}, calls.checkout)
+		assert.equals("base", config.state.local_session.scope)
+	end)
+
+	it("rewrites the stranded pointer right after returning to the branch", function()
+		mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		config.state.active = false
+		config.state.review_mode = nil
+		local diff = require("fude.diff")
+		local on_branch = false
+		helpers.mock(diff, "get_current_branch", function()
+			return on_branch and "feat/x" or nil
+		end)
+		helpers.mock(diff, "get_head_sha", function()
+			return on_branch and "headsha" or "c1sha"
+		end)
+		local pointer_after_checkout
+		helpers.mock(diff, "checkout", function(ref)
+			on_branch = (ref == "feat/x")
+			return true
+		end)
+		-- The first write after the checkout must already be non-commit: fail
+		-- everything after it so nothing later could paper over the window.
+		local real_write = store.write_current
+		local writes = 0
+		helpers.mock(store, "write_current", function(root, branch, data)
+			writes = writes + 1
+			if writes == 1 then
+				pointer_after_checkout = vim.deepcopy(data)
+				return real_write(root, branch, data)
+			end
+			return false, "later writes fail"
+		end)
+		helpers.mock(vim, "notify", function() end)
+
+		session.start(nil)
+		assert.is_not_nil(pointer_after_checkout)
+		assert.is_nil(pointer_after_checkout.scope_commit_sha)
+		assert.is_nil(pointer_after_checkout.original_branch)
+		assert.not_equals("commit", pointer_after_checkout.scope)
+	end)
+
 	it("leaving the commit scope restores the branch first", function()
 		local calls = mock_commit_git()
 		session.start(nil)

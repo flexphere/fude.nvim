@@ -146,8 +146,9 @@ function M.refresh_extmarks()
 	end
 
 	local filepath = vim.api.nvim_buf_get_name(buf)
-	local diff = require("fude.diff")
-	local rel_path = diff.to_repo_relative(filepath)
+	-- Relative to the local session's worktree root when there is one, so a
+	-- `:cd` out of the worktree does not blank every reviewed buffer.
+	local rel_path = require("fude.local.session").relative_path(filepath)
 	if not rel_path then
 		return
 	end
