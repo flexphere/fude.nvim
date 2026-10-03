@@ -122,6 +122,9 @@ function M.load_comments(callback, opts)
 		-- before the switch (reply/edit window, comment browser) still holds
 		-- the cached comments — take them all down.
 		require("fude.ui").clear_all_extmarks()
+		-- The cursor-following hint lives in its own namespace and would stay
+		-- on screen until the next CursorMoved otherwise.
+		require("fude.ui.extmarks").clear_inline_hint()
 		require("fude.ui").close_comment_ui()
 		-- teardown, not sync_all: the latter only reaches buffers it can map
 		-- to the repo, so marks in the others would survive and feed bogus

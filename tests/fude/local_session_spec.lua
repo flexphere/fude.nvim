@@ -1373,9 +1373,12 @@ describe("session lifecycle (start/reload/stop)", function()
 		mock_commit_git()
 		session.start(nil)
 		local ui = require("fude.ui")
-		local cleared, closed, refreshed = 0, 0, 0
+		local cleared, closed, refreshed, hint_cleared = 0, 0, 0, 0
 		helpers.mock(ui, "clear_all_extmarks", function()
 			cleared = cleared + 1
+		end)
+		helpers.mock(require("fude.ui.extmarks"), "clear_inline_hint", function()
+			hint_cleared = hint_cleared + 1
 		end)
 		helpers.mock(ui, "close_comment_ui", function()
 			closed = closed + 1
@@ -1388,6 +1391,8 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(1, cleared)
 		assert.equals(1, closed)
 		assert.equals(1, refreshed)
+		-- the cursor-following hint has its own namespace
+		assert.equals(1, hint_cleared)
 
 		-- Leaving re-renders every visible window, without another teardown
 		session.set_scope("uncommitted")
