@@ -724,6 +724,47 @@ describe("session lifecycle (start/reload/stop)", function()
 		vim.api.nvim_buf_delete(buf, { force = true })
 	end)
 
+	it("removes the pointer when the non-commit rewrite after a restore fails", function()
+		mock_commit_git()
+		helpers.mock(vim, "notify", function() end)
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		assert.equals("commit", store.read_current(tmp_repo, "feat/x").scope)
+
+		-- The disk turns read-only for JSON writes; the stale commit entry must
+		-- not outlive the restore (a later deliberate detach would match it).
+		helpers.mock(store, "write_current", function()
+			return false, "read-only"
+		end)
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		assert.is_nil(store.read_current(tmp_repo, "feat/x"))
+		assert.is_nil(store.read_stranded_commit_session(tmp_repo, "c1sha"))
+	end)
+
+	it("removes the pointer when the rollback after a failed checkout cannot be written", function()
+		local writes = 0
+		mock_commit_git({
+			checkout = function()
+				return false, "conflict"
+			end,
+		})
+		helpers.mock(vim, "notify", function() end)
+		session.start(nil)
+		local real_write = store.write_current
+		helpers.mock(store, "write_current", function(...)
+			writes = writes + 1
+			if writes == 1 then
+				return real_write(...) -- the pending pointer goes through
+			end
+			return false, "read-only" -- the rollback does not
+		end)
+
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		-- HEAD never moved, so no pointer naming the commit may remain
+		assert.is_nil(store.read_current(tmp_repo, "feat/x"))
+		assert.equals("base", config.state.local_session.scope)
+	end)
+
 	it("a forced restore leaves no pointer a deliberate detach could be mistaken for", function()
 		mock_commit_git()
 		session.start(nil)

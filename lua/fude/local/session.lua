@@ -445,6 +445,24 @@ local function checkout_blocker(root)
 	return nil
 end
 
+--- Rewrite the pointer to a non-commit state, or remove it when the write
+--- fails. A pointer that still says `scope = "commit"` with a SHA after HEAD
+--- is back on the branch is worse than no pointer: a later deliberate detach
+--- onto that SHA would be taken for a crash and checked out from under the
+--- user. Losing the pointer only costs the next start a resume.
+--- @param session table the active local session
+--- @param overrides table|nil passed to `persist_current`
+local function persist_non_commit_or_clear(session, overrides)
+	if M.persist_current(session, overrides) then
+		return
+	end
+	store.clear_current(session.worktree_root, session.branch)
+	vim.notify(
+		"fude.nvim: Could not update .fude/current.json; removed the pointer so no stale commit-scope entry is left",
+		vim.log.levels.WARN
+	)
+end
+
 --- Return the working tree to the branch saved on entering the commit scope.
 --- A no-op success when no checkout is outstanding, so every scope switch and
 --- `stop()` can call it unconditionally. Like entering, it refuses while the
@@ -486,7 +504,7 @@ local function restore_head(session, opts)
 	-- left as-is after a VimLeavePre restore, a later deliberate detach onto
 	-- the same SHA would be mistaken for a crash by find_stranded_commit_session.
 	-- apply_scope (scope switch) or clear_current (stop) rewrite it right after.
-	M.persist_current(session, { scope = session.scope_before_commit or "uncommitted" })
+	persist_non_commit_or_clear(session, { scope = session.scope_before_commit or "uncommitted" })
 	session.scope_before_commit = nil
 	if not (opts and opts.reload_buffers == false) then
 		reload_open_buffers(session.worktree_root)
@@ -533,7 +551,9 @@ local function enter_commit_scope(session, sha)
 	end
 	local ok, err = diff_mod.checkout(sha, session.worktree_root)
 	if not ok then
-		M.persist_current(session)
+		-- Roll the pending pointer back; HEAD never moved, so a pointer that
+		-- still names the commit must not survive either.
+		persist_non_commit_or_clear(session)
 		vim.notify("fude.nvim: Failed to check out " .. sha:sub(1, 7) .. ": " .. (err or "?"), vim.log.levels.ERROR)
 		return false
 	end
