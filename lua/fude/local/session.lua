@@ -581,18 +581,20 @@ local function restore_head(session, opts)
 	end
 	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha, target)
 	if blocker then
-		-- Two blockers are never forced over, not even on quit: a moved HEAD
-		-- that no branch holds (the checkout would orphan the user's commit)
-		-- and untracked files the branch tracks (git refuses the checkout
-		-- anyway, so forcing would only hide the reason).
+		-- Some blockers are never forced over, not even on quit: a moved HEAD
+		-- that no branch holds (the checkout would orphan the user's commit),
+		-- a HEAD that cannot be read at all (it might be such a commit), and
+		-- untracked files the branch tracks (git refuses the checkout anyway,
+		-- so forcing would only hide the reason).
 		local diff_mod = require("fude.diff")
 		local head = session.scope_commit_sha ~= nil and diff_mod.get_head_sha(session.worktree_root) or nil
+		local head_unknown = session.scope_commit_sha ~= nil and head == nil
 		local head_orphaned = head ~= nil
 			and head ~= session.scope_commit_sha
 			and not diff_mod.is_reachable_from_branch(head, session.worktree_root)
 		local in_the_way = blocker:find("would be overwritten", 1, true) ~= nil
 			or blocker:find("cannot check for untracked", 1, true) ~= nil
-		if head_orphaned or in_the_way or not (opts and opts.force) then
+		if head_unknown or head_orphaned or in_the_way or not (opts and opts.force) then
 			vim.notify("fude.nvim: Cannot leave the commit scope yet: " .. blocker, vim.log.levels.WARN)
 			return false
 		end

@@ -1147,6 +1147,26 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_false(config.state.active)
 	end)
 
+	it("does not force a restore on quit when HEAD cannot be read", function()
+		local calls = mock_commit_git()
+		local diff = require("fude.diff")
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- git cannot tell us where HEAD is: it might be an unsaved commit, so
+		-- leaving it would orphan it. Quitting must not guess.
+		helpers.mock(diff, "get_head_sha", function()
+			return nil
+		end)
+		local warned = {}
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(warned, msg)
+		end)
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		assert.same({ "c1sha" }, calls.checkout)
+		assert.truthy(table.concat(warned, "\n"):find("Cannot leave the commit scope yet", 1, true))
+	end)
+
 	it("refuses a checkout that untracked files would collide with, even on quit", function()
 		local calls = mock_commit_git()
 		local diff = require("fude.diff")
