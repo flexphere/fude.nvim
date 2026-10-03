@@ -35,8 +35,9 @@ in the editor. It provides:
 - Mark files as viewed/unviewed (synced with GitHub)
 - Toggleable side panel showing review scope and changed files
 - Gitsigns integration for diff base switching
-- `:FudeCommandPalette`: every command usable right now, searchable by
-  description, with your own key mappings shown
+- `:FudeCommandPalette`: every command usable right now, with your own
+  key mappings shown; fuzzy search by description with Telescope,
+  snacks, or a picker-backed `vim.ui.select` provider
 
 ==============================================================================
 2. REQUIREMENTS                                        *fude-requirements*
@@ -67,14 +68,17 @@ Using lazy.nvim: >lua
 :FudeCommandPalette                                *:FudeCommandPalette*
     Open the command palette: a picker listing every fude command that
     is usable in the current state (before a session starts, in GitHub
-    review mode, or in local review mode), grouped by category and
-    searchable by description and command name. Each row shows
-    `[Category]  Description  :Command  key`. Selecting an entry runs
-    the command. Uses Telescope, snacks.picker, or `vim.ui.select`
-    according to `file_list_mode` ("quickfix" falls back to
-    `vim.ui.select`). Telescope and snacks open a compact centered
-    window sized to the list, without a preview pane, independent of
-    your picker's default layout.
+    review mode, or in local review mode), grouped by category. Each
+    row shows `[Category]  Description  :Command  key`. Selecting an
+    entry runs the command. Uses Telescope, snacks.picker, or
+    `vim.ui.select` according to `file_list_mode` ("quickfix" falls
+    back to `vim.ui.select`). Telescope and snacks open a compact
+    centered window sized to the list, without a preview pane,
+    independent of your picker's default layout, and let you fuzzy
+    search by description and command name. The `vim.ui.select` path
+    is searchable only when a picker-backed provider is installed
+    (dressing.nvim, telescope-ui-select, snacks' ui_select, ...); the
+    built-in `vim.ui.select` offers numbered selection without search.
 
     Each entry also shows your own key mapping when one invokes the
     command via `<Cmd>FudeXxx<CR>` or `:FudeXxx<CR>` (normal-mode
