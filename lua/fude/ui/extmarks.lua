@@ -245,6 +245,26 @@ function M.clear_extmarks(buf)
 	end
 end
 
+--- Re-render comment extmarks in every window showing a normal file buffer.
+--- `refresh_extmarks` works on the current buffer; after a change that affects
+--- all buffers at once (a local scope switch) the other visible ones must not
+--- wait for their next BufEnter.
+function M.refresh_visible_extmarks()
+	local current = vim.api.nvim_get_current_win()
+	for _, win in ipairs(vim.api.nvim_list_wins()) do
+		if vim.api.nvim_win_is_valid(win) then
+			local buf = vim.api.nvim_win_get_buf(win)
+			if vim.bo[buf].buftype == "" then
+				if win == current then
+					M.refresh_extmarks()
+				else
+					pcall(vim.api.nvim_win_call, win, M.refresh_extmarks)
+				end
+			end
+		end
+	end
+end
+
 --- Clear extmarks across all buffers.
 function M.clear_all_extmarks()
 	local state = config.state

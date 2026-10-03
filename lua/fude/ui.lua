@@ -40,6 +40,7 @@ M.clear_comment_line_highlight = extmarks.clear_comment_line_highlight
 M.refresh_extmarks = extmarks.refresh_extmarks
 M.clear_extmarks = extmarks.clear_extmarks
 M.clear_all_extmarks = extmarks.clear_all_extmarks
+M.refresh_visible_extmarks = extmarks.refresh_visible_extmarks
 M.setup_inline_hint_autocmd = extmarks.setup_inline_hint_autocmd
 M.teardown_inline_hint_autocmd = extmarks.teardown_inline_hint_autocmd
 
@@ -697,6 +698,18 @@ local function close_reply_window(state_reply)
 	state_reply.lower_win = nil
 	state_reply.lower_buf = nil
 	state_reply.closing = false
+end
+
+--- Close every open comment UI that shows cached comments: the reply/edit
+--- window and the comment browser. The local commit scope calls this on
+--- entry, since the comments it would show anchor to a working tree that is
+--- no longer checked out.
+function M.close_comment_ui()
+	local state = config.state
+	if state.reply_window and state.reply_window.upper_win then
+		close_reply_window(state.reply_window)
+	end
+	require("fude.ui.comment_browser").close()
 end
 
 --- Open a two-pane edit window (thread above, editable comment below).

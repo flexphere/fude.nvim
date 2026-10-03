@@ -118,7 +118,11 @@ function M.load_comments(callback, opts)
 		state.comments = {}
 		state.comment_map = {}
 		state.viewed_files = result.viewed
-		require("fude.ui").refresh_extmarks()
+		-- Every buffer, not just the current one, and any comment UI opened
+		-- before the switch (reply/edit window, comment browser) still holds
+		-- the cached comments — take them all down.
+		require("fude.ui").clear_all_extmarks()
+		require("fude.ui").close_comment_ui()
 		require("fude.local.tracker").sync_all()
 		if callback then
 			callback()
