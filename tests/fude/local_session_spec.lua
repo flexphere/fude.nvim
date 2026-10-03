@@ -497,6 +497,24 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("Local: uncommitted", require("fude.scope").statusline())
 	end)
 
+	it("set_scope clears a pending gitsigns reset before restoring the base", function()
+		mock_local_git()
+		session.start(nil)
+		-- :FudeReviewToggleGitsigns left gitsigns on HEAD
+		config.state.gitsigns_reset = true
+		local reset_flag_at_restore
+		helpers.mock(require("fude"), "restore_gitsigns_base", function()
+			reset_flag_at_restore = config.state.gitsigns_reset
+		end)
+
+		session.set_scope("uncommitted")
+		-- the flag must be cleared before the restore, otherwise
+		-- apply_gitsigns_base_for_buffer skips every buffer and the new
+		-- scope's base is never applied
+		assert.is_false(reset_flag_at_restore)
+		assert.is_false(config.state.gitsigns_reset)
+	end)
+
 	it("set_scope back to base restores the merge-base", function()
 		mock_local_git()
 		session.start(nil)

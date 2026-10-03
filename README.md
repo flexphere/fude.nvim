@@ -6,6 +6,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 
 ## Features
 
+- **Command palette** - `:FudeCommandPalette` lists every command usable right now with your own key mappings shown; fuzzy search by description with Telescope, snacks, or a picker-backed `vim.ui.select` provider (the built-in `vim.ui.select` offers numbered selection)
 - **Base branch preview** - Toggle side-by-side diff view showing the base branch version
 - **Follow code jumps** - Preview updates when navigating to other files via LSP
 - **PR comments** - Create, view, reply, edit, and delete review comments on specific lines
@@ -23,7 +24,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
 - **Create PR** - Create draft PRs from templates with a two-pane float (title + body), picking the base branch from a fuzzy finder (default branch preselected)
 - **Open in browser** - Open the PR in your browser
-- **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
+- **Gitsigns integration** - Automatically switches gitsigns diff base to the review base (PR base branch, or the local scope's base)
 
 ## Requirements
 
@@ -44,14 +45,17 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   "flexphere/fude.nvim",
   opts = {},
   cmd = {
+    "FudeCommandPalette",
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
+    "FudeReviewLocal", "FudeReviewLocalToggle", "FudeReviewLocalScope", "FudeReviewResolve",
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewNextFile", "FudeReviewPrevFile",
     "FudeReviewNextUnviewedFile", "FudeReviewPrevUnviewedFile",
     "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev", "FudeReviewStackSwitch",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
-    "FudeReviewToggleFileTree", "FudeCreatePR", "FudeEditPR",
+    "FudeReviewToggleFileTree", "FudeReviewToggleCommentStyle", "FudeReviewToggleResolved",
+    "FudeReviewToggleGitsigns", "FudeCreatePR", "FudeEditPR",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
@@ -101,10 +105,13 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 9. View PR overview with `:FudeReviewOverview`
 10. Stop review mode: `:FudeReviewStop`
 
+Not sure which command you need? `:FudeCommandPalette` opens a command palette listing every command usable in the current state. With Telescope, snacks, or a picker-backed `vim.ui.select` provider (dressing.nvim, telescope-ui-select, ...) you can fuzzy search by description and command name; the built-in `vim.ui.select` falls back to numbered selection. Opened from visual mode (`:'<,'>FudeCommandPalette` or a `<Cmd>FudeCommandPalette<CR>` mapping), it forwards the selection to line/selection commands such as `:FudeReviewComment`.
+
 ## Commands
 
 | Command | Description |
 |---------|-------------|
+| `:FudeCommandPalette` | Open the command palette (commands usable in the current state; fuzzy search with Telescope / snacks / a picker-backed `vim.ui.select` provider; shows your key mappings; from visual mode the selection is forwarded to range commands) |
 | `:FudeReviewStart` | Start review session (PR detection, comments, extmarks) |
 | `:FudeReviewStop` | Stop review session |
 | `:FudeReviewToggle` | Toggle review session |
@@ -112,7 +119,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewComment` | Create pending comment on current line/selection |
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
 | `:FudeReviewViewComment` | View comments on current line |
-| `:FudeReviewFiles` | List PR changed files with comment counts (Telescope/quickfix) |
+| `:FudeReviewFiles` | List changed files with comment counts (Telescope/quickfix) |
 | `:FudeReviewNextFile` | Open the next changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewPrevFile` | Open the previous changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewNextUnviewedFile` | Open the next changed file not yet marked as viewed (`]F`, wraps around) |
@@ -122,22 +129,21 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 | `:FudeReviewScopePrev` | Move to previous review scope and open its first file |
 | `:FudeReviewStackSwitch` | Switch the review to another open PR of the current PR's GitHub stack (checks out the branch here, or `:cd`s to the worktree that already has it) |
 | `:FudeReviewOverview` | Show PR overview and issue-level comments |
-| `:FudeReviewListComments` | Browse all PR review and issue comments in 3-pane floating window |
+| `:FudeReviewListComments` | Browse all review and PR-level comments in 3-pane floating window |
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
-| `:FudeReviewViewed` | Mark current file as viewed on GitHub |
-| `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
+| `:FudeReviewViewed` | Mark current file as viewed (synced to GitHub in PR review mode) |
+| `:FudeReviewUnviewed` | Unmark current file as viewed (synced to GitHub in PR review mode) |
 | `:FudeOpenPRURL` | Open PR in browser |
 | `:FudeCopyPRURL` | Copy PR URL to clipboard |
-| `:FudeReviewReload` | Reload review data from GitHub |
+| `:FudeReviewReload` | Reload review data (GitHub API in PR review mode, git state + JSONL in local mode) |
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
 | `:FudeReviewToggleResolved` | Toggle visibility of resolved comments in the editor |
-| `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
+| `:FudeReviewToggleGitsigns` | Toggle gitsigns between the review base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel (focus it when open, close it when focused) |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`, which joins the base PR's stack or starts a new one; body `file://` images/videos are uploaded via `gh --attach`) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
-| `:FudeReviewLocalStop` | Stop local review mode |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
 | `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted`) |
 | `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
@@ -354,7 +360,7 @@ happens in this mode:
   worktree as an **append-only event log** (add `.fude/` to your
   `.gitignore`). `.fude/current.json` is a per-branch pointer map (so reviewing
   several branches in the same worktree keeps separate sessions), so the
-  session survives Neovim restarts until `:FudeReviewLocalStop`.
+  session survives Neovim restarts until `:FudeReviewStop`.
 - The usual review UI works as-is: comments (`:FudeReviewComment`),
   suggestions, replies, edits, the comment browser, side panel, and diff
   preview. There is no submit step — comments are saved immediately.

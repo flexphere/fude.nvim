@@ -35,6 +35,9 @@ in the editor. It provides:
 - Mark files as viewed/unviewed (synced with GitHub)
 - Toggleable side panel showing review scope and changed files
 - Gitsigns integration for diff base switching
+- `:FudeCommandPalette`: every command usable right now, with your own
+  key mappings shown; fuzzy search by description with Telescope,
+  snacks, or a picker-backed `vim.ui.select` provider
 
 ==============================================================================
 2. REQUIREMENTS                                        *fude-requirements*
@@ -62,6 +65,39 @@ Using lazy.nvim: >lua
 ==============================================================================
 4. COMMANDS                                              *fude-commands*
 
+:FudeCommandPalette                                *:FudeCommandPalette*
+    Open the command palette: a picker listing every fude command that
+    is usable in the current state (before a session starts, in GitHub
+    review mode, or in local review mode), grouped by category. Each
+    row shows `[Category]  Description  :Command  key`. Selecting an
+    entry runs the command. Uses Telescope, snacks.picker, or
+    `vim.ui.select` according to `file_list_mode` ("quickfix" falls
+    back to `vim.ui.select`). Telescope and snacks open a compact
+    centered window sized to the list, without a preview pane,
+    independent of your picker's default layout, and let you fuzzy
+    search by description and command name. The `vim.ui.select` path
+    is searchable only when a picker-backed provider is installed
+    (dressing.nvim, telescope-ui-select, snacks' ui_select, ...); the
+    built-in `vim.ui.select` offers numbered selection without search.
+
+    Each entry also shows your own key mapping when one invokes the
+    command via `<Cmd>FudeXxx<CR>` or `:FudeXxx<CR>` as its first Ex
+    command (normal-mode mappings, buffer-local first, then global; a
+    global mapping that a buffer-local one shadows in the current
+    buffer is skipped; visual-mode mappings are searched first when the
+    palette is opened with a range). The leader key is shown as
+    `<leader>`. Mappings defined with a Lua callback cannot be detected
+    and show no key.
+
+    Opened from visual mode (`:'<,'>FudeCommandPalette`, or a
+    `<Cmd>FudeCommandPalette<CR>` mapping while the selection is active)
+    the selected lines are forwarded to range commands such as
+    |:FudeReviewComment| and |:FudeReviewSuggest|; other commands
+    ignore them.
+
+    |:FudeReviewToggle| and |:FudeReviewLocalToggle| are not listed
+    (Start/Stop cover both states).
+
 :FudeReviewStart                                      *:FudeReviewStart*
     Start review session for the current branch's PR. Detects the PR
     automatically using `gh pr view`, fetches comments, sets up
@@ -70,7 +106,10 @@ Using lazy.nvim: >lua
 
 :FudeReviewStop                                        *:FudeReviewStop*
     Stop review mode and clean up all preview windows, extmarks,
-    autocommands, and restore original settings.
+    autocommands, and restore original settings. Works for both
+    GitHub and local review sessions; a local session also clears
+    `.fude/current.json` (the session's JSONL file is kept for later
+    reference).
 
 :FudeReviewToggle                                    *:FudeReviewToggle*
     Toggle review session on or off.
@@ -93,10 +132,6 @@ Using lazy.nvim: >lua
     with |:FudeReviewLocalScope| once a base exists. In a repo with no
     commits yet, the diff base is the empty tree, so staged and
     untracked files are all reviewable as additions.
-
-:FudeReviewLocalStop                               *:FudeReviewLocalStop*
-    Stop local review mode and clear `.fude/current.json`. The
-    session's JSONL file is kept for later reference.
 
 :FudeReviewLocalToggle [{base}]              *:FudeReviewLocalToggle*
     Toggle local review mode: stop when a local session is active,
@@ -546,11 +581,12 @@ File opening position                                 *fude-file-position*
     with just a body (useful for Approve or Request Changes).
 
 :FudeReviewReload                                  *:FudeReviewReload*
-    Reload review data from GitHub. Fetches the latest comments,
-    changed files, viewed file states, and PR commits in parallel.
-    Useful when other reviewers have added comments or the PR has
-    been updated. Can also be triggered automatically using the
-    `auto_reload` configuration option.
+    Reload review data. In GitHub review mode, fetches the latest
+    comments, changed files, viewed file states, and PR commits in
+    parallel; in local review mode, re-reads the git state and the
+    session's JSONL. Useful when other reviewers have added comments
+    or the PR has been updated. Can also be triggered automatically
+    using the `auto_reload` configuration option.
     Requires an active review session.
 
 :FudeReviewToggleCommentStyle            *:FudeReviewToggleCommentStyle*
@@ -683,18 +719,19 @@ File opening position                                 *fude-file-position*
     Requires the side panel to be open.
 
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
-    Toggle gitsigns base between PR base and HEAD.
-    By default during review mode, gitsigns uses the PR base (or commit
-    parent when in commit scope) to show changes in the working tree.
+    Toggle gitsigns base between the review base and HEAD.
+    By default during review mode, gitsigns uses the review base — the
+    PR base (or the commit parent in commit scope), or the selected
+    scope's base in local review — to show changes in the working tree.
     This command temporarily switches gitsigns to use HEAD as the base,
     showing uncommitted changes in the working tree.
 
-    Execute again to restore the PR base display. Useful for checking
-    your local uncommitted changes while in review mode.
+    Execute again to restore the review base display. Useful for
+    checking your local uncommitted changes while in review mode.
 
     When switching review scope (|:FudeReviewScope|, |:FudeReviewScopeNext|,
-    |:FudeReviewScopePrev|), the gitsigns display is automatically reset
-    to PR base.
+    |:FudeReviewScopePrev|, |:FudeReviewLocalScope|), the gitsigns display
+    is automatically reset to the review base.
 
     Requires an active review session and gitsigns.nvim.
 
@@ -705,7 +742,9 @@ Comment navigation (]c / [c) and unviewed-file navigation (]F / [F) are
 set as buffer-local mappings during review mode and removed on stop.
 Change them under `keymaps`, or set one to `false` to leave that key
 alone. Other keymaps are not set by the plugin. Configure them in your
-lazy.nvim spec or manually. Suggested mappings:
+lazy.nvim spec or manually, or use |:FudeCommandPalette| instead of
+memorizing them (it shows the mappings you did configure next to each
+command). Suggested mappings:
 
   `<leader>et`  Toggle review mode
   `<leader>es`  Start review mode
@@ -854,11 +893,13 @@ Options:
 
 `file_list_mode`    "telescope" (default), "quickfix", or "snacks"
                   Controls which picker `:FudeReviewFiles`,
-                  `:FudeReviewScope`, and `:FudeReviewStackSwitch` use.
-                  "snacks" requires snacks.nvim; it falls back to
-                  quickfix if not installed. For `:FudeReviewScope` and
-                  `:FudeReviewStackSwitch`, "quickfix" and a missing picker
-                  plugin fall back to `vim.ui.select`.
+                  `:FudeReviewScope`, `:FudeReviewStackSwitch` and
+                  `:FudeCommandPalette` use. "snacks" requires
+                  snacks.nvim; it falls back to quickfix if not
+                  installed. For `:FudeReviewScope`,
+                  `:FudeReviewStackSwitch` and `:FudeCommandPalette`,
+                  "quickfix" and a missing picker plugin fall back to
+                  `vim.ui.select`.
 
 `diff_filler_char`  Character for diff filler lines (default: nil).
                   Set to " " to hide the filler indicators.

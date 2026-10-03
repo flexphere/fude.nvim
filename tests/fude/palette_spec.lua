@@ -1,0 +1,533 @@
+local helpers = require("tests.helpers")
+local palette = require("fude.palette")
+local commands = require("fude.commands")
+local config = require("fude.config")
+
+describe("palette.rhs_invokes_command", function()
+	it("matches <cmd>Name<cr>", function()
+		assert.is_true(palette.rhs_invokes_command("<cmd>FudeReviewDiff<cr>", "FudeReviewDiff"))
+	end)
+
+	it("matches :Name<CR>", function()
+		assert.is_true(palette.rhs_invokes_command(":FudeReviewDiff<CR>", "FudeReviewDiff"))
+	end)
+
+	it("is case-insensitive on the wrapper", function()
+		assert.is_true(palette.rhs_invokes_command("<Cmd>FudeReviewDiff<CR>", "FudeReviewDiff"))
+		assert.is_true(palette.rhs_invokes_command("<CMD>FudeReviewDiff<CR>", "FudeReviewDiff"))
+	end)
+
+	it("matches the command name exactly (user commands are case-sensitive)", function()
+		-- `<cmd>fudereviewdiff<cr>` would fail at runtime, so it is not FudeReviewDiff's key
+		assert.is_false(palette.rhs_invokes_command("<cmd>fudereviewdiff<cr>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command(":FUDEREVIEWDIFF<CR>", "FudeReviewDiff"))
+	end)
+
+	it("matches visual-mode wrappers :<C-u> and :'<,'>", function()
+		assert.is_true(palette.rhs_invokes_command(":<C-u>FudeReviewSuggest<CR>", "FudeReviewSuggest"))
+		assert.is_true(palette.rhs_invokes_command(":'<,'>FudeReviewComment<CR>", "FudeReviewComment"))
+	end)
+
+	it("does not match a longer command sharing the prefix", function()
+		assert.is_false(palette.rhs_invokes_command("<cmd>FudeReviewScopeNext<cr>", "FudeReviewScope"))
+	end)
+
+	it("does not match the name embedded in another identifier", function()
+		assert.is_false(palette.rhs_invokes_command("<cmd>lua MyFudeReviewDiff()<cr>", "FudeReviewDiff"))
+	end)
+
+	it("does not match the name embedded in a string literal or argument", function()
+		-- these mappings never run FudeReviewDiff, so they are not its key
+		assert.is_false(palette.rhs_invokes_command('<cmd>lua print(">FudeReviewDiff")<cr>', "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<cmd>echo >FudeReviewDiff<cr>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<cmd>Telescope FudeReviewDiff<cr>", "FudeReviewDiff"))
+		-- quoted `:` / `|` inside a string are not command starts either
+		assert.is_false(palette.rhs_invokes_command("<Cmd>echo ':FudeReviewDiff'<CR>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<Cmd>echo '| FudeReviewDiff'<CR>", "FudeReviewDiff"))
+	end)
+
+	it("requires an Ex command wrapper at the start of the rhs", function()
+		assert.is_false(palette.rhs_invokes_command("FudeReviewDiff", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<Plug>FudeReviewDiff", "FudeReviewDiff"))
+	end)
+
+	it("matches with a leading <Esc> and with trailing arguments or chained commands", function()
+		assert.is_true(palette.rhs_invokes_command("<Esc>:FudeReviewDiff<CR>", "FudeReviewDiff"))
+		assert.is_true(palette.rhs_invokes_command("<cmd>FudeReviewLocal main<cr>", "FudeReviewLocal"))
+		assert.is_true(palette.rhs_invokes_command("<cmd>FudeReviewDiff | echo 1<cr>", "FudeReviewDiff"))
+	end)
+
+	it("only looks at the first Ex command of the rhs", function()
+		-- a name after a | separator may run, but detecting that would need
+		-- an Ex parser that skips strings; the palette deliberately stops at
+		-- the first command
+		assert.is_false(palette.rhs_invokes_command("<cmd>update | FudeReviewDiff<cr>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command(":FudeReviewDiffAll | :FudeReviewDiff<cr>", "FudeReviewDiff"))
+	end)
+
+	it("returns false for unrelated rhs", function()
+		assert.is_false(palette.rhs_invokes_command("<cmd>Telescope find_files<cr>", "FudeReviewDiff"))
+	end)
+
+	it("returns false for an empty command name instead of looping", function()
+		assert.is_false(palette.rhs_invokes_command("<cmd>FudeReviewDiff<cr>", ""))
+	end)
+end)
+
+describe("palette.find_keymap_for_command", function()
+	it("returns the lhs of the first matching mapping", function()
+		local keymaps = {
+			{ lhs = "<leader>ef", rhs = "<cmd>FudeReviewFiles<cr>" },
+			{ lhs = "<leader>ed", rhs = "<cmd>FudeReviewDiff<cr>" },
+			{ lhs = "<leader>eD", rhs = ":FudeReviewDiff<CR>" },
+		}
+		assert.are.equal("<leader>ed", palette.find_keymap_for_command(keymaps, "FudeReviewDiff"))
+	end)
+
+	it("skips callback mappings without an rhs", function()
+		local keymaps = {
+			{ lhs = "<leader>er", callback = function() end },
+			{ lhs = "<leader>eR", rhs = "" },
+		}
+		assert.is_nil(palette.find_keymap_for_command(keymaps, "FudeReviewReload"))
+	end)
+
+	it("returns nil when nothing matches", function()
+		assert.is_nil(palette.find_keymap_for_command({}, "FudeReviewDiff"))
+	end)
+end)
+
+describe("palette.build_palette_entries", function()
+	local cmds = {
+		{
+			name = "FudeB",
+			desc = "b",
+			category = "PR",
+			available = function()
+				return true
+			end,
+		},
+		{
+			name = "FudeA",
+			desc = "a",
+			category = "Session",
+			available = function(s)
+				return s.active
+			end,
+		},
+		{
+			name = "FudeHidden",
+			desc = "h",
+			category = "Session",
+			available = function()
+				return true
+			end,
+			palette = false,
+		},
+		{
+			name = "FudeC",
+			desc = "c",
+			category = "Session",
+			available = function()
+				return true
+			end,
+			range = true,
+		},
+	}
+
+	it("filters by availability and hides palette=false entries", function()
+		local entries = palette.build_palette_entries(cmds, { active = false }, {})
+		local names = vim.tbl_map(function(e)
+			return e.name
+		end, entries)
+		assert.are.same({ "FudeC", "FudeB" }, names)
+	end)
+
+	it("orders by category then registry order", function()
+		local entries = palette.build_palette_entries(cmds, { active = true }, {})
+		local names = vim.tbl_map(function(e)
+			return e.name
+		end, entries)
+		assert.are.same({ "FudeA", "FudeC", "FudeB" }, names)
+	end)
+
+	it("attaches the detected key and range flag", function()
+		local keymaps = { { lhs = "<leader>c", rhs = "<cmd>FudeC<cr>" } }
+		local entries = palette.build_palette_entries(cmds, { active = false }, keymaps)
+		assert.are.equal("<leader>c", entries[1].key)
+		assert.is_true(entries[1].range)
+		assert.is_nil(entries[2].key)
+		assert.is_false(entries[2].range)
+	end)
+
+	it("puts unknown categories last", function()
+		local entries = palette.build_palette_entries({
+			{
+				name = "FudeX",
+				desc = "x",
+				category = "Zzz",
+				available = function()
+					return true
+				end,
+			},
+			{
+				name = "FudeY",
+				desc = "y",
+				category = "PR",
+				available = function()
+					return true
+				end,
+			},
+		}, {}, {})
+		assert.are.equal("FudeY", entries[1].name)
+		assert.are.equal("FudeX", entries[2].name)
+	end)
+end)
+
+describe("palette.format_palette_entry", function()
+	local entries = {
+		{ name = "FudeA", desc = "Short", category = "PR" },
+		{ name = "FudeLonger", desc = "A longer description", category = "Session", key = "<leader>x" },
+	}
+
+	it("computes column widths from the widest entry", function()
+		local widths = palette.calculate_palette_widths(entries)
+		assert.are.same({ category = 7, desc = 20, name = 11, key = 9 }, widths)
+	end)
+
+	it("reports a zero key width when no entry has a key", function()
+		local widths = palette.calculate_palette_widths({ entries[1] })
+		assert.are.equal(0, widths.key)
+	end)
+end)
+
+describe("palette.calculate_palette_layout", function()
+	local widths = { category = 8, desc = 40, name = 30, key = 0 }
+
+	it("sizes the window to the widest row plus padding and the entry count", function()
+		local layout = palette.calculate_palette_layout(widths, 20, 200, 60)
+		-- (8+2) + 2 + 40 + 2 + 30 = 84, + 6 padding
+		assert.are.same({ width = 90, height = 25 }, layout)
+	end)
+
+	it("adds the key column when present", function()
+		local layout = palette.calculate_palette_layout({ category = 8, desc = 40, name = 30, key = 10 }, 20, 200, 60)
+		assert.are.equal(102, layout.width)
+	end)
+
+	it("clamps to the editor size", function()
+		local layout = palette.calculate_palette_layout(widths, 100, 60, 20)
+		assert.are.same({ width = 56, height = 16 }, layout)
+	end)
+
+	it("keeps the 40x6 minimum when the editor has room", function()
+		local layout = palette.calculate_palette_layout({ category = 2, desc = 3, name = 5, key = 0 }, 1, 200, 60)
+		assert.are.same({ width = 40, height = 6 }, layout)
+	end)
+
+	it("shrinks below the minimum on a tiny terminal instead of overflowing", function()
+		-- columns = 10 → 6 cells available, lines = 5 → 1 line available
+		local layout = palette.calculate_palette_layout(widths, 20, 10, 5)
+		assert.are.same({ width = 6, height = 1 }, layout)
+	end)
+
+	it("never returns a zero or negative size", function()
+		local layout = palette.calculate_palette_layout(widths, 20, 2, 1)
+		assert.are.same({ width = 1, height = 1 }, layout)
+	end)
+end)
+
+describe("palette.format_key_lhs", function()
+	it("restores <leader> for the configured leader", function()
+		assert.are.equal("<leader>eb", palette.format_key_lhs(" eb", " "))
+		assert.are.equal("<leader>eb", palette.format_key_lhs(",eb", ","))
+	end)
+
+	it("uses the default backslash leader when mapleader is unset", function()
+		assert.are.equal("<leader>eb", palette.format_key_lhs("\\eb", nil))
+		assert.are.equal("<leader>eb", palette.format_key_lhs("\\eb", ""))
+	end)
+
+	it("leaves non-leader mappings unchanged", function()
+		assert.are.equal("]c", palette.format_key_lhs("]c", " "))
+		assert.are.equal("<C-p>", palette.format_key_lhs("<C-p>", "\\"))
+	end)
+end)
+
+describe("palette.format_palette_entry (rows)", function()
+	local entries = {
+		{ name = "FudeA", desc = "Short", category = "PR" },
+		{ name = "FudeLonger", desc = "A longer description", category = "Session", key = "<leader>x" },
+	}
+
+	it("aligns columns and appends the key when present", function()
+		local widths = palette.calculate_palette_widths(entries)
+		assert.are.equal("[PR]       Short                 :FudeA", palette.format_palette_entry(entries[1], widths))
+		assert.are.equal(
+			"[Session]  A longer description  :FudeLonger  <leader>x",
+			palette.format_palette_entry(entries[2], widths)
+		)
+	end)
+end)
+
+describe("palette.open (vim.ui.select)", function()
+	local orig_mode
+	local orig_select
+	local captured
+
+	before_each(function()
+		orig_mode = config.opts.file_list_mode
+		orig_select = vim.ui.select
+		config.opts.file_list_mode = "quickfix"
+		captured = {}
+		-- Capture command-table executions only; string commands (e.g. `normal!`)
+		-- still run so visual-mode setup in tests and in resolve_visual_range works
+		local orig_cmd = vim.cmd
+		helpers.mock(vim, "cmd", function(c)
+			if type(c) == "table" then
+				table.insert(captured, c)
+				return
+			end
+			return orig_cmd(c)
+		end)
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+		config.opts.file_list_mode = orig_mode
+		helpers.cleanup()
+	end)
+
+	local function select_named(name)
+		vim.ui.select = function(items, _, on_choice)
+			for _, item in ipairs(items) do
+				if item.name == name then
+					on_choice(item)
+					return
+				end
+			end
+			on_choice(nil)
+		end
+	end
+
+	it("runs the chosen command through vim.cmd", function()
+		select_named("FudeReviewStart")
+		palette.open()
+		assert.are.same({ { cmd = "FudeReviewStart" } }, captured)
+	end)
+
+	it("forwards the range to range commands only", function()
+		config.state.active = true
+		config.state.review_mode = "github"
+		select_named("FudeReviewComment")
+		palette.open({ range = { 2, 4 } })
+		assert.are.same({ { cmd = "FudeReviewComment", range = { 2, 4 } } }, captured)
+
+		captured = {}
+		select_named("FudeReviewDiff")
+		palette.open({ range = { 2, 4 } })
+		assert.are.same({ { cmd = "FudeReviewDiff" } }, captured)
+	end)
+
+	it("derives the range from an active visual selection (<Cmd>FudeCommandPalette<CR> mapping)", function()
+		config.state.active = true
+		config.state.review_mode = "github"
+		local buf = helpers.create_buf({ "a", "b", "c", "d" })
+		vim.api.nvim_set_current_buf(buf)
+		vim.api.nvim_win_set_cursor(0, { 2, 0 })
+		vim.cmd("normal! Vj")
+		assert.are.equal("V", vim.fn.mode())
+
+		select_named("FudeReviewSuggest")
+		palette.open()
+		assert.are.equal("n", vim.fn.mode())
+		assert.are.same({ { cmd = "FudeReviewSuggest", range = { 2, 3 } } }, captured)
+	end)
+
+	it("offers only inactive-state commands before a session starts", function()
+		local offered
+		vim.ui.select = function(items, _, on_choice)
+			offered = vim.tbl_map(function(i)
+				return i.name
+			end, items)
+			on_choice(nil)
+		end
+		palette.open()
+		local expected = palette.build_palette_entries(commands.list, { active = false }, {})
+		assert.are.same(
+			vim.tbl_map(function(e)
+				return e.name
+			end, expected),
+			offered
+		)
+		assert.are.same({}, captured)
+	end)
+
+	it("does nothing when the selection is cancelled", function()
+		vim.ui.select = function(_, _, on_choice)
+			on_choice(nil)
+		end
+		palette.open()
+		assert.are.same({}, captured)
+	end)
+
+	it("hides a global mapping shadowed by a buffer-local one", function()
+		local buf = helpers.create_buf({ "x" })
+		vim.api.nvim_set_current_buf(buf)
+		vim.keymap.set("n", "<leader>zz", "<cmd>FudeReviewStart<cr>")
+		vim.keymap.set("n", "<leader>zz", "<cmd>FudeReviewLocal<cr>", { buffer = buf })
+		local keys = {}
+		vim.ui.select = function(items, _, on_choice)
+			for _, item in ipairs(items) do
+				keys[item.name] = item.key
+			end
+			on_choice(nil)
+		end
+		local ok, err = pcall(palette.open)
+		vim.keymap.del("n", "<leader>zz")
+		assert.is_true(ok, tostring(err))
+		-- pressing <leader>zz in this buffer runs the local mapping, not Start
+		assert.is_nil(keys.FudeReviewStart)
+		assert.are.equal("<leader>zz", keys.FudeReviewLocal)
+	end)
+
+	it("runs the chosen command through a mocked Telescope picker without a preview pane", function()
+		config.opts.file_list_mode = "telescope"
+		config.state.active = true
+		config.state.review_mode = "github"
+		local theme_opts, picker_opts, selected, confirm, closed
+		helpers.mock(package.loaded, "telescope.themes", {
+			get_dropdown = function(opts)
+				theme_opts = opts
+				return opts
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.pickers", {
+			new = function(_, opts)
+				picker_opts = opts
+				return {
+					find = function()
+						for _, entry in ipairs(opts.finder.results) do
+							if entry.name == "FudeReviewComment" then
+								selected = entry
+							end
+						end
+						opts.attach_mappings(0, function() end)
+					end,
+				}
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.finders", {
+			new_table = function(opts)
+				return opts
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.config", { values = { generic_sorter = function() end } })
+		helpers.mock(package.loaded, "telescope.pickers.entry_display", {
+			create = function()
+				return function() end
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.actions.state", {
+			get_selected_entry = function()
+				return selected
+			end,
+		})
+		helpers.mock(package.loaded, "telescope.actions", {
+			select_default = {
+				replace = function(_, fn)
+					confirm = fn
+				end,
+			},
+			close = function()
+				closed = true
+			end,
+		})
+
+		palette.open({ range = { 3, 5 } })
+		assert.is_false(theme_opts.previewer)
+		assert.are.equal("number", type(theme_opts.layout_config.width))
+		assert.are.equal("number", type(theme_opts.layout_config.height))
+		assert.are.equal("Fude Command Palette", picker_opts.prompt_title)
+		-- entries carry the display/ordinal fields Telescope needs
+		assert.are.equal("function", type(picker_opts.finder.results[1].display))
+		assert.are.equal("string", type(picker_opts.finder.results[1].ordinal))
+		assert.are.same({}, captured)
+
+		confirm()
+		assert.is_true(closed)
+		assert.are.same({ { cmd = "FudeReviewComment", range = { 3, 5 } } }, captured)
+	end)
+
+	it("runs the chosen command through a mocked snacks picker without a preview pane", function()
+		config.opts.file_list_mode = "snacks"
+		config.state.active = true
+		config.state.review_mode = "github"
+		local picker_opts
+		helpers.mock(package.loaded, "snacks.picker", {
+			pick = function(opts)
+				picker_opts = opts
+			end,
+		})
+
+		palette.open()
+		assert.are.equal("Fude Command Palette", picker_opts.title)
+		assert.are.equal("select", picker_opts.layout.preset)
+		assert.is_false(picker_opts.layout.preview)
+		assert.are.equal("number", type(picker_opts.layout.layout.width))
+		assert.are.equal("number", type(picker_opts.layout.layout.height))
+		-- items carry the text snacks matches on, and format returns highlight chunks
+		local item = picker_opts.items[1]
+		assert.are.equal("string", type(item.text))
+		local chunks = picker_opts.format(item, nil)
+		assert.are.equal("table", type(chunks[1]))
+		assert.are.same({}, captured)
+
+		local target
+		for _, it in ipairs(picker_opts.items) do
+			if it.name == "FudeReviewDiff" then
+				target = it
+			end
+		end
+		local closed = false
+		picker_opts.confirm({
+			close = function()
+				closed = true
+			end,
+		}, target)
+		assert.is_true(closed)
+		assert.are.same({ { cmd = "FudeReviewDiff" } }, captured)
+	end)
+
+	it("falls back to vim.ui.select when the configured picker is not installed", function()
+		config.opts.file_list_mode = "telescope"
+		helpers.mock(package.loaded, "telescope.pickers", nil)
+		local notified
+		helpers.mock(vim, "notify", function(msg)
+			notified = msg
+		end)
+		select_named("FudeReviewStart")
+		palette.open()
+		assert.is_truthy(notified and notified:find("falling back to vim.ui.select", 1, true))
+		assert.are.same({ { cmd = "FudeReviewStart" } }, captured)
+	end)
+
+	it("shows the user's own mapping next to the command", function()
+		vim.keymap.set("n", "<leader>zz", "<cmd>FudeReviewStart<cr>")
+		local shown
+		vim.ui.select = function(items, opts, on_choice)
+			for _, item in ipairs(items) do
+				if item.name == "FudeReviewStart" then
+					shown = opts.format_item(item)
+				end
+			end
+			on_choice(nil)
+		end
+		local ok, err = pcall(palette.open)
+		vim.keymap.del("n", "<leader>zz")
+		assert.is_true(ok, tostring(err))
+		assert.is_truthy(shown:find(":FudeReviewStart", 1, true))
+		-- nvim_get_keymap expands <leader> (default "\"); the palette restores the token
+		assert.is_truthy(shown:find("<leader>zz", 1, true))
+	end)
+end)
