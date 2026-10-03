@@ -157,7 +157,8 @@ Using lazy.nvim: >lua
                     base branch itself: the unpushed commits; in a
                     remote-less repo: the newest 100). It checks the commit
                     out, so every switch needs a clean working tree (no
-                    staged/unstaged changes, no unsaved buffers) and
+                    staged/unstaged changes, no unsaved buffers, no
+                    comment input with unsent text) and
                     detaches HEAD until you switch back (fude restores
                     the branch on scope switch, |:FudeReviewLocalStop|
                     and quit). The working tree is then a past snapshot,

@@ -358,7 +358,8 @@ happens in this mode:
     not in the clone, as at a shallow clone's boundary, cannot be selected). It
     checks the commit out,
     so every switch needs a clean working tree (no staged/unstaged changes, no
-    unsaved buffers) and leaves HEAD detached until you switch back; fude
+    unsaved buffers, no comment input with unsent text) and leaves HEAD
+    detached until you switch back; fude
     restores the branch on scope switch, `:FudeReviewLocalStop`, and quit.
     Because the working tree is then a past snapshot rather than your work,
     comments are read-only in this scope: none are shown (no boxes, no
