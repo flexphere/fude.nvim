@@ -447,13 +447,16 @@ end
 
 --- Return the working tree to the branch saved on entering the commit scope.
 --- A no-op success when no checkout is outstanding, so every scope switch and
---- `stop()` can call it unconditionally. Unlike entering, a dirty tree does
---- not refuse here — refusing would strand the user on a detached HEAD — so
---- the edits are carried back onto the branch by git (or the checkout fails
---- on a conflict, which is reported).
+--- `stop()` can call it unconditionally. Like entering, it refuses while the
+--- tree is not clean (`checkout_blocker`): unsaved buffers cannot be carried
+--- back by git and `reload_open_buffers` skips them, so they would keep the
+--- past commit's content and overwrite the branch on the next save. Only
+--- `VimLeavePre` forces the restore — there the alternative is leaving the
+--- user on a detached HEAD — and warns about what it carried back.
 --- @param session table the active local session
---- @param opts table|nil { reload_buffers = boolean } default true; false on
---- VimLeavePre, where re-reading every buffer only slows the exit
+--- @param opts table|nil { reload_buffers = boolean, force = boolean }
+--- reload_buffers default true (false on VimLeavePre, where re-reading every
+--- buffer only slows the exit); force = true restores despite a blocker
 --- @return boolean ok
 local function restore_head(session, opts)
 	local target = session.original_branch
@@ -462,6 +465,10 @@ local function restore_head(session, opts)
 	end
 	local blocker = checkout_blocker(session.worktree_root)
 	if blocker then
+		if not (opts and opts.force) then
+			vim.notify("fude.nvim: Cannot leave the commit scope yet: " .. blocker, vim.log.levels.WARN)
+			return false
+		end
 		vim.notify(
 			string.format("fude.nvim: Working tree changed in the commit scope (%s); carrying it back to %s", blocker, target),
 			vim.log.levels.WARN
@@ -475,6 +482,12 @@ local function restore_head(session, opts)
 	session.original_branch = nil
 	session.scope_commit_sha = nil
 	session.scope_commit_index = nil
+	-- The pointer must stop describing a commit scope now that HEAD is back:
+	-- left as-is after a VimLeavePre restore, a later deliberate detach onto
+	-- the same SHA would be mistaken for a crash by find_stranded_commit_session.
+	-- apply_scope (scope switch) or clear_current (stop) rewrite it right after.
+	M.persist_current(session, { scope = session.scope_before_commit or "uncommitted" })
+	session.scope_before_commit = nil
 	if not (opts and opts.reload_buffers == false) then
 		reload_open_buffers(session.worktree_root)
 	end
@@ -523,6 +536,11 @@ local function enter_commit_scope(session, sha)
 		M.persist_current(session)
 		vim.notify("fude.nvim: Failed to check out " .. sha:sub(1, 7) .. ": " .. (err or "?"), vim.log.levels.ERROR)
 		return false
+	end
+	if not session.original_branch then
+		-- First entry: remember the scope to write back to the pointer when the
+		-- branch is restored (commit-to-commit switches keep it).
+		session.scope_before_commit = session.scope
 	end
 	session.original_branch = return_to
 	reload_open_buffers(session.worktree_root)
@@ -838,7 +856,9 @@ function M.start(base_arg)
 			-- the detached HEAD the commit scope creates.
 			local active_session = config.state.local_session
 			if active_session then
-				restore_head(active_session, { reload_buffers = false })
+				-- force: a dirty tree is the lesser evil than a detached HEAD
+				-- the user did not ask for.
+				restore_head(active_session, { reload_buffers = false, force = true })
 			end
 		end,
 		desc = "fude.nvim: Return to the branch before quitting",
@@ -1075,7 +1095,7 @@ function M.set_scope(scope, opts)
 				session.scope_commit_index = commit_index_of(session, previous_commit)
 			else
 				-- HEAD is back on the branch but the commit cannot be re-entered
-				-- (edits carried back made the tree dirty). The session must
+				-- (the second checkout failed). The session must
 				-- not claim a commit scope it no longer shows, so land on the
 				-- always-available uncommitted view of that branch instead.
 				local fallback_base, fallback_ref = M.resolve_scope_base("uncommitted", session.base_ref, session.worktree_root)

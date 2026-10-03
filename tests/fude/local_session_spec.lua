@@ -692,6 +692,51 @@ describe("session lifecycle (start/reload/stop)", function()
 		vim.api.nvim_buf_delete(other, { force = true })
 	end)
 
+	it("refuses to leave the commit scope while a buffer under the worktree is unsaved", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- Edited after the checkout: git cannot carry it back and the reload
+		-- would skip it, so it would overwrite the branch on the next save.
+		local buf = vim.fn.bufadd(tmp_repo .. "/f.lua")
+		vim.fn.bufload(buf)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "edited on the commit" })
+
+		assert.is_false(session.set_scope("uncommitted"))
+		assert.same({ "c1sha" }, calls.checkout)
+		assert.equals("commit", config.state.local_session.scope)
+		assert.equals("c1sha", config.state.local_session.scope_commit_sha)
+
+		-- stop() is refused the same way and keeps the session
+		session.stop()
+		assert.is_true(config.state.active)
+		assert.same({ "c1sha" }, calls.checkout)
+
+		-- VimLeavePre forces the restore anyway and leaves a non-commit pointer
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		assert.same({ "c1sha", "feat/x" }, calls.checkout)
+		local pointer = store.read_current(tmp_repo, "feat/x")
+		assert.equals("base", pointer.scope)
+		assert.is_nil(pointer.scope_commit_sha)
+		assert.is_nil(pointer.original_branch)
+
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
+	it("a forced restore leaves no pointer a deliberate detach could be mistaken for", function()
+		mock_commit_git()
+		session.start(nil)
+		session.set_scope("uncommitted")
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		assert.equals("commit", store.read_current(tmp_repo, "feat/x").scope)
+
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		-- The scope the user had before entering the commit is written back
+		assert.equals("uncommitted", store.read_current(tmp_repo, "feat/x").scope)
+		assert.is_nil(store.read_stranded_commit_session(tmp_repo, "c1sha"))
+	end)
+
 	it("leaving the commit scope restores the branch first", function()
 		local calls = mock_commit_git()
 		session.start(nil)
@@ -817,22 +862,27 @@ describe("session lifecycle (start/reload/stop)", function()
 	end)
 
 	it("lands on uncommitted when the commit cannot be re-entered after a failed switch", function()
-		local dirty = false
-		local calls = mock_commit_git({
-			is_worktree_dirty = function()
-				return dirty
+		local calls = { checkout = {} }
+		mock_commit_git({
+			checkout = function(ref)
+				table.insert(calls.checkout, ref)
+				-- The branch comes back fine; checking the commit out again fails
+				if #calls.checkout == 3 then
+					return false, "object store hiccup"
+				end
+				return true
 			end,
 		})
+		helpers.mock(vim, "notify", function() end)
 		session.start(nil)
 		session.set_scope("commit", { commit_sha = "c1sha" })
 
-		-- Edits made in the commit scope are carried back to the branch by the
-		-- restore; the commit is then refused, so the session must not keep
-		-- claiming a scope it no longer shows.
-		dirty = true
+		-- HEAD is back on the branch, the target scope is unavailable and the
+		-- commit cannot be re-entered: the session must not keep claiming a
+		-- scope it no longer shows.
 		assert.is_false(session.set_scope("unpushed"))
 		local s = config.state.local_session
-		assert.same({ "c1sha", "feat/x" }, calls.checkout)
+		assert.same({ "c1sha", "feat/x", "c1sha" }, calls.checkout)
 		assert.equals("uncommitted", s.scope)
 		assert.equals("HEAD", s.base_sha)
 		assert.is_nil(s.scope_commit_sha)
