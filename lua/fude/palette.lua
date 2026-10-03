@@ -15,23 +15,27 @@ local M = {}
 
 --- Whether a mapping's rhs invokes the given user command.
 --- Accepts `<cmd>Name<cr>`, `:Name<cr>`, `:<C-u>Name<cr>` and
---- `:'<,'>Name<cr>` (case-insensitive). The name must not be a prefix of
---- a longer identifier, so `FudeReviewScope` does not match
---- `<cmd>FudeReviewScopeNext<cr>`.
+--- `:'<,'>Name<cr>`. The wrapper (`<Cmd>`, `<C-u>`, ...) is matched
+--- case-insensitively, but the command name is matched exactly: user
+--- commands are case-sensitive, so `<cmd>fudereviewdiff<cr>` would not run
+--- `FudeReviewDiff` and must not be shown as its key. The name must not be
+--- a prefix of a longer identifier either, so `FudeReviewScope` does not
+--- match `<cmd>FudeReviewScopeNext<cr>`.
 --- @param rhs string mapping rhs
 --- @param name string command name
 --- @return boolean
 function M.rhs_invokes_command(rhs, name)
-	local lower = rhs:lower()
-	local target = name:lower()
+	if name == "" then
+		return false -- an empty needle would match at every position forever
+	end
 	local pos = 1
 	while true do
-		local s, e = lower:find(target, pos, true)
+		local s, e = rhs:find(name, pos, true)
 		if not s then
 			return false
 		end
-		local before = lower:sub(1, s - 1)
-		local after = lower:sub(e + 1, e + 1)
+		local before = rhs:sub(1, s - 1):lower()
+		local after = rhs:sub(e + 1, e + 1)
 		-- `:`, `<cmd>`, `<c-u>` and `'<,'>` all end with `:` or `>`
 		local prefix_ok = before:match("[:>]%s*$") ~= nil
 		local suffix_ok = not after:match("[%w_]")

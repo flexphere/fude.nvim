@@ -14,6 +14,13 @@ describe("palette.rhs_invokes_command", function()
 
 	it("is case-insensitive on the wrapper", function()
 		assert.is_true(palette.rhs_invokes_command("<Cmd>FudeReviewDiff<CR>", "FudeReviewDiff"))
+		assert.is_true(palette.rhs_invokes_command("<CMD>FudeReviewDiff<CR>", "FudeReviewDiff"))
+	end)
+
+	it("matches the command name exactly (user commands are case-sensitive)", function()
+		-- `<cmd>fudereviewdiff<cr>` would fail at runtime, so it is not FudeReviewDiff's key
+		assert.is_false(palette.rhs_invokes_command("<cmd>fudereviewdiff<cr>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command(":FUDEREVIEWDIFF<CR>", "FudeReviewDiff"))
 	end)
 
 	it("matches visual-mode wrappers :<C-u> and :'<,'>", function()
@@ -35,6 +42,10 @@ describe("palette.rhs_invokes_command", function()
 
 	it("returns false for unrelated rhs", function()
 		assert.is_false(palette.rhs_invokes_command("<cmd>Telescope find_files<cr>", "FudeReviewDiff"))
+	end)
+
+	it("returns false for an empty command name instead of looping", function()
+		assert.is_false(palette.rhs_invokes_command("<cmd>FudeReviewDiff<cr>", ""))
 	end)
 end)
 
