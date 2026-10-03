@@ -199,21 +199,22 @@ function M.resolve_scope_base(scope, base_ref, cwd, commit_sha)
 			-- tree as added, so refuse instead.
 			return nil, nil
 		end
-		-- Root commit: everything in it is an addition.
-		local empty = diff_mod.get_empty_tree()
+		-- Root commit: everything in it is an addition. The empty-tree hash
+		-- depends on the repo's object format, so compute it in the worktree.
+		local empty = diff_mod.get_empty_tree(cwd)
 		if not empty then
 			return nil, nil
 		end
 		return empty, empty
 	end
 	if scope == "uncommitted" then
-		if diff_mod.get_head_sha() then
+		if diff_mod.get_head_sha(cwd) then
 			-- Literal HEAD so the view always reflects the current commit, even
 			-- after the user commits mid-session.
 			return "HEAD", "HEAD"
 		end
 		-- Zero-commit repo: diff against the empty tree (all files show as added).
-		local empty = diff_mod.get_empty_tree()
+		local empty = diff_mod.get_empty_tree(cwd)
 		if not empty then
 			return nil, nil
 		end
@@ -369,8 +370,11 @@ local function file_buffers_under(root)
 	local stack = require("fude.stack")
 	local resolved_root = vim.fn.resolve(root)
 	local roots = { resolved_root }
-	for _, wt in ipairs(require("fude.diff").get_worktrees() or {}) do
-		local resolved = vim.fn.resolve(wt.path)
+	-- Listed from the session's root, not Neovim's cwd (the user may have
+	-- `:cd`ed away), and including detached worktrees: a nested worktree owns
+	-- its files whether or not it has a branch checked out.
+	for _, path in ipairs(require("fude.diff").get_worktree_roots(root) or {}) do
+		local resolved = vim.fn.resolve(path)
 		if resolved ~= resolved_root then
 			table.insert(roots, resolved)
 		end
@@ -439,8 +443,11 @@ end
 --- commit is checked out would otherwise be carried onto the next commit (or
 --- make the checkout fail halfway).
 --- @param root string worktree root
+--- @param expected_head string|nil the commit the scope checked out; when HEAD
+--- no longer is that commit the user committed on the detached HEAD, and a
+--- checkout away from it would make that commit unreachable (reflog only)
 --- @return string|nil reason
-local function checkout_blocker(root)
+local function checkout_blocker(root, expected_head)
 	-- Comment input is checked first: the commit scope's teardown wipes those
 	-- buffers, so unsent text would be lost without a word.
 	if require("fude.ui").has_unsent_comment_input() then
@@ -449,8 +456,20 @@ local function checkout_blocker(root)
 	if has_unsaved_buffers_under(root) then
 		return "unsaved buffers — save or discard them first"
 	end
-	if require("fude.diff").is_worktree_dirty(root) then
-		return "uncommitted changes — commit or stash first"
+	local diff_mod = require("fude.diff")
+	if diff_mod.is_worktree_dirty(root) then
+		-- Not "commit": committing on the detached HEAD would only trade this
+		-- blocker for the one below.
+		return "uncommitted changes — stash or discard them first"
+	end
+	if expected_head then
+		local head = diff_mod.get_head_sha(root)
+		if head ~= expected_head then
+			return string.format(
+				"HEAD moved off the reviewed commit to %s — put it on a branch (git branch <name>) first",
+				head and head:sub(1, 7) or "?"
+			)
+		end
 	end
 	return nil
 end
@@ -466,10 +485,24 @@ local function persist_non_commit_or_clear(session, overrides)
 	if M.persist_current(session, overrides) then
 		return
 	end
-	store.clear_current(session.worktree_root, session.branch)
+	local cleared, err = store.clear_current(session.worktree_root, session.branch)
+	if cleared then
+		vim.notify(
+			"fude.nvim: Could not update .fude/current.json; removed the pointer so no stale commit-scope entry is left",
+			vim.log.levels.WARN
+		)
+		return
+	end
+	-- Both the rewrite and the removal failed (the same write, typically), so
+	-- the stale entry is still there: say so and how to get rid of it.
 	vim.notify(
-		"fude.nvim: Could not update .fude/current.json; removed the pointer so no stale commit-scope entry is left",
-		vim.log.levels.WARN
+		string.format(
+			"fude.nvim: Could not update or remove .fude/current.json (%s). A stale commit-scope entry remains — "
+				.. "delete the `%s` entry (or the file) by hand, or the next start on this commit will treat it as a crash",
+			err or "?",
+			session.branch or "__detached__"
+		),
+		vim.log.levels.ERROR
 	)
 end
 
@@ -484,16 +517,21 @@ end
 --- @param session table the active local session
 --- @param opts table|nil { reload_buffers = boolean, force = boolean }
 --- reload_buffers default true (false on VimLeavePre, where re-reading every
---- buffer only slows the exit); force = true restores despite a blocker
+--- buffer only slows the exit); force = true restores despite a dirty tree —
+--- never despite a HEAD that moved off the commit, since that checkout would
+--- orphan the user's new commit, and a detached HEAD on their own commit is
+--- the state they chose
 --- @return boolean ok
 local function restore_head(session, opts)
 	local target = session.original_branch
 	if not target then
 		return true
 	end
-	local blocker = checkout_blocker(session.worktree_root)
+	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha)
 	if blocker then
-		if not (opts and opts.force) then
+		local head_moved = session.scope_commit_sha ~= nil
+			and require("fude.diff").get_head_sha(session.worktree_root) ~= session.scope_commit_sha
+		if head_moved or not (opts and opts.force) then
 			vim.notify("fude.nvim: Cannot leave the commit scope yet: " .. blocker, vim.log.levels.WARN)
 			return false
 		end
@@ -531,7 +569,8 @@ end
 --- @return boolean ok
 local function enter_commit_scope(session, sha)
 	local diff_mod = require("fude.diff")
-	local blocker = checkout_blocker(session.worktree_root)
+	-- On a commit-to-commit switch HEAD must still be the reviewed commit.
+	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha)
 	if blocker then
 		vim.notify("fude.nvim: Commit scope needs a clean working tree: " .. blocker, vim.log.levels.WARN)
 		return false
@@ -540,7 +579,7 @@ local function enter_commit_scope(session, sha)
 	-- checkout succeeded: a leftover original_branch after a failed first
 	-- checkout would make every later restore_head run a pointless checkout
 	-- that can itself fail and then block stop().
-	local return_to = session.original_branch or session.branch or diff_mod.get_head_sha()
+	local return_to = session.original_branch or session.branch or diff_mod.get_head_sha(session.worktree_root)
 	if not return_to then
 		vim.notify("fude.nvim: Cannot determine where to return to", vim.log.levels.ERROR)
 		return false
@@ -663,7 +702,7 @@ function M.start(base_arg)
 		return
 	end
 
-	local head_sha = diff_mod.get_head_sha()
+	local head_sha = diff_mod.get_head_sha(repo_root)
 	local branch = diff_mod.get_current_branch()
 	local now = os.time()
 
@@ -698,7 +737,7 @@ function M.start(base_arg)
 				return
 			end
 			reload_open_buffers(repo_root)
-			head_sha = diff_mod.get_head_sha()
+			head_sha = diff_mod.get_head_sha(repo_root)
 			branch = diff_mod.get_current_branch()
 			vim.notify(
 				"fude.nvim: Returned to " .. stranded.original_branch .. " left detached by an earlier commit-scope review",

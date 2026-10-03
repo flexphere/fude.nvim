@@ -429,8 +429,25 @@ describe("store IO round-trip", function()
 		assert.equals("s1", loaded.id)
 		assert.equals("main", loaded.base_ref)
 
-		store.clear_current("/repo", "feat/x")
+		assert.is_true(store.clear_current("/repo", "feat/x"))
 		assert.is_nil(store.read_current("/repo", "feat/x"))
+		-- Clearing an absent entry is a no-op success
+		assert.is_true(store.clear_current("/repo", "feat/x"))
+	end)
+
+	it("clear_current reports a failed rewrite when other entries remain", function()
+		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
+		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })
+		local original = vim.fn.writefile
+		vim.fn.writefile = function()
+			error("read-only")
+		end
+		local ok, err = store.clear_current("/repo", "feat/a")
+		vim.fn.writefile = original
+		assert.is_false(ok)
+		assert.truthy(err:find("read-only", 1, true))
+		-- and the entry is indeed still there
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
 	end)
 
 	it("keeps separate pointers for different branches (no collision)", function()

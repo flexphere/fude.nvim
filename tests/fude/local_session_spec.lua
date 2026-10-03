@@ -597,6 +597,12 @@ describe("session lifecycle (start/reload/stop)", function()
 			get_parent = function(sha)
 				return sha .. "^", "parent"
 			end,
+			-- HEAD sits on whatever commit the scope checked out (the restore
+			-- and commit-to-commit switches verify this), else on the branch tip
+			get_head_sha = function()
+				local s = config.state.local_session
+				return (s and s.scope_commit_sha) or "headsha"
+			end,
 			checkout = function(ref)
 				table.insert(calls.checkout, ref)
 				return true
@@ -783,8 +789,8 @@ describe("session lifecycle (start/reload/stop)", function()
 		local diff = require("fude.diff")
 		local nested = tmp_repo .. "/.claude/worktrees/x"
 		vim.fn.mkdir(nested, "p")
-		helpers.mock(diff, "get_worktrees", function()
-			return { { path = tmp_repo, branch = "feat/x" }, { path = nested, branch = "other" } }
+		helpers.mock(diff, "get_worktree_roots", function()
+			return { tmp_repo, nested }
 		end)
 		session.start(nil)
 
@@ -843,6 +849,114 @@ describe("session lifecycle (start/reload/stop)", function()
 				pcall(vim.cmd, "tabclose " .. vim.api.nvim_tabpage_get_number(tab))
 			end
 		end
+	end)
+
+	it("refuses every restore once HEAD moved off the reviewed commit, even on quit", function()
+		local calls = mock_commit_git()
+		local diff = require("fude.diff")
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- The user committed on the detached HEAD: a checkout away from it
+		-- would leave that commit reachable only through the reflog.
+		helpers.mock(diff, "get_head_sha", function()
+			return "newcommit"
+		end)
+		local warned = {}
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(warned, msg)
+		end)
+
+		assert.is_false(session.set_scope("uncommitted"))
+		assert.is_false(session.set_scope("commit", { commit_sha = "c2sha" }))
+		session.stop()
+		assert.is_true(config.state.active)
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		assert.same({ "c1sha" }, calls.checkout)
+		assert.truthy(table.concat(warned, "\n"):find("HEAD moved off the reviewed commit to newcomm", 1, true))
+		assert.truthy(table.concat(warned, "\n"):find("git branch <name>", 1, true))
+
+		-- Back on the reviewed commit (the user moved theirs to a branch) → fine
+		helpers.mock(diff, "get_head_sha", function()
+			return "c1sha"
+		end)
+		assert.is_true(session.set_scope("uncommitted"))
+		assert.same({ "c1sha", "feat/x" }, calls.checkout)
+	end)
+
+	it("entering the commit scope closes open comment viewer floats in any tab", function()
+		mock_commit_git()
+		session.start(nil)
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.b[buf].fude_comment_view = true
+		local win = vim.api.nvim_open_win(buf, false, { relative = "editor", row = 1, col = 1, width = 20, height = 2 })
+
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+		pcall(vim.api.nvim_buf_delete, buf, { force = true })
+	end)
+
+	it("computes the empty tree inside the reviewed worktree", function()
+		local asked = {}
+		mock_commit_git({
+			get_parent = function()
+				return nil, "root"
+			end,
+			get_empty_tree = function(cwd)
+				table.insert(asked, cwd)
+				return "emptyhash"
+			end,
+		})
+		session.start(nil)
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({ tmp_repo }, asked)
+		assert.equals("emptyhash", config.state.local_session.base_sha)
+	end)
+
+	it("lists worktrees from the session root, detached ones included", function()
+		local calls = mock_commit_git()
+		local diff = require("fude.diff")
+		local nested = tmp_repo .. "/.claude/worktrees/detached"
+		vim.fn.mkdir(nested, "p")
+		local asked = {}
+		helpers.mock(diff, "get_worktree_roots", function(cwd)
+			table.insert(asked, cwd)
+			return { tmp_repo, nested }
+		end)
+		session.start(nil)
+
+		local buf = vim.fn.bufadd(nested .. "/h.lua")
+		vim.fn.bufload(buf)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "edited in a detached worktree" })
+
+		assert.is_true(session.set_scope("commit", { commit_sha = "c1sha" }))
+		assert.same({ "c1sha" }, calls.checkout)
+		assert.equals(tmp_repo, asked[1])
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
+	it("reports a stale pointer it could neither rewrite nor remove", function()
+		mock_commit_git()
+		helpers.mock(vim, "notify", function() end)
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		helpers.mock(store, "write_current", function()
+			return false, "read-only"
+		end)
+		helpers.mock(store, "clear_current", function()
+			return false, "read-only"
+		end)
+		local errors = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			if level == vim.log.levels.ERROR then
+				table.insert(errors, msg)
+			end
+		end)
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		assert.equals(1, #errors)
+		assert.truthy(errors[1]:find("stale commit-scope entry remains", 1, true))
+		assert.truthy(errors[1]:find("feat/x", 1, true))
 	end)
 
 	it("leaving the commit scope restores the branch first", function()

@@ -659,25 +659,33 @@ function M.read_stranded_commit_session(repo_root, head_sha)
 	return M.find_stranded_commit_session(read_current_map(repo_root), repo_root, head_sha)
 end
 
---- Remove the current-session pointer for a branch (no-op when absent). Deletes
---- the file once no branch entries remain.
+--- Remove the current-session pointer for a branch (no-op success when absent).
+--- Deletes the file once no branch entries remain. Reports failure, since a
+--- caller may rely on the entry being gone (a stale commit-scope pointer is
+--- worse than none — see `session.persist_non_commit_or_clear`).
 --- @param repo_root string
 --- @param branch string|nil
+--- @return boolean ok
+--- @return string|nil err
 function M.clear_current(repo_root, branch)
 	local map = read_current_map(repo_root)
 	local key = branch_key(branch)
 	if map[key] == nil then
-		return
+		return true, nil
 	end
 	map[key] = nil
 	local path = M.current_file(repo_root)
 	if vim.tbl_isempty(map) then
-		if vim.fn.filereadable(path) == 1 then
-			pcall(vim.fn.delete, path)
+		if vim.fn.filereadable(path) == 1 and vim.fn.delete(path) ~= 0 then
+			return false, "could not delete " .. path
 		end
-		return
+		return true, nil
 	end
-	pcall(vim.fn.writefile, vim.split(vim.json.encode(map), "\n"), path)
+	local ok, err = pcall(vim.fn.writefile, vim.split(vim.json.encode(map), "\n"), path)
+	if not ok then
+		return false, tostring(err)
+	end
+	return true, nil
 end
 
 return M
