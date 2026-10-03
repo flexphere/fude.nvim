@@ -1512,6 +1512,34 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_nil(s.original_branch)
 	end)
 
+	it("resumes the branch session even when the branch cannot be re-detected after the checkout", function()
+		mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		local session_id = config.state.local_session.id
+		config.state.active = false
+		config.state.review_mode = nil
+		local diff = require("fude.diff")
+		local on_branch = false
+		-- The checkout removed Neovim's cwd, so symbolic-ref keeps failing
+		helpers.mock(diff, "get_current_branch", function()
+			return nil
+		end)
+		helpers.mock(diff, "get_head_sha", function()
+			return on_branch and "headsha" or "c1sha"
+		end)
+		helpers.mock(diff, "checkout", function(ref)
+			on_branch = (ref == "feat/x")
+			return true
+		end)
+
+		session.start(nil)
+		local s = config.state.local_session
+		assert.equals(session_id, s.id)
+		assert.equals("feat/x", s.branch)
+		assert.is_nil(store.read_current(tmp_repo, nil)) -- no stray detached session
+	end)
+
 	it("refuses to start on a stranded detached HEAD when the tree is not clean", function()
 		local calls = mock_commit_git()
 		session.start(nil)

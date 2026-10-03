@@ -796,7 +796,10 @@ function M.start(base_arg)
 			persist_non_commit_or_clear(stranded)
 			reload_open_buffers(repo_root)
 			head_sha = diff_mod.get_head_sha(repo_root)
-			branch = diff_mod.get_current_branch()
+			-- The branch is known from the pointer: re-detecting it runs git in
+			-- Neovim's cwd, which the checkout may just have deleted, and a nil
+			-- here would resume a fresh `__detached__` session instead of this one.
+			branch = diff_mod.get_current_branch() or stranded.branch
 			vim.notify(
 				"fude.nvim: Returned to " .. return_to .. " left detached by an earlier commit-scope review",
 				vim.log.levels.INFO
