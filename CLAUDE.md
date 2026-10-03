@@ -110,7 +110,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
 | `show_resolved` | config | config |
 | `reload_timer` | init, local/session | init, config, local/session |
 | `reloading` | init, local/session | init, local/session |
-| `gitsigns_reset` | init, scope | init |
+| `gitsigns_reset` | init, scope, local/session | init |
 | `sidepanel` | ui/sidepanel | init, files, ui/sidepanel |
 | `augroup` | init | init, local/session |
 | `original_diffopt` | init, local/session | init, local/session |

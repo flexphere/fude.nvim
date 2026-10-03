@@ -621,7 +621,11 @@ function M.set_scope(scope)
 	-- Re-apply gitsigns base (local mode uses the full_pr code path with
 	-- merge_base_sha) and refresh an open side-by-side preview
 	-- (refresh_preview restores the caller's focus, so the sidepanel's
-	-- post-switch auto-open still sees the cursor in the panel).
+	-- post-switch auto-open still sees the cursor in the panel). Clear a
+	-- pending :FudeReviewToggleGitsigns reset first, like scope.lua does:
+	-- apply_gitsigns_base_for_buffer skips buffers while it is set, so the
+	-- new scope's base would otherwise never be applied.
+	state.gitsigns_reset = false
 	require("fude").restore_gitsigns_base()
 	require("fude.scope").refresh_preview()
 
