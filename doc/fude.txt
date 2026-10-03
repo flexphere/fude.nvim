@@ -159,11 +159,17 @@ Using lazy.nvim: >lua
                     out, so every switch needs a clean working tree (no
                     staged/unstaged changes, no unsaved buffers, no
                     comment input with unsent text; leaving it too, so an
-                    edit made on the checked-out commit is never carried
-                    onto the branch) and
-                    detaches HEAD until you switch back (fude restores
-                    the branch on scope switch, |:FudeReviewLocalStop|
-                    and quit). The working tree is then a past snapshot,
+                    edit made on the checked-out commit is not carried
+                    onto the branch by a scope switch or
+                    |:FudeReviewLocalStop|) and detaches HEAD until you
+                    switch back (fude restores the branch on scope
+                    switch, |:FudeReviewLocalStop| and quit; quitting is
+                    the one exception that restores despite a dirty tree,
+                    letting git carry non-conflicting changes along with a
+                    warning, rather than leave HEAD detached; committing
+                    on the detached HEAD blocks every restore until that
+                    commit is moved to a branch). The working tree is then
+                    a past snapshot,
                     not your work, so comments are read-only: none are
                     shown (no boxes, no per-file counts) and none can be
                     created, including from the comment browser. If

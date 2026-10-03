@@ -359,9 +359,13 @@ happens in this mode:
     checks the commit out,
     so every switch needs a clean working tree (no staged/unstaged changes, no
     unsaved buffers, no comment input with unsent text) — leaving it too, so
-    an edit made on the checked-out commit is never carried onto the branch —
-    and leaves HEAD detached until you switch back; fude
-    restores the branch on scope switch, `:FudeReviewLocalStop`, and quit.
+    an edit made on the checked-out commit is not carried onto the branch by a
+    scope switch or `:FudeReviewLocalStop` — and leaves HEAD detached until you
+    switch back; fude restores the branch on scope switch,
+    `:FudeReviewLocalStop`, and quit. Quitting is the one exception: rather
+    than leave HEAD detached it restores the branch anyway, letting git carry
+    non-conflicting changes along and warning about it. Committing on the
+    detached HEAD blocks every restore until you move that commit to a branch.
     Because the working tree is then a past snapshot rather than your work,
     comments are read-only in this scope: none are shown (no boxes, no
     per-file counts) and none can be created, including from the comment
