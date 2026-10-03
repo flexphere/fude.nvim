@@ -35,14 +35,9 @@
 - **対策**: 実時刻（`os.time()`）と比較される経路を通るfixtureのタイムスタンプは、固定の十分未来の日付（例: `2126-01-01T00:00:00Z`）を使う。過去日付のハードコードは時限爆弾、現在時刻の動的生成は再現性低下。時刻を注入できる純粋関数（`prune(t, now, days)`等）のテストは固定`now`を渡して書く
 - **該当箇所**: tests/fude/drafts_spec.lua
 
-### エッジケース: 入力形式を追加したら既存形式の制約を再適用する (PR #173, 2026-09-04)
-- **問題**: angle-bracket入力形式（`](<file://...>)`）を後から追加した際、bare形式ではパターン構文上通らない`)`がangle形式では通るようになり、出力正規化（スペースのみangle化）と組み合わさって「ghが書き換えられない参照」を生んだ
-- **対策**: 同じデータに対する記法・入力形式を追加するとき、既存形式が構文上（暗黙に）排除していた文字・ケースを列挙し、新形式でも同じ制約（除外 or 正規化）が成立するかを確認する。「パターンが通さないから安全」は形式追加で崩れる
-- **該当箇所**: lua/fude/pr.lua
-
-### コード品質: 近似markdownパーサの開閉条件は対称と仮定しない (PR #173, 2026-09-04)
-- **問題**: フェンスの開き判定（info string可: `` ```lua ``）をそのまま閉じ判定にも使ったため、フェンス内の`` ```lua ``のような行で誤って閉じ、以降の内容が処理対象になった
-- **対策**: 開始と終了で許される構文が異なる構造（CommonMarkのfence、heredoc等）では、閉じ判定を仕様に沿って別に書く（閉じフェンスはマーカーのみの行、より長いランは可）
+### コード品質: 近似パーサに記法を足すときは暗黙の制約と開閉の非対称を個別に確認する (PR #173, 2026-09-04)
+- **問題**: (1) angle-bracket入力形式（`](<file://...>)`）を後から追加した際、bare形式ではパターン構文上通らない`)`がangle形式では通るようになり、出力正規化と組み合わさって「ghが書き換えられない参照」を生んだ。(2) フェンスの開き判定（info string可）をそのまま閉じ判定にも使ったため、フェンス内の`` ```lua ``のような行で誤って閉じた
+- **対策**: 同じデータに対する記法を追加するとき、既存形式が構文上（暗黙に）排除していた文字・ケースを列挙し、新形式でも同じ制約が成立するかを確認する（「パターンが通さないから安全」は形式追加で崩れる）。開始と終了で許される構文が異なる構造（fence、heredoc等）は閉じ判定を仕様に沿って別に書く
 - **該当箇所**: lua/fude/pr.lua
 
 ### コード品質: 依存プリミティブの保証と重複する検証コード (PR #169, 2026-07-23)
@@ -50,21 +45,15 @@
 - **対策**: 検証コードを書く前に「この検証は、依存しているプリミティブ（jqのフォーマット保証、`set -e`のfail-fast等）が既にカバーしていない失敗モードを捕捉しているか」を確認する。捕捉対象が存在しないなら、検証の精度を上げる（マッチ窓を広げる等）のではなく検証自体を削除する
 - **該当箇所**: contrib/skills/fude-watch/fude-watch-reply.sh
 
-
-### コード品質: Luaのand-orイディオムはnilを返せない (PR #179, 2026-09-14)
-- **問題**: `cond and nil or fallback` / `is_null(x) and nil or x` は、中間値がnil/falseだと必ずfallback側に落ちるため「条件成立時にnilを返す」意図を表現できない。gh APIレスポンスのnull正規化（新規）とsuggest入力のcursor_pos分岐（既存）の2箇所で実バグ化しており、後者は数ヶ月間気づかれなかった
-- **対策**: 三項演算子のつもりでand-orを書くとき、真側の値がnil/falseになり得るなら明示的なif文か`util.null_to(v, default)`を使う。レビュー時は`and nil or`・`and false or`をGrepして機械的に検出できる
-- **該当箇所**: lua/fude/gh.lua, lua/fude/comments.lua, lua/fude/util.lua (null_to)
+### コード品質: Luaのand-orイディオムはnilを返せない。直すときは値が兼ねる副作用も見る (PR #179, 2026-09-14)
+- **問題**: `cond and nil or fallback` / `is_null(x) and nil or x` は、中間値がnil/falseだと必ずfallback側に落ちるため「条件成立時にnilを返す」意図を表現できない。gh APIレスポンスのnull正規化（新規）とsuggest入力のcursor_pos分岐（既存）の2箇所で実バグ化しており、後者は数ヶ月間気づかれなかった。さらに`cursor_pos`はstopinsertのトリガーも兼ねていたため、「値」だけ直してnilを渡すとinsertモード開始という隠れた挙動変化が起きた
+- **対策**: 三項演算子のつもりでand-orを書くとき、真側の値がnil/falseになり得るなら明示的なif文か`util.null_to(v, default)`を使う。レビュー時は`and nil or`・`and false or`をGrepして機械的に検出できる。パラメータの値を変える前に、受け側でそのパラメータがnil/非nilでゲートしている副作用（モード、フォーカス等）を確認し、テストもその観点で書く
+- **該当箇所**: lua/fude/gh.lua, lua/fude/comments.lua, lua/fude/ui.lua, lua/fude/util.lua (null_to)
 
 ### エッジケース: 非同期submit成功後のdraft削除が送信中の保存を消す (PR #179, 2026-09-14)
 - **問題**: 「API成功後に削除」の原則を守っていても、削除対象（draft等の永続データ）がリクエスト往復中にユーザー操作で更新され得る場合、成功callbackの無条件削除が新しい保存を消す。PR editフロート・comment browser下ペインのように入力UIがリクエスト中も開いたまま操作可能な設計では特に到達しやすい
 - **対策**: 非同期成功後にユーザーデータを削除するときは「送信時点の対象と同一か」を確認する。同一クロージャ内で完結するなら保存ハンドラでフラグを立てる方式（内容一致のエッジも塞げる）、クロージャをまたぐならsnapshot比較（`drafts.remove_if_unchanged`）を使う。修正時は同パターンの全サイト（`drafts.remove`等の成功後削除）をGrepで列挙し、UIが開いたままのサイトを優先する
 - **該当箇所**: lua/fude/pr.lua, lua/fude/ui/comment_browser.lua, lua/fude/drafts.lua
-
-### コード品質: オプション値が別の副作用のトリガーを兼ねている場合の修正 (PR #179, 2026-09-14)
-- **問題**: `open_comment_input`の`cursor_pos`はカーソル位置指定と同時にstopinsert（normalモード開始）のトリガーを兼ねていた。and-orバグの「値」だけを直してnilを渡すと、insertモード開始という隠れた挙動変化が起き、suggestフェンスが1打目で壊れるリスクを新規に生んだ
-- **対策**: パラメータの値を変更する前に、受け側実装でそのパラメータが何をゲートしているか（nil/非nilで分岐する副作用）を確認する。テストも値の比較だけでなく、ゲートされる副作用（モード、フォーカス等）の観点で書けないか検討する
-- **該当箇所**: lua/fude/comments.lua, lua/fude/ui.lua
 
 ### ドキュメント: 非nilデフォルトのオプションを「nilで無効化」と案内していた (PR #176, 2026-09-09)
 - **問題**: `diffopt`のコメントとhelpで「nil to keep user's default」と案内していたが、`setup()`は`vim.tbl_deep_extend("force", defaults, user_opts)`でマージするため、`setup({ diffopt = nil })`はキー自体が落ちてデフォルトが適用される。デフォルトが非nilのオプションではnilによる無効化は不可能で、案内どおりに設定したユーザーは無効化できない
@@ -125,3 +114,13 @@
 - **問題**: ピッカーがTelescope/snacks/`vim.ui.select`に分岐するのに、README・helpは「説明で検索できる」と無条件に書いていた。素の`vim.ui.select`は番号選択で検索できないため、fallback経路ではドキュメントの約束を満たさなかった
 - **対策**: 実装経路（picker種別・provider有無・モード）で振る舞いが変わる機能は、ドキュメント側で「どの経路で何ができるか」を経路ごとに書く。機能説明を書くときは、fallback経路でもその文が真かを確認する
 - **該当箇所**: README.md, doc/fude.txt
+
+### アーキテクチャ: review_modeごとの並行実装で、ガード・状態・失敗方針が片側にしか無い (PR #207, 2026-10-03)
+- **問題**: local commit scopeを足した際、(1) 読み取り専用ガードを`comments.lua`のfacadeにだけ置いたため、backend（`local_sync`）を直接呼ぶcomment browserからは書き込めた。(2) `apply_gitsigns_base_for_buffer`はGitHub側の`state.scope`しか見ておらず、同じ概念をlocal側は`state.local_session.scope`に持つため分岐に入らなかった。(3) `init.stop()`はHEAD復元失敗でセッションを維持する方針だったが、`local/session.stop()`は復元失敗後もteardownを続けてdetached HEADに取り残した
+- **対策**: 横断的な制約（read-only等）は呼び出し経路に依存しないbackend層で強制し、facadeのガードは通知用に留める。GitHub/localで同じ概念を別フィールドに持つ場合、共通helperが両方を見ているか`state.review_mode`で確認する。片側に既に存在する失敗時の方針（復元失敗→中断・維持）は、もう片側に同種の処理を足すとき必ず照合する
+- **該当箇所**: lua/fude/comments/local_sync.lua, lua/fude/init.lua, lua/fude/local/session.lua
+
+### 堅牢性: HEADを動かす操作の前提条件と復旧情報は、全経路・全方向で揃える (PR #207, 2026-10-03)
+- **問題**: commit scopeのcheckoutについてCopilotが7ラウンドにわたり同系統の穴を指摘した。(1) clean判定が初回進入時だけで、commit→commitや「戻る」方向では未検査だった。(2) `git status`が見ない状態（未保存バッファ、未送信のコメント入力、別tabの入力float、内側worktreeのバッファの誤判定）を見落としていた。(3) 復旧用pointerをcheckoutの後に書いていたため、その間のクラッシュで復帰不能だった。pointerの書き込み失敗を無視して進んでいた。復元後にstaleなcommit pointerが残り、意図的なdetachを誤認した
+- **対策**: 外部状態を変える操作（checkout等）は、進入・遷移・復帰の全方向で同じ前提条件チェックを通す。チェック対象はgitの状態だけでなくNeovim側の状態（modifiedバッファ、入力UIの未送信テキスト）も列挙し、探索範囲（全tab、所有worktreeの最深一致）を明示する。復旧情報は副作用の前に永続化し、書けなければ中止する（write-ahead）。復帰に成功したら復旧情報を更新し、更新できなければ削除する（staleな復旧情報は無いより悪い）。唯一の例外は終了時（`VimLeavePre`）で、detached HEADに取り残すよりは警告して強行する
+- **該当箇所**: lua/fude/local/session.lua, lua/fude/ui.lua
