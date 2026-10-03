@@ -584,6 +584,9 @@ local function restore_head(session, opts)
 		vim.notify("fude.nvim: Failed to return to " .. target .. ": " .. (err or "?"), vim.log.levels.ERROR)
 		return false
 	end
+	if err then
+		vim.notify("fude.nvim: " .. err, vim.log.levels.WARN) -- a hook failed; HEAD did move
+	end
 	session.original_branch = nil
 	session.scope_commit_sha = nil
 	session.scope_commit_index = nil
@@ -648,11 +651,16 @@ local function enter_commit_scope(session, sha)
 	end
 	local ok, err = diff_mod.checkout(sha, session.worktree_root)
 	if not ok then
-		-- Roll the pending pointer back; HEAD never moved, so a pointer that
-		-- still names the commit must not survive either.
+		-- Roll the pending pointer back; HEAD never moved (diff.checkout
+		-- verifies that — a failed hook after a completed checkout is reported
+		-- as ok plus a warning), so a pointer that still names the commit must
+		-- not survive either.
 		persist_non_commit_or_clear(session)
 		vim.notify("fude.nvim: Failed to check out " .. sha:sub(1, 7) .. ": " .. (err or "?"), vim.log.levels.ERROR)
 		return false
+	end
+	if err then
+		vim.notify("fude.nvim: " .. err, vim.log.levels.WARN)
 	end
 	if not session.original_branch then
 		-- First entry: remember the scope to write back to the pointer when the
@@ -784,6 +792,9 @@ function M.start(base_arg)
 			if not ok then
 				vim.notify("fude.nvim: Failed to return to " .. return_to .. ": " .. (err or "?"), vim.log.levels.ERROR)
 				return
+			end
+			if err then
+				vim.notify("fude.nvim: " .. err, vim.log.levels.WARN)
 			end
 			-- HEAD is back on the branch: stop the pointer from describing a
 			-- commit scope *now*, before buffers are reloaded and the rest of
