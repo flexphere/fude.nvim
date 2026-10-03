@@ -855,6 +855,135 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("basesha", s.base_sha)
 	end)
 
+	it("does not move HEAD when the commit's base cannot be resolved", function()
+		local calls = mock_commit_git({
+			has_parent = function()
+				return false
+			end,
+			get_empty_tree = function()
+				return nil
+			end,
+		})
+		helpers.mock(vim, "notify", function() end)
+		session.start(nil)
+
+		-- Resolving `<sha>^` / the empty tree needs no checkout, so a failure
+		-- must leave HEAD on the branch and the session on its previous scope.
+		assert.is_false(session.set_scope("commit", { commit_sha = "c1sha" }))
+		local s = config.state.local_session
+		assert.same({}, calls.checkout)
+		assert.equals("base", s.scope)
+		assert.is_nil(s.original_branch)
+		assert.is_false(session.in_commit_scope())
+	end)
+
+	it("exposes no comments while a commit is checked out and brings them back after", function()
+		mock_commit_git()
+		session.start(nil)
+		store.append_event(
+			config.state.local_session.file,
+			store.build_comment_event({ id = "c1", path = "f.lua", start_line = 1, end_line = 1, body = "root" })
+		)
+		session.reload(true)
+		assert.equals(1, #config.state.comments)
+
+		-- Side panel and picker counts read state.comments, so it must be empty,
+		-- not merely un-rendered.
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		assert.same({}, config.state.comments)
+		assert.same({}, config.state.comment_map)
+
+		session.set_scope("uncommitted")
+		assert.equals(1, #config.state.comments)
+		assert.equals("root", config.state.comments[1].body)
+	end)
+
+	it("returns to the branch a crashed commit-scope session left detached, then resumes it", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		local pointer = store.read_current(tmp_repo, "feat/x")
+		assert.equals("c1sha", pointer.scope_commit_sha)
+		assert.equals("feat/x", pointer.original_branch)
+		local session_id = config.state.local_session.id
+
+		-- Crash: the pointer survives, HEAD stays on c1sha, git reports no branch.
+		config.state.active = false
+		config.state.review_mode = nil
+		local on_branch = false
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_current_branch", function()
+			return on_branch and "feat/x" or nil
+		end)
+		helpers.mock(diff, "get_head_sha", function()
+			return on_branch and "headsha" or "c1sha"
+		end)
+		helpers.mock(diff, "checkout", function(ref)
+			table.insert(calls.checkout, ref)
+			on_branch = (ref == "feat/x")
+			return true
+		end)
+
+		session.start(nil)
+		assert.same({ "c1sha", "feat/x" }, calls.checkout)
+		local s = config.state.local_session
+		assert.is_true(config.state.active)
+		assert.equals(session_id, s.id) -- the branch session, not a new detached one
+		assert.equals("feat/x", s.branch)
+		assert.equals("base", s.scope)
+		assert.is_nil(s.original_branch)
+	end)
+
+	it("refuses to start on a stranded detached HEAD when the tree is not clean", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		config.state.active = false
+		config.state.review_mode = nil
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_current_branch", function()
+			return nil
+		end)
+		helpers.mock(diff, "get_head_sha", function()
+			return "c1sha"
+		end)
+		helpers.mock(diff, "is_worktree_dirty", function()
+			return true
+		end)
+		local errors = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			if level == vim.log.levels.ERROR then
+				table.insert(errors, msg)
+			end
+		end)
+
+		session.start(nil)
+		assert.is_false(config.state.active)
+		assert.same({ "c1sha" }, calls.checkout) -- no second checkout
+		assert.equals(1, #errors)
+		assert.truthy(errors[1]:find("git checkout feat/x", 1, true))
+	end)
+
+	it("leaves a detached HEAD alone when it is not the stranded commit", function()
+		local calls = mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		config.state.active = false
+		config.state.review_mode = nil
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_current_branch", function()
+			return nil
+		end)
+		helpers.mock(diff, "get_head_sha", function()
+			return "somewhere-else"
+		end)
+
+		session.start(nil)
+		assert.is_true(config.state.active)
+		assert.same({ "c1sha" }, calls.checkout)
+		assert.is_nil(config.state.local_session.branch)
+	end)
+
 	it("does not resume into a persisted commit scope", function()
 		mock_commit_git()
 		session.start(nil)

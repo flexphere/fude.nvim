@@ -453,6 +453,42 @@ describe("store IO round-trip", function()
 		assert.is_nil(store.read_current("/repo", "other"))
 	end)
 
+	it("finds the commit-scope session a detached HEAD was left on", function()
+		local map = {
+			["feat/a"] = { id = "sa", scope = "base", worktree_root = "/repo" },
+			["feat/b"] = {
+				id = "sb",
+				scope = "commit",
+				worktree_root = "/repo",
+				scope_commit_sha = "c1sha",
+				original_branch = "feat/b",
+			},
+		}
+		assert.equals("sb", store.find_stranded_commit_session(map, "/repo", "c1sha").id)
+		-- A HEAD the user detached on purpose is never claimed
+		assert.is_nil(store.find_stranded_commit_session(map, "/repo", "elsewhere"))
+		-- Another worktree's session, or no HEAD, or a non-table map: nothing
+		assert.is_nil(store.find_stranded_commit_session(map, "/other", "c1sha"))
+		assert.is_nil(store.find_stranded_commit_session(map, "/repo", nil))
+		assert.is_nil(store.find_stranded_commit_session("junk", "/repo", "c1sha"))
+		-- Without a recorded return branch there is nothing to restore
+		map["feat/b"].original_branch = nil
+		assert.is_nil(store.find_stranded_commit_session(map, "/repo", "c1sha"))
+	end)
+
+	it("read_stranded_commit_session scans the pointer file across branches", function()
+		store.write_current("/repo", "feat/b", {
+			id = "sb",
+			scope = "commit",
+			worktree_root = "/repo",
+			scope_commit_sha = "c1sha",
+			original_branch = "feat/b",
+		})
+		-- The detached lookup by branch misses it, the scan finds it
+		assert.is_nil(store.read_current("/repo", nil))
+		assert.equals("sb", store.read_stranded_commit_session("/repo", "c1sha").id)
+	end)
+
 	it("read_current returns nil for malformed pointer files", function()
 		local path = store.current_file("/repo")
 		vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")

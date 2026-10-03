@@ -619,6 +619,46 @@ function M.read_current(repo_root, branch)
 	return session
 end
 
+--- Find the pointer of a commit-scope session whose checkout outlived Neovim
+--- (pure). After a crash in the commit scope HEAD is detached, so the branch
+--- lookup `read_current(root, nil)` misses the entry saved under the branch;
+--- scan the whole map instead and match the persisted `scope_commit_sha`
+--- against HEAD, so a HEAD the user detached on purpose is never claimed.
+--- Keys are visited in sorted order so the result is deterministic.
+--- @param map table<string, table> the pointer map (`{ [branch] = session }`)
+--- @param repo_root string
+--- @param head_sha string|nil current HEAD
+--- @return table|nil session with `original_branch` to return to
+function M.find_stranded_commit_session(map, repo_root, head_sha)
+	if type(map) ~= "table" or not head_sha then
+		return nil
+	end
+	local keys = vim.tbl_keys(map)
+	table.sort(keys)
+	for _, key in ipairs(keys) do
+		local s = map[key]
+		if
+			type(s) == "table"
+			and type(s.id) == "string"
+			and s.scope == "commit"
+			and s.worktree_root == repo_root
+			and s.scope_commit_sha == head_sha
+			and type(s.original_branch) == "string"
+		then
+			return s
+		end
+	end
+	return nil
+end
+
+--- IO wrapper over `find_stranded_commit_session` for the repo's pointer file.
+--- @param repo_root string
+--- @param head_sha string|nil current HEAD
+--- @return table|nil session
+function M.read_stranded_commit_session(repo_root, head_sha)
+	return M.find_stranded_commit_session(read_current_map(repo_root), repo_root, head_sha)
+end
+
 --- Remove the current-session pointer for a branch (no-op when absent). Deletes
 --- the file once no branch entries remain.
 --- @param repo_root string

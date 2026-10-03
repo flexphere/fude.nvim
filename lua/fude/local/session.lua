@@ -541,6 +541,10 @@ function M.persist_current(session)
 		worktree_root = session.worktree_root,
 		created_at = session.created_at,
 		scope = session.scope,
+		-- Commit scope only: lets `start()` recognise a HEAD left detached by a
+		-- crash and return to the branch (`store.find_stranded_commit_session`).
+		scope_commit_sha = session.scope_commit_sha,
+		original_branch = session.original_branch,
 	})
 	if not ok then
 		-- Surface the failure: without the pointer the session can't be resumed.
@@ -578,6 +582,46 @@ function M.start(base_arg)
 	local head_sha = diff_mod.get_head_sha()
 	local branch = diff_mod.get_current_branch()
 	local now = os.time()
+
+	-- A detached HEAD sitting exactly on a commit a previous commit-scope
+	-- session checked out means that session never got to restore the branch
+	-- (crash, kill). Its pointer is keyed by the branch, which the detached
+	-- lookup below would miss, so return to the branch first and resume from
+	-- there. Any other detached HEAD is the user's own and is left alone.
+	if not branch then
+		local stranded = store.read_stranded_commit_session(repo_root, head_sha)
+		if stranded then
+			local blocker = checkout_blocker(repo_root)
+			if blocker then
+				vim.notify(
+					string.format(
+						"fude.nvim: HEAD is detached by an earlier commit-scope review of %s, but the tree has %s. "
+							.. "Clean it up and run `git checkout %s` before starting",
+						stranded.original_branch,
+						blocker,
+						stranded.original_branch
+					),
+					vim.log.levels.ERROR
+				)
+				return
+			end
+			local ok, err = diff_mod.checkout(stranded.original_branch, repo_root)
+			if not ok then
+				vim.notify(
+					"fude.nvim: Failed to return to " .. stranded.original_branch .. ": " .. (err or "?"),
+					vim.log.levels.ERROR
+				)
+				return
+			end
+			reload_open_buffers(repo_root)
+			head_sha = diff_mod.get_head_sha()
+			branch = diff_mod.get_current_branch()
+			vim.notify(
+				"fude.nvim: Returned to " .. stranded.original_branch .. " left detached by an earlier commit-scope review",
+				vim.log.levels.INFO
+			)
+		end
+	end
 
 	-- Resume the session for THIS branch only (current.json is keyed by branch),
 	-- so reviewing several branches in the same worktree does not collide.
@@ -681,6 +725,13 @@ function M.start(base_arg)
 	session.scope = initial_scope
 	session.base_sha = base_sha
 	session.content_ref = content_ref
+	-- A resumed pointer may carry the commit-scope fields of the session it
+	-- was persisted from. HEAD is on a branch at this point (natively, or after
+	-- the stranded-HEAD restore above), so none of them describe the present:
+	-- a stale original_branch would make a later restore_head check out again.
+	session.scope_commit_sha = nil
+	session.scope_commit_index = nil
+	session.original_branch = nil
 
 	-- Persist the current-session pointer (including scope, so a resume keeps
 	-- the chosen scope instead of reverting to base).
@@ -941,19 +992,34 @@ function M.set_scope(scope, opts)
 		return false
 	end
 
-	-- Move HEAD before resolving the base. `unpushed` reads `@{upstream}`, which
-	-- does not resolve while the commit scope holds HEAD detached, so leaving
-	-- that scope has to put the branch back first.
+	-- Order of "move HEAD" vs "resolve the base" differs by direction:
+	--   into a commit — the base (`<sha>^` / empty tree) needs no checkout, so
+	--     resolve first and move HEAD only once it is known to succeed; a
+	--     failure then leaves HEAD and the session exactly as they were.
+	--   out of a commit — `unpushed` reads `@{upstream}`, which does not resolve
+	--     while HEAD is detached, so the branch has to be put back first and a
+	--     failed resolve re-enters the commit below.
 	local previous_commit = session.scope_commit_sha
+	local diff_base, content_ref
 	if scope == "commit" then
+		diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root, commit_sha)
+		if not diff_base then
+			vim.notify(
+				"fude.nvim: Cannot switch to commit scope — cannot resolve the parent of " .. commit_sha:sub(1, 7),
+				vim.log.levels.WARN
+			)
+			return false
+		end
 		if not enter_commit_scope(session, commit_sha) then
 			return false
 		end
-	elseif not restore_head(session) then
-		return false
+	else
+		if not restore_head(session) then
+			return false
+		end
+		diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root)
 	end
 
-	local diff_base, content_ref = M.resolve_scope_base(scope, session.base_ref, session.worktree_root, commit_sha)
 	if not diff_base then
 		-- Scope unavailable for the current git state (no base branch / no
 		-- upstream). Explain rather than silently failing.
