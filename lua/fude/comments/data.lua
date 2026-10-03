@@ -560,6 +560,69 @@ function M.build_comment_browser_entries(
 	return entries
 end
 
+--- Build the PR-level conversation: issue comments plus the body of every
+--- submitted review (Approve / Request changes / Comment summaries, bot
+--- "review overview" posts), which GitHub shows as comments in the
+--- Conversation tab but serves from `pulls/{pr}/reviews`, not
+--- `issues/{pr}/comments`. Pure.
+--- Review bodies become issue-comment-shaped objects (`created_at` from
+--- `submitted_at`) flagged `is_review_summary = true` with `review_state`, so
+--- display code treats them uniformly while edit/delete can skip them (a
+--- review body is edited through a different endpoint and cannot be deleted).
+--- Reviews in PENDING state (the viewer's own unsubmitted review) and reviews
+--- with an empty body (every standalone review comment creates one) are
+--- skipped. Nested fields may be JSON null, so they are type-checked.
+--- @param issue_comments table[]|nil from `issues/{pr}/comments`
+--- @param reviews table[]|nil from `pulls/{pr}/reviews`
+--- @return table[] merged comments, oldest first
+function M.build_pr_level_comments(issue_comments, reviews)
+	local merged = {}
+	for _, c in ipairs(issue_comments or {}) do
+		table.insert(merged, c)
+	end
+	for _, r in ipairs(reviews or {}) do
+		if type(r) == "table" and r.state ~= "PENDING" and type(r.body) == "string" and r.body:match("%S") then
+			table.insert(merged, {
+				id = r.id,
+				user = type(r.user) == "table" and r.user or nil,
+				body = r.body,
+				created_at = type(r.submitted_at) == "string" and r.submitted_at or "",
+				review_state = type(r.state) == "string" and r.state or nil,
+				is_review_summary = true,
+			})
+		end
+	end
+	-- table.sort is not stable; break timestamp ties by id so the order is deterministic
+	table.sort(merged, function(a, b)
+		local ta = type(a.created_at) == "string" and a.created_at or ""
+		local tb = type(b.created_at) == "string" and b.created_at or ""
+		if ta ~= tb then
+			return ta < tb
+		end
+		return tostring(a.id) < tostring(b.id)
+	end)
+	return merged
+end
+
+--- Find the comment the `e`/`d` keys act on: the user's most recent comment in
+--- the thread, skipping review summary bodies (see `build_pr_level_comments`),
+--- which the comment endpoints cannot edit or delete. Pure.
+--- @param comments table[] thread comments, oldest first
+--- @param github_user string|nil authenticated login
+--- @return table|nil
+function M.find_editable_comment(comments, github_user)
+	if not github_user then
+		return nil
+	end
+	for i = #(comments or {}), 1, -1 do
+		local c = comments[i]
+		if not c.is_review_summary and type(c.user) == "table" and c.user.login == github_user then
+			return c
+		end
+	end
+	return nil
+end
+
 --- Merge local draft descriptors into comment browser entries. Pure.
 --- Drafts that target an existing entry (reply/edit by comment id; line/suggest
 --- by path:line; issue when a PR-comment entry exists) flag that entry with

@@ -163,6 +163,49 @@ local function fetch_comments(callback, opts)
 	end)
 end
 
+--- Fetch the PR-level conversation (issue comments plus submitted review
+--- bodies, see `data.build_pr_level_comments`) with the two listings requested
+--- in parallel. Each listing that fails is treated as empty so the other is
+--- still shown; the failure is logged at DEBUG. The callback always receives
+--- an array.
+--- @param pr_number number|nil
+--- @param callback fun(pr_comments: table[])
+function M.fetch_pr_level_comments(pr_number, callback)
+	if not pr_number then
+		callback({})
+		return
+	end
+	local results = {}
+	local ops = {
+		{
+			key = "issue_comments",
+			run = function(cb)
+				gh.get_issue_comments(pr_number, cb)
+			end,
+		},
+		{
+			key = "reviews",
+			run = function(cb)
+				gh.get_reviews(pr_number, cb)
+			end,
+		},
+	}
+	local remaining = #ops
+	for _, op in ipairs(ops) do
+		op.run(function(err, items)
+			if err then
+				vim.notify("fude.nvim: Failed to fetch " .. op.key .. ": " .. err, vim.log.levels.DEBUG)
+			else
+				results[op.key] = items
+			end
+			remaining = remaining - 1
+			if remaining == 0 then
+				callback(data.build_pr_level_comments(results.issue_comments, results.reviews))
+			end
+		end)
+	end
+end
+
 --- Submit pending review or create a new review with event and body.
 --- If a pending review exists on GitHub, submits it (with or without comments).
 --- Otherwise, creates a new review. APPROVE works without body; COMMENT and

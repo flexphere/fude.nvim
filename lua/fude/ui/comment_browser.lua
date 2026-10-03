@@ -22,17 +22,16 @@ local function get_gh()
 	return require("fude.gh")
 end
 
---- Fetch PR-level issue comments, or immediately yield none in local review
---- mode (PR-level comments have no local backend).
+--- Fetch PR-level comments (issue comments plus submitted review bodies), or
+--- immediately yield none in local review mode (PR-level comments have no
+--- local backend).
 --- @param callback fun(issue_comments: table[])
 local function fetch_issue_comments(callback)
 	if config.state.review_mode == "local" then
 		callback({})
 		return
 	end
-	get_gh().get_issue_comments(config.state.pr_number, function(err, issue_comments)
-		callback((not err and issue_comments) or {})
-	end)
+	require("fude.comments.sync").fetch_pr_level_comments(config.state.pr_number, callback)
 end
 
 --- Compute the local-draft key for the lower input pane given the current mode
@@ -738,15 +737,9 @@ local function create_browser(entries, issue_comments)
 			return
 		end
 
-		-- Find the target comment (last own comment in the thread)
-		local target_comment
-		for i = #entry.comments, 1, -1 do
-			local c = entry.comments[i]
-			if c.user and c.user.login == state.github_user then
-				target_comment = c
-				break
-			end
-		end
+		-- Last own comment in the thread; review summary bodies are skipped
+		-- since the comment endpoints cannot edit them.
+		local target_comment = data.find_editable_comment(entry.comments, state.github_user)
 		if not target_comment then
 			vim.notify("fude.nvim: No editable comment found", vim.log.levels.WARN)
 			return
@@ -784,15 +777,9 @@ local function create_browser(entries, issue_comments)
 		if not entry or not entry.comments then
 			return
 		end
-		-- Find the target comment (last own comment in the thread)
-		local target_comment
-		for i = #entry.comments, 1, -1 do
-			local c = entry.comments[i]
-			if c.user and c.user.login == state.github_user then
-				target_comment = c
-				break
-			end
-		end
+		-- Last own comment in the thread; review summary bodies are skipped
+		-- since a submitted review cannot be deleted.
+		local target_comment = data.find_editable_comment(entry.comments, state.github_user)
 		if not target_comment then
 			vim.notify("fude.nvim: No deletable comment found", vim.log.levels.WARN)
 			return

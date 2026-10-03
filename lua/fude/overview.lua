@@ -22,12 +22,10 @@ function M.show()
 			return
 		end
 
-		gh.get_issue_comments(pr_info.number, function(comments_err, issue_comments)
-			if comments_err then
-				issue_comments = {}
-			end
-
-			ui.show_overview_float(pr_info, issue_comments, {
+		-- Issue comments plus submitted review bodies, which GitHub also shows
+		-- as comments in the Conversation tab.
+		require("fude.comments.sync").fetch_pr_level_comments(pr_info.number, function(pr_comments)
+			ui.show_overview_float(pr_info, pr_comments, {
 				on_new_comment = function()
 					M.create_comment(pr_info.number)
 				end,
