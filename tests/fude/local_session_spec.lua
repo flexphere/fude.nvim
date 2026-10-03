@@ -594,8 +594,8 @@ describe("session lifecycle (start/reload/stop)", function()
 			is_worktree_dirty = function()
 				return false
 			end,
-			has_parent = function()
-				return true
+			get_parent = function(sha)
+				return sha .. "^", "parent"
 			end,
 			checkout = function(ref)
 				table.insert(calls.checkout, ref)
@@ -839,9 +839,11 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.is_false(session.in_commit_scope())
 	end)
 
-	it("a failed checkout leaves the scope untouched", function()
+	it("a failed checkout leaves the scope, the return branch and the pointer untouched", function()
+		local checkouts = 0
 		mock_commit_git({
 			checkout = function()
+				checkouts = checkouts + 1
 				return false, "conflict"
 			end,
 		})
@@ -853,15 +855,73 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("base", s.scope)
 		assert.is_nil(s.scope_commit_sha)
 		assert.equals("basesha", s.base_sha)
+		-- No return branch is left behind, so later restores run no checkout
+		-- (one that could fail and then block stop()).
+		assert.is_nil(s.original_branch)
+		-- The pending pointer written before the checkout is rolled back
+		local pointer = store.read_current(tmp_repo, "feat/x")
+		assert.equals("base", pointer.scope)
+		assert.is_nil(pointer.scope_commit_sha)
+		assert.is_nil(pointer.original_branch)
+
+		assert.equals(1, checkouts)
+		session.stop()
+		assert.is_false(config.state.active)
+		assert.equals(1, checkouts) -- stop did not try a restore
+	end)
+
+	it("persists the pending commit before HEAD moves", function()
+		local during = nil
+		mock_commit_git({
+			checkout = function()
+				-- What a crash right here would leave on disk
+				during = store.read_current(tmp_repo, "feat/x")
+				return true
+			end,
+		})
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		assert.is_not_nil(during)
+		assert.equals("commit", during.scope)
+		assert.equals("c1sha", during.scope_commit_sha)
+		assert.equals("feat/x", during.original_branch)
+		-- The resume path would find it by HEAD
+		assert.equals(during.id, store.find_stranded_commit_session({ ["feat/x"] = during }, tmp_repo, "c1sha").id)
+	end)
+
+	it("entering the commit scope clears every buffer's comment marks and closes comment UIs", function()
+		mock_commit_git()
+		session.start(nil)
+		local ui = require("fude.ui")
+		local cleared, closed, refreshed = 0, 0, 0
+		helpers.mock(ui, "clear_all_extmarks", function()
+			cleared = cleared + 1
+		end)
+		helpers.mock(ui, "close_comment_ui", function()
+			closed = closed + 1
+		end)
+		helpers.mock(ui, "refresh_visible_extmarks", function()
+			refreshed = refreshed + 1
+		end)
+
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		assert.equals(1, cleared)
+		assert.equals(1, closed)
+		assert.equals(1, refreshed)
+
+		-- Leaving re-renders every visible window, without another teardown
+		session.set_scope("uncommitted")
+		assert.equals(1, cleared)
+		assert.equals(1, closed)
+		assert.equals(2, refreshed)
 	end)
 
 	it("does not move HEAD when the commit's base cannot be resolved", function()
 		local calls = mock_commit_git({
-			has_parent = function()
-				return false
-			end,
-			get_empty_tree = function()
-				return nil
+			-- Shallow clone boundary: the parent is recorded but not in the clone
+			get_parent = function()
+				return nil, "missing"
 			end,
 		})
 		helpers.mock(vim, "notify", function() end)
@@ -1224,22 +1284,22 @@ describe("session.resolve_scope_base", function()
 
 	it("commit resolves to the commit's parent", function()
 		local diff = require("fude.diff")
-		helpers.mock(diff, "has_parent", function(sha, cwd)
+		helpers.mock(diff, "get_parent", function(sha, cwd)
 			assert.equals("abc123", sha)
 			assert.equals("/repo", cwd)
-			return true
+			return "parent1", "parent"
 		end)
 		local diff_base, content_ref = session.resolve_scope_base("commit", "main", "/repo", "abc123")
 		-- Both refs must be the parent: the caller checks abc123 out, so
-		-- `git diff abc123^` against the working tree is that commit's own diff.
-		assert.equals("abc123^", diff_base)
-		assert.equals("abc123^", content_ref)
+		-- `git diff <parent>` against the working tree is that commit's own diff.
+		assert.equals("parent1", diff_base)
+		assert.equals("parent1", content_ref)
 	end)
 
 	it("commit falls back to the empty tree for a root commit", function()
 		local diff = require("fude.diff")
-		helpers.mock(diff, "has_parent", function()
-			return false
+		helpers.mock(diff, "get_parent", function()
+			return nil, "root"
 		end)
 		helpers.mock(diff, "get_empty_tree", function()
 			return "emptyhash"
@@ -1247,6 +1307,23 @@ describe("session.resolve_scope_base", function()
 		local diff_base, content_ref = session.resolve_scope_base("commit", "main", "/repo", "root1")
 		assert.equals("emptyhash", diff_base)
 		assert.equals("emptyhash", content_ref)
+	end)
+
+	it("commit refuses when the parent is recorded but unreachable (shallow clone)", function()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_parent", function()
+			return nil, "missing"
+		end)
+		local empty_tree_asked = false
+		helpers.mock(diff, "get_empty_tree", function()
+			empty_tree_asked = true
+			return "emptyhash"
+		end)
+		local diff_base, content_ref = session.resolve_scope_base("commit", "main", "/repo", "edge1")
+		-- The empty tree would show the whole snapshot as added — not that commit
+		assert.is_nil(diff_base)
+		assert.is_nil(content_ref)
+		assert.is_false(empty_tree_asked)
 	end)
 
 	it("commit returns nil without a commit sha", function()
