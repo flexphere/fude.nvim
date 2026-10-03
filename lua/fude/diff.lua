@@ -180,8 +180,9 @@ function M.get_commit_log(base_ref, tip, cwd, limit)
 end
 
 --- Whether the working tree has staged or unstaged changes.
---- Untracked files do not count: `git checkout` carries them across, so they
---- never block a commit checkout.
+--- Untracked files do not count here: `git checkout` carries them across —
+--- except when the target tracks a file of the same path, which
+--- `get_untracked_conflicts` checks separately.
 --- @param cwd string|nil repo root
 --- @return boolean dirty
 function M.is_worktree_dirty(cwd)
@@ -216,6 +217,54 @@ function M.head_is(ref, cwd)
 		return false
 	end
 	return M.get_head_sha(cwd) == vim.trim(target.stdout)
+end
+
+--- Untracked paths that `ref` tracks (pure): `git checkout ref` refuses to
+--- overwrite these ("untracked working tree file would be overwritten"), so
+--- they must block a checkout, while every other untracked file is carried
+--- across and must not.
+--- @param untracked string[] untracked, non-ignored paths
+--- @param tracked string[] paths tracked at the target ref
+--- @return string[] conflicts sorted
+function M.find_untracked_conflicts(untracked, tracked)
+	local set = {}
+	for _, path in ipairs(tracked or {}) do
+		set[path] = true
+	end
+	local conflicts = {}
+	for _, path in ipairs(untracked or {}) do
+		if set[path] then
+			table.insert(conflicts, path)
+		end
+	end
+	table.sort(conflicts)
+	return conflicts
+end
+
+--- Untracked (non-ignored) files in the worktree that `ref` tracks — the
+--- files a `git checkout ref` would refuse to overwrite. Ignored files are
+--- left out: git overwrites those silently. nil when git fails, so a failure
+--- is not mistaken for "no conflicts".
+--- @param ref string branch name or commit SHA
+--- @param cwd string|nil repo root
+--- @return string[]|nil conflicts
+--- @return string|nil err
+function M.get_untracked_conflicts(ref, cwd)
+	local untracked = vim
+		.system({ "git", "ls-files", "--others", "--exclude-standard" }, { text = true, cwd = cwd })
+		:wait()
+	if untracked.code ~= 0 then
+		return nil, vim.trim(untracked.stderr or "git ls-files failed")
+	end
+	local tracked = vim.system({ "git", "ls-tree", "-r", "--name-only", ref }, { text = true, cwd = cwd }):wait()
+	if tracked.code ~= 0 then
+		return nil, vim.trim(tracked.stderr or "git ls-tree failed")
+	end
+	return M.find_untracked_conflicts(
+		vim.split(untracked.stdout or "", "\n", { trimempty = true }),
+		vim.split(tracked.stdout or "", "\n", { trimempty = true })
+	),
+		nil
 end
 
 --- The branch HEAD is on, or nil when detached.

@@ -329,6 +329,25 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.equals("main", diff.head_branch(repo))
 	end)
 
+	it("get_untracked_conflicts lists only untracked files the target tracks", function()
+		-- feature tracks shared.txt; main does not
+		vim.fn.writefile({ "x" }, repo .. "/shared.txt")
+		git("add", "shared.txt")
+		git("commit", "-q", "-m", "track shared")
+		git("checkout", "-q", "--detach", "main")
+		-- Now untracked: one that feature tracks, one that nothing tracks, one ignored
+		vim.fn.writefile({ "y" }, repo .. "/shared.txt")
+		vim.fn.writefile({ "z" }, repo .. "/scratch.txt")
+		vim.fn.writefile({ "scratch-ignored.txt" }, repo .. "/.gitignore")
+		vim.fn.writefile({ "w" }, repo .. "/scratch-ignored.txt")
+
+		assert.same({ "shared.txt" }, diff.get_untracked_conflicts("feature", repo))
+		assert.same({}, diff.get_untracked_conflicts("main", repo))
+		local nothing, err = diff.get_untracked_conflicts("no-such-ref", repo)
+		assert.is_nil(nothing)
+		assert.truthy(err and #err > 0)
+	end)
+
 	it("head_is distinguishes a branch from a detached HEAD on its commit", function()
 		assert.is_true(diff.head_is("feature", repo))
 		assert.is_true(diff.head_is(git("rev-parse", "feature"), repo))
@@ -646,6 +665,17 @@ describe("make_relative", function()
 		assert.is_nil(diff.make_relative("/repo-other/x.lua", "/repo"))
 		assert.is_nil(diff.make_relative("/repository/x.lua", "/repo"))
 		assert.is_nil(diff.make_relative("/elsewhere/x.lua", "/repo"))
+	end)
+end)
+
+describe("find_untracked_conflicts", function()
+	it("intersects untracked paths with the target's tracked paths, sorted", function()
+		assert.same(
+			{ "a.lua", "b/c.lua" },
+			diff.find_untracked_conflicts({ "b/c.lua", "scratch", "a.lua" }, { "a.lua", "b/c.lua", "d.lua" })
+		)
+		assert.same({}, diff.find_untracked_conflicts({ "scratch" }, { "a.lua" }))
+		assert.same({}, diff.find_untracked_conflicts({}, nil))
 	end)
 end)
 

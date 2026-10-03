@@ -626,6 +626,9 @@ describe("session lifecycle (start/reload/stop)", function()
 			is_reachable_from_branch = function()
 				return false
 			end,
+			get_untracked_conflicts = function()
+				return {}, nil
+			end,
 			checkout = function(ref)
 				table.insert(calls.checkout, ref)
 				return true
@@ -1142,6 +1145,40 @@ describe("session lifecycle (start/reload/stop)", function()
 		session.stop()
 		assert.same({ "c1sha", "feat/x" }, calls.checkout)
 		assert.is_false(config.state.active)
+	end)
+
+	it("refuses a checkout that untracked files would collide with, even on quit", function()
+		local calls = mock_commit_git()
+		local diff = require("fude.diff")
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+
+		-- A file created while the commit was checked out that the branch tracks
+		local asked = {}
+		helpers.mock(diff, "get_untracked_conflicts", function(ref)
+			table.insert(asked, ref)
+			return ref == "feat/x" and { "lua/new.lua" } or {}
+		end)
+		local warned = {}
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(warned, msg)
+		end)
+
+		assert.is_false(session.set_scope("uncommitted"))
+		session.stop()
+		assert.is_true(config.state.active)
+		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
+		assert.same({ "c1sha" }, calls.checkout) -- git would refuse; forcing would only hide why
+		assert.truthy(vim.tbl_contains(asked, "feat/x"))
+		assert.truthy(table.concat(warned, "\n"):find("lua/new.lua", 1, true))
+		assert.truthy(table.concat(warned, "\n"):find("would be overwritten", 1, true))
+
+		-- Moved out of the way → the restore goes through
+		helpers.mock(diff, "get_untracked_conflicts", function()
+			return {}
+		end)
+		assert.is_true(session.set_scope("uncommitted"))
+		assert.same({ "c1sha", "feat/x" }, calls.checkout)
 	end)
 
 	it("restores the branch by name, not merely its commit", function()

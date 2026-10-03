@@ -476,8 +476,11 @@ end
 --- @param expected_head string|nil the commit the scope checked out; when HEAD
 --- no longer is that commit the user committed on the detached HEAD, and a
 --- checkout away from it would make that commit unreachable (reflog only)
+--- @param target string|nil the ref about to be checked out; untracked files
+--- it tracks would make `git checkout` refuse ("would be overwritten"), so
+--- they block too — other untracked files are carried across and do not
 --- @return string|nil reason
-local function checkout_blocker(root, expected_head)
+local function checkout_blocker(root, expected_head, target)
 	-- Comment input is checked first: the commit scope's teardown wipes those
 	-- buffers, so unsent text would be lost without a word.
 	if require("fude.ui").has_unsent_comment_input() then
@@ -491,6 +494,21 @@ local function checkout_blocker(root, expected_head)
 		-- Not "commit": committing on the detached HEAD would only trade this
 		-- blocker for the one below.
 		return "uncommitted changes — stash or discard them first"
+	end
+	if target then
+		local conflicts, err = diff_mod.get_untracked_conflicts(target, root)
+		if not conflicts then
+			return "cannot check for untracked files in the way: " .. (err or "?")
+		end
+		if #conflicts > 0 then
+			local shown = vim.list_slice(conflicts, 1, 3)
+			return string.format(
+				"untracked files that %s tracks would be overwritten (%s%s) — move or remove them first",
+				target:sub(1, 7),
+				table.concat(shown, ", "),
+				#conflicts > #shown and ", …" or ""
+			)
+		end
 	end
 	if expected_head then
 		local head = diff_mod.get_head_sha(root)
@@ -561,16 +579,20 @@ local function restore_head(session, opts)
 	if not target then
 		return true
 	end
-	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha)
+	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha, target)
 	if blocker then
-		-- A moved HEAD that no branch holds is never forced over, not even on
-		-- quit: the checkout would orphan the user's commit.
+		-- Two blockers are never forced over, not even on quit: a moved HEAD
+		-- that no branch holds (the checkout would orphan the user's commit)
+		-- and untracked files the branch tracks (git refuses the checkout
+		-- anyway, so forcing would only hide the reason).
 		local diff_mod = require("fude.diff")
 		local head = session.scope_commit_sha ~= nil and diff_mod.get_head_sha(session.worktree_root) or nil
 		local head_orphaned = head ~= nil
 			and head ~= session.scope_commit_sha
 			and not diff_mod.is_reachable_from_branch(head, session.worktree_root)
-		if head_orphaned or not (opts and opts.force) then
+		local in_the_way = blocker:find("would be overwritten", 1, true) ~= nil
+			or blocker:find("cannot check for untracked", 1, true) ~= nil
+		if head_orphaned or in_the_way or not (opts and opts.force) then
 			vim.notify("fude.nvim: Cannot leave the commit scope yet: " .. blocker, vim.log.levels.WARN)
 			return false
 		end
@@ -614,7 +636,7 @@ end
 local function enter_commit_scope(session, sha)
 	local diff_mod = require("fude.diff")
 	-- On a commit-to-commit switch HEAD must still be the reviewed commit.
-	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha)
+	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha, sha)
 	if blocker then
 		vim.notify("fude.nvim: Commit scope needs a clean working tree: " .. blocker, vim.log.levels.WARN)
 		return false
@@ -775,7 +797,7 @@ function M.start(base_arg)
 	if not branch then
 		local stranded = store.read_stranded_commit_session(repo_root, head_sha)
 		if stranded then
-			local blocker = checkout_blocker(repo_root)
+			local blocker = checkout_blocker(repo_root, nil, stranded.original_branch)
 			if blocker then
 				vim.notify(
 					string.format(
