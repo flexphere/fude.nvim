@@ -435,6 +435,26 @@ describe("store IO round-trip", function()
 		assert.is_true(store.clear_current("/repo", "feat/x"))
 	end)
 
+	it("writes the pointer atomically and leaves no temp file behind", function()
+		assert.is_true(store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" }))
+		local dir = vim.fn.fnamemodify(store.current_file("/repo"), ":h")
+		local leftovers = vim.fn.glob(dir .. "/*.tmp", false, true)
+		assert.same({}, leftovers)
+		assert.equals("sa", store.read_current("/repo", "feat/a").id)
+
+		-- A failed rename removes the temp file and reports the failure
+		local original = vim.uv.fs_rename
+		vim.uv.fs_rename = function()
+			return nil, "EXDEV: cross-device"
+		end
+		local ok, err = store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })
+		vim.uv.fs_rename = original
+		assert.is_false(ok)
+		assert.truthy(err:find("could not replace", 1, true))
+		assert.same({}, vim.fn.glob(dir .. "/*.tmp", false, true))
+		assert.is_nil(store.read_current("/repo", "feat/b"))
+	end)
+
 	it("write_current and clear_current treat writefile's -1 as a failure", function()
 		store.write_current("/repo", "feat/a", { id = "sa", base_ref = "main", branch = "feat/a" })
 		store.write_current("/repo", "feat/b", { id = "sb", base_ref = "main", branch = "feat/b" })

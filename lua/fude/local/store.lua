@@ -595,7 +595,11 @@ local function read_current_map(repo_root)
 	return data, nil
 end
 
---- Write `data` as JSON to `path`. `vim.fn.writefile` reports a failed write
+--- Write `data` as JSON to `path`, atomically: into a temp file beside it,
+--- then renamed over it. The commit scope's crash recovery depends on this
+--- file being readable at any instant — a process killed halfway through an
+--- in-place write would leave empty or truncated JSON, and with it no way to
+--- find the branch to return to. `vim.fn.writefile` reports a failed write
 --- either by throwing or by returning -1 (e.g. a directory that vanished, a
 --- read-only file), so the pcall result alone is not a success signal — the
 --- pointer callers rely on this to decide whether HEAD may move.
@@ -604,12 +608,16 @@ end
 --- @return boolean ok
 --- @return string|nil err
 local function write_json_lines(path, data)
-	local ok, result = pcall(vim.fn.writefile, vim.split(vim.json.encode(data), "\n"), path)
-	if not ok then
-		return false, tostring(result)
+	local tmp = string.format("%s.%d.tmp", path, vim.uv.os_getpid())
+	local ok, result = pcall(vim.fn.writefile, vim.split(vim.json.encode(data), "\n"), tmp)
+	if not ok or result ~= 0 then
+		pcall(vim.fn.delete, tmp)
+		return false, (not ok) and tostring(result) or ("could not write " .. tmp)
 	end
-	if result ~= 0 then
-		return false, "could not write " .. path
+	local renamed, rename_err = vim.uv.fs_rename(tmp, path)
+	if not renamed then
+		pcall(vim.fn.delete, tmp)
+		return false, "could not replace " .. path .. ": " .. (rename_err or "?")
 	end
 	return true, nil
 end
