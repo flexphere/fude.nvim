@@ -349,6 +349,9 @@ function M.show_comments_float(comments, opts)
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].filetype = "markdown"
+	-- Lets `close_comment_ui` find viewer floats: they show working-tree
+	-- comments, which the local commit scope must not keep on screen.
+	vim.b[buf].fude_comment_view = true
 
 	local dim = format.calculate_float_dimensions(
 		vim.o.columns,
@@ -738,35 +741,53 @@ function M.has_unsent_comment_input()
 	return false
 end
 
---- Loaded single-pane comment input buffers (`open_comment_input`, marked
---- `b:fude_comment`) that are shown in some window of *any* tabpage —
---- `bufwinid` only searches the current tab, `win_findbuf` searches them all.
+--- Loaded buffers carrying the buffer variable `flag` that are shown in some
+--- window of *any* tabpage — `bufwinid` only searches the current tab,
+--- `win_findbuf` searches them all.
+--- @param flag string buffer variable name
 --- @return integer[] bufs
-function M.comment_input_buffers()
+local function visible_buffers_with(flag)
 	local bufs = {}
 	for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-		if vim.api.nvim_buf_is_loaded(buf) and vim.b[buf].fude_comment and #vim.fn.win_findbuf(buf) > 0 then
+		if vim.api.nvim_buf_is_loaded(buf) and vim.b[buf][flag] and #vim.fn.win_findbuf(buf) > 0 then
 			table.insert(bufs, buf)
 		end
 	end
 	return bufs
 end
 
+--- Single-pane comment input buffers (`open_comment_input`, marked
+--- `b:fude_comment`) shown in any tabpage.
+--- @return integer[] bufs
+function M.comment_input_buffers()
+	return visible_buffers_with("fude_comment")
+end
+
+--- Comment viewer floats (`show_comments_float`, marked `b:fude_comment_view`)
+--- shown in any tabpage.
+--- @return integer[] bufs
+function M.comment_view_buffers()
+	return visible_buffers_with("fude_comment_view")
+end
+
 --- Close every open comment UI that shows or takes comments: the reply/edit
---- window, the comment browser, and single-pane input floats in any tab. The
---- local commit scope calls this on entry, since the comments they show anchor
---- to a working tree that is no longer checked out and a submit from them
---- would be refused by the backend after the float has already closed. Inputs
---- holding text never get here (`has_unsent_comment_input` blocks first).
+--- window, the comment browser, the viewer floats and the single-pane input
+--- floats, in any tab. The local commit scope calls this on entry, since the
+--- comments they show anchor to a working tree that is no longer checked out
+--- and a submit from them would be refused by the backend after the float has
+--- already closed. Inputs holding text never get here
+--- (`has_unsent_comment_input` blocks first).
 function M.close_comment_ui()
 	local state = config.state
 	if state.reply_window and state.reply_window.upper_win then
 		close_reply_window(state.reply_window)
 	end
 	require("fude.ui.comment_browser").close()
-	for _, buf in ipairs(M.comment_input_buffers()) do
-		for _, win in ipairs(vim.fn.win_findbuf(buf)) do
-			pcall(vim.api.nvim_win_close, win, true)
+	for _, list in ipairs({ M.comment_view_buffers(), M.comment_input_buffers() }) do
+		for _, buf in ipairs(list) do
+			for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+				pcall(vim.api.nvim_win_close, win, true)
+			end
 		end
 	end
 end
