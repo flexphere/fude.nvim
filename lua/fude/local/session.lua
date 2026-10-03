@@ -260,7 +260,9 @@ function M.resolve_scope_base(scope, base_ref, cwd, commit_sha)
 	if not base_ref then
 		return nil, nil
 	end
-	local merge_base = diff_mod.get_merge_base(base_ref)
+	-- In the worktree, like every other git call here: after a `:cd` out of it
+	-- the cwd-based lookup fails and a commit → base switch could not complete.
+	local merge_base = diff_mod.get_merge_base(base_ref, cwd)
 	if not merge_base then
 		return nil, nil
 	end

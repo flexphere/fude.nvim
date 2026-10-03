@@ -249,17 +249,19 @@ end
 
 --- Get the merge-base between a ref and HEAD.
 --- @param ref string|nil branch name or commit SHA
+--- @param cwd string|nil repo root (default: Neovim's cwd; the local review
+--- passes its worktree root so a `:cd` elsewhere does not break scope switches)
 --- @return string|nil merge-base SHA
-function M.get_merge_base(ref)
+function M.get_merge_base(ref, cwd)
 	if not ref then
 		return nil
 	end
-	local result = vim.system({ "git", "merge-base", ref, "HEAD" }, { text = true }):wait()
+	local result = vim.system({ "git", "merge-base", ref, "HEAD" }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)
 	end
 	-- Fallback to origin/<ref>
-	local result2 = vim.system({ "git", "merge-base", "origin/" .. ref, "HEAD" }, { text = true }):wait()
+	local result2 = vim.system({ "git", "merge-base", "origin/" .. ref, "HEAD" }, { text = true, cwd = cwd }):wait()
 	if result2.code == 0 then
 		return vim.trim(result2.stdout)
 	end

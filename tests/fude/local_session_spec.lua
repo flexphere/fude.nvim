@@ -1714,6 +1714,17 @@ describe("session.resolve_scope_base", function()
 		assert.equals("emptyhash", content_ref)
 	end)
 
+	it("base resolves the merge-base in the given worktree", function()
+		local diff = require("fude.diff")
+		local asked
+		helpers.mock(diff, "get_merge_base", function(_, cwd)
+			asked = cwd
+			return "mb"
+		end)
+		session.resolve_scope_base("base", "main", "/wt")
+		assert.equals("/wt", asked)
+	end)
+
 	it("base resolves both the diff base and the content ref to the merge-base sha", function()
 		local diff = require("fude.diff")
 		helpers.mock(diff, "get_merge_base", function(ref)

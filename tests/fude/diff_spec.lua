@@ -269,6 +269,12 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		git("worktree", "remove", "--force", detached)
 	end)
 
+	it("get_merge_base runs in the given worktree regardless of the cwd", function()
+		vim.cmd.cd(original_cwd) -- fude.nvim's own repo: a different history
+		assert.equals(git("rev-parse", "main"), diff.get_merge_base("main", repo))
+		vim.cmd.cd(repo)
+	end)
+
 	it("get_empty_tree runs in the given worktree", function()
 		local sha1_empty = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 		assert.equals(sha1_empty, diff.get_empty_tree(repo))
