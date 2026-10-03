@@ -429,6 +429,26 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals(1, vim.fn.filereadable(file))
 	end)
 
+	it("stop warns when the pointer cannot be removed instead of reporting a clean stop", function()
+		mock_local_git()
+		session.start(nil)
+		helpers.mock(store, "clear_current", function()
+			return false, "read-only"
+		end)
+		local messages = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(messages, { msg = msg, level = level })
+		end)
+
+		session.stop()
+		assert.is_false(config.state.active)
+		local last = messages[#messages]
+		assert.equals(vim.log.levels.WARN, last.level)
+		assert.truthy(last.msg:find("could not be updated", 1, true))
+		assert.truthy(last.msg:find("feat/x", 1, true))
+		assert.is_nil(last.msg:find("Local review stopped$"))
+	end)
+
 	it("init.stop delegates to the local session teardown", function()
 		mock_local_git()
 		session.start(nil)

@@ -1040,11 +1040,30 @@ function M.stop()
 		vim.o.diffopt = state.original_diffopt
 	end
 
+	local pointer_err
 	if session and session.worktree_root then
-		store.clear_current(session.worktree_root, session.branch)
+		local cleared, err = store.clear_current(session.worktree_root, session.branch)
+		if not cleared then
+			pointer_err = err or "?"
+		end
 	end
 
 	config.reset_state()
+	if pointer_err then
+		-- The session is torn down either way (the user asked for that), but
+		-- it must not read as a clean stop: the pointer still names this
+		-- session, so the next start on this branch resumes it.
+		vim.notify(
+			string.format(
+				"fude.nvim: Local review stopped, but .fude/current.json could not be updated (%s) — "
+					.. "the next :FudeReviewLocal on this branch will resume this session unless the `%s` entry is removed by hand",
+				pointer_err,
+				(session and session.branch) or "__detached__"
+			),
+			vim.log.levels.WARN
+		)
+		return
+	end
 	vim.notify("fude.nvim: Local review stopped", vim.log.levels.INFO)
 end
 
