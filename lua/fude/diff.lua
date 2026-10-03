@@ -193,15 +193,48 @@ function M.checkout(ref, cwd)
 	return true, nil
 end
 
---- Whether a commit has a parent (i.e. `<sha>^` resolves).
+--- Parse the parent SHAs out of a raw commit object (`git cat-file -p`).
+--- @param object string|nil raw commit object text
+--- @return string[] parents in header order
+function M.parse_commit_parents(object)
+	local parents = {}
+	if type(object) ~= "string" then
+		return parents
+	end
+	-- Headers end at the first blank line; only `parent` lines there count.
+	local header = object:match("^(.-)\n\n") or object
+	for sha in header:gmatch("\nparent (%x+)") do
+		table.insert(parents, sha)
+	end
+	for sha in header:gmatch("^parent (%x+)") do
+		table.insert(parents, 1, sha)
+	end
+	return parents
+end
+
+--- The first parent of a commit, distinguishing a true root commit from a
+--- parent that is recorded but unreachable. `rev-parse <sha>^` fails in both
+--- cases — a shallow clone's boundary commit still names its parent in the
+--- object header, the object just is not there — so read the header itself
+--- and then check the object exists.
 --- @param sha string commit SHA
 --- @param cwd string|nil repo root
---- @return boolean
-function M.has_parent(sha, cwd)
-	local result = vim
-		.system({ "git", "rev-parse", "--verify", "--quiet", sha .. "^" }, { text = true, cwd = cwd })
-		:wait()
-	return result.code == 0
+--- @return string|nil parent first parent SHA, nil for root/missing/error
+--- @return "parent"|"root"|"missing"|"error" status
+function M.get_parent(sha, cwd)
+	local object = vim.system({ "git", "cat-file", "-p", sha }, { text = true, cwd = cwd }):wait()
+	if object.code ~= 0 then
+		return nil, "error"
+	end
+	local parents = M.parse_commit_parents(object.stdout)
+	if #parents == 0 then
+		return nil, "root"
+	end
+	local exists = vim.system({ "git", "cat-file", "-e", parents[1] .. "^{commit}" }, { text = true, cwd = cwd }):wait()
+	if exists.code ~= 0 then
+		return nil, "missing"
+	end
+	return parents[1], "parent"
 end
 
 --- Get the merge-base between a ref and HEAD.

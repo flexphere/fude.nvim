@@ -228,6 +228,36 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.equals("f1", commits[2].subject)
 	end)
 
+	it("get_parent returns the parent sha for an ordinary commit and root for the first", function()
+		local parent, status = diff.get_parent(git("rev-parse", "feature"), repo)
+		assert.equals("parent", status)
+		assert.equals(git("rev-parse", "feature^"), parent)
+
+		local root_parent, root_status = diff.get_parent(git("rev-parse", "main"), repo)
+		assert.is_nil(root_parent)
+		assert.equals("root", root_status)
+	end)
+
+	it("get_parent tells a shallow clone's boundary apart from a root commit", function()
+		local shallow = vim.fn.tempname()
+		local res = vim.system({ "git", "clone", "-q", "--depth", "1", "file://" .. repo, shallow }, { text = true }):wait()
+		assert(res.code == 0, res.stderr)
+		local head = vim.trim(vim.system({ "git", "rev-parse", "HEAD" }, { cwd = shallow, text = true }):wait().stdout)
+
+		-- `rev-parse HEAD^` fails here just like on a root commit, but the
+		-- object header still names the parent — the object is just not there.
+		local parent, status = diff.get_parent(head, shallow)
+		assert.is_nil(parent)
+		assert.equals("missing", status)
+		vim.fn.delete(shallow, "rf")
+	end)
+
+	it("get_parent reports an error for an unknown object", function()
+		local parent, status = diff.get_parent("0000000000000000000000000000000000000000", repo)
+		assert.is_nil(parent)
+		assert.equals("error", status)
+	end)
+
 	it("resolves another branch's upstream while HEAD is detached", function()
 		-- feature tracks main through a local "remote" so @{upstream} resolves
 		git("config", "branch.feature.remote", ".")
@@ -504,6 +534,30 @@ describe("parse_commit_log", function()
 	it("skips malformed lines", function()
 		local commits = diff.parse_commit_log("garbage without separators\n")
 		assert.same({}, commits)
+	end)
+end)
+
+describe("parse_commit_parents", function()
+	it("reads parent headers in order and ignores the message", function()
+		local object = table.concat({
+			"tree 1111111111111111111111111111111111111111",
+			"parent aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"parent bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"author t <t@t> 0 +0000",
+			"committer t <t@t> 0 +0000",
+			"",
+			"merge: parent cccccccccccccccccccccccccccccccccccccccc in the message must not count",
+		}, "\n")
+		assert.same({
+			"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		}, diff.parse_commit_parents(object))
+	end)
+
+	it("returns no parents for a root commit object or bad input", function()
+		assert.same({}, diff.parse_commit_parents("tree 1111\nauthor t\n\nroot"))
+		assert.same({}, diff.parse_commit_parents(nil))
+		assert.same({}, diff.parse_commit_parents(""))
 	end)
 end)
 
