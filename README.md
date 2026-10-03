@@ -354,7 +354,9 @@ happens in this mode:
     available.
   - `commit` — one entry per commit on the branch (`base..branch`; on the base
     branch itself the unpushed commits; in a remote-less repo the newest 100),
-    showing that commit alone (`<sha>^` vs `<sha>`). It checks the commit out,
+    showing that commit alone (`<sha>^` vs `<sha>`; a commit whose parent is
+    not in the clone, as at a shallow clone's boundary, cannot be selected). It
+    checks the commit out,
     so every switch needs a clean working tree (no staged/unstaged changes, no
     unsaved buffers) and leaves HEAD detached until you switch back; fude
     restores the branch on scope switch, `:FudeReviewLocalStop`, and quit.

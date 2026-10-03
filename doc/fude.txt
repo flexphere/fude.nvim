@@ -150,7 +150,9 @@ Using lazy.nvim: >lua
       `unpushed`    the upstream ref @{upstream} (changes not yet pushed);
                     shown only when the branch has an upstream.
       `uncommitted` HEAD (staged + unstaged only); always available.
-      `commit`      a single commit on the branch (<sha>^ vs <sha>); one
+      `commit`      a single commit on the branch (<sha>^ vs <sha>; a
+                    commit whose parent is not in the clone, as at a
+                    shallow clone's boundary, cannot be selected); one
                     picker entry per commit of `base..branch` (on the
                     base branch itself: the unpushed commits; in a
                     remote-less repo: the newest 100). It checks the commit
