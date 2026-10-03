@@ -673,7 +673,9 @@ local function enter_commit_scope(session, sha)
 		)
 		return false
 	end
-	local ok, err = diff_mod.checkout(sha, session.worktree_root)
+	-- detach: the first commit of the range can equal the branch tip, and
+	-- only a detached HEAD makes the checkout verifiable there.
+	local ok, err = diff_mod.checkout(sha, session.worktree_root, { detach = true })
 	if not ok then
 		-- Roll the pending pointer back; HEAD never moved (diff.checkout
 		-- verifies that — a failed hook after a completed checkout is reported
