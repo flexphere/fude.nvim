@@ -363,6 +363,22 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 
 		assert.same({ "shared.txt" }, diff.get_untracked_conflicts("feature", repo))
 		assert.same({}, diff.get_untracked_conflicts("main", repo))
+
+		-- Ignored files are overwritten silently by git, which is fine
+		-- everywhere except the review store: a tracked .fude/ path on the
+		-- target would wipe the recovery pointer.
+		vim.fn.delete(repo .. "/shared.txt") -- git itself would refuse the checkout otherwise
+		git("checkout", "-q", "feature")
+		vim.fn.mkdir(repo .. "/.fude", "p")
+		vim.fn.writefile({ "{}" }, repo .. "/.fude/current.json")
+		git("add", "-f", ".fude/current.json")
+		git("commit", "-q", "-m", "track the store (do not do this)")
+		git("checkout", "-q", "--detach", "main")
+		vim.fn.writefile({ ".fude/", "scratch-ignored.txt" }, repo .. "/.gitignore")
+		vim.fn.mkdir(repo .. "/.fude", "p") -- the checkout removed the then-empty directory
+		vim.fn.writefile({ "{}" }, repo .. "/.fude/current.json")
+		vim.fn.writefile({ "y" }, repo .. "/shared.txt")
+		assert.same({ ".fude/current.json", "shared.txt" }, diff.get_untracked_conflicts("feature", repo))
 		local nothing, err = diff.get_untracked_conflicts("no-such-ref", repo)
 		assert.is_nil(nothing)
 		assert.truthy(err and #err > 0)

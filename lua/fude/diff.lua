@@ -276,10 +276,17 @@ function M.find_untracked_conflicts(untracked, tracked)
 	return conflicts
 end
 
---- Untracked (non-ignored) files in the worktree that `ref` tracks — the
---- files a `git checkout ref` would refuse to overwrite. Ignored files are
---- left out: git overwrites those silently. nil when git fails, so a failure
---- is not mistaken for "no conflicts".
+--- Directory of the local review store, whose files must never be overwritten
+--- by a checkout even though users are told to gitignore it: the write-ahead
+--- recovery pointer and the comment JSONL live there.
+M.LOCAL_STORE_DIR = ".fude"
+
+--- Untracked files in the worktree that a `git checkout ref` would collide
+--- with. Non-ignored untracked files are what git refuses to overwrite;
+--- ignored ones git overwrites *silently*, which is fine for build output but
+--- not for `.fude/` — the recovery pointer and review JSONL — so ignored files
+--- under the store directory are included as well. nil when git fails, so a
+--- failure is not mistaken for "no conflicts".
 --- @param ref string branch name or commit SHA
 --- @param cwd string|nil repo root
 --- @return string[]|nil conflicts
@@ -291,15 +298,22 @@ function M.get_untracked_conflicts(ref, cwd)
 	if untracked.code ~= 0 then
 		return nil, vim.trim(untracked.stderr or "git ls-files failed")
 	end
+	local ignored_store = vim
+		.system(
+			{ "git", "ls-files", "--others", "--ignored", "--exclude-standard", "--", M.LOCAL_STORE_DIR },
+			{ text = true, cwd = cwd }
+		)
+		:wait()
+	if ignored_store.code ~= 0 then
+		return nil, vim.trim(ignored_store.stderr or "git ls-files failed")
+	end
 	local tracked = vim.system({ "git", "ls-tree", "-r", "--name-only", ref }, { text = true, cwd = cwd }):wait()
 	if tracked.code ~= 0 then
 		return nil, vim.trim(tracked.stderr or "git ls-tree failed")
 	end
-	return M.find_untracked_conflicts(
-		vim.split(untracked.stdout or "", "\n", { trimempty = true }),
-		vim.split(tracked.stdout or "", "\n", { trimempty = true })
-	),
-		nil
+	local candidates = vim.split(untracked.stdout or "", "\n", { trimempty = true })
+	vim.list_extend(candidates, vim.split(ignored_store.stdout or "", "\n", { trimempty = true }))
+	return M.find_untracked_conflicts(candidates, vim.split(tracked.stdout or "", "\n", { trimempty = true })), nil
 end
 
 --- The branch HEAD is on, or nil when detached.
