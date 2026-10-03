@@ -195,9 +195,20 @@ describe("palette.calculate_palette_layout", function()
 		assert.are.same({ width = 56, height = 16 }, layout)
 	end)
 
-	it("never goes below the minimum size", function()
+	it("keeps the 40x6 minimum when the editor has room", function()
 		local layout = palette.calculate_palette_layout({ category = 2, desc = 3, name = 5, key = 0 }, 1, 200, 60)
 		assert.are.same({ width = 40, height = 6 }, layout)
+	end)
+
+	it("shrinks below the minimum on a tiny terminal instead of overflowing", function()
+		-- columns = 10 → 6 cells available, lines = 5 → 1 line available
+		local layout = palette.calculate_palette_layout(widths, 20, 10, 5)
+		assert.are.same({ width = 6, height = 1 }, layout)
+	end)
+
+	it("never returns a zero or negative size", function()
+		local layout = palette.calculate_palette_layout(widths, 20, 2, 1)
+		assert.are.same({ width = 1, height = 1 }, layout)
 	end)
 end)
 

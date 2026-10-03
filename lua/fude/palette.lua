@@ -117,7 +117,10 @@ function M.calculate_palette_widths(entries)
 end
 
 --- Compact picker size for the palette: wide enough for the widest row and
---- tall enough for every entry, clamped to the editor size.
+--- tall enough for every entry (at least 40x6 so a short list still looks
+--- like a menu), never larger than the editor minus a 4-cell margin — on a
+--- tiny terminal the window shrinks below those minimums down to 1 cell
+--- rather than overflowing the screen.
 --- @param widths table from calculate_palette_widths
 --- @param count number number of entries
 --- @param columns number editor columns (`vim.o.columns`)
@@ -129,9 +132,9 @@ function M.calculate_palette_layout(widths, count, columns, lines)
 	if widths.key > 0 then
 		row = row + 2 + widths.key
 	end
-	local width = math.min(math.max(row + 6, 40), math.max(columns - 4, 20))
+	local width = math.min(math.max(row + 6, 40), math.max(columns - 4, 1))
 	-- prompt (3 lines with border) + results border (2) + rows
-	local height = math.min(count + 5, math.max(lines - 4, 6))
+	local height = math.min(count + 5, math.max(lines - 4, 1))
 	return { width = width, height = height }
 end
 
