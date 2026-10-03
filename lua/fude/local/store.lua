@@ -624,7 +624,10 @@ end
 --- lookup `read_current(root, nil)` misses the entry saved under the branch;
 --- scan the whole map instead and match the persisted `scope_commit_sha`
 --- against HEAD, so a HEAD the user detached on purpose is never claimed.
---- Keys are visited in sorted order so the result is deterministic.
+--- `pending_from_sha` — the commit HEAD was still on while a commit-to-commit
+--- checkout was pending — counts as well, since a crash before that checkout
+--- landed leaves HEAD there. Keys are visited in sorted order so the result is
+--- deterministic.
 --- @param map table<string, table> the pointer map (`{ [branch] = session }`)
 --- @param repo_root string
 --- @param head_sha string|nil current HEAD
@@ -642,7 +645,7 @@ function M.find_stranded_commit_session(map, repo_root, head_sha)
 			and type(s.id) == "string"
 			and s.scope == "commit"
 			and s.worktree_root == repo_root
-			and s.scope_commit_sha == head_sha
+			and (s.scope_commit_sha == head_sha or s.pending_from_sha == head_sha)
 			and type(s.original_branch) == "string"
 		then
 			return s

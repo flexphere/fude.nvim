@@ -1271,6 +1271,35 @@ describe("session lifecycle (start/reload/stop)", function()
 		pcall(vim.api.nvim_buf_delete, lower, { force = true })
 	end)
 
+	it("a pending commit-to-commit switch records the commit HEAD is still on", function()
+		local during = {}
+		mock_commit_git({
+			checkout = function()
+				table.insert(during, store.read_current(tmp_repo, "feat/x"))
+				return true
+			end,
+		})
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		session.set_scope("commit", { commit_sha = "c2sha" })
+
+		-- First entry: nothing to come from. Second: HEAD is on c1sha until
+		-- the checkout lands, so a crash there must still be recognised.
+		assert.is_nil(during[1].pending_from_sha)
+		assert.equals("c2sha", during[2].scope_commit_sha)
+		assert.equals("c1sha", during[2].pending_from_sha)
+		assert.equals(
+			"sb",
+			(store.find_stranded_commit_session(
+				{ ["feat/x"] = vim.tbl_extend("force", during[2], { id = "sb" }) },
+				tmp_repo,
+				"c1sha"
+			) or {}).id
+		)
+		-- Once the switch completed the pending marker is gone
+		assert.is_nil(store.read_current(tmp_repo, "feat/x").pending_from_sha)
+	end)
+
 	it("persists the pending commit before HEAD moves", function()
 		local during = nil
 		mock_commit_git({

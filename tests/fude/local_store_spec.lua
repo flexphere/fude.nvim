@@ -484,6 +484,11 @@ describe("store IO round-trip", function()
 		assert.equals("sb", store.find_stranded_commit_session(map, "/repo", "c1sha").id)
 		-- A HEAD the user detached on purpose is never claimed
 		assert.is_nil(store.find_stranded_commit_session(map, "/repo", "elsewhere"))
+		-- A commit-to-commit switch that died before its checkout landed left
+		-- HEAD on the previous commit, recorded as pending_from_sha
+		map["feat/b"].pending_from_sha = "c0sha"
+		assert.equals("sb", store.find_stranded_commit_session(map, "/repo", "c0sha").id)
+		map["feat/b"].pending_from_sha = nil
 		-- Another worktree's session, or no HEAD, or a non-table map: nothing
 		assert.is_nil(store.find_stranded_commit_session(map, "/other", "c1sha"))
 		assert.is_nil(store.find_stranded_commit_session(map, "/repo", nil))

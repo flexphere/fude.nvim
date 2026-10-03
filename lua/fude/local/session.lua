@@ -615,7 +615,16 @@ local function enter_commit_scope(session, sha)
 	-- scope_commit_sha). When even that write fails there is no recovery
 	-- information to leave behind, so HEAD stays put. A failed checkout
 	-- rewrites the previous state.
-	if not M.persist_current(session, { scope = "commit", scope_commit_sha = sha, original_branch = return_to }) then
+	if
+		not M.persist_current(session, {
+			scope = "commit",
+			scope_commit_sha = sha,
+			original_branch = return_to,
+			-- On a commit-to-commit switch HEAD stays on the previous commit
+			-- until the checkout lands; a crash in between must match that too.
+			pending_from_sha = session.scope_commit_sha,
+		})
+	then
 		vim.notify(
 			"fude.nvim: Commit scope not entered — the recovery pointer could not be written",
 			vim.log.levels.ERROR
@@ -692,6 +701,9 @@ function M.persist_current(session, overrides)
 		-- crash and return to the branch (`store.find_stranded_commit_session`).
 		scope_commit_sha = overrides.scope_commit_sha or session.scope_commit_sha,
 		original_branch = overrides.original_branch or session.original_branch,
+		-- Only while a commit-to-commit checkout is pending: the commit HEAD is
+		-- still on, so a crash before the checkout lands is recognised too.
+		pending_from_sha = overrides.pending_from_sha,
 	})
 	if not ok then
 		-- Surface the failure: without the pointer the session can't be resumed.

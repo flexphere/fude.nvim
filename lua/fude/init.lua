@@ -57,8 +57,10 @@ function M.apply_gitsigns_base_for_buffer(bufnr)
 		return
 	end
 
-	local diff_mod = require("fude.diff")
-	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(bufnr))
+	-- Local review: relative to the session's worktree root, like extmarks and
+	-- the tracker — a `:cd` out of the worktree must not leave gitsigns on its
+	-- HEAD base for every buffer.
+	local rel_path = require("fude.local.session").relative_path(vim.api.nvim_buf_get_name(bufnr))
 	if not rel_path then
 		return
 	end

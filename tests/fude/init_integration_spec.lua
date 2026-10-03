@@ -804,6 +804,29 @@ describe("init integration", function()
 			vim.api.nvim_buf_delete(bufnr, { force = true })
 		end)
 
+		it("maps the buffer against the local session's worktree root, not the cwd", function()
+			config.state.active = true
+			config.state.review_mode = "local"
+			config.state.local_session = { worktree_root = "/wt" }
+			config.state.merge_base_sha = "c1sha^"
+			config.state.changed_files = {}
+			-- The cwd-based mapping would say "not in the repo"
+			diff_mock.to_repo_relative = function()
+				return nil
+			end
+			diff_mock.make_relative = original_diff.make_relative
+
+			local bufnr = vim.api.nvim_create_buf(false, true)
+			vim.api.nvim_buf_set_name(bufnr, "/wt/lua/fude/x.lua")
+			init.apply_gitsigns_base_for_buffer(bufnr)
+
+			assert.equals(1, #change_base_calls)
+			assert.equals("c1sha^", change_base_calls[1].base)
+
+			vim.api.nvim_buf_delete(bufnr, { force = true })
+			config.state.local_session = nil
+		end)
+
 		it("uses merge_base_sha for an added file in local review mode", function()
 			config.state.active = true
 			config.state.review_mode = "local"
