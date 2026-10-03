@@ -509,9 +509,10 @@ function M.get_current_branch()
 end
 
 --- Get the HEAD commit SHA (synchronous, local git operation).
+--- @param cwd string|nil repo root (default: Neovim's cwd)
 --- @return string|nil sha
-function M.get_head_sha()
-	local result = vim.system({ "git", "rev-parse", "HEAD" }, { text = true }):wait()
+function M.get_head_sha(cwd)
+	local result = vim.system({ "git", "rev-parse", "HEAD" }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return vim.trim(result.stdout)
 	end
@@ -522,9 +523,13 @@ end
 --- zero-commit repos (no HEAD), where diffing against the empty tree shows
 --- every tracked/staged file as added. Computed via `git hash-object` so it
 --- is correct for both SHA-1 and SHA-256 repositories.
+--- @param cwd string|nil repo root (default: Neovim's cwd)
 --- @return string|nil hash
-function M.get_empty_tree()
-	local result = vim.system({ "git", "hash-object", "-t", "tree", "/dev/null" }, { text = true }):wait()
+function M.get_empty_tree(cwd)
+	-- `cwd` matters: the hash depends on the repository's object format
+	-- (SHA-1 vs SHA-256), so it must be computed inside the reviewed worktree,
+	-- not wherever Neovim's cwd happens to be.
+	local result = vim.system({ "git", "hash-object", "-t", "tree", "/dev/null" }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 and result.stdout and vim.trim(result.stdout) ~= "" then
 		return vim.trim(result.stdout)
 	end
@@ -686,6 +691,48 @@ function M.get_worktrees()
 		return nil, result.stderr or "git worktree list failed"
 	end
 	return M.parse_worktree_list(result.stdout), nil
+end
+
+--- Parse `git worktree list --porcelain` output into every checkout directory,
+--- detached ones included; only bare entries (no working tree) are skipped.
+--- For file *ownership* a detached worktree is as real as a branch one, which
+--- is why this does not reuse `parse_worktree_list`.
+--- @param output string|nil
+--- @return string[] paths
+function M.parse_worktree_roots(output)
+	local roots = {}
+	local current
+	local function flush()
+		if current and not current.bare then
+			table.insert(roots, current.path)
+		end
+		current = nil
+	end
+	for line in ((output or "") .. "\n"):gmatch("(.-)\n") do
+		local path = line:match("^worktree (.+)$")
+		if path then
+			flush()
+			current = { path = path }
+		elseif current and line == "bare" then
+			current.bare = true
+		end
+	end
+	flush()
+	return roots
+end
+
+--- Every worktree directory of the repository that contains `cwd`, detached
+--- ones included (see `parse_worktree_roots`). Takes the repo root explicitly
+--- so the answer does not change when the user `:cd`s elsewhere mid-session.
+--- @param cwd string|nil repo root
+--- @return string[]|nil roots nil when git fails
+--- @return string|nil err
+function M.get_worktree_roots(cwd)
+	local result = vim.system({ "git", "worktree", "list", "--porcelain" }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		return nil, result.stderr or "git worktree list failed"
+	end
+	return M.parse_worktree_roots(result.stdout), nil
 end
 
 return M

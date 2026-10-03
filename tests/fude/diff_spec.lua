@@ -252,6 +252,28 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		vim.fn.delete(shallow, "rf")
 	end)
 
+	it("get_worktree_roots lists detached worktrees too and takes the repo root as cwd", function()
+		local detached = vim.fn.tempname()
+		git("worktree", "add", "-q", "--detach", detached, "main")
+		-- Asked from an unrelated cwd: the explicit root decides the repository
+		local roots = diff.get_worktree_roots(repo)
+		assert.is_not_nil(roots)
+		local resolved = vim.tbl_map(vim.fn.resolve, roots)
+		assert.truthy(vim.tbl_contains(resolved, vim.fn.resolve(repo)))
+		assert.truthy(vim.tbl_contains(resolved, vim.fn.resolve(detached)))
+		-- get_worktrees (branch worktrees only) leaves the detached one out
+		local branch_paths = vim.tbl_map(function(wt)
+			return vim.fn.resolve(wt.path)
+		end, diff.get_worktrees())
+		assert.is_false(vim.tbl_contains(branch_paths, vim.fn.resolve(detached)))
+		git("worktree", "remove", "--force", detached)
+	end)
+
+	it("get_empty_tree runs in the given worktree", function()
+		local sha1_empty = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+		assert.equals(sha1_empty, diff.get_empty_tree(repo))
+	end)
+
 	it("get_parent reports an error for an unknown object", function()
 		local parent, status = diff.get_parent("0000000000000000000000000000000000000000", repo)
 		assert.is_nil(parent)
@@ -534,6 +556,30 @@ describe("parse_commit_log", function()
 	it("skips malformed lines", function()
 		local commits = diff.parse_commit_log("garbage without separators\n")
 		assert.same({}, commits)
+	end)
+end)
+
+describe("parse_worktree_roots", function()
+	it("keeps branch and detached worktrees, skips bare ones", function()
+		local out = table.concat({
+			"worktree /repo",
+			"HEAD aaaa",
+			"branch refs/heads/main",
+			"",
+			"worktree /repo/.claude/worktrees/x",
+			"HEAD bbbb",
+			"detached",
+			"",
+			"worktree /srv/repo.git",
+			"bare",
+			"",
+		}, "\n")
+		assert.same({ "/repo", "/repo/.claude/worktrees/x" }, diff.parse_worktree_roots(out))
+	end)
+
+	it("returns nothing for empty or nil output", function()
+		assert.same({}, diff.parse_worktree_roots(""))
+		assert.same({}, diff.parse_worktree_roots(nil))
 	end)
 end)
 
