@@ -14,8 +14,8 @@ local M = {}
 ----------------------------------------------------------------
 
 --- Whether a mapping's rhs invokes the given user command.
---- Accepts `<cmd>Name<cr>`, `:Name<cr>`, `:<C-u>Name<cr>` and
---- `:'<,'>Name<cr>`. The wrapper (`<Cmd>`, `<C-u>`, ...) is matched
+--- Accepts `<cmd>Name<cr>`, `:Name<cr>`, `:<C-u>Name<cr>`, `:'<,'>Name<cr>`
+--- and `... | Name<cr>`. The wrapper (`<Cmd>`, `<C-u>`, ...) is matched
 --- case-insensitively, but the command name is matched exactly: user
 --- commands are case-sensitive, so `<cmd>fudereviewdiff<cr>` would not run
 --- `FudeReviewDiff` and must not be shown as its key. The name must not be
@@ -36,8 +36,14 @@ function M.rhs_invokes_command(rhs, name)
 		end
 		local before = rhs:sub(1, s - 1):lower()
 		local after = rhs:sub(e + 1, e + 1)
-		-- `:`, `<cmd>`, `<c-u>` and `'<,'>` all end with `:` or `>`
-		local prefix_ok = before:match("[:>]%s*$") ~= nil
+		-- Only an Ex command start counts: `:`, `<Cmd>`, `:<C-u>`, a `'<,'>`
+		-- range, or a `|` separator. A name merely embedded in the rhs
+		-- (`lua print(">FudeReviewDiff")`) is not run by that mapping.
+		local prefix_ok = before:match(":%s*$") ~= nil
+			or before:match("<cmd>%s*$") ~= nil
+			or before:match("<c%-u>%s*$") ~= nil
+			or before:match("'<,'>%s*$") ~= nil
+			or before:match("|%s*$") ~= nil
 		local suffix_ok = not after:match("[%w_]")
 		if prefix_ok and suffix_ok then
 			return true
@@ -180,7 +186,9 @@ end
 ----------------------------------------------------------------
 
 --- Collect buffer-local then global mappings for the given modes, with each
---- lhs rendered for display via format_key_lhs.
+--- lhs rendered for display via format_key_lhs. A global mapping whose lhs
+--- is shadowed by a buffer-local one in `buf` is skipped: pressing that key
+--- here runs the buffer-local mapping, so the global one is not a usable key.
 --- @param modes string[]
 --- @param buf number
 --- @return table[]
@@ -192,11 +200,15 @@ function M.collect_keymaps(modes, buf)
 		table.insert(list, km)
 	end
 	for _, mode in ipairs(modes) do
+		local local_lhs = {}
 		for _, km in ipairs(vim.api.nvim_buf_get_keymap(buf, mode)) do
+			local_lhs[km.lhs] = true
 			add(km)
 		end
 		for _, km in ipairs(vim.api.nvim_get_keymap(mode)) do
-			add(km)
+			if not local_lhs[km.lhs] then
+				add(km)
+			end
 		end
 	end
 	return list

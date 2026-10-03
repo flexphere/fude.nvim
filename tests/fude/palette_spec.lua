@@ -36,6 +36,17 @@ describe("palette.rhs_invokes_command", function()
 		assert.is_false(palette.rhs_invokes_command("<cmd>lua MyFudeReviewDiff()<cr>", "FudeReviewDiff"))
 	end)
 
+	it("does not match the name embedded in a string literal or argument", function()
+		-- these mappings never run FudeReviewDiff, so they are not its key
+		assert.is_false(palette.rhs_invokes_command('<cmd>lua print(">FudeReviewDiff")<cr>', "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<cmd>echo >FudeReviewDiff<cr>", "FudeReviewDiff"))
+		assert.is_false(palette.rhs_invokes_command("<cmd>Telescope FudeReviewDiff<cr>", "FudeReviewDiff"))
+	end)
+
+	it("matches after a | command separator", function()
+		assert.is_true(palette.rhs_invokes_command("<cmd>update | FudeReviewDiff<cr>", "FudeReviewDiff"))
+	end)
+
 	it("matches after skipping an earlier non-command occurrence", function()
 		assert.is_true(palette.rhs_invokes_command(":FudeReviewDiffAll | :FudeReviewDiff<cr>", "FudeReviewDiff"))
 	end)
@@ -344,6 +355,26 @@ describe("palette.open (vim.ui.select)", function()
 		end
 		palette.open()
 		assert.are.same({}, captured)
+	end)
+
+	it("hides a global mapping shadowed by a buffer-local one", function()
+		local buf = helpers.create_buf({ "x" })
+		vim.api.nvim_set_current_buf(buf)
+		vim.keymap.set("n", "<leader>zz", "<cmd>FudeReviewStart<cr>")
+		vim.keymap.set("n", "<leader>zz", "<cmd>FudeReviewLocal<cr>", { buffer = buf })
+		local keys = {}
+		vim.ui.select = function(items, _, on_choice)
+			for _, item in ipairs(items) do
+				keys[item.name] = item.key
+			end
+			on_choice(nil)
+		end
+		local ok, err = pcall(palette.open)
+		vim.keymap.del("n", "<leader>zz")
+		assert.is_true(ok, tostring(err))
+		-- pressing <leader>zz in this buffer runs the local mapping, not Start
+		assert.is_nil(keys.FudeReviewStart)
+		assert.are.equal("<leader>zz", keys.FudeReviewLocal)
 	end)
 
 	it("shows the user's own mapping next to the command", function()
