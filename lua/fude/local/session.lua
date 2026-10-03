@@ -175,7 +175,11 @@ function M.relative_path(filepath)
 	if not filepath or filepath == "" then
 		return nil
 	end
-	local rel = diff_mod.make_relative(vim.fn.fnamemodify(filepath, ":p"), session.worktree_root)
+	-- Both sides resolved: Neovim stores buffer names with symlinks resolved
+	-- (`/private/var/...` for a `/var/...` path on macOS), while the root may
+	-- not be, and a plain string match would then miss every buffer.
+	local rel =
+		diff_mod.make_relative(vim.fn.resolve(vim.fn.fnamemodify(filepath, ":p")), vim.fn.resolve(session.worktree_root))
 	if not rel or rel == "" then
 		return nil
 	end
@@ -953,7 +957,9 @@ function M.start(base_arg)
 				if not vim.api.nvim_buf_is_valid(bufnr) or vim.bo[bufnr].buftype ~= "" then
 					return
 				end
-				local rel_path = require("fude.diff").to_repo_relative(vim.api.nvim_buf_get_name(bufnr))
+				-- Worktree-root based like sync_all, so a buffer opened after a
+				-- `:cd` out of the worktree still gets its tracking marks.
+				local rel_path = M.relative_path(vim.api.nvim_buf_get_name(bufnr))
 				if rel_path then
 					tracker.sync_buffer(bufnr, rel_path)
 				end

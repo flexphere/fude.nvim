@@ -977,6 +977,35 @@ describe("session lifecycle (start/reload/stop)", function()
 		vim.fn.delete(elsewhere, "rf")
 	end)
 
+	it("tracks an entered buffer by worktree root even when the cwd mapping fails", function()
+		mock_commit_git()
+		session.start(nil)
+		local tracker = require("fude.local.tracker")
+		local synced = {}
+		helpers.mock(tracker, "sync_buffer", function(_, rel_path)
+			table.insert(synced, rel_path)
+		end)
+		-- What to_repo_relative answers after a `:cd` out of the worktree
+		helpers.mock(require("fude.diff"), "to_repo_relative", function()
+			return nil
+		end)
+
+		local previous = vim.api.nvim_get_current_buf()
+		vim.cmd("edit " .. vim.fn.fnameescape(tmp_repo .. "/f.lua")) -- fires BufEnter for real
+		local buf = vim.api.nvim_get_current_buf()
+		-- the callback defers to vim.schedule (BufEnter and BufReadPost both fire)
+		vim.wait(1000, function()
+			return #synced > 0
+		end)
+		assert.is_true(#synced >= 1)
+		for _, rel in ipairs(synced) do
+			assert.equals("f.lua", rel)
+		end
+
+		vim.api.nvim_set_current_buf(previous)
+		vim.api.nvim_buf_delete(buf, { force = true })
+	end)
+
 	it("ignores a scope picked from a picker built for an earlier session", function()
 		local calls = mock_commit_git()
 		local captured
