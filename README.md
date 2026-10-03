@@ -119,7 +119,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewComment` | Create pending comment on current line/selection |
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
 | `:FudeReviewViewComment` | View comments on current line |
-| `:FudeReviewFiles` | List PR changed files with comment counts (Telescope/quickfix) |
+| `:FudeReviewFiles` | List changed files with comment counts (Telescope/quickfix) |
 | `:FudeReviewNextFile` | Open the next changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewPrevFile` | Open the previous changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewNextUnviewedFile` | Open the next changed file not yet marked as viewed (`]F`, wraps around) |
@@ -129,16 +129,16 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewScopePrev` | Move to previous review scope and open its first file |
 | `:FudeReviewStackSwitch` | Switch the review to another open PR of the current PR's GitHub stack (checks out the branch here, or `:cd`s to the worktree that already has it) |
 | `:FudeReviewOverview` | Show PR overview and issue-level comments |
-| `:FudeReviewListComments` | Browse all PR review and issue comments in 3-pane floating window |
+| `:FudeReviewListComments` | Browse all review and PR-level comments in 3-pane floating window |
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
-| `:FudeReviewViewed` | Mark current file as viewed on GitHub |
-| `:FudeReviewUnviewed` | Unmark current file as viewed on GitHub |
+| `:FudeReviewViewed` | Mark current file as viewed (synced to GitHub in PR review mode) |
+| `:FudeReviewUnviewed` | Unmark current file as viewed (synced to GitHub in PR review mode) |
 | `:FudeOpenPRURL` | Open PR in browser |
 | `:FudeCopyPRURL` | Copy PR URL to clipboard |
 | `:FudeReviewReload` | Reload review data (GitHub API in PR review mode, git state + JSONL in local mode) |
 | `:FudeReviewToggleCommentStyle` | Toggle comment display style (virtualText/inline) |
 | `:FudeReviewToggleResolved` | Toggle visibility of resolved comments in the editor |
-| `:FudeReviewToggleGitsigns` | Toggle gitsigns between PR base and HEAD |
+| `:FudeReviewToggleGitsigns` | Toggle gitsigns between the review base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel (focus it when open, close it when focused) |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`, which joins the base PR's stack or starts a new one; body `file://` images/videos are uploaded via `gh --attach`) |

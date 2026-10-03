@@ -197,7 +197,7 @@ M.list = {
 	-- Comments -------------------------------------------------------------
 	{
 		name = "FudeReviewComment",
-		desc = "Create PR review comment",
+		desc = "Create review comment",
 		category = "Comments",
 		available = when_active,
 		range = true,
@@ -217,7 +217,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewViewComment",
-		desc = "View PR review comments on current line",
+		desc = "View review comments on current line",
 		category = "Comments",
 		available = when_active,
 		run = function()
@@ -226,7 +226,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewListComments",
-		desc = "List PR review comments",
+		desc = "List review comments",
 		category = "Comments",
 		available = when_active,
 		run = function()
@@ -246,7 +246,7 @@ M.list = {
 	-- Files ----------------------------------------------------------------
 	{
 		name = "FudeReviewFiles",
-		desc = "List PR changed files",
+		desc = "List changed files",
 		category = "Files",
 		available = when_active,
 		run = function()
@@ -255,7 +255,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewNextFile",
-		desc = "Move to next changed file in PR",
+		desc = "Move to next changed file",
 		category = "Files",
 		available = when_active,
 		run = function()
@@ -264,7 +264,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewPrevFile",
-		desc = "Move to previous changed file in PR",
+		desc = "Move to previous changed file",
 		category = "Files",
 		available = when_active,
 		run = function()
@@ -273,7 +273,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewNextUnviewedFile",
-		desc = "Move to next unviewed changed file in PR",
+		desc = "Move to next unviewed changed file",
 		category = "Files",
 		available = when_active,
 		run = function()
@@ -282,7 +282,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewPrevUnviewedFile",
-		desc = "Move to previous unviewed changed file in PR",
+		desc = "Move to previous unviewed changed file",
 		category = "Files",
 		available = when_active,
 		run = function()
@@ -417,7 +417,7 @@ M.list = {
 	},
 	{
 		name = "FudeReviewToggleGitsigns",
-		desc = "Toggle gitsigns between PR base and HEAD",
+		desc = "Toggle gitsigns between review base and HEAD",
 		category = "View",
 		available = when_active,
 		run = function()
