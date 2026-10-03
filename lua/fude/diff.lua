@@ -15,7 +15,17 @@ end
 --- @param root string repository root directory (no trailing slash)
 --- @return string|nil relative path, or nil if filepath is not under root
 function M.make_relative(filepath, root)
-	if filepath:sub(1, #root) == root then
+	-- Boundary-aware: `/repo-other/x.lua` is not inside `/repo`, so a plain
+	-- prefix test would hand a sibling repository's file back as `other/x.lua`.
+	root = root:gsub("/+$", "")
+	if root == "" then
+		-- Filesystem root: everything absolute is inside it
+		return (filepath:gsub("^/+", ""))
+	end
+	if filepath == root then
+		return ""
+	end
+	if filepath:sub(1, #root + 1) == root .. "/" then
 		return filepath:sub(#root + 2)
 	end
 	return nil

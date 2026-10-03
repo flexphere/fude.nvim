@@ -559,6 +559,20 @@ describe("parse_commit_log", function()
 	end)
 end)
 
+describe("make_relative", function()
+	it("strips the root with a path boundary", function()
+		assert.equals("lua/a.lua", diff.make_relative("/repo/lua/a.lua", "/repo"))
+		assert.equals("lua/a.lua", diff.make_relative("/repo/lua/a.lua", "/repo/"))
+		assert.equals("", diff.make_relative("/repo", "/repo"))
+	end)
+
+	it("does not treat a sibling directory sharing the prefix as inside the root", function()
+		assert.is_nil(diff.make_relative("/repo-other/x.lua", "/repo"))
+		assert.is_nil(diff.make_relative("/repository/x.lua", "/repo"))
+		assert.is_nil(diff.make_relative("/elsewhere/x.lua", "/repo"))
+	end)
+end)
+
 describe("parse_worktree_roots", function()
 	it("keeps branch and detached worktrees, skips bare ones", function()
 		local out = table.concat({
