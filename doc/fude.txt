@@ -1373,7 +1373,9 @@ Behavior~
     the JSONL. The panel's "Files (Reviewed: N/M)" count reflects it.
   - Comment drafts (|fude-drafts|) are disabled in local review mode
     (comments are saved locally anyway).
-  - The statusline component (|fude-statusline|) shows `Local: <base>`.
+  - The statusline component (|fude-statusline|) shows the active scope:
+    `Local: <base>`, `Local: unpushed`, `Local: uncommitted`, or
+    `Local: <i>/<n>` for the commit scope.
 
 AI agent integration~
 
