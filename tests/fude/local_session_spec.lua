@@ -1026,6 +1026,36 @@ describe("session lifecycle (start/reload/stop)", function()
 		vim.api.nvim_buf_delete(buf, { force = true })
 	end)
 
+	it("rebuilds the preview from the worktree root after a scope switch", function()
+		mock_commit_git()
+		local diff = require("fude.diff")
+		-- The cwd-based mapping fails (as after a :cd out of the worktree)
+		helpers.mock(diff, "to_repo_relative", function()
+			return nil
+		end)
+		local asked = {}
+		helpers.mock(diff, "get_base_content", function(ref, rel_path, cwd)
+			table.insert(asked, { ref = ref, rel_path = rel_path, cwd = cwd })
+			return "base content\n", nil
+		end)
+		session.start(nil)
+
+		vim.cmd("edit " .. vim.fn.fnameescape(tmp_repo .. "/f.lua"))
+		local source_win = vim.api.nvim_get_current_win()
+		require("fude.preview").open_preview(source_win)
+		assert.is_true(#asked >= 1)
+		assert.equals("f.lua", asked[#asked].rel_path)
+		assert.equals(tmp_repo, asked[#asked].cwd)
+		assert.equals("basesha", asked[#asked].ref)
+		assert.is_not_nil(config.state.preview_win)
+
+		-- Switching scope rebuilds it with the new content ref, still rooted
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		assert.equals("c1sha^", asked[#asked].ref)
+		assert.equals(tmp_repo, asked[#asked].cwd)
+		assert.is_not_nil(config.state.preview_win)
+	end)
+
 	it("ignores a scope picked from a picker built for an earlier session", function()
 		local calls = mock_commit_git()
 		local captured

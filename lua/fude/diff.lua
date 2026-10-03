@@ -53,20 +53,22 @@ end
 --- Get file content from a specific git ref.
 --- @param ref string branch name or commit SHA
 --- @param file_path string repo-relative file path
+--- @param cwd string|nil repo root (default: Neovim's cwd; the local review
+--- passes its worktree root so a `:cd` elsewhere does not break the preview)
 --- @return string|nil content, string|nil err
-function M.get_base_content(ref, file_path)
+function M.get_base_content(ref, file_path, cwd)
 	-- Try the ref directly first, then origin/<ref> as fallback
-	local result = vim.system({ "git", "show", ref .. ":" .. file_path }, { text = true }):wait()
+	local result = vim.system({ "git", "show", ref .. ":" .. file_path }, { text = true, cwd = cwd }):wait()
 	if result.code == 0 then
 		return result.stdout, nil
 	end
 
-	local result2 = vim.system({ "git", "show", "origin/" .. ref .. ":" .. file_path }, { text = true }):wait()
+	local result2 = vim.system({ "git", "show", "origin/" .. ref .. ":" .. file_path }, { text = true, cwd = cwd }):wait()
 	if result2.code == 0 then
 		return result2.stdout, nil
 	end
 
-	return nil, result.stderr or "File not found in " .. ref
+	return nil, result.stderr or ("File not found in " .. ref)
 end
 
 --- Get the unified diff for a specific file between base and HEAD.
