@@ -167,9 +167,10 @@ Using lazy.nvim: >lua
                     the one exception that restores despite a dirty tree,
                     letting git carry non-conflicting changes along with a
                     warning, rather than leave HEAD detached; committing
-                    on the detached HEAD blocks every restore until that
-                    commit is moved to a branch). The working tree is then
-                    a past snapshot,
+                    on the detached HEAD blocks every restore until a
+                    branch holds that commit, `git branch <name> <sha>`,
+                    after which the next switch proceeds). The working
+                    tree is then a past snapshot,
                     not your work, so comments are read-only: none are
                     shown (no boxes, no per-file counts) and none can be
                     created, including from the comment browser. If

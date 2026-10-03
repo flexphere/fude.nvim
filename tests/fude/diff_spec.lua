@@ -280,6 +280,17 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.equals(sha1_empty, diff.get_empty_tree(repo))
 	end)
 
+	it("is_reachable_from_branch tells a saved commit from an orphan on a detached HEAD", function()
+		assert.is_true(diff.is_reachable_from_branch(git("rev-parse", "feature"), repo))
+		git("checkout", "-q", "--detach")
+		git("commit", "-q", "--allow-empty", "-m", "made while detached")
+		local orphan = git("rev-parse", "HEAD")
+		assert.is_false(diff.is_reachable_from_branch(orphan, repo))
+		-- `git branch <name>` keeps HEAD detached but saves the commit
+		git("branch", "saved", orphan)
+		assert.is_true(diff.is_reachable_from_branch(orphan, repo))
+	end)
+
 	it("get_parent reports an error for an unknown object", function()
 		local parent, status = diff.get_parent("0000000000000000000000000000000000000000", repo)
 		assert.is_nil(parent)

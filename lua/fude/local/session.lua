@@ -494,10 +494,14 @@ local function checkout_blocker(root, expected_head)
 	end
 	if expected_head then
 		local head = diff_mod.get_head_sha(root)
-		if head ~= expected_head then
+		-- A HEAD that moved is only a problem while no branch holds it: once
+		-- the user ran `git branch <name>` the commit survives the checkout.
+		if head ~= expected_head and not (head and diff_mod.is_reachable_from_branch(head, root)) then
+			local short = head and head:sub(1, 7) or "?"
 			return string.format(
-				"HEAD moved off the reviewed commit to %s — put it on a branch (git branch <name>) first",
-				head and head:sub(1, 7) or "?"
+				"HEAD moved off the reviewed commit to %s — save it with `git branch <name> %s` first, then switch again",
+				short,
+				short
 			)
 		end
 	end
@@ -559,9 +563,14 @@ local function restore_head(session, opts)
 	end
 	local blocker = checkout_blocker(session.worktree_root, session.scope_commit_sha)
 	if blocker then
-		local head_moved = session.scope_commit_sha ~= nil
-			and require("fude.diff").get_head_sha(session.worktree_root) ~= session.scope_commit_sha
-		if head_moved or not (opts and opts.force) then
+		-- A moved HEAD that no branch holds is never forced over, not even on
+		-- quit: the checkout would orphan the user's commit.
+		local diff_mod = require("fude.diff")
+		local head = session.scope_commit_sha ~= nil and diff_mod.get_head_sha(session.worktree_root) or nil
+		local head_orphaned = head ~= nil
+			and head ~= session.scope_commit_sha
+			and not diff_mod.is_reachable_from_branch(head, session.worktree_root)
+		if head_orphaned or not (opts and opts.force) then
 			vim.notify("fude.nvim: Cannot leave the commit scope yet: " .. blocker, vim.log.levels.WARN)
 			return false
 		end

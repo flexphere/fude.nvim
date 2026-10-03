@@ -205,6 +205,17 @@ function M.checkout(ref, cwd)
 	return true, nil
 end
 
+--- Whether some local branch can reach `sha`, i.e. checking out away from a
+--- detached HEAD sitting on it would not orphan it.
+--- @param sha string commit SHA
+--- @param cwd string|nil repo root
+--- @return boolean
+function M.is_reachable_from_branch(sha, cwd)
+	local cmd = { "git", "for-each-ref", "--format=%(refname)", "--contains", sha, "refs/heads/" }
+	local result = vim.system(cmd, { text = true, cwd = cwd }):wait()
+	return result.code == 0 and vim.trim(result.stdout or "") ~= ""
+end
+
 --- Parse the parent SHAs out of a raw commit object (`git cat-file -p`).
 --- @param object string|nil raw commit object text
 --- @return string[] parents in header order

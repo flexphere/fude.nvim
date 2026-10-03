@@ -623,6 +623,9 @@ describe("session lifecycle (start/reload/stop)", function()
 				local s = config.state.local_session
 				return (s and s.scope_commit_sha) or "headsha"
 			end,
+			is_reachable_from_branch = function()
+				return false
+			end,
 			checkout = function(ref)
 				table.insert(calls.checkout, ref)
 				return true
@@ -894,11 +897,12 @@ describe("session lifecycle (start/reload/stop)", function()
 		vim.api.nvim_exec_autocmds("VimLeavePre", { group = config.state.augroup })
 		assert.same({ "c1sha" }, calls.checkout)
 		assert.truthy(table.concat(warned, "\n"):find("HEAD moved off the reviewed commit to newcomm", 1, true))
-		assert.truthy(table.concat(warned, "\n"):find("git branch <name>", 1, true))
+		assert.truthy(table.concat(warned, "\n"):find("git branch <name> newcomm", 1, true))
 
-		-- Back on the reviewed commit (the user moved theirs to a branch) → fine
-		helpers.mock(diff, "get_head_sha", function()
-			return "c1sha"
+		-- `git branch <name>` keeps HEAD where it is; what changes is that a
+		-- branch now holds the commit, so the restore no longer orphans it.
+		helpers.mock(diff, "is_reachable_from_branch", function(sha)
+			return sha == "newcommit"
 		end)
 		assert.is_true(session.set_scope("uncommitted"))
 		assert.same({ "c1sha", "feat/x" }, calls.checkout)

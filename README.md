@@ -365,7 +365,8 @@ happens in this mode:
     `:FudeReviewLocalStop`, and quit. Quitting is the one exception: rather
     than leave HEAD detached it restores the branch anyway, letting git carry
     non-conflicting changes along and warning about it. Committing on the
-    detached HEAD blocks every restore until you move that commit to a branch.
+    detached HEAD blocks every restore until a branch holds that commit
+    (`git branch <name> <sha>`); the restore then proceeds on the next switch.
     Because the working tree is then a past snapshot rather than your work,
     comments are read-only in this scope: none are shown (no boxes, no
     per-file counts) and none can be created, including from the comment
