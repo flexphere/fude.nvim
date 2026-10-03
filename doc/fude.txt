@@ -719,18 +719,19 @@ File opening position                                 *fude-file-position*
     Requires the side panel to be open.
 
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
-    Toggle gitsigns base between PR base and HEAD.
-    By default during review mode, gitsigns uses the PR base (or commit
-    parent when in commit scope) to show changes in the working tree.
+    Toggle gitsigns base between the review base and HEAD.
+    By default during review mode, gitsigns uses the review base — the
+    PR base (or the commit parent in commit scope), or the selected
+    scope's base in local review — to show changes in the working tree.
     This command temporarily switches gitsigns to use HEAD as the base,
     showing uncommitted changes in the working tree.
 
-    Execute again to restore the PR base display. Useful for checking
-    your local uncommitted changes while in review mode.
+    Execute again to restore the review base display. Useful for
+    checking your local uncommitted changes while in review mode.
 
     When switching review scope (|:FudeReviewScope|, |:FudeReviewScopeNext|,
-    |:FudeReviewScopePrev|), the gitsigns display is automatically reset
-    to PR base.
+    |:FudeReviewScopePrev|, |:FudeReviewLocalScope|), the gitsigns display
+    is automatically reset to the review base.
 
     Requires an active review session and gitsigns.nvim.
 

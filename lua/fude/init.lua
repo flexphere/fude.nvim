@@ -789,9 +789,10 @@ function M.is_active()
 	return config.state.active
 end
 
---- Restore gitsigns base to PR base (undoing the reset to HEAD).
+--- Restore gitsigns base to the review base (undoing the reset to HEAD).
 --- For commit scope: sets base to commit^.
---- For full PR scope: resets global base and applies per-buffer bases.
+--- For full PR scope and local review: resets global base and applies
+--- per-buffer bases (the PR merge-base, or the local scope's base).
 function M.restore_gitsigns_base()
 	local state = config.state
 	local has_gitsigns, gitsigns = pcall(require, "gitsigns")
@@ -813,9 +814,10 @@ function M.restore_gitsigns_base()
 	end
 end
 
---- Toggle gitsigns base between PR base and HEAD.
+--- Toggle gitsigns base between the review base and HEAD.
 --- When toggled to HEAD, gitsigns uses HEAD as the base to show changes in the working tree.
---- When toggled back, gitsigns uses the PR base as the base to show changes in the working tree.
+--- When toggled back, gitsigns uses the review base (PR base, commit parent, or
+--- the local scope's base) to show changes in the working tree.
 function M.toggle_gitsigns()
 	local state = config.state
 	if not state.active then
@@ -830,10 +832,10 @@ function M.toggle_gitsigns()
 	end
 
 	if state.gitsigns_reset then
-		-- Restore PR base
+		-- Restore the review base
 		state.gitsigns_reset = false
 		M.restore_gitsigns_base()
-		vim.notify("fude.nvim: Gitsigns base → PR", vim.log.levels.INFO)
+		vim.notify("fude.nvim: Gitsigns base → review base", vim.log.levels.INFO)
 	else
 		-- Reset to HEAD
 		state.gitsigns_reset = true

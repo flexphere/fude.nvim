@@ -24,7 +24,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
 - **Create PR** - Create draft PRs from templates with a two-pane float (title + body), picking the base branch from a fuzzy finder (default branch preselected)
 - **Open in browser** - Open the PR in your browser
-- **Gitsigns integration** - Automatically switches gitsigns diff base to PR base branch
+- **Gitsigns integration** - Automatically switches gitsigns diff base to the review base (PR base branch, or the local scope's base)
 
 ## Requirements
 
