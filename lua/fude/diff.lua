@@ -193,14 +193,49 @@ function M.is_worktree_dirty(cwd)
 	return vim.trim(result.stdout or "") ~= ""
 end
 
---- Checkout a ref in the working tree (synchronous).
+--- Whether HEAD currently points at `ref`: the branch itself for a branch
+--- name (symbolic HEAD), else the commit `ref` resolves to.
 --- @param ref string branch name or commit SHA
 --- @param cwd string|nil repo root
---- @return boolean ok, string|nil err
+--- @return boolean
+function M.head_is(ref, cwd)
+	local symbolic = vim.system({ "git", "symbolic-ref", "--short", "-q", "HEAD" }, { text = true, cwd = cwd }):wait()
+	if symbolic.code == 0 and vim.trim(symbolic.stdout or "") == ref then
+		return true
+	end
+	local target = vim
+		.system({ "git", "rev-parse", "--verify", "--quiet", ref .. "^{commit}" }, { text = true, cwd = cwd })
+		:wait()
+	if target.code ~= 0 then
+		return false
+	end
+	-- A branch name must match symbolically; matching only its commit would
+	-- call a detached HEAD on the same commit "on the branch".
+	local is_branch = vim.system({ "git", "show-ref", "--verify", "--quiet", "refs/heads/" .. ref }, { cwd = cwd }):wait()
+	if is_branch.code == 0 then
+		return false
+	end
+	return M.get_head_sha(cwd) == vim.trim(target.stdout)
+end
+
+--- Checkout a ref in the working tree (synchronous).
+--- `git checkout` exits non-zero when the post-checkout hook fails even though
+--- HEAD and the tree already moved; reporting that as "nothing happened" would
+--- leave callers rolling back state that no longer matches HEAD. When HEAD is
+--- on `ref` after a non-zero exit the checkout counts as done, with the hook's
+--- output returned as a warning.
+--- @param ref string branch name or commit SHA
+--- @param cwd string|nil repo root
+--- @return boolean ok
+--- @return string|nil err error when `ok` is false, hook warning when true
 function M.checkout(ref, cwd)
 	local result = vim.system({ "git", "checkout", ref }, { text = true, cwd = cwd }):wait()
 	if result.code ~= 0 then
-		return false, vim.trim(result.stderr or "")
+		local stderr = vim.trim(result.stderr or "")
+		if M.head_is(ref, cwd) then
+			return true, "checkout done but a hook failed: " .. stderr
+		end
+		return false, stderr
 	end
 	return true, nil
 end

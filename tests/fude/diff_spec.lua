@@ -280,6 +280,41 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.equals(sha1_empty, diff.get_empty_tree(repo))
 	end)
 
+	it("checkout counts a completed checkout whose post-checkout hook failed as done", function()
+		local hook = repo .. "/.git/hooks/post-checkout"
+		vim.fn.writefile({ "#!/bin/sh", "echo hook says no >&2", "exit 1" }, hook)
+		vim.uv.fs_chmod(hook, 493) -- 0755
+		local target = git("rev-parse", "main")
+
+		local ok, err = diff.checkout(target, repo)
+		assert.is_true(ok)
+		assert.truthy(err and err:find("hook failed", 1, true))
+		assert.truthy(err and err:find("hook says no", 1, true))
+		assert.equals(target, git("rev-parse", "HEAD"))
+
+		-- Back onto the branch by name: symbolic HEAD must match, not just the sha
+		local ok2, err2 = diff.checkout("feature", repo)
+		assert.is_true(ok2)
+		assert.truthy(err2 and err2:find("hook failed", 1, true))
+		assert.equals("feature", git("symbolic-ref", "--short", "HEAD"))
+
+		-- A checkout that truly did nothing stays a failure
+		vim.fn.delete(hook)
+		local ok3, err3 = diff.checkout("no-such-ref", repo)
+		assert.is_false(ok3)
+		assert.truthy(err3 and #err3 > 0)
+	end)
+
+	it("head_is distinguishes a branch from a detached HEAD on its commit", function()
+		assert.is_true(diff.head_is("feature", repo))
+		assert.is_true(diff.head_is(git("rev-parse", "feature"), repo))
+		assert.is_false(diff.head_is("main", repo))
+		git("checkout", "-q", "--detach")
+		-- same commit, but no longer "on the branch"
+		assert.is_false(diff.head_is("feature", repo))
+		assert.is_true(diff.head_is(git("rev-parse", "HEAD"), repo))
+	end)
+
 	it("is_reachable_from_branch tells a saved commit from an orphan on a detached HEAD", function()
 		assert.is_true(diff.is_reachable_from_branch(git("rev-parse", "feature"), repo))
 		git("checkout", "-q", "--detach")
