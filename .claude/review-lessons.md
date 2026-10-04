@@ -124,3 +124,8 @@
 - **問題**: commit scopeのcheckoutについてCopilotが7ラウンドにわたり同系統の穴を指摘した。(1) clean判定が初回進入時だけで、commit→commitや「戻る」方向では未検査だった。(2) `git status`が見ない状態（未保存バッファ、未送信のコメント入力、別tabの入力float、内側worktreeのバッファの誤判定）を見落としていた。(3) 復旧用pointerをcheckoutの後に書いていたため、その間のクラッシュで復帰不能だった。pointerの書き込み失敗を無視して進んでいた。復元後にstaleなcommit pointerが残り、意図的なdetachを誤認した
 - **対策**: 外部状態を変える操作（checkout等）は、進入・遷移・復帰の全方向で同じ前提条件チェックを通す。チェック対象はgitの状態だけでなくNeovim側の状態（modifiedバッファ、入力UIの未送信テキスト）も列挙し、探索範囲（全tab、所有worktreeの最深一致）を明示する。復旧情報は副作用の前に永続化し、書けなければ中止する（write-ahead）。復帰に成功したら復旧情報を更新し、更新できなければ削除する（staleな復旧情報は無いより悪い）。唯一の例外は終了時（`VimLeavePre`）で、detached HEADに取り残すよりは警告して強行する
 - **該当箇所**: lua/fude/local/session.lua, lua/fude/ui.lua
+
+### 堅牢性: セッション同一性ガードをエラー分岐より後に置いていた (PR #212, 2026-10-04)
+- **問題**: gh応答コールバックで`if err then vim.notify ... return end`を先に書き、`config.state ~= captured_state`のチェックをその後に置いていた。停止・再開後に届いた失敗応答がガードに到達せず、古いセッションのエラーが現行セッションの通知として表示された。成功経路だけを「古い応答を捨てる」対象と考えていた
+- **対策**: 非同期コールバックの同一性ガードは、エラー分岐を含むあらゆる分岐より前、コールバックの先頭に置く。「成功時のstate更新を守る」だけでなく「失敗通知も古いセッションのもの」であることを前提にする。テストは`reset_state()`後に成功応答と失敗応答の両方を流し、通知・`on_done`・stateのいずれも動かないことを確認する。既存の同種サイト（`stack.lua`、`scope.lua`の`is_current_request`、`init.reload`）は先頭チェックなので、それに揃える
+- **該当箇所**: lua/fude/files.lua
