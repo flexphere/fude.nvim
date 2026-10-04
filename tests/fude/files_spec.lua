@@ -486,6 +486,155 @@ describe("apply_viewed_toggle", function()
 	end)
 end)
 
+describe("apply_viewed_state", function()
+	local config = require("fude.config")
+	local helpers = require("tests.helpers")
+	local sidepanel = require("fude.ui.sidepanel")
+	local gh
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.pr_node_id = "PR_node_1"
+		config.state.viewed_files = {}
+		gh = require("fude.gh")
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("marks VIEWED via mark_file_viewed and refreshes the sidepanel before on_done", function()
+		helpers.mock(gh, "mark_file_viewed", function(_, _, cb)
+			vim.schedule(function()
+				cb(nil)
+			end)
+		end)
+		helpers.mock(gh, "unmark_file_viewed", function()
+			error("unmark_file_viewed should not be called")
+		end)
+		local events = {}
+		helpers.mock(sidepanel, "refresh", function()
+			table.insert(events, "refresh")
+		end)
+
+		local received
+		files.apply_viewed_state("src/foo.lua", "VIEWED", function(updated)
+			table.insert(events, "on_done")
+			received = updated
+		end)
+
+		assert.is_true(helpers.wait_for(function()
+			return received ~= nil
+		end))
+		assert.are.same({ "refresh", "on_done" }, events)
+		assert.are.equal("VIEWED", config.state.viewed_files["src/foo.lua"])
+		assert.are.equal("VIEWED", received.viewed_state)
+		assert.are.equal("✓", received.viewed_icon)
+	end)
+
+	it("marks UNVIEWED via unmark_file_viewed even when the file is already unviewed", function()
+		-- Idempotent set: :FudeReviewUnviewed on an unviewed file still calls the
+		-- unmark endpoint, unlike the toggle which would flip it to VIEWED.
+		local unmark_calls = {}
+		helpers.mock(gh, "unmark_file_viewed", function(_, path, cb)
+			table.insert(unmark_calls, path)
+			vim.schedule(function()
+				cb(nil)
+			end)
+		end)
+		helpers.mock(gh, "mark_file_viewed", function()
+			error("mark_file_viewed should not be called")
+		end)
+		helpers.mock(sidepanel, "refresh", function() end)
+
+		local received
+		files.apply_viewed_state("src/bar.lua", "UNVIEWED", function(updated)
+			received = updated
+		end)
+
+		assert.is_true(helpers.wait_for(function()
+			return received ~= nil
+		end))
+		assert.are.same({ "src/bar.lua" }, unmark_calls)
+		assert.are.equal("UNVIEWED", config.state.viewed_files["src/bar.lua"])
+		assert.are.equal("UNVIEWED", received.viewed_state)
+	end)
+
+	it("does not refresh the sidepanel, mutate state, or call on_done on a gh error", function()
+		helpers.mock(gh, "mark_file_viewed", function(_, _, cb)
+			vim.schedule(function()
+				cb("network error")
+			end)
+		end)
+		local refreshed = false
+		helpers.mock(sidepanel, "refresh", function()
+			refreshed = true
+		end)
+		local invoked = false
+		files.apply_viewed_state("src/baz.lua", "VIEWED", function()
+			invoked = true
+		end)
+
+		local fired = vim.wait(100, function()
+			return invoked or refreshed
+		end)
+		assert.is_false(fired)
+		assert.is_nil(config.state.viewed_files["src/baz.lua"])
+	end)
+
+	it("drops a callback that arrives after the session was reset", function()
+		local pending_cb
+		helpers.mock(gh, "mark_file_viewed", function(_, _, cb)
+			pending_cb = cb
+		end)
+		local refreshed = false
+		helpers.mock(sidepanel, "refresh", function()
+			refreshed = true
+		end)
+		local invoked = false
+		local old_state = config.state
+		files.apply_viewed_state("src/qux.lua", "VIEWED", function()
+			invoked = true
+		end)
+
+		config.reset_state()
+		pending_cb(nil)
+
+		assert.is_false(invoked)
+		assert.is_false(refreshed)
+		assert.is_nil(old_state.viewed_files["src/qux.lua"])
+		assert.is_nil(config.state.viewed_files["src/qux.lua"])
+	end)
+
+	it("routes to the local store and refreshes the sidepanel in local mode", function()
+		config.state.review_mode = "local"
+		config.state.pr_node_id = nil
+		local local_sync = require("fude.comments.local_sync")
+		local set_calls = {}
+		helpers.mock(local_sync, "set_viewed", function(path, viewed, cb)
+			table.insert(set_calls, { path = path, viewed = viewed })
+			cb(nil)
+		end)
+		helpers.mock(gh, "mark_file_viewed", function()
+			error("gh must not be called in local mode")
+		end)
+		local refreshed = false
+		helpers.mock(sidepanel, "refresh", function()
+			refreshed = true
+		end)
+
+		local received
+		files.apply_viewed_state("f.lua", "UNVIEWED", function(updated)
+			received = updated
+		end)
+
+		assert.are.same({ { path = "f.lua", viewed = false } }, set_calls)
+		assert.is_true(refreshed)
+		assert.are.equal("UNVIEWED", received.viewed_state)
+	end)
+end)
+
 describe("find_adjacent_file_index", function()
 	local changed = {
 		{ path = "a.lua" },
