@@ -473,12 +473,15 @@ File opening position                                 *fude-file-position*
 :FudeReviewViewed                                    *:FudeReviewViewed*
     Mark the current file as viewed on GitHub. Uses the GitHub
     GraphQL API to sync the viewed state. The viewed status is
-    reflected in the |:FudeReviewFiles| picker.
+    reflected in the |:FudeReviewFiles| picker, and an open
+    |:FudeReviewPanel| updates its viewed mark and "Reviewed: n/m"
+    header immediately (no |:FudeReviewReload| needed).
     Requires an active review session.
 
 :FudeReviewUnviewed                                *:FudeReviewUnviewed*
     Unmark the current file as viewed on GitHub. Resets the
-    viewed status for the current file.
+    viewed status for the current file; an open side panel
+    updates immediately, like |:FudeReviewViewed|.
     Requires an active review session.
 
 :FudeOpenPRURL                                          *:FudeOpenPRURL*

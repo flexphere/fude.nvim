@@ -131,8 +131,8 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewOverview` | Show PR overview and PR-level comments (issue comments plus submitted review bodies such as Approve / Request changes summaries) |
 | `:FudeReviewListComments` | Browse all review and PR-level comments (including submitted review bodies) in 3-pane floating window |
 | `:FudeReviewSubmit` | Submit pending comments as a review (Comment/Approve/Request Changes) |
-| `:FudeReviewViewed` | Mark current file as viewed (synced to GitHub in PR review mode) |
-| `:FudeReviewUnviewed` | Unmark current file as viewed (synced to GitHub in PR review mode) |
+| `:FudeReviewViewed` | Mark current file as viewed (synced to GitHub in PR review mode; an open side panel updates immediately) |
+| `:FudeReviewUnviewed` | Unmark current file as viewed (synced to GitHub in PR review mode; an open side panel updates immediately) |
 | `:FudeOpenPRURL` | Open PR in browser |
 | `:FudeCopyPRURL` | Copy PR URL to clipboard |
 | `:FudeReviewReload` | Reload review data (GitHub API in PR review mode, git state + JSONL in local mode) |

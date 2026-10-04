@@ -1082,14 +1082,13 @@ end
 --- Toggle viewed state for a file entry. Delegates to the picker-agnostic
 --- `files.apply_viewed_toggle`, which routes to the GitHub GraphQL API or the
 --- local review JSONL store by review mode (so `<Tab>` works in local mode,
---- not just GitHub), then refreshes the panel.
+--- not just GitHub); the mutator refreshes the panel itself on success.
 --- @param _panel table|nil sidepanel state (unused; kept for call-site symmetry)
 --- @param entry_info table { type, index, entry }
 function M.toggle_file_viewed(_panel, entry_info)
 	local path = entry_info.entry.path
-	get_files().apply_viewed_toggle(path, function()
-		M.refresh()
-	end)
+	-- apply_viewed_state refreshes the panel itself on success.
+	get_files().apply_viewed_toggle(path, function() end)
 end
 
 return M

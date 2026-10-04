@@ -800,10 +800,18 @@ describe("sidepanel integration", function()
 				return false
 			end
 			assert.is_true(sign_highlight("WarningMsg", "[ ]"))
-			helpers.mock(require("fude.files"), "apply_viewed_toggle", function(path, on_done)
+			-- Mock the gh layer (synchronous callback) so the real mutator runs:
+			-- apply_viewed_state owns the panel refresh, and the panel's <Tab>
+			-- must not need its own.
+			config.state.pr_node_id = "PR_node_1"
+			local gh = require("fude.gh")
+			helpers.mock(gh, "mark_file_viewed", function(_, path, cb)
 				assert.are.equal("src/a.lua", path)
-				config.state.viewed_files[path] = config.state.viewed_files[path] == "VIEWED" and "UNVIEWED" or "VIEWED"
-				on_done()
+				cb(nil)
+			end)
+			helpers.mock(gh, "unmark_file_viewed", function(_, path, cb)
+				assert.are.equal("src/a.lua", path)
+				cb(nil)
 			end)
 			vim.api.nvim_win_set_cursor(panel.win, { panel.section_map.files_end + 1, 0 })
 			local toggle

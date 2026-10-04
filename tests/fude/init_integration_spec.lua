@@ -667,6 +667,122 @@ describe("init integration", function()
 		end)
 	end)
 
+	describe("mark_viewed / unmark_viewed", function()
+		local files = require("fude.files")
+
+		local function activate_github_session()
+			config.state.active = true
+			config.state.review_mode = "github"
+			config.state.pr_node_id = "PR_node_1"
+			config.state.viewed_files = {}
+		end
+
+		it("warns and does nothing when not active", function()
+			local called = false
+			helpers.mock(files, "apply_viewed_state", function()
+				called = true
+			end)
+			local notified
+			helpers.mock(vim, "notify", function(msg, level)
+				notified = { msg = msg, level = level }
+			end)
+			init.mark_viewed()
+			assert.is_false(called)
+			assert.are.equal("fude.nvim: Not active", notified.msg)
+			assert.are.equal(vim.log.levels.WARN, notified.level)
+		end)
+
+		it("sets VIEWED / UNVIEWED for the current buffer's repo-relative path and notifies on success", function()
+			activate_github_session()
+			local buf = helpers.create_buf({ "line1" }, "/mock/repo/src/a.lua")
+			vim.api.nvim_set_current_buf(buf)
+			helpers.mock_diff({ ["src/a.lua"] = "src/a.lua" })
+			local calls = {}
+			helpers.mock(files, "apply_viewed_state", function(path, new_state, on_done)
+				table.insert(calls, { path = path, new_state = new_state })
+				on_done({ path = path, viewed_state = new_state })
+			end)
+			local notices = {}
+			helpers.mock(vim, "notify", function(msg, level)
+				table.insert(notices, { msg = msg, level = level })
+			end)
+
+			init.mark_viewed()
+			init.unmark_viewed()
+
+			assert.are.same({
+				{ path = "src/a.lua", new_state = "VIEWED" },
+				{ path = "src/a.lua", new_state = "UNVIEWED" },
+			}, calls)
+			assert.are.same({
+				{ msg = "fude.nvim: Marked as viewed: src/a.lua", level = vim.log.levels.INFO },
+				{ msg = "fude.nvim: Unmarked as viewed: src/a.lua", level = vim.log.levels.INFO },
+			}, notices)
+		end)
+
+		it("does not notify success when the mutator reports an error (it never calls on_done)", function()
+			activate_github_session()
+			local buf = helpers.create_buf({ "line1" }, "/mock/repo/src/a.lua")
+			vim.api.nvim_set_current_buf(buf)
+			helpers.mock_diff({ ["src/a.lua"] = "src/a.lua" })
+			helpers.mock(files, "apply_viewed_state", function(_, _, _) end)
+			local notices = {}
+			helpers.mock(vim, "notify", function(msg)
+				table.insert(notices, msg)
+			end)
+
+			init.mark_viewed()
+
+			assert.are.same({}, notices)
+		end)
+
+		it("maps the buffer with the local session's worktree root in local mode", function()
+			-- A `:cd` out of the worktree must not break the command: the path is
+			-- resolved through local/session.relative_path, not Neovim's cwd.
+			config.state.active = true
+			config.state.review_mode = "local"
+			config.state.local_session = { worktree_root = "/mock/worktree" }
+			config.state.viewed_files = {}
+			local buf = helpers.create_buf({ "line1" }, "/mock/worktree/lib/b.lua")
+			vim.api.nvim_set_current_buf(buf)
+			local diff = require("fude.diff")
+			helpers.mock(diff, "to_repo_relative", function()
+				error("to_repo_relative must not be used in local mode")
+			end)
+			local calls = {}
+			helpers.mock(files, "apply_viewed_state", function(path, new_state, on_done)
+				table.insert(calls, { path = path, new_state = new_state })
+				on_done({})
+			end)
+			helpers.mock(vim, "notify", function() end)
+
+			init.mark_viewed()
+
+			assert.are.same({ { path = "lib/b.lua", new_state = "VIEWED" } }, calls)
+		end)
+
+		it("reports an error when the buffer is outside the repo", function()
+			activate_github_session()
+			local buf = helpers.create_buf({ "line1" }, "/elsewhere/c.lua")
+			vim.api.nvim_set_current_buf(buf)
+			helpers.mock_diff({})
+			local called = false
+			helpers.mock(files, "apply_viewed_state", function()
+				called = true
+			end)
+			local notified
+			helpers.mock(vim, "notify", function(msg, level)
+				notified = { msg = msg, level = level }
+			end)
+
+			init.unmark_viewed()
+
+			assert.is_false(called)
+			assert.are.equal("fude.nvim: Cannot determine file path", notified.msg)
+			assert.are.equal(vim.log.levels.ERROR, notified.level)
+		end)
+	end)
+
 	describe("stop with an in-flight commit switch", function()
 		it("restores the original HEAD and cancels the pending switch", function()
 			-- A commit switch has already run `git checkout <sha>` but its gh
