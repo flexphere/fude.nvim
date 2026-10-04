@@ -607,6 +607,29 @@ describe("apply_viewed_state", function()
 		assert.is_nil(config.state.viewed_files["src/qux.lua"])
 	end)
 
+	it("drops a stale error response without notifying", function()
+		-- The identity check runs before the error branch, so a failure that
+		-- belongs to a stopped session is not reported as the current one's.
+		local pending_cb
+		helpers.mock(gh, "mark_file_viewed", function(_, _, cb)
+			pending_cb = cb
+		end)
+		local notices = {}
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(notices, msg)
+		end)
+		local invoked = false
+		files.apply_viewed_state("src/qux.lua", "VIEWED", function()
+			invoked = true
+		end)
+
+		config.reset_state()
+		pending_cb("network error")
+
+		assert.are.same({}, notices)
+		assert.is_false(invoked)
+	end)
+
 	it("routes to the local store and refreshes the sidepanel in local mode", function()
 		config.state.review_mode = "local"
 		config.state.pr_node_id = nil

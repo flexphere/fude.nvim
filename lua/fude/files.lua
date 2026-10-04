@@ -792,7 +792,8 @@ end
 --- follow without a manual reload, then invokes on_done with the updated
 --- display fields. If the backend returns an error, notifies and does NOT
 --- invoke on_done. A callback arriving after the session was stopped or
---- restarted (state table replaced) is dropped silently.
+--- restarted (state table replaced) is dropped silently, whether it carries
+--- a success or an error.
 --- @param path string repo-relative file path
 --- @param new_state string "VIEWED" | "UNVIEWED"
 --- @param on_done fun(updated: { path: string, viewed_state: string, viewed_icon: string, viewed_hl: string })
@@ -835,11 +836,13 @@ function M.apply_viewed_state(path, new_state, on_done)
 	local set_fn = (new_state == "VIEWED") and gh_mod.mark_file_viewed or gh_mod.unmark_file_viewed
 
 	set_fn(state.pr_node_id, path, function(err)
-		if err then
-			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+		-- Checked before the error branch: a failure that belongs to a stopped
+		-- or restarted session must not surface as an error of the current one.
+		if config.state ~= state then
 			return
 		end
-		if config.state ~= state then
+		if err then
+			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 			return
 		end
 		state.viewed_files[path] = new_state
