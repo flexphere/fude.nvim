@@ -551,86 +551,40 @@ function M.toggle()
 	end
 end
 
---- Mark the current file as viewed on GitHub.
-function M.mark_viewed()
-	local state = config.state
-	if not state.active then
+--- Set the viewed state of the current buffer's file through
+--- `files.apply_viewed_state`, which persists it (GitHub or the local store),
+--- refreshes the sidepanel and reports backend errors itself; only the
+--- success notification lives here. The buffer is mapped with
+--- `local/session.relative_path` so a `:cd` out of a local worktree still
+--- resolves the file (outside local mode it is `diff.to_repo_relative`).
+--- @param viewed boolean true = VIEWED, false = UNVIEWED
+local function set_current_file_viewed(viewed)
+	if not config.state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 		return
 	end
-	local diff_mod = require("fude.diff")
-	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
+	local rel_path = require("fude.local.session").relative_path(vim.api.nvim_buf_get_name(0))
 	if not rel_path then
 		vim.notify("fude.nvim: Cannot determine file path", vim.log.levels.ERROR)
 		return
 	end
 
-	if state.review_mode == "local" then
-		require("fude.comments.local_sync").set_viewed(rel_path, true, function(err)
-			if err then
-				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-				return
-			end
-			vim.notify("fude.nvim: Marked as viewed: " .. rel_path, vim.log.levels.INFO)
-		end)
-		return
-	end
-
-	if not state.pr_node_id then
-		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
-		return
-	end
-
-	local gh_mod = require("fude.gh")
-	gh_mod.mark_file_viewed(state.pr_node_id, rel_path, function(err)
-		if err then
-			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-			return
-		end
-		state.viewed_files[rel_path] = "VIEWED"
-		vim.notify("fude.nvim: Marked as viewed: " .. rel_path, vim.log.levels.INFO)
+	require("fude.files").apply_viewed_state(rel_path, viewed and "VIEWED" or "UNVIEWED", function()
+		local verb = viewed and "Marked" or "Unmarked"
+		vim.notify("fude.nvim: " .. verb .. " as viewed: " .. rel_path, vim.log.levels.INFO)
 	end)
 end
 
---- Unmark the current file as viewed on GitHub.
+--- Mark the current file as viewed (GitHub in PR review mode, the local store
+--- in local mode). The sidepanel follows automatically.
+function M.mark_viewed()
+	set_current_file_viewed(true)
+end
+
+--- Unmark the current file as viewed (GitHub in PR review mode, the local
+--- store in local mode). The sidepanel follows automatically.
 function M.unmark_viewed()
-	local state = config.state
-	if not state.active then
-		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
-		return
-	end
-	local diff_mod = require("fude.diff")
-	local rel_path = diff_mod.to_repo_relative(vim.api.nvim_buf_get_name(0))
-	if not rel_path then
-		vim.notify("fude.nvim: Cannot determine file path", vim.log.levels.ERROR)
-		return
-	end
-
-	if state.review_mode == "local" then
-		require("fude.comments.local_sync").set_viewed(rel_path, false, function(err)
-			if err then
-				vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-				return
-			end
-			vim.notify("fude.nvim: Unmarked as viewed: " .. rel_path, vim.log.levels.INFO)
-		end)
-		return
-	end
-
-	if not state.pr_node_id then
-		vim.notify("fude.nvim: PR node ID not available yet", vim.log.levels.WARN)
-		return
-	end
-
-	local gh_mod = require("fude.gh")
-	gh_mod.unmark_file_viewed(state.pr_node_id, rel_path, function(err)
-		if err then
-			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
-			return
-		end
-		state.viewed_files[rel_path] = "UNVIEWED"
-		vim.notify("fude.nvim: Unmarked as viewed: " .. rel_path, vim.log.levels.INFO)
-	end)
+	set_current_file_viewed(false)
 end
 
 --- Reload review data from GitHub (comments, files, viewed state, commits).

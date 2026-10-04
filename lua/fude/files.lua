@@ -784,19 +784,27 @@ function M.toggle_viewed_in_snacks(picker, item)
 	end)
 end
 
---- Toggle the viewed state for a file via GitHub GraphQL API.
---- Picker-agnostic core mutator. Updates state.viewed_files on success, then
---- invokes on_done with the updated display fields. If gh returns an error,
---- notifies and does NOT invoke on_done.
+--- Set the viewed state of a file (GitHub GraphQL in PR review mode, the
+--- JSONL store in local mode). Picker-agnostic core mutator shared by the
+--- `:FudeReviewViewed` / `:FudeReviewUnviewed` commands and every `<Tab>`
+--- toggle. Updates state.viewed_files on success, refreshes the sidepanel
+--- (a no-op when it is closed) so the mark and the "Reviewed: n/m" header
+--- follow without a manual reload, then invokes on_done with the updated
+--- display fields. If the backend returns an error, notifies and does NOT
+--- invoke on_done. A callback arriving after the session was stopped or
+--- restarted (state table replaced) is dropped silently.
 --- @param path string repo-relative file path
+--- @param new_state string "VIEWED" | "UNVIEWED"
 --- @param on_done fun(updated: { path: string, viewed_state: string, viewed_icon: string, viewed_hl: string })
-function M.apply_viewed_toggle(path, on_done)
+function M.apply_viewed_state(path, new_state, on_done)
 	local state = config.state
 	local viewed_sign = config.opts.signs.viewed or "✓"
-	local current_state = state.viewed_files[path]
-	local new_state = (current_state == "VIEWED") and "UNVIEWED" or "VIEWED"
 
 	local function finish()
+		if config.state ~= state then
+			return
+		end
+		require("fude.ui.sidepanel").refresh()
 		local v_icon, v_hl = M.viewed_icon(new_state, viewed_sign)
 		on_done({
 			path = path,
@@ -824,16 +832,29 @@ function M.apply_viewed_toggle(path, on_done)
 	end
 
 	local gh_mod = require("fude.gh")
-	local toggle_fn = (current_state == "VIEWED") and gh_mod.unmark_file_viewed or gh_mod.mark_file_viewed
+	local set_fn = (new_state == "VIEWED") and gh_mod.mark_file_viewed or gh_mod.unmark_file_viewed
 
-	toggle_fn(state.pr_node_id, path, function(err)
+	set_fn(state.pr_node_id, path, function(err)
 		if err then
 			vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
+			return
+		end
+		if config.state ~= state then
 			return
 		end
 		state.viewed_files[path] = new_state
 		finish()
 	end)
+end
+
+--- Toggle the viewed state for a file. Thin wrapper over apply_viewed_state
+--- that flips the current state.viewed_files entry.
+--- @param path string repo-relative file path
+--- @param on_done fun(updated: { path: string, viewed_state: string, viewed_icon: string, viewed_hl: string })
+function M.apply_viewed_toggle(path, on_done)
+	local current_state = config.state.viewed_files[path]
+	local new_state = (current_state == "VIEWED") and "UNVIEWED" or "VIEWED"
+	M.apply_viewed_state(path, new_state, on_done)
 end
 
 --- Telescope adapter for the viewed-state toggle.
