@@ -56,7 +56,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
     "FudeReviewToggleFileTree", "FudeReviewToggleCommentStyle", "FudeReviewToggleResolved",
-    "FudeReviewToggleGitsigns", "FudeCreatePR", "FudeEditPR",
+    "FudeReviewToggleGitsigns", "FudeCreatePR", "FudeEditPR", "FudeChangePRState",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
@@ -145,6 +145,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`, which joins the base PR's stack or starts a new one; body `file://` images/videos are uploaded via `gh --attach`) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
+| `:FudeChangePRState` | Change the current PR's state from a picker that lists only the transitions available now (ready for review / convert to draft / close / reopen) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
 | `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted` / `commit`) |
