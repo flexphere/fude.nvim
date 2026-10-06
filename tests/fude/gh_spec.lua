@@ -818,12 +818,27 @@ describe("get_pr_state", function()
 end)
 
 describe("is_no_pr_error", function()
+	local helpers_for_no_pr = require("tests.helpers")
+
 	it("matches gh's no-PR message", function()
 		assert.is_true(gh.is_no_pr_error('no pull requests found for branch "feat/x"\n'))
 	end)
 
+	it("matches the commit lookup's no-PR message used on a detached HEAD", function()
+		local msg
+		helpers_for_no_pr.mock(gh, "run_json", function(_, callback)
+			callback(nil, {})
+		end)
+		gh.get_pr_by_commit("abcdef1234567", function(err)
+			msg = err
+		end)
+		helpers_for_no_pr.cleanup()
+		assert.is_true(gh.is_no_pr_error(msg))
+	end)
+
 	it("does not match other failures or nil", function()
 		assert.is_false(gh.is_no_pr_error("HTTP 401: Bad credentials"))
+		assert.is_false(gh.is_no_pr_error("fetching commit: No PR found for commit"))
 		assert.is_false(gh.is_no_pr_error(nil))
 	end)
 end)

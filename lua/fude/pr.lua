@@ -1301,11 +1301,18 @@ end
 --- draft, close, reopen). Works without an active review session, like
 --- `M.edit()`; during a review the session's PR is used.
 function M.change_state()
+	-- The local commit scope detaches HEAD onto a past commit, so the
+	-- commit-based lookup could find another PR that contains it rather than
+	-- the session branch's PR.
+	if require("fude.local.session").in_commit_scope() then
+		vim.notify("fude.nvim: Cannot change the PR state in the commit scope — switch scope first", vim.log.levels.WARN)
+		return
+	end
 	local pr_number = config.state.active and config.state.pr_number or nil
 
 	gh.get_pr_state(pr_number, function(err, pr)
 		if gh.is_no_pr_error(err) then
-			vim.notify("fude.nvim: No PR found for current branch", vim.log.levels.WARN)
+			vim.notify("fude.nvim: " .. vim.trim(err), vim.log.levels.WARN)
 			return
 		end
 		if err then

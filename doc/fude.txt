@@ -646,6 +646,8 @@ File opening position                                 *fude-file-position*
     When review mode is active, uses the PR from the current session.
     Otherwise, detects the PR from the current branch (on a detached
     HEAD, from the commit). Does not require an active review session.
+    Refused in the local review's commit scope, where HEAD is detached
+    onto a past commit that may belong to another PR.
 
 :FudeReviewSubmit                                    *:FudeReviewSubmit*
     Submit all pending comments as a single GitHub review. This allows

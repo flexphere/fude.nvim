@@ -2069,7 +2069,33 @@ describe("change_state", function()
 		pr.change_state()
 
 		assert.are.equal(0, #select_calls)
-		assert.are.equal("fude.nvim: No PR found for current branch", notifications[1].msg)
+		assert.are.equal('fude.nvim: no pull requests found for branch "feat/x"', notifications[1].msg)
+		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+	end)
+
+	it("reports a detached HEAD whose commit has no PR as a WARN", function()
+		mock_state("No PR found for commit abc1234", nil)
+		pick(1)
+
+		pr.change_state()
+
+		assert.are.equal("fude.nvim: No PR found for commit abc1234", notifications[1].msg)
+		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+	end)
+
+	it("refuses in the local commit scope without looking the PR up", function()
+		helpers.mock(require("fude.local.session"), "in_commit_scope", function()
+			return true
+		end)
+		local looked_up = false
+		helpers.mock(gh, "get_pr_state", function()
+			looked_up = true
+		end)
+
+		pr.change_state()
+
+		assert.is_false(looked_up)
+		assert.truthy(notifications[1].msg:find("commit scope", 1, true))
 		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
 	end)
 

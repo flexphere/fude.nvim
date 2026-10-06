@@ -63,6 +63,9 @@ function M.parse_pr_from_commit_api(data)
 	}
 end
 
+-- Prefix of the get_pr_by_commit error for a commit with no PR (see is_no_pr_error).
+local NO_PR_FOR_COMMIT = "No PR found for commit "
+
 --- Find PR associated with a commit SHA (fallback for detached HEAD).
 --- @param sha string commit SHA
 --- @param callback fun(err: string|nil, data: table|nil)
@@ -76,7 +79,7 @@ function M.get_pr_by_commit(sha, callback)
 		end
 		local pr_info = M.parse_pr_from_commit_api(data)
 		if not pr_info then
-			return callback("No PR found for commit " .. sha:sub(1, 7), nil)
+			return callback(NO_PR_FOR_COMMIT .. sha:sub(1, 7), nil)
 		end
 		callback(nil, pr_info)
 	end)
@@ -936,12 +939,17 @@ function M.get_pr_state(pr_number, callback)
 	end)
 end
 
---- Whether a `gh pr view` error means the branch simply has no PR, as opposed
---- to an auth or network failure, which also exits non-zero.
+--- Whether a PR lookup error means there simply is no PR, as opposed to an
+--- auth or network failure, which also exits non-zero. Covers both lookups
+--- `resolve_pr_number` can make: `gh pr view` on a branch and, on a detached
+--- HEAD, `get_pr_by_commit`.
 --- @param err string|nil
 --- @return boolean
 function M.is_no_pr_error(err)
-	return type(err) == "string" and err:find("no pull requests found", 1, true) ~= nil
+	if type(err) ~= "string" then
+		return false
+	end
+	return err:find("no pull requests found", 1, true) ~= nil or err:find(NO_PR_FOR_COMMIT, 1, true) == 1
 end
 
 --- Build the gh arguments that move a PR to another state.
