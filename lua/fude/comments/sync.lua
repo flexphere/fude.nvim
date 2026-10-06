@@ -524,6 +524,70 @@ function M.reply_to_comment(comment_id, body, callback)
 	end)
 end
 
+--- Toggle the resolved state of the review thread a comment belongs to.
+--- The thread node ID and current state are fetched fresh: `state.thread_map` is
+--- only kept while a pending review exists, and `is_resolved` is not set on
+--- comments when `resolved.show` is false, so neither can tell the direction.
+--- Only one toggle runs at a time: the direction is read from GitHub, so a
+--- second toggle sent before the first lands would repeat it instead of undoing it.
+--- @param comment_id number any comment of the thread
+--- @param callback fun(err: string|nil, resolved: boolean|nil) resolved = new state
+function M.toggle_resolved(comment_id, callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active")
+		return
+	end
+	if state.resolving_thread then
+		callback("Another resolve is still in progress")
+		return
+	end
+
+	-- Kept on the session's state table, so a reset drops it with the session
+	-- and a late callback only clears the old table's copy.
+	state.resolving_thread = true
+	local captured_state = state
+	gh.get_review_threads(state.pr_number, function(err, thread_info_map, thread_map)
+		if config.state ~= captured_state then
+			captured_state.resolving_thread = false
+			return
+		end
+		if err then
+			captured_state.resolving_thread = false
+			callback("Failed to fetch review threads: " .. err)
+			return
+		end
+		thread_map = thread_map or {}
+		local key = data.find_thread_key(comment_id, state.comments or {}, thread_map)
+		if not key then
+			captured_state.resolving_thread = false
+			callback("Could not find the review thread for comment " .. tostring(comment_id))
+			return
+		end
+		local info = (thread_info_map or {})[key]
+		local new_resolved = not (info and info.is_resolved)
+		gh.set_review_thread_resolved(thread_map[key], new_resolved, function(set_err, _)
+			if config.state ~= captured_state then
+				captured_state.resolving_thread = false
+				return
+			end
+			if set_err then
+				captured_state.resolving_thread = false
+				callback(set_err)
+				return
+			end
+			callback(nil, new_resolved)
+			-- The lock is held until the refresh lands: a refresh started by a
+			-- later toggle could otherwise finish first and be overwritten by this
+			-- one's older state. Silent so "Loaded N comments" does not replace
+			-- the result message.
+			fetch_comments(function()
+				captured_state.resolving_thread = false
+			end, { silent = true })
+		end)
+	end)
+end
+
 --- Edit a submitted review comment on GitHub.
 --- @param comment_id number target comment ID
 --- @param body string new comment body

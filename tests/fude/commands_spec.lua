@@ -43,6 +43,7 @@ local ANY_REVIEW = {
 	"FudeReviewPrevFile",
 	"FudeReviewPrevUnviewedFile",
 	"FudeReviewReload",
+	"FudeReviewResolve",
 	"FudeReviewScope",
 	"FudeReviewScopeNext",
 	"FudeReviewScopePrev",
@@ -142,7 +143,6 @@ describe("commands availability", function()
 	it("lists local-only commands in local mode", function()
 		local expected = concat(ALWAYS, ANY_REVIEW, {
 			"FudeReviewLocalScope",
-			"FudeReviewResolve",
 		})
 		assert.are.same(sorted(expected), names_where(LOCAL))
 	end)

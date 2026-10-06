@@ -174,6 +174,7 @@ M.state = {
 	show_resolved = nil, -- Runtime override for resolved comment visibility in the editor (nil = visible)
 	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
 	reloading = false, -- Guard flag to prevent concurrent reloads
+	resolving_thread = false, -- Guard flag: a GitHub thread resolve toggle (mutation + refresh) is in flight
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
 	sidepanel = nil, -- { win, buf, scope_entries, file_entries, section_map, augroup }
 }
@@ -233,6 +234,7 @@ function M.reset_state()
 		show_resolved = nil,
 		reload_timer = nil,
 		reloading = false,
+		resolving_thread = false,
 		gitsigns_reset = false,
 		sidepanel = nil,
 	}

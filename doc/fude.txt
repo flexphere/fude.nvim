@@ -181,8 +181,15 @@ Using lazy.nvim: >lua
 
 :FudeReviewResolve                                   *:FudeReviewResolve*
     Toggle resolved status of the comment thread on the current line.
-    Available in local review mode only. Resolved threads stay visible
-    with a `[resolved]` badge.
+    In PR review mode this resolves or unresolves the conversation on
+    GitHub (the current state is fetched from GitHub first, so it works
+    with `resolved.show = false` too); resolving requires write access to
+    the repository or authorship of the PR. A thread started in your
+    pending review cannot be resolved until the review is submitted. In
+    local review mode the state is saved to the JSONL. Resolved threads
+    stay visible with a `[resolved]` badge. `R` in the
+    |:FudeReviewViewComment| float does the same for the thread of the
+    comment under the cursor.
 
 :FudeReviewDiff                                        *:FudeReviewDiff*
     Toggle the diff preview window. Opens a side-by-side diff view
@@ -211,7 +218,8 @@ Using lazy.nvim: >lua
 :FudeReviewViewComment                          *:FudeReviewViewComment*
     View existing review comments on the current line in a floating
     window. Both submitted and pending review comments are shown.
-    Press `r` to reply, `e` to edit, `d` to delete, `q` to close.
+    Press `r` to reply, `e` to edit, `d` to delete, `R` to resolve or
+    unresolve the thread (see |:FudeReviewResolve|), `q` to close.
     Edit and delete are only available for your own comments.
     Editing opens a two-pane window (thread above, editable comment
     below) pre-filled with the original comment body.
@@ -680,7 +688,7 @@ File opening position                                 *fude-file-position*
     Covers threads resolved on GitHub ("Resolve conversation") and, in
     local review mode, threads resolved with |:FudeReviewResolve|.
     This command only changes visibility; use |:FudeReviewResolve| to
-    change a thread's resolved state (local review mode).
+    change a thread's resolved state.
 
     The visibility is stored in the session state, survives
     |:FudeReviewReload| and auto-reloads, and resets to visible when
@@ -828,6 +836,7 @@ command). Suggested mappings:
   `[F`          Previous unviewed changed file
   `e`           Edit comment (in |:FudeReviewViewComment| float, own comments only)
   `d`           Delete comment (in |:FudeReviewViewComment| float, own comments only)
+  `R`           Resolve/unresolve thread (in |:FudeReviewViewComment| float)
   `gx`          Open GitHub reference or URL under cursor (in floats)
   `r`           Re-request review (in |:FudeReviewOverview|)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)

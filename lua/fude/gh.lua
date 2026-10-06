@@ -1079,4 +1079,35 @@ mutation($threadId: ID!, $reviewId: ID!, $body: String!) {
 	}, callback)
 end
 
+--- Build the GraphQL mutation that resolves or unresolves a review thread.
+--- @param resolved boolean true for resolveReviewThread, false for unresolveReviewThread
+--- @return string query
+function M.build_resolve_thread_mutation(resolved)
+	local name = resolved and "resolveReviewThread" or "unresolveReviewThread"
+	return string.format(
+		[[
+mutation($threadId: ID!) {
+  %s(input: { threadId: $threadId }) {
+    thread { id isResolved }
+  }
+}]],
+		name
+	)
+end
+
+--- Resolve or unresolve a review thread.
+--- @param thread_id string GraphQL node ID of the review thread
+--- @param resolved boolean desired resolved state
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.set_review_thread_resolved(thread_id, resolved, callback)
+	M.run_json({
+		"api",
+		"graphql",
+		"-f",
+		"query=" .. M.build_resolve_thread_mutation(resolved),
+		"-f",
+		"threadId=" .. thread_id,
+	}, callback)
+end
+
 return M

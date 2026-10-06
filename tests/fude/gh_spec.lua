@@ -296,6 +296,43 @@ describe("build_review_threads_query", function()
 	end)
 end)
 
+describe("build_resolve_thread_mutation", function()
+	it("builds resolveReviewThread when resolving", function()
+		local query = gh.build_resolve_thread_mutation(true)
+		assert.truthy(query:find("resolveReviewThread%(input: { threadId: %$threadId }%)"))
+		assert.falsy(query:find("unresolveReviewThread"))
+		assert.truthy(query:find("%$threadId: ID!"))
+	end)
+
+	it("builds unresolveReviewThread when unresolving", function()
+		local query = gh.build_resolve_thread_mutation(false)
+		assert.truthy(query:find("unresolveReviewThread%(input: { threadId: %$threadId }%)"))
+	end)
+end)
+
+describe("set_review_thread_resolved", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("passes the mutation and thread id as GraphQL variables", function()
+		local seen
+		helpers.mock(gh, "run_json", function(args, callback)
+			seen = args
+			callback(nil, {})
+		end)
+
+		gh.set_review_thread_resolved("THREAD_1", false, function() end)
+
+		assert.are.equal("api", seen[1])
+		assert.are.equal("graphql", seen[2])
+		assert.are.equal("query=" .. gh.build_resolve_thread_mutation(false), seen[4])
+		assert.are.equal("threadId=THREAD_1", seen[6])
+	end)
+end)
+
 describe("parse_review_threads_response", function()
 	it("parses valid response with outdated and resolved threads", function()
 		local data = {

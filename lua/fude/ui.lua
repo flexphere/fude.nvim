@@ -370,7 +370,7 @@ function M.show_comments_float(comments, opts)
 		border = config.opts.float.border,
 		title = format.build_comments_float_title(comments, config.opts.resolved),
 		title_pos = "center",
-		footer = " r reply | e edit | d delete | q close ",
+		footer = " r reply | e edit | d delete | R resolve | q close ",
 		footer_pos = "center",
 	})
 
@@ -434,6 +434,16 @@ function M.show_comments_float(comments, opts)
 			require("fude.comments").delete_comment(target.id)
 		end
 	end, { buffer = buf, desc = "Delete comment" })
+
+	vim.keymap.set("n", "R", function()
+		local target = find_comment_at_cursor()
+		-- A nil id would make toggle_resolve fall back to the source line,
+		-- which may hold another thread.
+		if target and target.id ~= nil then
+			vim.api.nvim_win_close(win, true)
+			require("fude.comments").toggle_resolve(target.id)
+		end
+	end, { buffer = buf, desc = "Toggle thread resolved" })
 
 	local km = config.opts.keymaps
 	if km.next_comment then

@@ -13,6 +13,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
 - **Virtual text** - Comment and pending indicators on lines with existing comments
 - **Resolved labels** - Threads resolved on GitHub are labeled `[resolved]` in the comment browser, comment viewer, and editor indicators
+- **Resolve threads** - Resolve or unresolve the thread on the current line with `:FudeReviewResolve`, or with `R` in the comment viewer
 - **Pending review or single comment** - On submit, choose between adding the comment to a GitHub pending review (visible on PR page) or posting it immediately as a single comment
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
@@ -118,7 +119,8 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewDiff` | Toggle diff preview window |
 | `:FudeReviewComment` | Create pending comment on current line/selection |
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
-| `:FudeReviewViewComment` | View comments on current line |
+| `:FudeReviewViewComment` | View comments on current line (`r` reply, `e` edit, `d` delete, `R` resolve/unresolve the thread) |
+| `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (GitHub "Resolve conversation" in PR review mode, JSONL in local mode) |
 | `:FudeReviewFiles` | List changed files with comment counts (Telescope/quickfix) |
 | `:FudeReviewNextFile` | Open the next changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewPrevFile` | Open the previous changed file, following the side panel file list order (wraps around) |
@@ -146,7 +148,6 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
 | `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted` / `commit`) |
-| `:FudeReviewResolve` | Toggle resolved status of the thread on the current line (local mode) |
 
 ### File opening position
 

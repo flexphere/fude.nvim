@@ -744,10 +744,10 @@ function M.suggest_change(is_visual)
 	})
 end
 
---- Toggle resolved status of the comment thread on the current line.
---- Local review mode only (GitHub review threads are not resolvable from
---- this plugin yet).
-function M.toggle_resolve()
+--- Toggle resolved status of a comment thread.
+--- @param comment_id number|string|nil any comment of the thread; nil targets the
+---   first comment on the current line
+function M.toggle_resolve(comment_id)
 	local state = config.state
 	if not has_review_target(state) then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
@@ -756,35 +756,53 @@ function M.toggle_resolve()
 	if blocked_by_commit_scope() then
 		return
 	end
-	if not is_local_mode() then
-		vim.notify("fude.nvim: Resolve is available in local review mode only", vim.log.levels.WARN)
-		return
+
+	if comment_id == nil then
+		local buf = vim.api.nvim_get_current_buf()
+		local filepath = vim.api.nvim_buf_get_name(buf)
+		local rel_path = diff.to_repo_relative(filepath)
+		if not rel_path then
+			return
+		end
+
+		local line = vim.fn.line(".")
+		local line_comments = M.get_comments_at(rel_path, line)
+		if #line_comments == 0 then
+			vim.notify("fude.nvim: No comments on this line", vim.log.levels.INFO)
+			return
+		end
+		comment_id = line_comments[1].id
 	end
 
-	local buf = vim.api.nvim_get_current_buf()
-	local filepath = vim.api.nvim_buf_get_name(buf)
-	local rel_path = diff.to_repo_relative(filepath)
-	if not rel_path then
-		return
-	end
-
-	local line = vim.fn.line(".")
-	local line_comments = M.get_comments_at(rel_path, line)
-	if #line_comments == 0 then
-		vim.notify("fude.nvim: No comments on this line", vim.log.levels.INFO)
-		return
-	end
-
-	local thread_id = data.get_reply_target_id(line_comments[1].id, state.comment_map or {})
+	local thread_id = data.get_reply_target_id(comment_id, state.comment_map or {})
 	local root = data.find_comment_by_id(thread_id, state.comment_map or {})
-	local currently_resolved = (root and root.comment.resolved) or false
 
-	require("fude.comments.local_sync").toggle_resolved(thread_id, currently_resolved, function(err, resolved)
+	if is_local_mode() then
+		local currently_resolved = (root and root.comment.resolved) or false
+		require("fude.comments.local_sync").toggle_resolved(thread_id, currently_resolved, function(err, resolved)
+			if err then
+				vim.notify("fude.nvim: Resolve failed: " .. err, vim.log.levels.ERROR)
+				return
+			end
+			vim.notify(resolved and "fude.nvim: Thread resolved" or "fude.nvim: Thread unresolved", vim.log.levels.INFO)
+		end)
+		return
+	end
+
+	-- A thread started in the pending review is not published yet, so GitHub
+	-- has nothing to resolve. find_pending_key covers the first sync, before
+	-- pending_review_id arrives.
+	if root and (M.is_pending_comment(root.comment) or M.find_pending_key(root.comment.id)) then
+		vim.notify("fude.nvim: Cannot resolve a thread in your pending review", vim.log.levels.WARN)
+		return
+	end
+
+	sync.toggle_resolved(comment_id, function(err, resolved)
 		if err then
 			vim.notify("fude.nvim: Resolve failed: " .. err, vim.log.levels.ERROR)
 			return
 		end
-		vim.notify(resolved and "fude.nvim: Thread resolved" or "fude.nvim: Thread reopened", vim.log.levels.INFO)
+		vim.notify(resolved and "fude.nvim: Thread resolved" or "fude.nvim: Thread unresolved", vim.log.levels.INFO)
 	end)
 end
 

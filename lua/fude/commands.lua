@@ -235,9 +235,9 @@ M.list = {
 	},
 	{
 		name = "FudeReviewResolve",
-		desc = "Toggle resolved status of the comment thread on the current line (local review)",
+		desc = "Toggle resolved status of the comment thread on the current line",
 		category = "Comments",
-		available = when_local,
+		available = when_active,
 		run = function()
 			require("fude.comments").toggle_resolve()
 		end,

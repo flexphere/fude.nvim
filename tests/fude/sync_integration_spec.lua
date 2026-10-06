@@ -881,6 +881,340 @@ describe("sync integration", function()
 			assert.are.equal("Forbidden", cb_err)
 		end)
 	end)
+	describe("toggle_resolved", function()
+		local gh = require("fude.gh")
+		local set_calls
+
+		local function mock_threads(err, info_map, thread_map)
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				vim.schedule(function()
+					callback(err, info_map, thread_map)
+				end)
+			end)
+		end
+
+		local function mock_set(err)
+			helpers.mock(gh, "set_review_thread_resolved", function(thread_id, resolved, callback)
+				table.insert(set_calls, { thread_id = thread_id, resolved = resolved })
+				vim.schedule(function()
+					callback(err, err == nil and {} or nil)
+				end)
+			end)
+		end
+
+		local function run_toggle(comment_id)
+			local result = { called = false }
+			sync.toggle_resolved(comment_id, function(err, resolved)
+				result.called = true
+				result.err = err
+				result.resolved = resolved
+			end)
+			helpers.wait_for(function()
+				return result.called
+			end)
+			return result
+		end
+
+		before_each(function()
+			set_calls = {}
+			helpers.mock_gh({ ["api:repos/{owner}/{repo}/pulls/42/comments"] = {} })
+			config.state.active = true
+			config.state.pr_number = 42
+			config.state.comments = {
+				{ id = 1, path = "a.lua", line = 1, body = "root" },
+				{ id = 2, path = "a.lua", line = 1, body = "reply", in_reply_to_id = 1 },
+			}
+		end)
+
+		it("resolves an unresolved thread looked up from a reply", function()
+			mock_threads(nil, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
+			mock_set(nil)
+
+			local result = run_toggle(2)
+
+			assert.is_nil(result.err)
+			assert.is_true(result.resolved)
+			assert.are.same({ { thread_id = "THREAD_1", resolved = true } }, set_calls)
+		end)
+
+		it("unresolves a resolved thread", function()
+			mock_threads(nil, { [1] = { is_resolved = true } }, { [1] = "THREAD_1" })
+			mock_set(nil)
+
+			local result = run_toggle(1)
+
+			assert.is_false(result.resolved)
+			assert.is_false(set_calls[1].resolved)
+		end)
+
+		it("reads the current state from the API even when resolved.show is false", function()
+			-- is_resolved is never set on comments in this configuration, so the
+			-- direction must come from the fetched thread info.
+			config.setup({ resolved = { show = false } })
+			config.state.active = true
+			config.state.pr_number = 42
+			config.state.comments = { { id = 1, path = "a.lua", line = 1, body = "root" } }
+			mock_threads(nil, { [1] = { is_resolved = true } }, { [1] = "THREAD_1" })
+			mock_set(nil)
+
+			local result = run_toggle(1)
+
+			assert.is_false(result.resolved)
+		end)
+
+		it("reports a thread lookup failure without calling the mutation", function()
+			mock_threads("network down", nil, nil)
+			mock_set(nil)
+
+			local result = run_toggle(1)
+
+			assert.truthy(result.err:find("network down", 1, true))
+			assert.are.equal(0, #set_calls)
+		end)
+
+		it("reports a missing thread", function()
+			mock_threads(nil, {}, {})
+			mock_set(nil)
+
+			local result = run_toggle(1)
+
+			assert.truthy(result.err:find("Could not find the review thread", 1, true))
+			assert.are.equal(0, #set_calls)
+		end)
+
+		it("passes a mutation error to the callback", function()
+			mock_threads(nil, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
+			mock_set("Resource not accessible by integration")
+
+			local result = run_toggle(1)
+
+			assert.are.equal("Resource not accessible by integration", result.err)
+			assert.is_nil(result.resolved)
+		end)
+
+		it("returns error when not active", function()
+			config.state.active = false
+			local result = run_toggle(1)
+			assert.are.equal("Not active", result.err)
+		end)
+
+		it("refuses a second toggle until the first one's refresh lands, then accepts one again", function()
+			local finish_lookup
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				finish_lookup = function()
+					callback(nil, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
+				end
+			end)
+			mock_set(nil)
+			-- Hold the post-mutation refresh so the lock can be observed across it.
+			local finish_refresh
+			helpers.mock(gh, "get_pr_comments", function(_, callback)
+				finish_refresh = callback
+			end)
+
+			local first = { called = false }
+			sync.toggle_resolved(1, function(err, resolved)
+				first.called, first.err, first.resolved = true, err, resolved
+			end)
+			local second_err
+			sync.toggle_resolved(1, function(err)
+				second_err = err
+			end)
+			assert.are.equal("Another resolve is still in progress", second_err)
+
+			finish_lookup()
+			helpers.wait_for(function()
+				return first.called
+			end)
+			assert.is_true(first.resolved)
+			assert.are.equal(1, #set_calls)
+
+			-- The mutation landed but its refresh has not: a toggle now would let
+			-- a later refresh finish first and be overwritten by this older one.
+			local during_refresh_err
+			sync.toggle_resolved(1, function(err)
+				during_refresh_err = err
+			end)
+			assert.are.equal("Another resolve is still in progress", during_refresh_err)
+
+			mock_threads(nil, { [1] = { is_resolved = true } }, { [1] = "THREAD_1" })
+			local refreshed = { { id = 1, path = "a.lua", line = 1, body = "root" } }
+			finish_refresh(nil, refreshed)
+			helpers.wait_for(function()
+				return config.state.comments == refreshed
+			end)
+
+			local third = run_toggle(1)
+			assert.is_nil(third.err)
+			assert.is_false(third.resolved)
+			finish_refresh(nil, {})
+		end)
+
+		it("does not block a new session with a toggle still in flight from the old one", function()
+			helpers.mock(gh, "get_review_threads", function() end) -- never answers
+			sync.toggle_resolved(1, function() end)
+
+			config.reset_state()
+			config.state.active = true
+			config.state.pr_number = 42
+			config.state.comments = { { id = 1, path = "a.lua", line = 1, body = "root" } }
+			mock_threads(nil, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
+			mock_set(nil)
+
+			local result = run_toggle(1)
+
+			assert.is_nil(result.err)
+			assert.is_true(result.resolved)
+		end)
+
+		for _, case in ipairs({
+			{ name = "thread lookup", threads_err = "boom", set_err = nil },
+			{ name = "successful mutation", threads_err = nil, set_err = nil },
+			{ name = "failed mutation", threads_err = nil, set_err = "boom" },
+		}) do
+			it("drops a " .. case.name .. " response that arrives after the session was reset", function()
+				local pending = {}
+				helpers.mock(gh, "get_review_threads", function(_, callback)
+					table.insert(pending, function()
+						callback(case.threads_err, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
+					end)
+				end)
+				helpers.mock(gh, "set_review_thread_resolved", function(_, _, callback)
+					table.insert(pending, function()
+						callback(case.set_err, nil)
+					end)
+				end)
+
+				local called = false
+				sync.toggle_resolved(1, function()
+					called = true
+				end)
+				if case.threads_err == nil then
+					-- Let the lookup land so the mutation is the stale response.
+					table.remove(pending, 1)()
+				end
+				config.reset_state()
+				table.remove(pending, 1)()
+
+				assert.is_false(called)
+			end)
+		end
+	end)
+
+	describe("comments.toggle_resolve (github)", function()
+		local comments = require("fude.comments")
+
+		before_each(function()
+			config.state.active = true
+			config.state.review_mode = "github"
+			config.state.pr_number = 42
+			config.state.comments = {
+				{ id = 1, path = "a.lua", line = 1, body = "root" },
+				{ id = 2, path = "a.lua", line = 1, body = "reply", in_reply_to_id = 1 },
+			}
+			config.state.comment_map = require("fude.comments.data").build_comment_map(config.state.comments)
+		end)
+
+		it("delegates the given comment to the GitHub backend", function()
+			local seen
+			helpers.mock(sync, "toggle_resolved", function(comment_id, callback)
+				seen = comment_id
+				callback(nil, true)
+			end)
+
+			comments.toggle_resolve(2)
+
+			assert.are.equal(2, seen)
+		end)
+
+		it("targets the first comment on the current line when no id is given", function()
+			local buf = helpers.create_buf({ "x" }, "/tmp/fude_resolve/a.lua")
+			vim.api.nvim_win_set_buf(0, buf)
+			helpers.mock_diff({ ["fude_resolve/a.lua"] = "a.lua" })
+			local seen
+			helpers.mock(sync, "toggle_resolved", function(comment_id, callback)
+				seen = comment_id
+				callback(nil, false)
+			end)
+
+			comments.toggle_resolve()
+
+			assert.are.equal(1, seen)
+		end)
+
+		it("refuses a thread started in the pending review", function()
+			config.state.pending_review_id = 77
+			config.state.comments[1].pull_request_review_id = 77
+			config.state.comment_map = require("fude.comments.data").build_comment_map(config.state.comments)
+			local called = false
+			helpers.mock(sync, "toggle_resolved", function()
+				called = true
+			end)
+
+			comments.toggle_resolve(2)
+
+			assert.is_false(called)
+		end)
+
+		it("refuses a pending thread before pending_review_id arrives", function()
+			config.state.pending_review_id = nil
+			config.state.pending_comments = { ["a.lua:1:1"] = { id = 1, body = "root" } }
+			local called = false
+			helpers.mock(sync, "toggle_resolved", function()
+				called = true
+			end)
+
+			comments.toggle_resolve(1)
+
+			assert.is_false(called)
+		end)
+	end)
+
+	describe("comment viewer R key", function()
+		it("toggles the thread of the comment under the cursor and shows the hint", function()
+			local ui = require("fude.ui")
+			local comments = require("fude.comments")
+			local seen
+			helpers.mock(comments, "toggle_resolve", function(comment_id)
+				seen = comment_id
+			end)
+
+			ui.show_comments_float({
+				{ id = 1, body = "root", user = { login = "a" }, created_at = "2026-01-01T00:00:00Z" },
+				{ id = 2, body = "reply", user = { login = "b" }, created_at = "2026-01-02T00:00:00Z" },
+			})
+			local win = vim.api.nvim_get_current_win()
+			local footer = vim.api.nvim_win_get_config(win).footer
+			local footer_text = type(footer) == "table" and footer[1][1] or footer
+			assert.truthy(footer_text:find("R resolve", 1, true))
+
+			vim.api.nvim_win_set_cursor(win, { 1, 0 })
+			local map = vim.fn.maparg("R", "n", false, true)
+			map.callback()
+
+			assert.are.equal(1, seen)
+			assert.is_false(vim.api.nvim_win_is_valid(win))
+		end)
+
+		it("ignores a comment without an id instead of falling back to the source line", function()
+			local ui = require("fude.ui")
+			local comments = require("fude.comments")
+			local called = false
+			helpers.mock(comments, "toggle_resolve", function()
+				called = true
+			end)
+
+			ui.show_comments_float({
+				{ body = "synthetic pending", user = { login = "a" }, created_at = "2026-01-01T00:00:00Z" },
+			})
+			local win = vim.api.nvim_get_current_win()
+			vim.fn.maparg("R", "n", false, true).callback()
+
+			assert.is_false(called)
+			assert.is_true(vim.api.nvim_win_is_valid(win))
+		end)
+	end)
+
 	describe("create_single_comment", function()
 		-- POST and GET share the same gh args prefix, so dispatch on --method.
 		local function mock_comments_endpoint(post_resp)
