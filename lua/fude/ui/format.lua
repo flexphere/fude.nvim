@@ -475,7 +475,13 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 
 	-- author can be JSON null, which decodes to truthy vim.NIL
 	local author = type(pr_info.author) == "table" and pr_info.author.login or "unknown"
-	table.insert(lines, string.format("State: %s    Author: @%s", pr_info.state or "UNKNOWN", author))
+	-- state can be JSON null (truthy vim.NIL), which would break the concatenation
+	local state = type(pr_info.state) == "string" and pr_info.state or "UNKNOWN"
+	-- Same rule as pr.format_pr_state: a closed draft is reported as closed
+	if pr_info.isDraft == true and state == "OPEN" then
+		state = state .. " (draft)"
+	end
+	table.insert(lines, string.format("State: %s    Author: @%s", state, author))
 
 	table.insert(lines, string.format("Base: %s <- %s", pr_info.baseRefName or "", pr_info.headRefName or ""))
 	table.insert(lines, pr_info.url or "")

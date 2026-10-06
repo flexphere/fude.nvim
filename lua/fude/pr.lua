@@ -1250,4 +1250,104 @@ function M.edit()
 	end
 end
 
+--- State transitions offered by `change_state`, keyed by action.
+local STATE_ACTIONS = {
+	ready = { display = "Ready for review", done = "marked ready for review" },
+	draft = { display = "Convert to draft", done = "converted to draft" },
+	close = { display = "Close", done = "closed" },
+	reopen = { display = "Reopen", done = "reopened" },
+}
+
+--- Build the state transitions available from a PR's current state.
+--- An open PR can move between draft and ready or be closed; a closed one can
+--- only be reopened; a merged one (or an unknown state) has no transition.
+--- @param state string "OPEN" | "CLOSED" | "MERGED" (as reported by gh)
+--- @param is_draft boolean
+--- @return table[] entries { display, value (action), done (past-tense phrase) }
+function M.build_state_actions(state, is_draft)
+	local actions
+	if state == "OPEN" then
+		actions = { is_draft and "ready" or "draft", "close" }
+	elseif state == "CLOSED" then
+		actions = { "reopen" }
+	else
+		actions = {}
+	end
+	local entries = {}
+	for _, action in ipairs(actions) do
+		local def = STATE_ACTIONS[action]
+		table.insert(entries, { display = def.display, value = action, done = def.done })
+	end
+	return entries
+end
+
+--- Format a PR's state for display, e.g. "open (draft)".
+--- @param state string gh state ("OPEN" / "CLOSED" / "MERGED")
+--- @param is_draft boolean
+--- @return string
+function M.format_pr_state(state, is_draft)
+	local text = (state or ""):lower()
+	if text == "" then
+		text = "unknown"
+	end
+	if is_draft and state == "OPEN" then
+		text = text .. " (draft)"
+	end
+	return text
+end
+
+--- Change the current PR's state through a picker that lists only the
+--- transitions available from its current state (ready for review, convert to
+--- draft, close, reopen). Works without an active review session, like
+--- `M.edit()`; during a review the session's PR is used.
+function M.change_state()
+	-- The local commit scope detaches HEAD onto a past commit, so the
+	-- commit-based lookup could find another PR that contains it rather than
+	-- the session branch's PR.
+	if require("fude.local.session").in_commit_scope() then
+		vim.notify("fude.nvim: Cannot change the PR state in the commit scope — switch scope first", vim.log.levels.WARN)
+		return
+	end
+	local pr_number = config.state.active and config.state.pr_number or nil
+
+	gh.get_pr_state(pr_number, function(err, pr)
+		if gh.is_no_pr_error(err) then
+			vim.notify("fude.nvim: " .. vim.trim(err), vim.log.levels.WARN)
+			return
+		end
+		if err then
+			vim.notify("fude.nvim: " .. vim.trim(err), vim.log.levels.ERROR)
+			return
+		end
+		if not pr.number then
+			vim.notify("fude.nvim: No PR found for current branch", vim.log.levels.WARN)
+			return
+		end
+
+		local current = M.format_pr_state(pr.state, pr.is_draft)
+		local entries = M.build_state_actions(pr.state, pr.is_draft)
+		if #entries == 0 then
+			vim.notify(
+				string.format("fude.nvim: PR #%d is %s; there is no state to change to", pr.number, current),
+				vim.log.levels.INFO
+			)
+			return
+		end
+
+		local prompt = string.format("PR #%d is %s. Change to:", pr.number, current)
+		pick_entry(entries, { prompt = prompt, title = prompt, compact = true }, function(action)
+			if not action then
+				return
+			end
+			gh.set_pr_state(action, pr.number, function(set_err)
+				if set_err then
+					vim.notify("fude.nvim: Failed to change PR state: " .. set_err, vim.log.levels.ERROR)
+					return
+				end
+				vim.notify(string.format("fude.nvim: PR #%d %s", pr.number, STATE_ACTIONS[action].done), vim.log.levels.INFO)
+			end)
+		end)
+	end)
+end
+
 return M

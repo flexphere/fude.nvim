@@ -63,6 +63,9 @@ function M.parse_pr_from_commit_api(data)
 	}
 end
 
+-- Prefix of the get_pr_by_commit error for a commit with no PR (see is_no_pr_error).
+local NO_PR_FOR_COMMIT = "No PR found for commit "
+
 --- Find PR associated with a commit SHA (fallback for detached HEAD).
 --- @param sha string commit SHA
 --- @param callback fun(err: string|nil, data: table|nil)
@@ -76,7 +79,7 @@ function M.get_pr_by_commit(sha, callback)
 		end
 		local pr_info = M.parse_pr_from_commit_api(data)
 		if not pr_info then
-			return callback("No PR found for commit " .. sha:sub(1, 7), nil)
+			return callback(NO_PR_FOR_COMMIT .. sha:sub(1, 7), nil)
 		end
 		callback(nil, pr_info)
 	end)
@@ -197,7 +200,7 @@ end
 --- Get extended PR info for overview display.
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_overview(callback)
-	local fields = "number,title,body,labels,assignees,state,author,"
+	local fields = "number,title,body,labels,assignees,state,isDraft,author,"
 		.. "baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews"
 	M.run_json({
 		"pr",
@@ -849,6 +852,32 @@ function M.update_comment(comment_id, body, callback)
 	}, callback)
 end
 
+--- Resolve which PR a `gh pr view`-style command should target.
+--- An explicit number is used as is. On a detached HEAD the number is looked up
+--- from the commit, since `gh pr view` without a branch may hang. Otherwise nil
+--- is passed on, letting gh pick the current branch's PR.
+--- @param pr_number number|nil
+--- @param callback fun(err: string|nil, pr_number: number|nil)
+local function resolve_pr_number(pr_number, callback)
+	if pr_number then
+		return callback(nil, pr_number)
+	end
+	local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "HEAD" }, { text = true }):wait()
+	if ref_result.code ~= 0 then
+		local sha, sha_err = M.get_head_sha()
+		if not sha then
+			return callback(sha_err or "Not in a git repository", nil)
+		end
+		return M.get_pr_by_commit(sha, function(err, pr_data)
+			if err then
+				return callback(err, nil)
+			end
+			callback(nil, pr_data.number)
+		end)
+	end
+	callback(nil, nil)
+end
+
 --- Get PR title and body for editing.
 --- When pr_number is nil, detects detached HEAD and resolves PR number first
 --- to avoid `gh pr view` hanging without a branch.
@@ -876,26 +905,83 @@ function M.get_pr_title_body(pr_number, callback)
 		end)
 	end
 
-	if pr_number then
-		return fetch(pr_number)
-	end
-
-	-- Detect detached HEAD: resolve PR number via commit SHA first
-	local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "HEAD" }, { text = true }):wait()
-	if ref_result.code ~= 0 then
-		local sha, sha_err = M.get_head_sha()
-		if not sha then
-			return callback(sha_err or "Not in a git repository", nil)
+	resolve_pr_number(pr_number, function(err, num)
+		if err then
+			return callback(err, nil)
 		end
-		return M.get_pr_by_commit(sha, function(err, pr_data)
+		fetch(num)
+	end)
+end
+
+--- Get the PR's open/closed/merged state and draft flag.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param callback fun(err: string|nil, data: table|nil) data = { number, state, is_draft, url }
+function M.get_pr_state(pr_number, callback)
+	resolve_pr_number(pr_number, function(resolve_err, num)
+		if resolve_err then
+			return callback(resolve_err, nil)
+		end
+		local args = { "pr", "view", "--json", "number,state,isDraft,url" }
+		if num then
+			table.insert(args, 3, tostring(num))
+		end
+		M.run_json(args, function(err, data)
 			if err then
 				return callback(err, nil)
 			end
-			fetch(pr_data.number)
+			callback(nil, {
+				number = util.null_to(data.number),
+				state = util.null_to(data.state, ""),
+				is_draft = data.isDraft == true,
+				url = util.null_to(data.url),
+			})
 		end)
-	end
+	end)
+end
 
-	fetch(nil)
+--- Whether a PR lookup error means there simply is no PR, as opposed to an
+--- auth or network failure, which also exits non-zero. Covers both lookups
+--- `resolve_pr_number` can make: `gh pr view` on a branch and, on a detached
+--- HEAD, `get_pr_by_commit`.
+--- @param err string|nil
+--- @return boolean
+function M.is_no_pr_error(err)
+	if type(err) ~= "string" then
+		return false
+	end
+	return err:find("no pull requests found", 1, true) ~= nil or err:find(NO_PR_FOR_COMMIT, 1, true) == 1
+end
+
+--- Build the gh arguments that move a PR to another state.
+--- @param action string "ready" | "draft" | "close" | "reopen"
+--- @param pr_number number
+--- @return string[]|nil args nil for an unknown action
+function M.build_pr_state_args(action, pr_number)
+	local num = tostring(pr_number)
+	if action == "ready" then
+		return { "pr", "ready", num }
+	elseif action == "draft" then
+		return { "pr", "ready", num, "--undo" }
+	elseif action == "close" then
+		return { "pr", "close", num }
+	elseif action == "reopen" then
+		return { "pr", "reopen", num }
+	end
+	return nil
+end
+
+--- Move a PR to another state (ready for review, draft, closed, reopened).
+--- @param action string "ready" | "draft" | "close" | "reopen"
+--- @param pr_number number
+--- @param callback fun(err: string|nil)
+function M.set_pr_state(action, pr_number, callback)
+	local args = M.build_pr_state_args(action, pr_number)
+	if not args then
+		return callback("Unknown PR state action: " .. tostring(action))
+	end
+	M.run(args, function(err, _)
+		callback(err)
+	end)
 end
 
 --- Edit PR title and body.

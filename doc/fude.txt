@@ -401,7 +401,8 @@ File opening position                                 *fude-file-position*
 
 :FudeReviewOverview                                *:FudeReviewOverview*
     Show PR overview in a split-pane floating window. The left pane
-    displays title, state, author, base/head branches, description,
+    displays title, state (`OPEN (draft)` for a draft PR), author,
+    base/head branches, description,
     and PR-level comments: issue comments plus the body of every
     submitted review (Approve / Request changes / Comment summaries,
     bot review overviews), merged oldest first as GitHub's
@@ -628,6 +629,25 @@ File opening position                                 *fude-file-position*
     Otherwise, detects the PR from the current branch using `gh pr view`.
 
     Does not require an active review session.
+
+:FudeChangePRState                                *:FudeChangePRState*
+    Change the current PR's state. Fetches the PR's current state and
+    shows a picker (Telescope when available, otherwise
+    |vim.ui.select()|) that lists only the transitions available from
+    it:
+    - Open draft: Ready for review, Close
+    - Open (ready for review): Convert to draft, Close
+    - Closed: Reopen
+    A merged PR has no transition, so a message is shown instead of
+    the picker. Uses `gh pr ready` (`--undo` to convert to draft),
+    `gh pr close` and `gh pr reopen`; converting to draft requires a
+    `gh` version that supports `gh pr ready --undo`.
+
+    When review mode is active, uses the PR from the current session.
+    Otherwise, detects the PR from the current branch (on a detached
+    HEAD, from the commit). Does not require an active review session.
+    Refused in the local review's commit scope, where HEAD is detached
+    onto a past commit that may belong to another PR.
 
 :FudeReviewSubmit                                    *:FudeReviewSubmit*
     Submit all pending comments as a single GitHub review. This allows

@@ -733,6 +733,164 @@ describe("get_pr_title_body", function()
 	end)
 end)
 
+describe("get_pr_state", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("requests state and isDraft for an explicit PR number and normalizes the result", function()
+		local captured_args
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, { number = 7, state = "OPEN", isDraft = true, url = "https://github.com/o/r/pull/7" })
+		end)
+		local result
+		gh.get_pr_state(7, function(err, data)
+			result = { err = err, data = data }
+		end)
+		assert.are.same({ "pr", "view", "7", "--json", "number,state,isDraft,url" }, captured_args)
+		assert.is_nil(result.err)
+		assert.are.same({ number = 7, state = "OPEN", is_draft = true, url = "https://github.com/o/r/pull/7" }, result.data)
+	end)
+
+	it("treats JSON null fields as absent", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback(nil, { number = vim.NIL, state = vim.NIL, isDraft = vim.NIL, url = vim.NIL })
+		end)
+		local result
+		gh.get_pr_state(7, function(_, data)
+			result = data
+		end)
+		assert.are.same({ state = "", is_draft = false }, result)
+	end)
+
+	it("resolves the PR from the commit on a detached HEAD instead of running gh pr view bare", function()
+		helpers.mock(vim, "system", function()
+			return {
+				wait = function()
+					return { code = 1, stdout = "", stderr = "" }
+				end,
+			}
+		end)
+		helpers.mock(gh, "get_head_sha", function()
+			return "abc123"
+		end)
+		helpers.mock(gh, "get_pr_by_commit", function(sha, callback)
+			assert.are.equal("abc123", sha)
+			callback(nil, { number = 12 })
+		end)
+		local captured_args
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, { number = 12, state = "CLOSED", isDraft = false })
+		end)
+		gh.get_pr_state(nil, function() end)
+		assert.are.same({ "pr", "view", "12", "--json", "number,state,isDraft,url" }, captured_args)
+	end)
+
+	it("passes a commit lookup failure through", function()
+		helpers.mock(vim, "system", function()
+			return {
+				wait = function()
+					return { code = 1, stdout = "", stderr = "" }
+				end,
+			}
+		end)
+		helpers.mock(gh, "get_head_sha", function()
+			return "abc123"
+		end)
+		helpers.mock(gh, "get_pr_by_commit", function(_, callback)
+			callback("no PR for commit", nil)
+		end)
+		local called_run = false
+		helpers.mock(gh, "run_json", function()
+			called_run = true
+		end)
+		local result_err
+		gh.get_pr_state(nil, function(err)
+			result_err = err
+		end)
+		assert.are.equal("no PR for commit", result_err)
+		assert.is_false(called_run)
+	end)
+end)
+
+describe("is_no_pr_error", function()
+	local helpers_for_no_pr = require("tests.helpers")
+
+	it("matches gh's no-PR message", function()
+		assert.is_true(gh.is_no_pr_error('no pull requests found for branch "feat/x"\n'))
+	end)
+
+	it("matches the commit lookup's no-PR message used on a detached HEAD", function()
+		local msg
+		helpers_for_no_pr.mock(gh, "run_json", function(_, callback)
+			callback(nil, {})
+		end)
+		gh.get_pr_by_commit("abcdef1234567", function(err)
+			msg = err
+		end)
+		helpers_for_no_pr.cleanup()
+		assert.is_true(gh.is_no_pr_error(msg))
+	end)
+
+	it("does not match other failures or nil", function()
+		assert.is_false(gh.is_no_pr_error("HTTP 401: Bad credentials"))
+		assert.is_false(gh.is_no_pr_error("fetching commit: No PR found for commit"))
+		assert.is_false(gh.is_no_pr_error(nil))
+	end)
+end)
+
+describe("build_pr_state_args", function()
+	it("maps each action to its gh command", function()
+		assert.are.same({ "pr", "ready", "5" }, gh.build_pr_state_args("ready", 5))
+		assert.are.same({ "pr", "ready", "5", "--undo" }, gh.build_pr_state_args("draft", 5))
+		assert.are.same({ "pr", "close", "5" }, gh.build_pr_state_args("close", 5))
+		assert.are.same({ "pr", "reopen", "5" }, gh.build_pr_state_args("reopen", 5))
+	end)
+
+	it("returns nil for an unknown action", function()
+		assert.is_nil(gh.build_pr_state_args("merge", 5))
+	end)
+end)
+
+describe("set_pr_state", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("runs the gh command for the action", function()
+		local captured_args
+		helpers.mock(gh, "run", function(args, callback)
+			captured_args = args
+			callback(nil, "")
+		end)
+		local result = "unset"
+		gh.set_pr_state("draft", 9, function(err)
+			result = err
+		end)
+		assert.are.same({ "pr", "ready", "9", "--undo" }, captured_args)
+		assert.is_nil(result)
+	end)
+
+	it("fails without running gh for an unknown action", function()
+		local called = false
+		helpers.mock(gh, "run", function()
+			called = true
+		end)
+		local result
+		gh.set_pr_state("merge", 9, function(err)
+			result = err
+		end)
+		assert.truthy(result:find("Unknown PR state action", 1, true))
+		assert.is_false(called)
+	end)
+end)
+
 describe("review listings pagination", function()
 	local helpers = require("tests.helpers")
 
