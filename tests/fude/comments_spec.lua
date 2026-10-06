@@ -281,6 +281,41 @@ describe("get_reply_target_id", function()
 	end)
 end)
 
+describe("find_thread_key", function()
+	local comments_list = {
+		{ id = 1 },
+		{ id = 2, in_reply_to_id = 1 },
+		{ id = 3, in_reply_to_id = 1 },
+		{ id = 10 },
+	}
+
+	it("returns the root id for the root comment", function()
+		assert.are.equal(1, data.find_thread_key(1, comments_list, { [1] = "T1", [10] = "T10" }))
+	end)
+
+	it("returns the root id for a reply", function()
+		assert.are.equal(1, data.find_thread_key(3, comments_list, { [1] = "T1" }))
+	end)
+
+	it("falls back to the earliest reply keyed in thread_map when the root was deleted", function()
+		-- GitHub returns the earliest surviving reply as the thread's first comment.
+		local survivors = { { id = 2, in_reply_to_id = 1 }, { id = 3, in_reply_to_id = 1 } }
+		assert.are.equal(2, data.find_thread_key(3, survivors, { [2] = "T1" }))
+	end)
+
+	it("does not match a reply of another thread", function()
+		assert.is_nil(data.find_thread_key(10, comments_list, { [1] = "T1" }))
+	end)
+
+	it("returns nil for an unknown comment that is not in thread_map", function()
+		assert.is_nil(data.find_thread_key(99, comments_list, { [1] = "T1" }))
+	end)
+
+	it("ignores a JSON null in_reply_to_id", function()
+		assert.are.equal(5, data.find_thread_key(5, { { id = 5, in_reply_to_id = vim.NIL } }, { [5] = "T5" }))
+	end)
+end)
+
 describe("get_comment_thread", function()
 	it("returns single comment when no replies", function()
 		local all = {
