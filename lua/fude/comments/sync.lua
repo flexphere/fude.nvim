@@ -4,6 +4,9 @@ local gh = require("fude.gh")
 local data = require("fude.comments.data")
 local is_null = require("fude.util").is_null
 
+-- Set while a toggle_resolved round-trip is in flight.
+local resolve_in_flight = false
+
 --- Apply per-thread info (outdated/resolved) from thread_info_map to comments.
 --- Note: We intentionally do NOT set original_line here to prevent outdated comments
 --- from appearing in comment_map (and thus being displayed at wrong positions in the editor).
@@ -521,6 +524,62 @@ function M.reply_to_comment(comment_id, body, callback)
 		end
 		callback(nil)
 		fetch_comments()
+	end)
+end
+
+--- Toggle the resolved state of the review thread a comment belongs to.
+--- The thread node ID and current state are fetched fresh: `state.thread_map` is
+--- only kept while a pending review exists, and `is_resolved` is not set on
+--- comments when `resolved.show` is false, so neither can tell the direction.
+--- Only one toggle runs at a time: the direction is read from GitHub, so a
+--- second toggle sent before the first lands would repeat it instead of undoing it.
+--- @param comment_id number any comment of the thread
+--- @param callback fun(err: string|nil, resolved: boolean|nil) resolved = new state
+function M.toggle_resolved(comment_id, callback)
+	local state = config.state
+	if not state.active or not state.pr_number then
+		callback("Not active")
+		return
+	end
+	if resolve_in_flight then
+		callback("Another resolve is still in progress")
+		return
+	end
+
+	resolve_in_flight = true
+	local captured_state = state
+	gh.get_review_threads(state.pr_number, function(err, thread_info_map, thread_map)
+		if config.state ~= captured_state then
+			resolve_in_flight = false
+			return
+		end
+		if err then
+			resolve_in_flight = false
+			callback("Failed to fetch review threads: " .. err)
+			return
+		end
+		thread_map = thread_map or {}
+		local key = data.find_thread_key(comment_id, state.comments or {}, thread_map)
+		if not key then
+			resolve_in_flight = false
+			callback("Could not find the review thread for comment " .. tostring(comment_id))
+			return
+		end
+		local info = (thread_info_map or {})[key]
+		local new_resolved = not (info and info.is_resolved)
+		gh.set_review_thread_resolved(thread_map[key], new_resolved, function(set_err, _)
+			resolve_in_flight = false
+			if config.state ~= captured_state then
+				return
+			end
+			if set_err then
+				callback(set_err)
+				return
+			end
+			callback(nil, new_resolved)
+			-- Silent so "Loaded N comments" does not replace the result message.
+			fetch_comments(nil, { silent = true })
+		end)
 	end)
 end
 

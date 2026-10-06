@@ -338,6 +338,36 @@ function M.get_reply_target_id(comment_id, comment_map)
 	return comment_id
 end
 
+--- Find the key under which `gh.get_review_threads` indexes the thread of a comment.
+--- The threads query returns only each thread's first comment, keyed by its
+--- databaseId: normally the root, but the earliest surviving reply when the root
+--- was deleted on GitHub. The thread's root (the comment's `in_reply_to_id`, or the
+--- comment itself) is tried first, then its replies in `comments` order.
+--- @param comment_id number
+--- @param comments table[] all review comments
+--- @param thread_map table<number, string> { [comment_id] = thread_node_id }
+--- @return number|nil key comment id present in thread_map
+function M.find_thread_key(comment_id, comments, thread_map)
+	local root_id = comment_id
+	for _, c in ipairs(comments) do
+		if c.id == comment_id then
+			if type(c.in_reply_to_id) == "number" then
+				root_id = c.in_reply_to_id
+			end
+			break
+		end
+	end
+	if thread_map[root_id] then
+		return root_id
+	end
+	for _, c in ipairs(comments) do
+		if c.in_reply_to_id == root_id and thread_map[c.id] then
+			return c.id
+		end
+	end
+	return nil
+end
+
 --- Get comments at a specific file and line from a comment map.
 --- @param comment_map table<string, table<number, table[]>>
 --- @param rel_path string repo-relative file path
