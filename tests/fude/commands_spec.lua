@@ -23,6 +23,7 @@ local LOCAL = { active = true, review_mode = "local" }
 
 -- Commands usable in every state (PR helpers do not need a review session).
 local ALWAYS = {
+	"FudeChangePRState",
 	"FudeCopyPRURL",
 	"FudeCreatePR",
 	"FudeEditPR",

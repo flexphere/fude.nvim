@@ -1912,3 +1912,189 @@ describe("edit draft persistence", function()
 		assert.is_false(captured_opts.from_draft)
 	end)
 end)
+
+describe("build_state_actions", function()
+	local function values(entries)
+		local out = {}
+		for _, e in ipairs(entries) do
+			table.insert(out, e.value)
+		end
+		return out
+	end
+
+	it("offers ready and close for an open draft", function()
+		assert.are.same({ "ready", "close" }, values(pr.build_state_actions("OPEN", true)))
+	end)
+
+	it("offers draft and close for an open ready PR", function()
+		assert.are.same({ "draft", "close" }, values(pr.build_state_actions("OPEN", false)))
+	end)
+
+	it("offers only reopen for a closed PR", function()
+		assert.are.same({ "reopen" }, values(pr.build_state_actions("CLOSED", false)))
+	end)
+
+	it("offers nothing for a merged PR or an unknown state", function()
+		assert.are.same({}, pr.build_state_actions("MERGED", false))
+		assert.are.same({}, pr.build_state_actions("", false))
+	end)
+
+	it("gives every entry a label and a completion phrase", function()
+		for _, e in ipairs(pr.build_state_actions("OPEN", true)) do
+			assert.is_true(type(e.display) == "string" and e.display ~= "")
+			assert.is_true(type(e.done) == "string" and e.done ~= "")
+		end
+	end)
+end)
+
+describe("format_pr_state", function()
+	it("lower-cases the state and marks an open draft", function()
+		assert.are.equal("open (draft)", pr.format_pr_state("OPEN", true))
+		assert.are.equal("open", pr.format_pr_state("OPEN", false))
+		assert.are.equal("merged", pr.format_pr_state("MERGED", false))
+	end)
+
+	it("does not mark a closed draft as draft", function()
+		assert.are.equal("closed", pr.format_pr_state("CLOSED", true))
+	end)
+
+	it("reports an empty state as unknown", function()
+		assert.are.equal("unknown", pr.format_pr_state("", false))
+	end)
+end)
+
+describe("change_state", function()
+	local config = require("fude.config")
+	local orig_select, orig_notify
+	local notifications, select_calls, set_calls
+
+	before_each(function()
+		config.setup({})
+		notifications, select_calls, set_calls = {}, {}, {}
+		orig_select = vim.ui.select
+		orig_notify = vim.notify
+		vim.notify = function(msg, level)
+			table.insert(notifications, { msg = msg, level = level })
+		end
+		helpers.mock(gh, "set_pr_state", function(action, num, callback)
+			table.insert(set_calls, { action = action, num = num })
+			callback(nil)
+		end)
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+		vim.notify = orig_notify
+		helpers.cleanup()
+	end)
+
+	local function mock_state(err, data, seen)
+		helpers.mock(gh, "get_pr_state", function(num, callback)
+			if seen then
+				seen.num = num
+			end
+			callback(err, data)
+		end)
+	end
+
+	local function pick(index)
+		vim.ui.select = function(items, sopts, on_choice)
+			table.insert(select_calls, { items = items, prompt = sopts.prompt })
+			on_choice(items[index], index)
+		end
+	end
+
+	it("lists only the transitions available from the current state and applies the pick", function()
+		mock_state(nil, { number = 3, state = "OPEN", is_draft = true })
+		pick(1)
+
+		pr.change_state()
+
+		assert.are.same({ "Ready for review", "Close" }, select_calls[1].items)
+		assert.are.equal("PR #3 is open (draft). Change to:", select_calls[1].prompt)
+		assert.are.same({ { action = "ready", num = 3 } }, set_calls)
+		assert.are.equal("fude.nvim: PR #3 marked ready for review", notifications[#notifications].msg)
+	end)
+
+	it("uses the review session's PR number while a review is active", function()
+		config.state.active = true
+		config.state.pr_number = 42
+		local seen = {}
+		mock_state(nil, { number = 42, state = "CLOSED", is_draft = false }, seen)
+		pick(1)
+
+		pr.change_state()
+
+		assert.are.equal(42, seen.num)
+		assert.are.same({ { action = "reopen", num = 42 } }, set_calls)
+	end)
+
+	it("detects the current branch's PR outside a review", function()
+		local seen = { num = "unset" }
+		mock_state(nil, { number = 5, state = "OPEN", is_draft = false }, seen)
+		pick(1)
+
+		pr.change_state()
+
+		assert.is_nil(seen.num)
+		assert.are.same({ { action = "draft", num = 5 } }, set_calls)
+	end)
+
+	it("does nothing when the picker is cancelled", function()
+		mock_state(nil, { number = 3, state = "OPEN", is_draft = false })
+		vim.ui.select = function(_, _, on_choice)
+			on_choice(nil, nil)
+		end
+
+		pr.change_state()
+
+		assert.are.equal(0, #set_calls)
+	end)
+
+	it("shows no picker for a merged PR", function()
+		mock_state(nil, { number = 3, state = "MERGED", is_draft = false })
+		pick(1)
+
+		pr.change_state()
+
+		assert.are.equal(0, #select_calls)
+		assert.are.equal(0, #set_calls)
+		assert.truthy(notifications[1].msg:find("PR #3 is merged", 1, true))
+	end)
+
+	it("reports a branch without a PR as a WARN without showing the picker", function()
+		mock_state('no pull requests found for branch "feat/x"\n', nil)
+		pick(1)
+
+		pr.change_state()
+
+		assert.are.equal(0, #select_calls)
+		assert.are.equal("fude.nvim: No PR found for current branch", notifications[1].msg)
+		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+	end)
+
+	it("reports any other lookup failure as an ERROR without showing the picker", function()
+		mock_state("HTTP 401: Bad credentials\n", nil)
+		pick(1)
+
+		pr.change_state()
+
+		assert.are.equal(0, #select_calls)
+		assert.are.equal("fude.nvim: HTTP 401: Bad credentials", notifications[1].msg)
+		assert.are.equal(vim.log.levels.ERROR, notifications[1].level)
+	end)
+
+	it("reports a state change failure", function()
+		mock_state(nil, { number = 3, state = "OPEN", is_draft = false })
+		helpers.mock(gh, "set_pr_state", function(_, _, callback)
+			callback("unknown flag: --undo")
+		end)
+		pick(1)
+
+		pr.change_state()
+
+		local last = notifications[#notifications]
+		assert.are.equal("fude.nvim: Failed to change PR state: unknown flag: --undo", last.msg)
+		assert.are.equal(vim.log.levels.ERROR, last.level)
+	end)
+end)

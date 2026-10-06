@@ -651,6 +651,32 @@ describe("build_overview_left_lines", function()
 		assert.truthy(result.lines[1]:find("PR #42: Fix bug"))
 	end)
 
+	it("marks a draft PR in the state line", function()
+		local pr = { number = 1, title = "T", state = "OPEN", isDraft = true, url = "" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		assert.truthy(result.lines[2]:find("State: OPEN (draft)", 1, true))
+	end)
+
+	it("marks only an open PR as draft, like :FudeChangePRState", function()
+		local pr = { number = 1, title = "T", state = "CLOSED", isDraft = true, url = "" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		assert.truthy(result.lines[2]:find("State: CLOSED    ", 1, true))
+	end)
+
+	it("falls back to UNKNOWN for a JSON null state on a draft", function()
+		local pr = { number = 1, title = "T", state = vim.NIL, isDraft = true, url = "" }
+		local result = ui.build_overview_left_lines(pr, {}, identity)
+		assert.truthy(result.lines[2]:find("State: UNKNOWN    ", 1, true))
+	end)
+
+	it("does not mark a ready PR, nor treat a JSON null isDraft as draft", function()
+		for _, is_draft in ipairs({ false, vim.NIL }) do
+			local pr = { number = 1, title = "T", state = "OPEN", isDraft = is_draft, url = "" }
+			local result = ui.build_overview_left_lines(pr, {}, identity)
+			assert.truthy(result.lines[2]:find("State: OPEN    ", 1, true))
+		end
+	end)
+
 	it("includes author", function()
 		local pr = { number = 1, title = "T", state = "OPEN", author = { login = "alice" }, url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
