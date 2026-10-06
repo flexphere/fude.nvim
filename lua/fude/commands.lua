@@ -477,6 +477,15 @@ M.list = {
 			require("fude.pr").edit()
 		end,
 	},
+	{
+		name = "FudeChangePRState",
+		desc = "Change PR state (ready for review / draft / close / reopen)",
+		category = "PR",
+		available = always,
+		run = function()
+			require("fude.pr").change_state()
+		end,
+	},
 }
 
 --- Register every registry entry as a user command.
