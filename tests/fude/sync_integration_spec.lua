@@ -998,7 +998,7 @@ describe("sync integration", function()
 			assert.are.equal("Not active", result.err)
 		end)
 
-		it("refuses a second toggle while the first is in flight, then accepts one again", function()
+		it("refuses a second toggle until the first one's refresh lands, then accepts one again", function()
 			local finish_lookup
 			helpers.mock(gh, "get_review_threads", function(_, callback)
 				finish_lookup = function()
@@ -1006,6 +1006,11 @@ describe("sync integration", function()
 				end
 			end)
 			mock_set(nil)
+			-- Hold the post-mutation refresh so the lock can be observed across it.
+			local finish_refresh
+			helpers.mock(gh, "get_pr_comments", function(_, callback)
+				finish_refresh = callback
+			end)
 
 			local first = { called = false }
 			sync.toggle_resolved(1, function(err, resolved)
@@ -1024,10 +1029,42 @@ describe("sync integration", function()
 			assert.is_true(first.resolved)
 			assert.are.equal(1, #set_calls)
 
+			-- The mutation landed but its refresh has not: a toggle now would let
+			-- a later refresh finish first and be overwritten by this older one.
+			local during_refresh_err
+			sync.toggle_resolved(1, function(err)
+				during_refresh_err = err
+			end)
+			assert.are.equal("Another resolve is still in progress", during_refresh_err)
+
 			mock_threads(nil, { [1] = { is_resolved = true } }, { [1] = "THREAD_1" })
+			local refreshed = { { id = 1, path = "a.lua", line = 1, body = "root" } }
+			finish_refresh(nil, refreshed)
+			helpers.wait_for(function()
+				return config.state.comments == refreshed
+			end)
+
 			local third = run_toggle(1)
 			assert.is_nil(third.err)
 			assert.is_false(third.resolved)
+			finish_refresh(nil, {})
+		end)
+
+		it("does not block a new session with a toggle still in flight from the old one", function()
+			helpers.mock(gh, "get_review_threads", function() end) -- never answers
+			sync.toggle_resolved(1, function() end)
+
+			config.reset_state()
+			config.state.active = true
+			config.state.pr_number = 42
+			config.state.comments = { { id = 1, path = "a.lua", line = 1, body = "root" } }
+			mock_threads(nil, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
+			mock_set(nil)
+
+			local result = run_toggle(1)
+
+			assert.is_nil(result.err)
+			assert.is_true(result.resolved)
 		end)
 
 		for _, case in ipairs({
