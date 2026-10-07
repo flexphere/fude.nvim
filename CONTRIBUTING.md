@@ -8,7 +8,7 @@ Thank you for your interest in fude.nvim.
 When reporting a bug, please include:
 
 - Your Neovim version (`nvim --version`)
-- Your fude.nvim's commit hash
+- The fude.nvim commit hash
 - Your `gh` version (`gh --version`)
 - Minimal steps to reproduce, and the PR URL if possible (or an anonymized example)
 - Output of `:messages` or the stack trace if provided
