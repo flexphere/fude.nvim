@@ -1,6 +1,23 @@
 # Contributing to fude.nvim
 
-バグ報告や機能要望は Issue、コード変更は PR でお願いします。小さい変更でも歓迎です。
+Thank you for your interest in fude.nvim.
+
+- Bug reports, feature requests, and questions are welcome. Please open an [issue](https://github.com/flexphere/fude.nvim/issues).
+- Pull requests from outside contributors are not accepted. If you have a fix or an idea, please describe it in an issue instead.
+
+When reporting a bug, please include:
+
+- Your Neovim version (`nvim --version`)
+- Your fude.nvim's commit hash
+- Your `gh` version (`gh --version`)
+- Minimal steps to reproduce, and the PR URL if possible (or an anonymized example)
+- Output of `:messages` or the stack trace if provided
+
+---
+
+# Collaborator guide
+
+以下はコラボレーター向けの開発ドキュメントです。
 
 ## 目次
 
