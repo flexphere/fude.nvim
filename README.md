@@ -479,7 +479,7 @@ Then add `{ name = "fude" }` to your nvim-cmp sources.
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, testing, and the recommended workflow.
+Bug reports, feature requests, and questions are welcome via issues. Pull requests from outside contributors are not accepted. See [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
 ## License
 
