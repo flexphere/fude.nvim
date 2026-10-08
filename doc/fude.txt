@@ -553,10 +553,15 @@ File opening position                                 *fude-file-position*
     will succeed. If linking fails after PR creation, an error float shows
     the created PR's URL and the failure details. The PR is never closed
     or deleted automatically. Check its stack status on GitHub before
-    retrying; do not create a duplicate PR. Both error floats show
-    `q close` in the footer and stay open until dismissed. Press `q` to
-    close them. They use `float.width`/`float.height`; a visible border is
-    used even with `float.border = "none"` so the footer remains visible.
+    retrying; do not create a duplicate PR. Error floats stay open until
+    dismissed. The footer shows `q close | o open PR` when the PR URL is
+    available: `q` closes the float and `o` opens the PR in the browser
+    without closing the float. Before creation, or if the create command
+    returned no PR URL, only `q close` is offered. A missing URL after a
+    successful create is also reported as a stacking failure, not a
+    successful stacked PR. Floats use `float.width`/`float.height`; a visible
+    border is used even with `float.border = "none"` so the footer remains
+    visible.
     When the base branch's PR is in a stack but not at its top, a picker
     explains that stacked PRs can only be added to the top and offers an
     ordinary PR on the picked branch, or a stacked PR on the stack's top

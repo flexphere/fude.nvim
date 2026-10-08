@@ -372,6 +372,7 @@ function M.show_stack_error(err, pr_url)
 	if not border or border == "none" or border == "" or border == "shadow" then
 		border = "rounded"
 	end
+	local can_open_pr = pr_url ~= nil and pr_url ~= ""
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		row = math.max(0, math.floor((vim.o.lines - height - 2) / 2)),
@@ -382,7 +383,7 @@ function M.show_stack_error(err, pr_url)
 		border = border,
 		title = " Stacking failed ",
 		title_pos = "center",
-		footer = " q close ",
+		footer = can_open_pr and " q close | o open PR " or " q close ",
 		footer_pos = "center",
 	})
 	vim.wo[win].wrap = true
@@ -391,6 +392,11 @@ function M.show_stack_error(err, pr_url)
 			vim.api.nvim_win_close(win, true)
 		end
 	end, { buffer = buf, nowait = true, silent = true })
+	if can_open_pr then
+		vim.keymap.set("n", "o", function()
+			vim.ui.open(pr_url)
+		end, { buffer = buf, nowait = true, silent = true, desc = "Open PR in browser" })
+	end
 end
 
 --- Recheck the selected parent immediately before creating the PR. A changed

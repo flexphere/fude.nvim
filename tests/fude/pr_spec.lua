@@ -1222,6 +1222,10 @@ describe("create submit draft cleanup", function()
 		end)
 
 		it("shows a persistent failure float without closing the created PR", function()
+			local opened_url
+			helpers.mock(vim.ui, "open", function(url)
+				opened_url = url
+			end)
 			local close_calls = 0
 			helpers.mock(gh, "set_pr_state", function()
 				close_calls = close_calls + 1
@@ -1236,10 +1240,17 @@ describe("create submit draft cleanup", function()
 			assert.is_not_nil(lines:find(NEW_URL, 1, true))
 			assert.is_not_nil(lines:find('unknown command "stack" for "gh"', 1, true))
 			assert.is_not_nil(lines:find("NOT been closed or deleted", 1, true))
-			assert.are.equal(" q close ", vim.api.nvim_win_get_config(win).footer[1][1])
+			assert.are.equal(" q close | o open PR ", vim.api.nvim_win_get_config(win).footer[1][1])
 			assert.is_false(vim.bo[buf].modifiable)
 			assert.are.equal(0, close_calls)
 			assert.is_nil(pr.get_draft())
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+				if map.lhs == "o" then
+					map.callback()
+				end
+			end
+			assert.are.equal(NEW_URL, opened_url)
+			assert.is_true(vim.api.nvim_win_is_valid(win))
 			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
 				if map.lhs == "q" then
 					map.callback()
@@ -1344,6 +1355,10 @@ describe("create submit draft cleanup", function()
 				assert.is_not_nil(lines:find("NOT been closed or deleted", 1, true))
 				assert.is_nil(lines:find("before creating a PR", 1, true))
 				assert.is_nil(pr.get_draft())
+				assert.are.equal(" q close ", vim.api.nvim_win_get_config(0).footer[1][1])
+				for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+					assert.is_not.equal("o", map.lhs)
+				end
 			end)
 		end
 	end)
@@ -1370,6 +1385,9 @@ describe("stack failure float layout", function()
 		assert.are.equal(math.floor(vim.o.lines * 0.60), cfg.height)
 		assert.are.equal(" q close ", cfg.footer[1][1])
 		assert.is_not_nil(cfg.border)
+		for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+			assert.is_not.equal("o", map.lhs)
+		end
 		local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 		assert.are.same({ "first", "second", "third" }, { unpack(lines, #lines - 2) })
 	end)
