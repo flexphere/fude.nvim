@@ -429,9 +429,55 @@ watcher can mechanically filter events by who wrote them; the `session`
 header is metadata, not a user action, and has no `author_type`. Agents
 should **append only** — never rewrite existing lines.
 
-For a resident Claude Code session, `contrib/skills/fude-watch/` provides a
-skill scaffold that tails the active session file and responds to new
-comments as they appear.
+### Set up fude-watch for Claude Code
+
+The `fude-watch` skill lets a resident Claude Code session watch local review
+comments, make code changes for actionable requests, and reply to questions.
+It uses Claude Code's Monitor and TaskStop tools; the two bundled shell
+scripts require `bash`, `jq`, and `uuidgen` on `PATH`.
+
+Choose the [English](contrib/skills/fude-watch/SKILL.md) or
+[Japanese](contrib/skills/fude-watch/SKILL.ja.md) instructions. From the root
+of the project you want to review, run the following commands, replacing
+`/path/to/fude.nvim` with your local fude.nvim checkout or installation path:
+
+```bash
+fude_skill_dir=/path/to/fude.nvim/contrib/skills/fude-watch
+mkdir -p .claude/skills/fude-watch
+
+# Choose ONE: English or Japanese. Both are installed as SKILL.md.
+cp "$fude_skill_dir/SKILL.md" .claude/skills/fude-watch/SKILL.md
+# cp "$fude_skill_dir/SKILL.ja.md" .claude/skills/fude-watch/SKILL.md
+
+# Both languages use the same helper scripts.
+cp "$fude_skill_dir/fude-watch-filter.sh" "$fude_skill_dir/fude-watch-reply.sh" \
+  .claude/skills/fude-watch/
+```
+
+For Japanese, use the commented-out `SKILL.ja.md` command instead of the
+English command. The destination filename must be `SKILL.md` in either
+case so Claude Code can discover the skill. These commands overwrite any
+existing copies; preserve project-specific adjustments before copying again.
+Add `.fude/` to the target project's `.gitignore` to keep review logs local.
+
+1. In Neovim, run `:FudeReviewLocal main` (replace `main` with your base
+   branch). Optionally use `:FudeReviewLocalScope uncommitted` to review only
+   uncommitted changes. The `commit` scope does not allow comments.
+2. Start Claude Code in the same repository and worktree, then ask it to
+   "Use fude-watch to watch my local review comments" or
+   "fude-watchでレビュー待受してください". It also checks existing unresolved
+   comments when starting.
+3. In Neovim, use `:FudeReviewComment` on a line or selection, write a
+   question or change request, and press `<CR>` in normal mode to save it.
+   No GitHub review submission is needed.
+4. Read replies with `:FudeReviewListComments`. Use `:FudeReviewReload` if
+   needed, or enable `auto_reload` as shown above. Check the response and
+   use `:FudeReviewResolve` on the thread's line when it is resolved.
+5. Ask Claude Code to stop watching, then run `:FudeReviewStop` in Neovim.
+
+Restart the watcher after switching branches, since each branch has its
+own review session. To send a follow-up request, add a reply or a new
+comment: edits to existing comment bodies do not trigger the watcher.
 
 ## Completion
 
