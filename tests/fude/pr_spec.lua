@@ -58,6 +58,9 @@ describe("create passes default title to open_pr_float", function()
 			callback(lookup_result[1], lookup_result[2])
 		end)
 		notifications = {}
+		helpers.mock(pr, "show_stack_error", function(msg)
+			table.insert(notifications, { msg = msg, level = vim.log.levels.ERROR })
+		end)
 		helpers.mock(vim, "notify", function(msg, level)
 			table.insert(notifications, { msg = msg, level = level })
 		end)
@@ -227,40 +230,64 @@ describe("create passes default title to open_pr_float", function()
 			assert.is_nil(captured_opts)
 		end)
 
-		it("warns and creates an ordinary PR when the top PR is unknown", function()
+		it("aborts creation when the top PR is unknown", function()
 			lookup_result[2].stack_top = nil
 			pr.create()
 			assert.are.same({}, non_top_prompts)
-			assert.is_nil(captured_opts.stack)
-			assert.are.equal(vim.log.levels.WARN, notifications[1].level)
-			assert.is_not_nil(notifications[1].msg:find("is not the top of stack #3", 1, true))
+			assert.is_nil(captured_opts)
+			assert.are.equal(1, #notifications)
+			assert.is_not_nil(notifications[1].msg:find("Cannot determine the top PR of stack #3", 1, true))
 		end)
 	end)
 
-	it("warns and creates an ordinary PR when the parent has no open PR", function()
+	it("aborts creation and preserves the draft when the parent has no open PR", function()
 		helpers.mock(pr, "select_base_branch", function(_, callback)
 			callback("feat/other")
 		end)
 		stack_answer = true
 		lookup_result = { nil, nil }
+		pr.save_draft({ "draft title" }, { "draft body" })
 		pr.create()
-		assert.is_nil(captured_opts.stack)
-		assert.are.equal("feat/other", captured_opts.base)
-		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+		assert.is_nil(captured_opts)
+		assert.are.same({ "draft title" }, pr.get_draft().title_lines)
+		assert.are.equal(1, #notifications)
 		assert.is_not_nil(notifications[1].msg:find("feat/other has no open PR", 1, true))
 	end)
 
-	it("warns with gh's error, not 'no open PR', when the parent lookup fails", function()
+	it("aborts with gh's error, not 'no open PR', when the parent lookup fails", function()
 		helpers.mock(pr, "select_base_branch", function(_, callback)
 			callback("feat/other")
 		end)
 		stack_answer = true
 		lookup_result = { "HTTP 401: Bad credentials\n", nil }
 		pr.create()
-		assert.is_nil(captured_opts.stack)
-		assert.are.equal(vim.log.levels.WARN, notifications[1].level)
+		assert.is_nil(captured_opts)
+		assert.are.equal(1, #notifications)
 		assert.is_not_nil(notifications[1].msg:find("failed to look up the PR of feat/other: HTTP 401", 1, true))
 		assert.is_nil(notifications[1].msg:find("has no open PR", 1, true))
+	end)
+
+	it("aborts when both stack position and size are missing instead of matching nils", function()
+		helpers.mock(pr, "select_base_branch", function(_, callback)
+			callback("feat/other")
+		end)
+		stack_answer = true
+		lookup_result[2].stack_position = nil
+		lookup_result[2].stack_size = nil
+		pr.create()
+		assert.is_nil(captured_opts)
+		assert.are.equal(1, #notifications)
+	end)
+
+	it("aborts when a new stack's parent base cannot be determined", function()
+		helpers.mock(pr, "select_base_branch", function(_, callback)
+			callback("feat/other")
+		end)
+		stack_answer = true
+		lookup_result = { nil, { url = "https://github.com/o/r/pull/1" } }
+		pr.create()
+		assert.is_nil(captured_opts)
+		assert.are.equal(1, #notifications)
 	end)
 
 	it("aborts without opening the float when the stack prompt is cancelled", function()
@@ -1135,6 +1162,12 @@ describe("create submit draft cleanup", function()
 		before_each(function()
 			notifications = {}
 			link_calls = {}
+			helpers.mock(gh, "check_stack_available", function(callback)
+				callback(nil)
+			end)
+			helpers.mock(gh, "get_open_pr_stack", function(_, callback)
+				callback(nil, { url = PARENT_URL, stack_number = 7, stack_position = 2, stack_size = 2 })
+			end)
 			helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
 				callback(nil, { url = NEW_URL })
 			end)
@@ -1169,6 +1202,9 @@ describe("create submit draft cleanup", function()
 		end)
 
 		it("creates a new stack keeping the parent's base branch", function()
+			helpers.mock(gh, "get_open_pr_stack", function(_, callback)
+				callback(nil, { url = PARENT_URL, base_ref = "feat/grand" })
+			end)
 			submit({
 				base = "feat/parent",
 				stack = { parent_url = PARENT_URL, new_stack = true, parent_base = "feat/grand" },
@@ -1178,20 +1214,125 @@ describe("create submit draft cleanup", function()
 		end)
 
 		it("does not link when stack is not set", function()
+			helpers.mock(gh, "check_stack_available", function()
+				error("ordinary PRs must not require gh-stack")
+			end)
 			submit({ base = "feat/parent" })
 			assert.are.same({}, link_calls)
 		end)
 
-		it("warns and keeps the created PR when linking fails", function()
+		it("shows a persistent failure float without closing the created PR", function()
+			local opened_url
+			helpers.mock(vim.ui, "open", function(url)
+				opened_url = url
+			end)
+			local close_calls = 0
+			helpers.mock(gh, "set_pr_state", function()
+				close_calls = close_calls + 1
+			end)
 			helpers.mock(gh, "link_stack", function(_, _, callback)
 				callback('unknown command "stack" for "gh"\n')
 			end)
 			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false, stack_number = 7 } })
-			local n = find_notification("Stacking failed (the PR was created unstacked)")
-			assert.is_not_nil(n)
-			assert.are.equal(vim.log.levels.WARN, n.level)
+			local win = vim.api.nvim_get_current_win()
+			local buf = vim.api.nvim_get_current_buf()
+			local lines = table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+			assert.is_not_nil(lines:find(NEW_URL, 1, true))
+			assert.is_not_nil(lines:find('unknown command "stack" for "gh"', 1, true))
+			assert.is_not_nil(lines:find("NOT been closed or deleted", 1, true))
+			assert.are.equal(" q close | o open PR ", vim.api.nvim_win_get_config(win).footer[1][1])
+			assert.is_false(vim.bo[buf].modifiable)
+			assert.are.equal(0, close_calls)
+			assert.is_nil(pr.get_draft())
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+				if map.lhs == "o" then
+					map.callback()
+				end
+			end
+			assert.are.equal(NEW_URL, opened_url)
+			assert.is_true(vim.api.nvim_win_is_valid(win))
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+				if map.lhs == "q" then
+					map.callback()
+				end
+			end
+			assert.is_false(vim.api.nvim_win_is_valid(win))
+			assert.is_false(vim.api.nvim_buf_is_valid(buf))
 			assert.is_not_nil(find_notification("Draft PR created: " .. NEW_URL))
 		end)
+
+		it("does not create or link when the capability check fails and keeps input as a draft", function()
+			local creates = 0
+			helpers.mock(gh, "create_draft_pr", function()
+				creates = creates + 1
+			end)
+			helpers.mock(gh, "check_stack_available", function(callback)
+				callback("HTTP 404: stacks unavailable")
+			end)
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, stack_number = 7 } })
+			assert.are.equal(0, creates)
+			assert.are.same({}, link_calls)
+			assert.are.same({ "t" }, pr.get_draft().title_lines)
+			local lines = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+			assert.is_not_nil(lines:find("before creating a PR", 1, true))
+			assert.is_not_nil(lines:find("HTTP 404", 1, true))
+		end)
+
+		it("waits for both preflight callbacks before creating, and preserves a newer draft", function()
+			local finish_check, finish_lookup, finish_link
+			helpers.mock(gh, "check_stack_available", function(callback)
+				finish_check = callback
+			end)
+			helpers.mock(gh, "get_open_pr_stack", function(_, callback)
+				finish_lookup = callback
+			end)
+			helpers.mock(gh, "link_stack", function(_, _, callback)
+				finish_link = callback
+			end)
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, stack_number = 7 } })
+			assert.is_nil(find_notification("Draft PR created"))
+			assert.is_nil(finish_lookup)
+			finish_check(nil)
+			assert.is_nil(find_notification("Draft PR created"))
+			pr.save_draft({ "new draft" }, { "new body" })
+			finish_lookup(nil, { url = PARENT_URL, stack_number = 7, stack_position = 2, stack_size = 2 })
+			assert.is_not_nil(find_notification("Draft PR created"))
+			finish_link("connection lost")
+			assert.are.same({ "new draft" }, pr.get_draft().title_lines)
+		end)
+
+		it("aborts when the unstacked parent acquired a stack while composing", function()
+			local creates = 0
+			helpers.mock(gh, "create_draft_pr", function()
+				creates = creates + 1
+			end)
+			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = true, parent_base = "main" } })
+			assert.are.equal(0, creates)
+			assert.are.same({}, link_calls)
+		end)
+
+		for _, case in ipairs({
+			{ name = "lookup failure", err = "HTTP 401" },
+			{ name = "missing parent" },
+			{ name = "changed parent", info = { url = "another" } },
+			{ name = "changed stack", info = { url = PARENT_URL, stack_number = 8, stack_position = 2, stack_size = 2 } },
+			{ name = "new top PR", info = { url = PARENT_URL, stack_number = 7, stack_position = 2, stack_size = 3 } },
+			{ name = "missing position", info = { url = PARENT_URL, stack_number = 7 } },
+		}) do
+			it("aborts the submit preflight on " .. case.name, function()
+				local creates = 0
+				helpers.mock(gh, "create_draft_pr", function()
+					creates = creates + 1
+				end)
+				helpers.mock(gh, "get_open_pr_stack", function(_, callback)
+					callback(case.err, case.info)
+				end)
+				submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, stack_number = 7 } })
+				assert.are.equal(0, creates)
+				assert.are.same({}, link_calls)
+				assert.is_not_nil(pr.get_draft())
+			end)
+		end
 
 		it("does not link when PR creation fails", function()
 			helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
@@ -1200,6 +1341,66 @@ describe("create submit draft cleanup", function()
 			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false, stack_number = 7 } })
 			assert.are.same({}, link_calls)
 		end)
+
+		for _, result in ipairs({ false, {}, { url = "" }, { url = " \n " }, { url = vim.NIL } }) do
+			it("reports missing PR URLs as a post-create failure: " .. vim.inspect(result), function()
+				helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
+					callback(nil, result or nil)
+				end)
+				submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, stack_number = 7 } })
+				assert.are.same({}, link_calls)
+				assert.is_nil(find_notification("Draft PR created"))
+				local lines = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+				assert.is_not_nil(lines:find("PR URL was not returned", 1, true))
+				assert.is_not_nil(lines:find("NOT been closed or deleted", 1, true))
+				assert.is_nil(lines:find("before creating a PR", 1, true))
+				assert.is_nil(pr.get_draft())
+				assert.are.equal(" q close ", vim.api.nvim_win_get_config(0).footer[1][1])
+				for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+					assert.is_not.equal("o", map.lhs)
+				end
+			end)
+		end
+	end)
+end)
+
+describe("stack failure float layout", function()
+	local config = require("fude.config")
+	local original_float
+
+	before_each(function()
+		original_float = config.opts.float
+	end)
+
+	after_each(function()
+		config.opts.float = original_float
+		helpers.cleanup()
+	end)
+
+	it("uses configured dimensions, keeps a footer with border=none and normalizes errors", function()
+		config.opts.float = { width = 75, height = 60, border = "none" }
+		pr.show_stack_error("first\r\nsecond\rthird")
+		local cfg = vim.api.nvim_win_get_config(0)
+		assert.are.equal(math.floor(vim.o.columns * 0.75), cfg.width)
+		assert.are.equal(math.floor(vim.o.lines * 0.60), cfg.height)
+		assert.are.equal(" q close ", cfg.footer[1][1])
+		assert.is_not_nil(cfg.border)
+		for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
+			assert.is_not.equal("o", map.lhs)
+		end
+		local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+		assert.are.same({ "first", "second", "third" }, { unpack(lines, #lines - 2) })
+	end)
+
+	it("clamps tiny and oversized configured dimensions to a valid float", function()
+		for _, percent in ipairs({ 0, 1000 }) do
+			config.opts.float = { width = percent, height = percent }
+			pr.show_stack_error("failure")
+			local cfg = vim.api.nvim_win_get_config(0)
+			assert.is_true(cfg.width >= 1 and cfg.width <= vim.o.columns - 2)
+			assert.is_true(cfg.height >= 1 and cfg.height <= vim.o.lines - 4)
+			vim.api.nvim_win_close(0, true)
+		end
 	end)
 end)
 

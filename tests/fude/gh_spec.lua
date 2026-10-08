@@ -575,7 +575,16 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		local captured_args
 		helpers.mock(gh, "run_json", function(args, callback)
 			captured_args = args
-			callback(nil, pr_response({ { url = "https://github.com/o/r/pull/1", stack = { number = 3 } } }))
+			callback(
+				nil,
+				pr_response({
+					{
+						url = "https://github.com/o/r/pull/1",
+						stack = { number = 3, size = 2 },
+						stackEntry = { position = 2 },
+					},
+				})
+			)
 		end)
 		local got_err, got = "unset", "unset"
 		gh.get_open_pr_stack("feat/a", function(err, info)
@@ -588,7 +597,10 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		)
 		assert.is_not_nil(captured_args[10]:find("associatedPullRequests", 1, true))
 		assert.is_nil(got_err)
-		assert.are.same({ url = "https://github.com/o/r/pull/1", stack_number = 3 }, got)
+		assert.are.same(
+			{ url = "https://github.com/o/r/pull/1", stack_number = 3, stack_size = 2, stack_position = 2 },
+			got
+		)
 	end)
 
 	it("get_open_pr_stack reports a failed lookup as an error, not as no PR", function()
@@ -601,6 +613,54 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		end)
 		assert.are.equal("HTTP 401: Bad credentials", got_err)
 		assert.is_nil(got)
+	end)
+
+	for _, case in ipairs({
+		{ name = "accepts explicit null stack membership", fields = ',"stack":null,"stackEntry":null' },
+		{ name = "rejects missing stack membership", fields = "", fails = true },
+	}) do
+		it("get_open_pr_stack decodes raw JSON and " .. case.name, function()
+			-- Keep run_json real so the supported Neovim versions exercise their decoder.
+			helpers.mock(gh, "run", function(_, callback)
+				callback(
+					nil,
+					'{"data":{"repository":{"ref":{"associatedPullRequests":{"nodes":[{"url":"u",'
+						.. '"baseRefName":"main"'
+						.. case.fields
+						.. "}]}}}}}"
+				)
+			end)
+			local got_err, got = "unset", "unset"
+			gh.get_open_pr_stack("parent", function(err, info)
+				got_err, got = err, info
+			end)
+			if case.fails then
+				assert.are.equal("Incomplete stack information for the parent PR", got_err)
+				assert.is_nil(got)
+			else
+				assert.is_nil(got_err)
+				assert.are.same({ url = "u", base_ref = "main" }, got)
+			end
+		end)
+	end
+
+	it("reports incomplete stack membership as an error rather than an unstacked parent", function()
+		for _, node in ipairs({
+			{ url = "u" },
+			{ url = "u", stack = {} },
+			{ url = "u", stack = { size = 2 }, stackEntry = { position = 2 } },
+			{ url = "u", stack = { number = 3, size = 2 }, stackEntry = vim.NIL },
+		}) do
+			helpers.mock(gh, "run_json", function(_, callback)
+				callback(nil, pr_response({ node }))
+			end)
+			local result, result_err
+			gh.get_open_pr_stack("parent", function(err, info)
+				result, result_err = info, err
+			end)
+			assert.is_nil(result)
+			assert.are.equal("Incomplete stack information for the parent PR", result_err)
+		end
 	end)
 
 	it("parse_open_pr_stack returns the PR with its stack", function()
@@ -652,6 +712,39 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		assert.is_nil(gh.parse_open_pr_stack(nil))
 		assert.is_nil(gh.parse_open_pr_stack(pr_response({ { url = 1 } })))
 	end)
+
+	it("checks the stack command and repository capability without mutations", function()
+		local calls = {}
+		helpers.mock(gh, "run", function(args, callback)
+			table.insert(calls, args)
+			callback(nil, "")
+		end)
+		local result = "unset"
+		gh.check_stack_available(function(err)
+			result = err
+		end)
+		assert.is_nil(result)
+		assert.are.same({
+			{ "stack", "link", "--help" },
+			{ "api", "repos/{owner}/{repo}/stacks?per_page=1" },
+		}, calls)
+	end)
+
+	for _, fail_at in ipairs({ 1, 2 }) do
+		it("stops the capability check at failed command " .. fail_at, function()
+			local calls = 0
+			helpers.mock(gh, "run", function(_, callback)
+				calls = calls + 1
+				callback(calls == fail_at and "failure detail" or nil)
+			end)
+			local result
+			gh.check_stack_available(function(err)
+				result = err
+			end)
+			assert.are.equal(fail_at, calls)
+			assert.is_not_nil(result:find("failure detail", 1, true))
+		end)
+	end
 
 	it("link_stack runs gh stack link with the refs bottom to top", function()
 		local calls = {}

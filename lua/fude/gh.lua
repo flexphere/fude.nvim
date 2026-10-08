@@ -676,6 +676,7 @@ end
 --- @return table|nil info { url: string, base_ref: string|nil, stack_number: number|nil,
 ---   stack_size: number|nil, stack_position: number|nil (1-based, bottom first),
 ---   stack_top: { url: string, branch: string }|nil (the PR at the top of the stack) }, nil when there is no open PR
+--- @return string|nil error when the PR exists but its stack membership is unknown
 function M.parse_open_pr_stack(data)
 	local repo = type(data) == "table" and type(data.data) == "table" and data.data.repository
 	local ref = type(repo) == "table" and repo.ref
@@ -687,6 +688,21 @@ function M.parse_open_pr_stack(data)
 	end
 	local function number_field(t, key)
 		return type(t) == "table" and type(t[key]) == "number" and t[key] or nil
+	end
+	-- Only an explicit JSON null means no stack. Missing fields or a partial
+	-- stack object cannot authorize creating a new stack for this parent.
+	if
+		node.stack == nil
+		or (
+			not util.is_null(node.stack)
+			and (
+				not number_field(node.stack, "number")
+				or not number_field(node.stack, "size")
+				or not number_field(node.stackEntry, "position")
+			)
+		)
+	then
+		return nil, "Incomplete stack information for the parent PR"
 	end
 	return {
 		url = node.url,
@@ -722,7 +738,8 @@ function M.get_open_pr_stack(branch, callback)
 			callback(err, nil)
 			return
 		end
-		callback(nil, M.parse_open_pr_stack(data))
+		local info, parse_err = M.parse_open_pr_stack(data)
+		callback(parse_err, info)
 	end)
 end
 
@@ -823,6 +840,22 @@ function M.link_stack(refs, base, callback)
 	vim.list_extend(args, refs)
 	M.run(args, function(err)
 		callback(err)
+	end)
+end
+
+--- Check the stack command and repository API without creating or changing PRs.
+--- A successful read does not guarantee a later stack mutation will succeed.
+--- @param callback fun(err: string|nil)
+function M.check_stack_available(callback)
+	M.run({ "stack", "link", "--help" }, function(err)
+		if err then
+			callback("gh stack link is unavailable: " .. err)
+			return
+		end
+		-- This is a capability probe, not a listing: one result is sufficient.
+		M.run({ "api", "repos/{owner}/{repo}/stacks?per_page=1" }, function(api_err)
+			callback(api_err and ("Cannot access repository stacks: " .. api_err) or nil)
+		end)
 	end)
 end
 
