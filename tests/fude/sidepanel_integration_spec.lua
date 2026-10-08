@@ -595,7 +595,10 @@ describe("sidepanel integration", function()
 			assert.truthy(text:find(mapping.lhs .. "  " .. mapping.desc, 1, true))
 		end
 		assert.truthy(text:find("q  Close this help", 1, true))
-		buf_keymap(help_buf, "q").callback()
+		local close_map = buf_keymap(help_buf, "q")
+		-- Without nowait, a global mapping such as `qa` delays the close by timeoutlen.
+		assert.are.equal(1, close_map.nowait)
+		close_map.callback()
 		assert.is_nil(panel.help_win)
 		assert.is_false(vim.api.nvim_win_is_valid(help_win))
 		assert.is_false(vim.api.nvim_buf_is_valid(help_buf))
