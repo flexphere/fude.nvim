@@ -541,11 +541,22 @@ File opening position                                 *fude-file-position*
     stacked PRs enabled on the repository): appended to the top of the
     existing stack (`gh stack link <stack number> <new PR>`), or put in a
     new stack above the base branch's PR, keeping that PR's own base
-    branch (`--base`). When the base branch has no open PR or its PR
-    cannot be looked up (the warning shows gh's error), a
-    warning is shown before the float opens and the PR is created as an
-    ordinary one. When linking fails, a warning is shown and the created
-    PR stays unstacked.
+    branch (`--base`). When the base branch has no open PR, its PR cannot
+    be looked up, or the required stack information is incomplete,
+    creation stops with an error float instead of falling back to an
+    ordinary PR. On submit, fude checks that `gh stack link` is available,
+    probes the repository's stacks API, and rechecks the selected parent
+    PR and its stack before creating the PR. If a check fails or the
+    parent/stack has changed, no PR is created and the input is kept as
+    a local draft.
+    These read-only checks cannot guarantee that the later link operation
+    will succeed. If linking fails after PR creation, an error float shows
+    the created PR's URL and the failure details. The PR is never closed
+    or deleted automatically. Check its stack status on GitHub before
+    retrying; do not create a duplicate PR. Both error floats show
+    `q close` in the footer and stay open until dismissed. Press `q` to
+    close them. They use `float.width`/`float.height`; a visible border is
+    used even with `float.border = "none"` so the footer remains visible.
     When the base branch's PR is in a stack but not at its top, a picker
     explains that stacked PRs can only be added to the top and offers an
     ordinary PR on the picked branch, or a stacked PR on the stack's top
