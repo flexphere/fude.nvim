@@ -615,6 +615,35 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		assert.is_nil(got)
 	end)
 
+	for _, case in ipairs({
+		{ name = "accepts explicit null stack membership", fields = ',"stack":null,"stackEntry":null' },
+		{ name = "rejects missing stack membership", fields = "", fails = true },
+	}) do
+		it("get_open_pr_stack decodes raw JSON and " .. case.name, function()
+			-- Keep run_json real so the supported Neovim versions exercise their decoder.
+			helpers.mock(gh, "run", function(_, callback)
+				callback(
+					nil,
+					'{"data":{"repository":{"ref":{"associatedPullRequests":{"nodes":[{"url":"u",'
+						.. '"baseRefName":"main"'
+						.. case.fields
+						.. "}]}}}}}"
+				)
+			end)
+			local got_err, got = "unset", "unset"
+			gh.get_open_pr_stack("parent", function(err, info)
+				got_err, got = err, info
+			end)
+			if case.fails then
+				assert.are.equal("Incomplete stack information for the parent PR", got_err)
+				assert.is_nil(got)
+			else
+				assert.is_nil(got_err)
+				assert.are.same({ url = "u", base_ref = "main" }, got)
+			end
+		end)
+	end
+
 	it("reports incomplete stack membership as an error rather than an unstacked parent", function()
 		for _, node in ipairs({
 			{ url = "u" },
