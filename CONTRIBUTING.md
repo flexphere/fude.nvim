@@ -5,6 +5,8 @@ Thank you for your interest in fude.nvim.
 - Bug reports, feature requests, and questions are welcome. Please open an [issue](https://github.com/flexphere/fude.nvim/issues).
 - Pull requests from outside contributors are not accepted. If you have a fix or an idea, please describe it in an issue instead.
 
+AI tools have made it easier to create and submit malicious pull requests. This does not mean that every external pull request is malicious, but determining whether one contains malicious changes takes significant time and effort. As maintainers, we have chosen not to take on that review burden, so we do not accept external pull requests. We appreciate your willingness to contribute and hope you understand this decision.
+
 When reporting a bug, please include:
 
 - Your Neovim version (`nvim --version`)
