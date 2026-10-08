@@ -24,11 +24,12 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
 | 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR の一貫ワークフロー | `.claude/skills/develop/` |
 | 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
-| 推論的 | `/self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/self-review/` |
-| 推論的 | `/pr` skill | コミット分割と draft PR 作成 | `.claude/skills/pr/` |
-| 推論的 | `/review-respond` skill | PR レビューコメント対応と知見記録 | `.claude/skills/review-respond/` |
+| 推論的 | `/develop-self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/develop-self-review/` |
+| 推論的 | `/develop-pr` skill | コミット分割と draft PR 作成 | `.claude/skills/develop-pr/` |
+| 推論的 | `/develop-review-respond` skill | PR レビューコメント対応と知見記録 | `.claude/skills/develop-review-respond/` |
+| 推論的 | `/develop-review-watch` skill | PR 作成後のレビュー待受ループ（Monitor で指摘検知→`/develop-review-respond`→無音で Ready 化） | `.claude/skills/develop-review-watch/` |
 | 推論的 | `/harness-audit` skill | 本ドキュメントとレビュー知見の定期点検 | `.claude/skills/harness-audit/` |
-| 推論的 | `.claude/review-lessons.md` | 未統合の再発防止パターンの一時置き場（`/review-respond` Phase 6 または `/harness-audit` で `pj-checklist` に統合後クリア） | `.claude/` |
+| 推論的 | `.claude/review-lessons.md` | 未統合の再発防止パターンの一時置き場（`/develop-review-respond` Phase 6 または `/harness-audit` で `pj-checklist` に統合後クリア） | `.claude/` |
 | 推論的 | `.github/copilot-instructions.md` | Copilot 用の言語指示 | `.github/` |
 | 計算的 | `.stylua.toml` | フォーマット規約 | repo root |
 | 計算的 | `.luacheckrc` | Lint 規約 | repo root |
@@ -49,8 +50,8 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `make coverage` (luacov) | 開発中（手動）・CI | `lua/fude/` のテストカバレッジ計測。`make all` には未組み込み（報告のみ・閾値強制なし）。CI artifact `coverage-report` に保管 |
 | 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 6 つを順次実行する **ローカルゲート** |
 | 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
-| 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
-| 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
+| 推論的 | `/develop-self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
+| 推論的 | `/develop-self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
 | 推論的 | 人間レビュー | PR | プロジェクト視点・組織的判断 |
 
@@ -66,10 +67,10 @@ Martin Fowler "Harness Engineering for Coding Agents"
 
 ```
 PR レビュー指摘
-  └─ /review-respond Phase 5: 再発防止パターンを review-lessons.md に追記
-  └─ /review-respond Phase 6: review-lessons.md → pj-checklist へ統合
+  └─ /develop-review-respond Phase 5: 再発防止パターンを review-lessons.md に追記
+  └─ /develop-review-respond Phase 6: review-lessons.md → pj-checklist へ統合
        (完全重複は削除、部分重複は抽象化、新規知見は保持)
-       └─ 次回以降の /develop Phase 1・/self-review ラウンド 1-2 で参照される
+       └─ 次回以降の /develop Phase 1・/develop-self-review ラウンド 1-2 で参照される
 ```
 
 加えて、低頻度のメタ点検として以下を実施する:
@@ -86,9 +87,9 @@ PR レビュー指摘
 
 - `/develop` Phase 1 は `CLAUDE.md` と `review-lessons.md` を参照する。**本ドキュメント (HARNESS.md) も
   俯瞰用として軽く目を通す**ことで「今どこを触っているか」をハーネス全体地図の上で位置付けできる
-- `/review-respond` Phase 6 は `review-lessons.md` のエントリ統合と削除を行う。一定数を超えたら
+- `/develop-review-respond` Phase 6 は `review-lessons.md` のエントリ統合と削除を行う。一定数を超えたら
   `/harness-audit` の起動を提案する
-- `/self-review` は本ドキュメントを直接参照しない（個別 skill が役割を持つ）
+- `/develop-self-review` は本ドキュメントを直接参照しない（個別 skill が役割を持つ）
 
 ## 4. Roadmap：既知のギャップと将来計画
 
@@ -127,7 +128,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 - **Security 自動 scan**: 外部入力は `gh` CLI 経由に限定、コードベースが小さい。手動
   `/security-review` で十分
 - **Computational Guide 拡張**: 動的型言語の性質上、type guard 等は導入コストに見合わない
-- **skill 内自己参照整合の機械的検証**: skill `.md` 内の Phase 番号参照や用語定義の自動検証は、対象 skill 数の少なさ（現状 6）と人手チェックの容易さから ROI 低。新規 skill 追加・修正時に `/pj-checklist` の「skill ドキュメント内の自己参照」項目で人手検出する
+- **skill 内自己参照整合の機械的検証**: skill `.md` 内の Phase 番号参照や用語定義の自動検証は、対象 skill 数の少なさ（現状 7）と人手チェックの容易さから ROI 低。新規 skill 追加・修正時に `/pj-checklist` の「skill ドキュメント内の自己参照」項目で人手検出する
 
 ## 5. このドキュメントの保守ルール
 
