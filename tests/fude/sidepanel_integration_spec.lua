@@ -559,7 +559,15 @@ describe("sidepanel integration", function()
 
 	local function help_text(panel)
 		local buf = vim.api.nvim_win_get_buf(panel.help_win)
-		return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n")
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		-- Normalize column padding here; exact alignment is tested in sidepanel_spec.
+		for i, line in ipairs(lines) do
+			local lhs, desc = line:match("^%s*(%S+)%s%s+(.*)$")
+			if lhs then
+				lines[i] = lhs .. "  " .. desc
+			end
+		end
+		return table.concat(lines, "\n")
 	end
 
 	it("? opens configured keymaps and q closes only the help", function()

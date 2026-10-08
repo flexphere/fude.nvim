@@ -363,15 +363,24 @@ end
 --- @return string[]
 function M.build_help_lines(mappings, review_mode)
 	local lines = { "Side panel keymaps", "" }
+	local key_width = 1
+	for _, mapping in ipairs(mappings) do
+		key_width = math.max(key_width, vim.fn.strdisplaywidth(mapping.lhs))
+	end
+	local function help_row(lhs, desc)
+		local padding = key_width - vim.fn.strdisplaywidth(lhs)
+		local left = math.floor(padding / 2)
+		return string.rep(" ", left) .. lhs .. string.rep(" ", padding - left + 2) .. desc
+	end
 	for _, mapping in ipairs(mappings) do
 		local desc = mapping.desc
 		if mapping.action == "toggle_reviewed" and review_mode == "local" then
 			desc = "Switch scope / toggle file viewed"
 		end
-		table.insert(lines, mapping.lhs .. "  " .. desc)
+		table.insert(lines, help_row(mapping.lhs, desc))
 	end
 	table.insert(lines, "")
-	table.insert(lines, "q  Close this help")
+	table.insert(lines, help_row("q", "Close this help"))
 	table.insert(lines, ":help :FudeReviewPanel")
 	return lines
 end
