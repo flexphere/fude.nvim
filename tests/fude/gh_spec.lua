@@ -575,7 +575,16 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		local captured_args
 		helpers.mock(gh, "run_json", function(args, callback)
 			captured_args = args
-			callback(nil, pr_response({ { url = "https://github.com/o/r/pull/1", stack = { number = 3 } } }))
+			callback(
+				nil,
+				pr_response({
+					{
+						url = "https://github.com/o/r/pull/1",
+						stack = { number = 3, size = 2 },
+						stackEntry = { position = 2 },
+					},
+				})
+			)
 		end)
 		local got_err, got = "unset", "unset"
 		gh.get_open_pr_stack("feat/a", function(err, info)
@@ -588,7 +597,10 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		)
 		assert.is_not_nil(captured_args[10]:find("associatedPullRequests", 1, true))
 		assert.is_nil(got_err)
-		assert.are.same({ url = "https://github.com/o/r/pull/1", stack_number = 3 }, got)
+		assert.are.same(
+			{ url = "https://github.com/o/r/pull/1", stack_number = 3, stack_size = 2, stack_position = 2 },
+			got
+		)
 	end)
 
 	it("get_open_pr_stack reports a failed lookup as an error, not as no PR", function()
@@ -601,6 +613,25 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		end)
 		assert.are.equal("HTTP 401: Bad credentials", got_err)
 		assert.is_nil(got)
+	end)
+
+	it("reports incomplete stack membership as an error rather than an unstacked parent", function()
+		for _, node in ipairs({
+			{ url = "u" },
+			{ url = "u", stack = {} },
+			{ url = "u", stack = { size = 2 }, stackEntry = { position = 2 } },
+			{ url = "u", stack = { number = 3, size = 2 }, stackEntry = vim.NIL },
+		}) do
+			helpers.mock(gh, "run_json", function(_, callback)
+				callback(nil, pr_response({ node }))
+			end)
+			local result, result_err
+			gh.get_open_pr_stack("parent", function(err, info)
+				result, result_err = info, err
+			end)
+			assert.is_nil(result)
+			assert.are.equal("Incomplete stack information for the parent PR", result_err)
+		end
 	end)
 
 	it("parse_open_pr_stack returns the PR with its stack", function()
