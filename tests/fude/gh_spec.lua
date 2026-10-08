@@ -653,6 +653,39 @@ describe("create_draft_pr / edit_pr --attach args", function()
 		assert.is_nil(gh.parse_open_pr_stack(pr_response({ { url = 1 } })))
 	end)
 
+	it("checks the stack command and repository capability without mutations", function()
+		local calls = {}
+		helpers.mock(gh, "run", function(args, callback)
+			table.insert(calls, args)
+			callback(nil, "")
+		end)
+		local result = "unset"
+		gh.check_stack_available(function(err)
+			result = err
+		end)
+		assert.is_nil(result)
+		assert.are.same({
+			{ "stack", "link", "--help" },
+			{ "api", "repos/{owner}/{repo}/stacks?per_page=1" },
+		}, calls)
+	end)
+
+	for _, fail_at in ipairs({ 1, 2 }) do
+		it("stops the capability check at failed command " .. fail_at, function()
+			local calls = 0
+			helpers.mock(gh, "run", function(_, callback)
+				calls = calls + 1
+				callback(calls == fail_at and "failure detail" or nil)
+			end)
+			local result
+			gh.check_stack_available(function(err)
+				result = err
+			end)
+			assert.are.equal(fail_at, calls)
+			assert.is_not_nil(result:find("failure detail", 1, true))
+		end)
+	end
+
 	it("link_stack runs gh stack link with the refs bottom to top", function()
 		local calls = {}
 		helpers.mock(gh, "run", function(args, callback)
