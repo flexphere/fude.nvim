@@ -341,7 +341,7 @@ end
 
 --- Show a persistent stack failure message. Never close or delete a GitHub PR.
 --- @param err string
---- @param pr_url string|nil URL when creation already succeeded
+--- @param pr_url string|nil URL when creation already succeeded; "" when not returned
 function M.show_stack_error(err, pr_url)
 	-- The asynchronous failure may arrive while the user is editing elsewhere.
 	-- Enter normal mode so the advertised q mapping works immediately.
@@ -350,7 +350,7 @@ function M.show_stack_error(err, pr_url)
 			and {
 				"The draft PR was created, but stacking failed.",
 				"The PR has NOT been closed or deleted.",
-				"PR: " .. pr_url,
+				pr_url ~= "" and ("PR: " .. pr_url) or "PR URL was not returned. Find the PR on GitHub.",
 				"Check its stack status on GitHub before retrying; do not create another PR.",
 			}
 		or {
@@ -643,10 +643,14 @@ function M.open_pr_float(title_lines, body_lines, opts)
 				if M.get_draft() == draft_at_submit then
 					M.clear_draft()
 				end
-				local url = data and data.url or ""
+				local url = type(data) == "table" and type(data.url) == "string" and vim.trim(data.url) or ""
+				if opts.stack and url == "" then
+					M.show_stack_error("PR creation returned no URL, so the PR could not be linked to the stack.", "")
+					return
+				end
 				local suffix = M.format_attach_suffix(#extracted.attachments)
 				vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
-				if opts.stack and url ~= "" then
+				if opts.stack then
 					link_to_stack(opts.stack, url)
 				end
 			end)

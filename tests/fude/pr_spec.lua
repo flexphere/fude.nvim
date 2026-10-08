@@ -1330,6 +1330,22 @@ describe("create submit draft cleanup", function()
 			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, new_stack = false, stack_number = 7 } })
 			assert.are.same({}, link_calls)
 		end)
+
+		for _, result in ipairs({ false, {}, { url = "" }, { url = " \n " }, { url = vim.NIL } }) do
+			it("reports missing PR URLs as a post-create failure: " .. vim.inspect(result), function()
+				helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
+					callback(nil, result or nil)
+				end)
+				submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, stack_number = 7 } })
+				assert.are.same({}, link_calls)
+				assert.is_nil(find_notification("Draft PR created"))
+				local lines = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+				assert.is_not_nil(lines:find("PR URL was not returned", 1, true))
+				assert.is_not_nil(lines:find("NOT been closed or deleted", 1, true))
+				assert.is_nil(lines:find("before creating a PR", 1, true))
+				assert.is_nil(pr.get_draft())
+			end)
+		end
 	end)
 end)
 
