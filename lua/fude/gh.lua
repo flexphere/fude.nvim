@@ -826,6 +826,22 @@ function M.link_stack(refs, base, callback)
 	end)
 end
 
+--- Check the stack command and repository API without creating or changing PRs.
+--- A successful read does not guarantee a later stack mutation will succeed.
+--- @param callback fun(err: string|nil)
+function M.check_stack_available(callback)
+	M.run({ "stack", "link", "--help" }, function(err)
+		if err then
+			callback("gh stack link is unavailable: " .. err)
+			return
+		end
+		-- This is a capability probe, not a listing: one result is sufficient.
+		M.run({ "api", "repos/{owner}/{repo}/stacks?per_page=1" }, function(api_err)
+			callback(api_err and ("Cannot access repository stacks: " .. api_err) or nil)
+		end)
+	end)
+end
+
 --- Get the authenticated GitHub username.
 --- @param callback fun(err: string|nil, login: string|nil)
 function M.get_authenticated_user(callback)

@@ -339,6 +339,86 @@ function M.find_templates()
 	return templates
 end
 
+--- Show a persistent stack failure message. Never close or delete a GitHub PR.
+--- @param err string
+--- @param pr_url string|nil URL when creation already succeeded
+function M.show_stack_error(err, pr_url)
+	-- The asynchronous failure may arrive while the user is editing elsewhere.
+	-- Enter normal mode so the advertised q mapping works immediately.
+	vim.cmd("stopinsert")
+	local lines = pr_url
+			and {
+				"The draft PR was created, but stacking failed.",
+				"The PR has NOT been closed or deleted.",
+				"PR: " .. pr_url,
+				"Check its stack status on GitHub before retrying; do not create another PR.",
+			}
+		or {
+			"Stacked PR creation cancelled before creating a PR.",
+			"Any saved draft has been kept.",
+		}
+	vim.list_extend(lines, { "", "Error:" })
+	vim.list_extend(lines, vim.split(vim.trim(format.normalize_newlines(err)), "\n", { plain = true }))
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.bo[buf].modifiable = false
+	local float = config.opts.float or {}
+	local dim = format.calculate_float_dimensions(vim.o.columns, vim.o.lines, float.width or 50, float.height or 50)
+	local width = math.max(1, math.min(dim.width, vim.o.columns - 2))
+	local height = math.max(1, math.min(dim.height, vim.o.lines - 4))
+	-- A border is required for the footer, even when ordinary floats use none.
+	local border = float.border
+	if not border or border == "none" or border == "" or border == "shadow" then
+		border = "rounded"
+	end
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		row = math.max(0, math.floor((vim.o.lines - height - 2) / 2)),
+		col = math.max(0, math.floor((vim.o.columns - width - 2) / 2)),
+		width = width,
+		height = height,
+		style = "minimal",
+		border = border,
+		title = " Stacking failed ",
+		title_pos = "center",
+		footer = " q close ",
+		footer_pos = "center",
+	})
+	vim.wo[win].wrap = true
+	vim.keymap.set("n", "q", function()
+		if vim.api.nvim_win_is_valid(win) then
+			vim.api.nvim_win_close(win, true)
+		end
+	end, { buffer = buf, nowait = true, silent = true })
+end
+
+--- Recheck the selected parent immediately before creating the PR. A changed
+--- stack needs a new choice, never an automatic ordinary-PR fallback.
+local function check_stack_target(base, stack, callback)
+	gh.check_stack_available(function(err)
+		if err then
+			callback(err)
+			return
+		end
+		gh.get_open_pr_stack(base, function(lookup_err, info)
+			if lookup_err then
+				callback("Failed to look up the PR of " .. base .. ": " .. lookup_err)
+				return
+			end
+			local matches = info and info.url == stack.parent_url
+			if matches and stack.new_stack then
+				matches = not info.stack_number and info.base_ref == stack.parent_base
+			elseif matches then
+				matches = info.stack_number == stack.stack_number
+					and info.stack_position ~= nil
+					and info.stack_position == info.stack_size
+			end
+			callback(not matches and "The parent PR or stack has changed. Select the base branch again." or nil)
+		end)
+	end)
+end
+
 --- Stack a freshly created PR on top of the parent PR as a GitHub stacked PR.
 --- The parent PR was looked up before the float opened (see `resolve_stack`),
 --- so this only links: an existing stack is grown with
@@ -349,8 +429,7 @@ end
 --- The parent is passed as its PR URL, never as a branch name: `gh stack link`
 --- pushes branch arguments and creates PRs for branches without one, which
 --- would open an unrequested PR for the parent.
---- The PR itself is already created at this point, so a failure is a WARN
---- that leaves it in place as an ordinary (unstacked) PR.
+--- The PR is already created: report failure in a float and leave it untouched.
 --- @param stack table { parent_url: string, new_stack: boolean, stack_number: number|nil, parent_base: string|nil }
 --- @param pr_url string URL of the PR just created
 --- @private
@@ -363,7 +442,7 @@ local function link_to_stack(stack, pr_url)
 	end
 	gh.link_stack(refs, base, function(err)
 		if err then
-			vim.notify("fude.nvim: Stacking failed (the PR was created unstacked): " .. vim.trim(err), vim.log.levels.WARN)
+			M.show_stack_error(err, pr_url)
 			return
 		end
 		local what = stack.new_stack and "New stack created on " or "Stacked on "
@@ -551,26 +630,38 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		-- whether the draft was replaced while the request was in flight
 		local draft_at_submit = M.get_draft()
 
-		vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
-
 		local extracted = M.parse_body_attachments(parsed.body, expand_home)
-		gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, opts.base, function(err, data)
-			if err then
-				vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
-				return
-			end
-			-- Success: clear the draft, unless a newer one was saved while
-			-- the request was in flight (e.g. the user reopened :FudePR)
-			if M.get_draft() == draft_at_submit then
-				M.clear_draft()
-			end
-			local url = data and data.url or ""
-			local suffix = M.format_attach_suffix(#extracted.attachments)
-			vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
-			if opts.stack and url ~= "" then
-				link_to_stack(opts.stack, url)
-			end
-		end)
+		local function create_pr()
+			vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
+			gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, opts.base, function(err, data)
+				if err then
+					vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
+					return
+				end
+				-- The PR exists even if linking fails. Do not offer its input as
+				-- a new PR draft, but preserve any newer draft saved in flight.
+				if M.get_draft() == draft_at_submit then
+					M.clear_draft()
+				end
+				local url = data and data.url or ""
+				local suffix = M.format_attach_suffix(#extracted.attachments)
+				vim.notify("fude.nvim: Draft PR created: " .. url .. suffix, vim.log.levels.INFO)
+				if opts.stack and url ~= "" then
+					link_to_stack(opts.stack, url)
+				end
+			end)
+		end
+		if opts.stack then
+			check_stack_target(opts.base, opts.stack, function(err)
+				if err then
+					M.show_stack_error(err)
+					return
+				end
+				create_pr()
+			end)
+		else
+			create_pr()
+		end
 	end
 
 	-- Draft-save wiring for the cancel confirmation. create mode always saves
@@ -951,32 +1042,39 @@ end
 --- grows at its top), so the user picks between an ordinary PR on `base` and
 --- a stacked PR on the stack's top branch, which replaces `base`.
 --- The PR cannot be stacked when `base` has no open PR (a stack links PRs, not
---- branches) or when the lookup fails; both get a WARN (the latter with gh's
---- error, so it is not mistaken for "no PR") and continue as an ordinary PR,
---- since nothing is lost by creating it unstacked.
+--- branches) or when the lookup fails; both show a failure float (the latter
+--- with gh's error, so it is not mistaken for "no PR") and abort creation.
 --- @param base string picked base branch
 --- @param callback fun(result: table|nil) { base: string, stack: table|nil } — `stack` is
 ---   { parent_url, new_stack, stack_number?, parent_base? } to stack, nil for an ordinary PR;
----   nil when the user cancelled
+---   nil when the user cancelled or stacking prerequisites could not be resolved
 --- @private
 local function resolve_stack(base, callback)
-	local function ordinary(msg)
-		vim.notify("fude.nvim: Not stacked (creating an ordinary PR): " .. msg, vim.log.levels.WARN)
-		callback({ base = base })
+	local function abort(msg)
+		M.show_stack_error(msg)
+		callback(nil)
 	end
 	gh.get_open_pr_stack(base, function(err, info)
 		if err then
-			ordinary("failed to look up the PR of " .. base .. ": " .. vim.trim(err))
+			abort("failed to look up the PR of " .. base .. ": " .. vim.trim(err))
 			return
 		end
 		if not info then
-			ordinary(base .. " has no open PR")
+			abort(base .. " has no open PR")
 			return
 		end
 		if not info.stack_number then
+			if not info.base_ref or info.base_ref == "" then
+				abort("Cannot determine the parent PR's base branch")
+				return
+			end
 			-- the user already answered Yes to stacking, so a parent in no stack
 			-- starts a new one without asking again
 			callback({ base = base, stack = { parent_url = info.url, new_stack = true, parent_base = info.base_ref } })
+			return
+		end
+		if info.stack_position == nil or info.stack_size == nil then
+			abort("Cannot determine the parent PR's position in stack #" .. info.stack_number)
 			return
 		end
 		if info.stack_position == info.stack_size then
@@ -988,7 +1086,7 @@ local function resolve_stack(base, callback)
 		end
 		local top = info.stack_top
 		if not top then
-			ordinary("the PR of " .. base .. " is not the top of stack #" .. info.stack_number)
+			abort("Cannot determine the top PR of stack #" .. info.stack_number)
 			return
 		end
 		M.confirm_non_top_stack(base, top.branch, info.stack_number, function(choice)
