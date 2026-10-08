@@ -343,6 +343,90 @@ function M.resolve_entry_at_cursor(cursor_line, section_map)
 	return nil
 end
 
+--- Close only the panel's quick help, without triggering file-following autocmds.
+--- @param panel table sidepanel state
+function M.close_help(panel)
+	local win = panel.help_win
+	panel.help_win = nil
+	if win and vim.api.nvim_win_is_valid(win) then
+		local focused = vim.api.nvim_get_current_win() == win
+		vim.cmd("noautocmd call nvim_win_close(" .. win .. ", v:true)")
+		if focused and vim.api.nvim_win_is_valid(panel.win) then
+			vim.cmd("noautocmd call win_gotoid(" .. panel.win .. ")")
+		end
+	end
+end
+
+--- Format only successfully registered panel mappings, in registration order.
+--- @param mappings table[] { action, lhs, desc }
+--- @param review_mode string|nil
+--- @return string[]
+function M.build_help_lines(mappings, review_mode)
+	local lines = { "Side panel keymaps", "" }
+	for _, mapping in ipairs(mappings) do
+		local desc = mapping.desc
+		if mapping.action == "toggle_reviewed" and review_mode == "local" then
+			desc = "Switch scope / toggle file viewed"
+		end
+		table.insert(lines, mapping.lhs .. "  " .. desc)
+	end
+	table.insert(lines, "")
+	table.insert(lines, "q  Close this help")
+	table.insert(lines, ":help :FudeReviewPanel")
+	return lines
+end
+
+--- Toggle a read-only floating help view for the active panel.
+--- @param panel table sidepanel state
+function M.toggle_help(panel)
+	if config.state.sidepanel ~= panel or not vim.api.nvim_win_is_valid(panel.win) then
+		return
+	end
+	if panel.help_win and vim.api.nvim_win_is_valid(panel.help_win) then
+		M.close_help(panel)
+		return
+	end
+	local lines = M.build_help_lines(panel.help_mappings or {}, config.state.review_mode)
+	local max_width = 1
+	for _, line in ipairs(lines) do
+		max_width = math.max(max_width, vim.fn.strdisplaywidth(line))
+	end
+	local width = math.max(1, math.min(max_width * 2, vim.o.columns - 4))
+	local rows = 0
+	for _, line in ipairs(lines) do
+		rows = rows + math.max(1, math.ceil(vim.fn.strdisplaywidth(line) / width))
+	end
+	local available_height = math.max(1, vim.o.lines - vim.o.cmdheight - 4)
+	local height = math.min(rows * 2, available_height)
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].bufhidden = "wipe"
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.bo[buf].modifiable = false
+	local ok, win = pcall(vim.api.nvim_open_win, buf, true, {
+		relative = "editor",
+		style = "minimal",
+		border = config.opts.float.border,
+		width = width,
+		height = height,
+		row = math.max(0, math.floor((vim.o.lines - vim.o.cmdheight - height - 2) / 2)),
+		col = math.max(0, math.floor((vim.o.columns - width - 2) / 2)),
+		-- Entering help is not file navigation: preserve the panel's view.
+		noautocmd = true,
+	})
+	if not ok then
+		vim.api.nvim_buf_delete(buf, { force = true })
+		vim.notify("fude.nvim: Could not open panel help: " .. tostring(win), vim.log.levels.WARN)
+		return
+	end
+	panel.help_win = win
+	vim.wo[win].wrap = true
+	vim.wo[win].linebreak = true
+	vim.api.nvim_buf_add_highlight(buf, sidepanel_ns, "Title", 0, 0, -1)
+	vim.keymap.set("n", "q", function()
+		M.close_help(panel)
+	end, { buffer = buf, desc = "Close panel help" })
+end
+
 --- Close the sidepanel and clean up state. When the panel is the current
 --- window, focus returns to the window it was opened/focused from
 --- (`panel.prev_win`); when the panel is closed from elsewhere (teardown,
@@ -357,6 +441,7 @@ function M.close()
 	if panel.augroup then
 		pcall(vim.api.nvim_del_augroup_by_id, panel.augroup)
 	end
+	M.close_help(panel)
 
 	local was_focused = panel.win ~= nil and vim.api.nvim_get_current_win() == panel.win
 
@@ -503,6 +588,14 @@ local function render(panel)
 
 	local lines, highlights, section_map =
 		M.build_sidepanel_content(scope_lines, scope_hls, scope_count, file_lines, file_hls, file_count)
+	for _, mapping in ipairs(panel.help_mappings or {}) do
+		if mapping.action == "help" then
+			table.insert(lines, "")
+			table.insert(highlights, { #lines, 0, -1, "Comment" })
+			table.insert(lines, " " .. mapping.lhs .. " Help")
+			break
+		end
+	end
 
 	-- Update buffer
 	local buf = panel.buf
@@ -681,6 +774,8 @@ function M.open()
 			local closed_win = tonumber(ev.match)
 			if closed_win == win then
 				M.close()
+			elseif closed_win == panel.help_win then
+				panel.help_win = nil
 			end
 		end,
 	})
@@ -700,6 +795,9 @@ function M.open()
 		desc = "fude.nvim: Realign file rows after panel resize",
 	})
 
+	-- Register first so the footer describes only an effective help mapping.
+	M.setup_keymaps(panel)
+
 	-- Render content
 	render(panel)
 
@@ -707,9 +805,6 @@ function M.open()
 	if panel.section_map then
 		pcall(vim.api.nvim_win_set_cursor, win, { panel.section_map.scope_start + 1, 0 })
 	end
-
-	-- Setup keymaps
-	M.setup_keymaps(panel)
 end
 
 --- Toggle the sidepanel: open it when closed, focus it when open but
@@ -748,13 +843,19 @@ function M.setup_keymaps(panel)
 	-- the priority order documented in doc/fude.txt (`sidepanel.keymaps`), so
 	-- keep the two in sync.
 	local used_lhs = {}
+	panel.help_mappings = {}
 	local function map(action, callback, desc)
 		local lhs = keymaps[action]
-		if type(lhs) ~= "string" or lhs == "" or used_lhs[lhs] then
+		if type(lhs) ~= "string" or lhs == "" then
 			return
 		end
-		used_lhs[lhs] = true
+		local key = vim.api.nvim_replace_termcodes(lhs, true, true, true)
+		if used_lhs[key] then
+			return
+		end
+		used_lhs[key] = true
 		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
+		table.insert(panel.help_mappings, { action = action, lhs = lhs, desc = desc })
 	end
 
 	-- Select / Open
@@ -826,6 +927,10 @@ function M.setup_keymaps(panel)
 	map("prev_entry", function()
 		M.move_to_adjacent_entry(panel, -1, vim.v.count1)
 	end, "Move to previous selectable entry")
+
+	map("help", function()
+		M.toggle_help(panel)
+	end, "Show panel keymaps")
 end
 
 --- Build the sorted 1-based list of panel lines that accept `select`.

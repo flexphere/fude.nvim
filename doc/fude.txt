@@ -793,6 +793,14 @@ File opening position                                 *fude-file-position*
       `t`       Toggle files between flat list and tree
       `R`       Reload review data
       `q`       Close panel
+      `?`       Open a floating reference of configured panel keymaps
+
+    The "? Help" hint appears below the file list. Both the hint and help
+    use the effective mappings from `sidepanel.keymaps`: disabled mappings
+    and actions shadowed by an earlier action are omitted. Inside the help,
+    `q` always closes only the help, even if the panel's close key was
+    changed. The panel cursor, scroll position, and directory folds are
+    preserved. Closing the panel also closes its help.
 
     When opening a file with `<CR>`, the cursor moves to a non-panel
     window before opening the file. The panel stays open.
@@ -973,6 +981,9 @@ Default configuration: >lua
         toggle_file_tree = "t",
         reload = "R",
         close = "q",
+        next_entry = "j",
+        prev_entry = "k",
+        help = "?",
       },
     },
     -- Outdated comment display options
@@ -1207,6 +1218,8 @@ Options:
                   - `next_entry`: "j" / `prev_entry`: "k" (jump between
                     selectable entry lines, skipping headers, separators,
                     and blank lines; includes tree-mode directory rows)
+                  - `help`: "?" (open floating keymap reference; `q` inside
+                    it closes only the help)
                   Set an action to `false` or an empty string to disable its
                   panel-local mapping and allow another mapping to apply
                   (set both `next_entry = false` and `prev_entry = false`
@@ -1215,6 +1228,9 @@ Options:
                   listed earlier above wins (e.g. an explicit
                   `select = "j"` takes the key; the `next_entry` default
                   is skipped).
+                  Equivalent spellings such as "<Tab>" and "<C-i>" also
+                  count as the same key. The help action has lowest
+                  priority; when disabled or shadowed, its hint is hidden.
 
 `outdated.show`     Show outdated comments (default: true).
                   Outdated comments are those whose position in the code
