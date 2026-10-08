@@ -269,11 +269,12 @@ require("fude").setup({
     keymaps = {
       select = "<CR>",           -- scope: switch / directory: fold / file: open
       toggle_reviewed = "<Tab>", -- PR scope reviewed / local scope switch / file viewed
-      next_entry = "j",          -- jump to next selectable entry (includes directories)
-      prev_entry = "k",          -- jump to previous selectable entry
       toggle_file_tree = "t",
       reload = "R",
       close = "q",
+      next_entry = "j",          -- jump to next selectable entry (includes directories)
+      prev_entry = "k",          -- jump to previous selectable entry
+      help = "?",                -- show configured panel keymaps
     },
   },
   -- Callback after review start completes (all data fetched)
@@ -288,6 +289,15 @@ require("fude").setup({
 ```
 
 ## Side panel file layout
+
+Press `?` in the side panel to open a floating keymap reference, then `q` to
+close only the help and return to the panel without moving its cursor or
+changing directory folds. The `? Help` hint appears below the file list.
+Both the hint and the reference honor `sidepanel.keymaps` overrides;
+disabled mappings and mappings shadowed by an earlier action are omitted.
+Set `sidepanel.keymaps.help` to change the help key, or `false` to hide the
+hint and disable the mapping. Inside the help, `q` always closes it,
+independently of the panel's close key.
 
 The side panel uses fixed columns for the current file (`▶`), review state
 (`✓` / `○`), and change status (`M` modified, `A` added, `D` deleted,

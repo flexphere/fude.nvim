@@ -118,6 +118,7 @@ M.defaults = {
 			close = "q",
 			next_entry = "j", -- Jump to the next selectable (<CR>-able) line
 			prev_entry = "k", -- Jump to the previous selectable (<CR>-able) line
+			help = "?", -- Show the side panel's configured keymaps
 		},
 	},
 	-- Callback invoked after review start completes (all data fetched).

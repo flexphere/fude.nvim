@@ -166,6 +166,38 @@ describe("file row layout", function()
 	end)
 end)
 
+describe("build_help_lines", function()
+	it("centers keys and aligns descriptions including the help close action", function()
+		local lines = sidepanel.build_help_lines({
+			{ action = "select", lhs = "<CR>", desc = "Select scope, toggle directory, or open file" },
+			{ action = "toggle_reviewed", lhs = "<Tab>", desc = "Toggle reviewed/viewed" },
+			{ action = "toggle_file_tree", lhs = "t", desc = "Toggle tree/flat file list" },
+			{ action = "help", lhs = "?", desc = "Show panel keymaps" },
+		}, "local")
+		assert.are.same({
+			"Side panel keymaps",
+			"",
+			"<CR>   Select scope, toggle directory, or open file",
+			"<Tab>  Switch scope / toggle file viewed",
+			"  t    Toggle tree/flat file list",
+			"  ?    Show panel keymaps",
+			"",
+			"  q    Close this help",
+			":help :FudeReviewPanel",
+		}, lines)
+	end)
+
+	it("sizes the key column for long overrides and measures display cells", function()
+		local lines = sidepanel.build_help_lines({
+			{ action = "help", lhs = "<leader>?", desc = "Show panel keymaps" },
+			{ action = "reload", lhs = "界", desc = "Reload review data" },
+		}, "github")
+		assert.are.equal("<leader>?  Show panel keymaps", lines[3])
+		assert.are.equal("   界      Reload review data", lines[4])
+		assert.are.equal("    q      Close this help", lines[6])
+	end)
+end)
+
 describe("format_scope_section", function()
 	local scope_entries = {
 		{

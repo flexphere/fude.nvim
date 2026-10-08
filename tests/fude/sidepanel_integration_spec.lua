@@ -557,6 +557,234 @@ describe("sidepanel integration", function()
 		return m and m.desc or nil
 	end
 
+	local function help_text(panel)
+		local buf = vim.api.nvim_win_get_buf(panel.help_win)
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		-- Normalize column padding here; exact alignment is tested in sidepanel_spec.
+		for i, line in ipairs(lines) do
+			local lhs, desc = line:match("^%s*(%S+)%s%s+(.*)$")
+			if lhs then
+				lines[i] = lhs .. "  " .. desc
+			end
+		end
+		return table.concat(lines, "\n")
+	end
+
+	it("? opens configured keymaps and q closes only the help", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+		assert.are.equal(" ? Help", lines[#lines])
+		vim.api.nvim_win_set_cursor(panel.win, { #lines, 0 })
+		assert.is_nil(sidepanel.get_current_entry(panel))
+		buf_keymap(panel.buf, "?").callback()
+		local help_win = panel.help_win
+		local help_buf = vim.api.nvim_win_get_buf(help_win)
+		assert.are.equal(help_win, vim.api.nvim_get_current_win())
+		assert.are.equal("editor", vim.api.nvim_win_get_config(help_win).relative)
+		assert.is_false(vim.bo[help_buf].modifiable)
+		local text = help_text(panel)
+		for _, mapping in ipairs(panel.help_mappings) do
+			assert.truthy(text:find(mapping.lhs .. "  " .. mapping.desc, 1, true))
+		end
+		assert.truthy(text:find("q  Close this help", 1, true))
+		buf_keymap(help_buf, "q").callback()
+		assert.is_nil(panel.help_win)
+		assert.is_false(vim.api.nvim_win_is_valid(help_win))
+		assert.is_false(vim.api.nvim_buf_is_valid(help_buf))
+		assert.are.equal(panel.win, vim.api.nvim_get_current_win())
+		assert.are.same({ #lines, 0 }, vim.api.nvim_win_get_cursor(panel.win))
+		buf_keymap(panel.buf, "q").callback()
+		assert.is_nil(config.state.sidepanel)
+	end)
+
+	it("help uses overrides and omits disabled and shadowed mappings", function()
+		config.setup({
+			sidepanel = {
+				keymaps = {
+					help = "g?",
+					select = "j",
+					toggle_reviewed = "v",
+					reload = false,
+					toggle_file_tree = "",
+				},
+			},
+		})
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+		assert.are.equal(" g? Help", lines[#lines])
+		assert.is_nil(buf_keymap(panel.buf, "?"))
+		buf_keymap(panel.buf, "g?").callback()
+		local text = help_text(panel)
+		assert.truthy(text:find("j  Select scope", 1, true))
+		assert.truthy(text:find("v  Toggle reviewed/viewed", 1, true))
+		assert.truthy(text:find("g?  Show panel keymaps", 1, true))
+		assert.is_falsy(text:find("Move to next", 1, true))
+		assert.is_falsy(text:find("Reload", 1, true))
+		assert.is_falsy(text:find("Toggle tree", 1, true))
+	end)
+
+	it("does not advertise a disabled or shadowed help mapping", function()
+		for _, keymaps in ipairs({ { help = false }, { help = "" }, { select = "?" } }) do
+			config.setup({ sidepanel = { keymaps = keymaps } })
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			local lines = vim.api.nvim_buf_get_lines(panel.buf, 0, -1, false)
+			assert.is_falsy(table.concat(lines, "\n"):find(" Help", 1, true))
+			assert.are_not.equal("Show panel keymaps", buf_keymap_desc(panel.buf, "?"))
+		end
+	end)
+
+	it("treats equivalent key spellings as collisions in registration and help", function()
+		config.setup({ sidepanel = { keymaps = { select = "<C-i>" } } })
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		buf_keymap(panel.buf, "?").callback()
+		local text = help_text(panel)
+		assert.truthy(text:find("<C-i>  Select scope", 1, true))
+		assert.is_falsy(text:find("Toggle reviewed/viewed", 1, true))
+	end)
+
+	it("explains the local scope action in local review help", function()
+		config.state.review_mode = "local"
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		buf_keymap(panel.buf, "?").callback()
+		assert.truthy(help_text(panel):find("<Tab>  Switch scope / toggle file viewed", 1, true))
+	end)
+
+	it("q in help remains available when the panel close key is overridden", function()
+		config.setup({ sidepanel = { keymaps = { close = "x", help = "q" } } })
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		buf_keymap(panel.buf, "q").callback()
+		local win = panel.help_win
+		assert.truthy(help_text(panel):find("x  Close side panel", 1, true))
+		buf_keymap(vim.api.nvim_win_get_buf(win), "q").callback()
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+		assert.are.equal(panel, config.state.sidepanel)
+		buf_keymap(panel.buf, "x").callback()
+		assert.is_nil(config.state.sidepanel)
+	end)
+
+	it("preserves panel view and folds with the real review autocmds enabled", function()
+		config.opts.sidepanel.file_tree = "tree"
+		config.state.changed_files = {}
+		for i = 1, 40 do
+			table.insert(config.state.changed_files, { path = string.format("dir%02d/a.lua", i), status = "added" })
+		end
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		panel.collapsed_dirs.dir01 = true
+		sidepanel.refresh()
+		vim.api.nvim_win_set_cursor(panel.win, { 35, 2 })
+		vim.cmd("normal! zt")
+		local view = vim.fn.winsaveview()
+		local folds = vim.deepcopy(panel.collapsed_dirs)
+		local init = require("fude.init")
+		init.setup_review_autocmds(config.state)
+		local group = config.state.augroup
+		local followed = false
+		helpers.mock(sidepanel, "follow_current_file", function()
+			followed = true
+		end)
+		buf_keymap(panel.buf, "?").callback()
+		sidepanel.refresh()
+		buf_keymap(vim.api.nvim_win_get_buf(panel.help_win), "q").callback()
+		assert.is_false(vim.wait(50, function()
+			return followed
+		end))
+		assert.are.same(view, vim.fn.winsaveview())
+		assert.are.same(folds, panel.collapsed_dirs)
+		vim.api.nvim_del_augroup_by_id(group)
+	end)
+
+	it("cleans up help on direct close, toggle, and panel close", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local show = buf_keymap(panel.buf, "?").callback
+		show()
+		local win = panel.help_win
+		vim.api.nvim_win_close(win, true)
+		assert.is_nil(panel.help_win)
+		show()
+		win = panel.help_win
+		show()
+		assert.is_nil(panel.help_win)
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+		show()
+		win = panel.help_win
+		local buf = vim.api.nvim_win_get_buf(win)
+		vim.api.nvim_win_close(panel.win, true)
+		assert.is_nil(config.state.sidepanel)
+		assert.is_false(vim.api.nvim_win_is_valid(win))
+		assert.is_false(vim.api.nvim_buf_is_valid(buf))
+	end)
+
+	it("stopping a review with help focused closes both windows", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		buf_keymap(panel.buf, "?").callback()
+		local help_win = panel.help_win
+		require("fude.init").stop()
+		assert.is_false(vim.api.nvim_win_is_valid(help_win))
+		assert.is_false(vim.api.nvim_win_is_valid(panel.win))
+		assert.is_nil(config.state.sidepanel)
+	end)
+
+	it("fits a small screen and honors the configured border", function()
+		local columns, lines = vim.o.columns, vim.o.lines
+		config.opts.float.border = "double"
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		vim.o.columns = 24
+		vim.o.lines = 10
+		buf_keymap(panel.buf, "?").callback()
+		local opts = vim.api.nvim_win_get_config(panel.help_win)
+		assert.is_true(opts.width >= 1 and opts.width + 2 <= 24)
+		assert.is_true(opts.height >= 1 and opts.height + 2 <= 10)
+		assert.are.equal("╔", opts.border[1])
+		sidepanel.close_help(panel)
+		vim.o.columns, vim.o.lines = columns, lines
+	end)
+
+	it("uses twice the content width and height when the screen has room", function()
+		local columns, lines = vim.o.columns, vim.o.lines
+		vim.o.columns, vim.o.lines = 180, 60
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		buf_keymap(panel.buf, "?").callback()
+		local content = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(panel.help_win), 0, -1, false)
+		local max_width = 0
+		for _, line in ipairs(content) do
+			max_width = math.max(max_width, vim.fn.strdisplaywidth(line))
+		end
+		local opts = vim.api.nvim_win_get_config(panel.help_win)
+		assert.are.equal(max_width * 2, opts.width)
+		assert.are.equal(#content * 2, opts.height)
+		sidepanel.close_help(panel)
+		vim.o.columns, vim.o.lines = columns, lines
+	end)
+
+	it("does not leak a scratch buffer when opening help fails", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local before = vim.api.nvim_list_bufs()
+		helpers.mock(vim.api, "nvim_open_win", function()
+			error("cannot open help")
+		end)
+		local notification
+		helpers.mock(vim, "notify", function(message)
+			notification = message
+		end)
+		buf_keymap(panel.buf, "?").callback()
+		assert.is_nil(panel.help_win)
+		assert.are.same(before, vim.api.nvim_list_bufs())
+		assert.are.equal(panel.win, vim.api.nvim_get_current_win())
+		assert.truthy(notification:find("Could not open panel help", 1, true))
+	end)
+
 	it("registers j/k entry-navigation keymaps by default", function()
 		sidepanel.open()
 		local buf = config.state.sidepanel.buf
