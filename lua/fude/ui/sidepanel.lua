@@ -433,7 +433,7 @@ function M.toggle_help(panel)
 	vim.api.nvim_buf_add_highlight(buf, sidepanel_ns, "Title", 0, 0, -1)
 	vim.keymap.set("n", "q", function()
 		M.close_help(panel)
-	end, { buffer = buf, desc = "Close panel help" })
+	end, { buffer = buf, nowait = true, desc = "Close panel help" })
 end
 
 --- Close the sidepanel and clean up state. When the panel is the current

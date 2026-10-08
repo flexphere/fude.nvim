@@ -26,7 +26,14 @@ describe("sidepanel integration", function()
 		end)
 	end)
 
+	local saved_columns, saved_lines
+	before_each(function()
+		saved_columns, saved_lines = vim.o.columns, vim.o.lines
+	end)
+
 	after_each(function()
+		-- Restore here so a failed assertion in a resize test does not leak the size.
+		vim.o.columns, vim.o.lines = saved_columns, saved_lines
 		helpers.cleanup()
 	end)
 
@@ -734,7 +741,6 @@ describe("sidepanel integration", function()
 	end)
 
 	it("fits a small screen and honors the configured border", function()
-		local columns, lines = vim.o.columns, vim.o.lines
 		config.opts.float.border = "double"
 		sidepanel.open()
 		local panel = config.state.sidepanel
@@ -746,11 +752,9 @@ describe("sidepanel integration", function()
 		assert.is_true(opts.height >= 1 and opts.height + 2 <= 10)
 		assert.are.equal("╔", opts.border[1])
 		sidepanel.close_help(panel)
-		vim.o.columns, vim.o.lines = columns, lines
 	end)
 
 	it("uses twice the content width and height when the screen has room", function()
-		local columns, lines = vim.o.columns, vim.o.lines
 		vim.o.columns, vim.o.lines = 180, 60
 		sidepanel.open()
 		local panel = config.state.sidepanel
@@ -764,7 +768,6 @@ describe("sidepanel integration", function()
 		assert.are.equal(max_width * 2, opts.width)
 		assert.are.equal(#content * 2, opts.height)
 		sidepanel.close_help(panel)
-		vim.o.columns, vim.o.lines = columns, lines
 	end)
 
 	it("does not leak a scratch buffer when opening help fails", function()
