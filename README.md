@@ -333,8 +333,12 @@ choice of *Save draft & close* / *Discard & close* / *Keep editing*. Drafts are
 stored locally (not sent to GitHub) at `stdpath("state")/fude/drafts.json` and
 restored the next time you open input for the same target, surviving PR switches
 and Neovim restarts. They cover line/range comments, suggestions, PR-level
-comments, replies, and edits, keyed per repo + PR + target so different
-locations and PRs never collide. Lines with a saved draft show a `draft`
+comments, replies, edits, and the `:FudeReviewSubmit` review body, keyed per
+repo + PR + target so different locations and PRs never collide. Saving the
+review body as a draft does not submit the review; it is restored on the next
+`:FudeReviewSubmit`. In local review mode, drafts work for line/range comments,
+suggestions, replies, and edits, keyed per worktree + branch instead of a PR so
+they survive `:FudeReviewStop`. Lines with a saved draft show a `draft`
 indicator in the diff (like `pending`); reply/edit drafts mark the targeted
 comment's line. Drafts also appear in the comment browser
 (`:FudeReviewListComments`) — existing entries gain a `✎draft` marker and new

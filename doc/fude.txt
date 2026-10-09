@@ -680,6 +680,15 @@ File opening position                                 *fude-file-position*
     If there are no pending comments, you can still submit a review
     with just a body (useful for Approve or Request Changes).
 
+    Pressing `q` / `<Esc>` in the body input skips the body and submits.
+    When the body has unsaved text, the 3-way draft prompt is shown
+    (see |fude-drafts|): "Save draft & close" keeps the body as a local
+    draft and does NOT submit the review; the draft is restored the next
+    time you run |:FudeReviewSubmit| for the PR and removed once a review
+    is submitted. "Discard & close" drops the body and submits. Closing
+    a restored draft without editing it keeps the draft and does not
+    submit; clear the body first to skip it.
+
 :FudeReviewReload                                  *:FudeReviewReload*
     Reload review data. In GitHub review mode, fetches the latest
     comments, changed files, viewed file states, and PR commits in
@@ -1374,10 +1383,17 @@ submitted with `<CR>` as a pending review comment or a single comment). A saved 
 automatically the next time you open input for the same target.
 
 Drafts cover every comment input: line and range comments, |:FudeReviewSuggest|
-suggestions, PR-level (issue) comments, replies, and edits. Each is keyed by
-repository, PR number, and target, so drafts for different locations and
-different PRs are kept independently and never collide. A draft is removed once
-its comment is submitted, or when you explicitly discard it.
+suggestions, PR-level (issue) comments, replies, edits, and the
+|:FudeReviewSubmit| review body. Each is keyed by repository, PR number, and
+target, so drafts for different locations and different PRs are kept
+independently and never collide. A draft is removed once its comment is
+submitted, or when you explicitly discard it.
+
+Local review mode (|fude-local-review|) supports drafts for line and range
+comments, suggestions, replies, and edits. They are keyed by the worktree and
+branch instead of a PR (the session id on a detached HEAD), so they survive
+|:FudeReviewStop| and a later restart on the same branch, and drafts of other
+branches or of GitHub reviews are never shown.
 
 |:FudeEditPR| uses the same store: cancelling with unsaved title/body changes
 offers the same 3-way choice, and the saved draft (keyed per repo + PR) is
@@ -1461,8 +1477,9 @@ Behavior~
   - Viewed state works locally: |:FudeReviewViewed| / |:FudeReviewUnviewed|
     and the side panel / picker `<Tab>` mark files viewed, persisted in
     the JSONL. The panel's "Files (Reviewed: N/M)" count reflects it.
-  - Comment drafts (|fude-drafts|) are disabled in local review mode
-    (comments are saved locally anyway).
+  - Comment drafts (|fude-drafts|) work for line/range comments,
+    suggestions, replies, and edits, keyed by the worktree and branch so
+    they survive |:FudeReviewStop|.
   - The statusline component (|fude-statusline|) shows the active scope:
     `Local: <base>`, `Local: unpushed`, `Local: uncommitted`, or
     `Local: <i>/<n>` for the commit scope.
