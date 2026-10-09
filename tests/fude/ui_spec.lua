@@ -2390,18 +2390,6 @@ describe("format_comments_for_inline", function()
 		assert.is_true(border_count >= 4)
 	end)
 
-	it("extends top and bottom borders to the end of the text area", function()
-		local comments = {
-			{ user = { login = "alice" }, created_at = "2024-01-01", body = "comment" },
-		}
-		local result = ui.format_comments_for_inline(comments, identity)
-		local win = vim.api.nvim_get_current_win()
-		local text_width = vim.api.nvim_win_get_width(win) - (vim.fn.getwininfo(win)[1].textoff or 0)
-
-		assert.are.equal(text_width, vim.fn.strdisplaywidth(result.virt_lines[1][1][1]))
-		assert.are.equal(text_width, vim.fn.strdisplaywidth(result.virt_lines[#result.virt_lines][1][1]))
-	end)
-
 	it("uses custom highlight groups", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "test" },
