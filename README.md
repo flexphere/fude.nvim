@@ -116,7 +116,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewStart` | Start review session (PR detection, comments, extmarks) |
 | `:FudeReviewStop` | Stop review session |
 | `:FudeReviewToggle` | Toggle review session |
-| `:FudeReviewDiff` | Toggle diff preview window |
+| `:FudeReviewDiff` | Toggle diff preview window (renamed files diff against their old path) |
 | `:FudeReviewComment` | Create pending comment on current line/selection |
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
 | `:FudeReviewViewComment` | View comments on current line (`r` reply, `e` edit, `d` delete, `R` resolve/unresolve the thread) |

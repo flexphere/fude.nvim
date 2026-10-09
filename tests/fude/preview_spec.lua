@@ -59,3 +59,24 @@ describe("is_preview_current", function()
 		assert.is_false(preview.is_preview_current(10, true, 1, nil, 1, 20))
 	end)
 end)
+
+describe("find_base_path", function()
+	it("returns the old path for a renamed file", function()
+		local files = { { path = "lua/new.lua", previous_path = "lua/old.lua", status = "renamed" } }
+		assert.equals("lua/old.lua", preview.find_base_path("lua/new.lua", files))
+	end)
+
+	it("returns the path itself for a file without previous_path", function()
+		local files = { { path = "lua/a.lua", status = "modified" } }
+		assert.equals("lua/a.lua", preview.find_base_path("lua/a.lua", files))
+	end)
+
+	it("returns the path itself for a file outside changed_files", function()
+		local files = { { path = "lua/new.lua", previous_path = "lua/old.lua", status = "renamed" } }
+		assert.equals("lua/other.lua", preview.find_base_path("lua/other.lua", files))
+	end)
+
+	it("handles nil changed_files", function()
+		assert.equals("lua/a.lua", preview.find_base_path("lua/a.lua", nil))
+	end)
+end)
