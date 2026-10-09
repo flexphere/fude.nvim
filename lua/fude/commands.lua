@@ -112,7 +112,7 @@ local function submit_review()
 			-- Step 3: Submit review. "cancel"/"discard" skip the body as before.
 			-- The input is already closed, so :FudeReviewSubmit can be reopened
 			-- and a new draft saved while the request is in flight; keep that one.
-			local draft_snapshot = drafts.get(draft_key)
+			local draft_snapshot = drafts.revision(draft_key)
 			comments.submit_as_review(event, body, function(err)
 				if err then
 					vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)

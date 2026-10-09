@@ -17,6 +17,9 @@ local config = require("fude.config")
 -- Directory override for tests (nil = use stdpath("state")/fude).
 M._dir = nil
 
+-- Per-process save counter, part of each draft's revision (see M.set).
+local save_seq = 0
+
 -- === Pure functions ===
 
 --- Build an opaque draft storage key.
@@ -320,22 +323,50 @@ function M.set(key, body)
 	if not body or vim.trim(body) == "" then
 		drafts[key] = nil
 	else
-		-- UTC ISO-8601, matching GitHub comment timestamps (see M.prune).
-		drafts[key] = { body = body, saved_at = os.date("!%Y-%m-%dT%H:%M:%SZ") }
+		save_seq = save_seq + 1
+		drafts[key] = {
+			body = body,
+			-- UTC ISO-8601, matching GitHub comment timestamps (see M.prune).
+			saved_at = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+			-- Changes on every save, even of an identical body, so
+			-- remove_if_unchanged can tell a re-save from the original.
+			rev = string.format("%d-%d-%d", os.time(), vim.uv.hrtime(), save_seq),
+		}
 	end
 	M.save(drafts)
 end
 
---- Remove a draft only when its stored body still equals `snapshot` (the body
---- read when an async submit started; nil = no draft existed then). A draft
---- saved while the request was in flight is newer user intent and is kept.
+--- Identify the stored version of a draft, for `remove_if_unchanged`. Each
+--- save gets a new revision, so a draft re-saved with the same body still
+--- reads as changed. Entries written before revisions existed fall back to
+--- their body and timestamp.
+--- @param key string|nil
+--- @return string|nil revision (nil when there is no draft)
+function M.revision(key)
+	if not M.enabled() or not key then
+		return nil
+	end
+	local entry = M.load()[key]
+	if type(entry) ~= "table" or type(entry.body) ~= "string" then
+		return nil
+	end
+	if type(entry.rev) == "string" then
+		return entry.rev
+	end
+	return entry.body .. "\0" .. tostring(entry.saved_at)
+end
+
+--- Remove a draft only when it is still the version `snapshot` names (the
+--- `revision` read when an async submit started; nil = no draft existed then).
+--- A draft saved while the request was in flight — even with the same body —
+--- is newer user intent and is kept.
 --- @param key string|nil
 --- @param snapshot string|nil
 function M.remove_if_unchanged(key, snapshot)
 	if not key then
 		return
 	end
-	if M.get(key) == snapshot then
+	if M.revision(key) == snapshot then
 		M.remove(key)
 	end
 end

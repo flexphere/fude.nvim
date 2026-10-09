@@ -200,7 +200,7 @@ end
 local function post_single_comment(rel_path, start_line, end_line, body, draft_key, label)
 	-- The input is already closed, so the same location can be reopened and a
 	-- new draft saved while the request is in flight; keep that newer draft.
-	local draft_snapshot = drafts.get(draft_key)
+	local draft_snapshot = drafts.revision(draft_key)
 	sync.create_single_comment(rel_path, start_line, end_line, body, function(err)
 		if err then
 			vim.notify("fude.nvim: Failed to post " .. label:lower() .. ": " .. err, vim.log.levels.ERROR)
@@ -274,7 +274,7 @@ function M.create_comment(is_visual)
 			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
-			local draft_snapshot = drafts.get(draft_key)
+			local draft_snapshot = drafts.revision(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -753,7 +753,7 @@ function M.suggest_change(is_visual)
 			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
-			local draft_snapshot = drafts.get(draft_key)
+			local draft_snapshot = drafts.revision(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
