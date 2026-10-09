@@ -17,7 +17,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Pending review or single comment** - On submit, choose between adding the comment to a GitHub pending review (visible on PR page) or posting it immediately as a single comment
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes
 - **Comment navigation** - Jump between comments with `]c` / `[c`
-- **Review scope** - Review the full PR or focus on a specific commit, navigate scopes with next/prev, mark commits as reviewed, statusline integration
+- **Review scope** - Review the entire PR or focus on a specific commit, navigate scopes with next/prev, mark commits as reviewed, statusline integration
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right). Sections are foldable with standard Neovim fold commands. Press `r` to re-request a review from a reviewer who has already reviewed
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
@@ -126,7 +126,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewPrevFile` | Open the previous changed file, following the side panel file list order (wraps around) |
 | `:FudeReviewNextUnviewedFile` | Open the next changed file not yet marked as viewed (`]F`, wraps around) |
 | `:FudeReviewPrevUnviewedFile` | Open the previous changed file not yet marked as viewed (`[F`, wraps around) |
-| `:FudeReviewScope` | Select review scope (full PR or specific commit; in local mode, opens the `:FudeReviewLocalScope` picker) |
+| `:FudeReviewScope` | Select review scope (entire PR or specific commit; in local mode, opens the `:FudeReviewLocalScope` picker) |
 | `:FudeReviewScopeNext` | Move to next review scope and open its first file (local mode: `base` → `unpushed` → `uncommitted` → commits, wraps around) |
 | `:FudeReviewScopePrev` | Move to previous review scope and open its first file (local mode: the same order in reverse, wraps around) |
 | `:FudeReviewStackSwitch` | Switch the review to another open PR of the current PR's GitHub stack (checks out the branch here, or `:cd`s to the worktree that already has it) |

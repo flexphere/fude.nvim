@@ -205,7 +205,7 @@ describe("format_scope_section", function()
 			is_full_pr = true,
 			reviewed_icon = " ",
 			reviewed_hl = "Comment",
-			display_text = "Full PR (main...feat/x)",
+			display_text = "Entire PR (main...feat/x)",
 		},
 		{
 			is_current = false,
@@ -257,7 +257,7 @@ describe("format_scope_section", function()
 
 	it("includes display text in entry lines", function()
 		local lines = sidepanel.format_scope_section(scope_entries, 80)
-		assert.truthy(lines[3]:find("Full PR"))
+		assert.truthy(lines[3]:find("Entire PR"))
 		assert.truthy(lines[4]:find("abc1234"))
 		assert.truthy(lines[5]:find("def5678"))
 	end)

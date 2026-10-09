@@ -119,11 +119,11 @@ describe("build_scope_entries", function()
 		local entries = scope.build_scope_entries(commits, "main", "feat/login")
 		assert.are.equal(3, #entries)
 
-		-- First entry is Full PR
+		-- First entry is Entire PR
 		assert.is_true(entries[1].is_full_pr)
 		assert.are.equal("full_pr", entries[1].value)
 		assert.is_nil(entries[1].sha)
-		assert.are.equal("Full PR (main...feat/login)", entries[1].display_text)
+		assert.are.equal("Entire PR (main...feat/login)", entries[1].display_text)
 		assert.truthy(entries[1].display_text:find("main"))
 		assert.truthy(entries[1].display_text:find("feat/login"))
 
@@ -560,6 +560,10 @@ describe("apply_scope on_done callback", function()
 		config.state.scope = "commit"
 		config.state.scope_commit_sha = "abc1234"
 		fake_git_ok()
+		local notifications = {}
+		helpers.mock(vim, "notify", function(message)
+			table.insert(notifications, message)
+		end)
 		helpers.mock(gh, "get_pr_files", function(_, callback)
 			vim.schedule(function()
 				callback(nil, { { filename = "a.lua", status = "modified", additions = 1, deletions = 0 } })
@@ -576,6 +580,7 @@ describe("apply_scope on_done callback", function()
 		end))
 		assert.are.equal("full_pr", config.state.scope)
 		assert.are.equal("a.lua", config.state.changed_files[1].path)
+		assert.is_true(vim.tbl_contains(notifications, "fude.nvim: Scope → Entire PR (main...feat/x)"))
 	end)
 
 	it("apply_full_pr_scope does not call on_done on a gh error", function()

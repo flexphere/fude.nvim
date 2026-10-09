@@ -73,7 +73,7 @@ function M.reviewed_icon(reviewed)
 end
 
 --- Build scope selection entries for the picker.
---- First entry is always "Full PR", followed by commit entries in input order.
+--- First entry is always "Entire PR", followed by commit entries in input order.
 --- @param commit_entries table[] normalized commit entries from gh.parse_commit_entries
 --- @param base_ref string base branch name
 --- @param head_ref string head branch name
@@ -87,7 +87,7 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 	local entries = {}
 	table.insert(entries, {
 		value = "full_pr",
-		display_text = string.format("Full PR (%s...%s)", base_ref, head_ref),
+		display_text = string.format("Entire PR (%s...%s)", base_ref, head_ref),
 		sha = nil,
 		is_full_pr = true,
 		reviewed = false,
@@ -164,7 +164,7 @@ function M.select_scope()
 
 	local commit_entries
 	if #state.pr_commits == 0 then
-		vim.notify("fude.nvim: No commits loaded; only full PR scope is available", vim.log.levels.WARN)
+		vim.notify("fude.nvim: No commits loaded; only Entire PR scope is available", vim.log.levels.WARN)
 		commit_entries = {}
 	else
 		local gh_mod = require("fude.gh")
@@ -598,7 +598,7 @@ function M.apply_full_pr_scope(on_done)
 	local already_full_pr = pending_switch and pending_switch.is_full_pr
 		or (not pending_switch and state.scope == "full_pr")
 	if already_full_pr then
-		vim.notify("fude.nvim: Already reviewing full PR", vim.log.levels.INFO)
+		vim.notify("fude.nvim: Already reviewing Entire PR", vim.log.levels.INFO)
 		return
 	end
 
@@ -667,7 +667,7 @@ function M.apply_full_pr_scope(on_done)
 		require("fude.ui.sidepanel").refresh()
 
 		vim.notify(
-			string.format("fude.nvim: Scope → Full PR (%s...%s)", state.base_ref, state.head_ref),
+			string.format("fude.nvim: Scope → Entire PR (%s...%s)", state.base_ref, state.head_ref),
 			vim.log.levels.INFO
 		)
 
@@ -803,7 +803,7 @@ function M.format_scope_label(scope, scope_commit_index, total_commits)
 end
 
 --- Find the next scope index (wraps around).
---- Index 0 = Full PR, 1..total = commits.
+--- Index 0 = Entire PR, 1..total = commits.
 --- @param current_scope string "full_pr" or "commit"
 --- @param current_index number|nil current commit index (1-based)
 --- @param total number total number of commits
@@ -823,7 +823,7 @@ function M.find_next_scope_index(current_scope, current_index, total)
 end
 
 --- Find the previous scope index (wraps around).
---- Index 0 = Full PR, 1..total = commits.
+--- Index 0 = Entire PR, 1..total = commits.
 --- @param current_scope string "full_pr" or "commit"
 --- @param current_index number|nil current commit index (1-based)
 --- @param total number total number of commits
