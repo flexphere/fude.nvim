@@ -8,6 +8,22 @@ function M.normalize_newlines(s)
 	return (s or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 end
 
+--- Default width of the separator between comments when the caller does not
+--- know the window width.
+M.DEFAULT_SEPARATOR_WIDTH = 40
+
+--- Build the separator line drawn between comments.
+--- Callers pass the text width of the window showing the thread so the line
+--- spans it; without a width it falls back to DEFAULT_SEPARATOR_WIDTH.
+--- @param width number|nil window text width
+--- @return string separator
+function M.build_comment_separator(width)
+	if type(width) ~= "number" then
+		width = M.DEFAULT_SEPARATOR_WIDTH
+	end
+	return string.rep("-", math.max(1, math.floor(width)))
+end
+
 --- Build status badges for a comment header (" [agent]", " [approved]", ...).
 --- Local review comments carry author_type ("human"|"agent"); plain GitHub
 --- comments get "". A submitted review body (`review_state`, see
@@ -47,8 +63,9 @@ end
 --- Format comment objects into display lines and highlight ranges.
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
+--- @param separator_width number|nil width of the separator between comments (see build_comment_separator)
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_comments_for_display(comments, format_date_fn)
+function M.format_comments_for_display(comments, format_date_fn, separator_width)
 	local lines = {}
 	local hl_ranges = {}
 	local comment_ranges = {}
@@ -66,7 +83,7 @@ function M.format_comments_for_display(comments, format_date_fn)
 		table.insert(comment_ranges, { start_line = start_line, end_line = #lines - 1, index = i })
 		if i < #comments then
 			table.insert(lines, "")
-			table.insert(lines, string.rep("-", 40))
+			table.insert(lines, M.build_comment_separator(separator_width))
 			table.insert(lines, "")
 		end
 	end
@@ -423,8 +440,9 @@ end
 --- Format comments for reply window display with detailed highlight ranges.
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
+--- @param separator_width number|nil width of the separator between comments (see build_comment_separator)
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_reply_comments_for_display(comments, format_date_fn)
+function M.format_reply_comments_for_display(comments, format_date_fn, separator_width)
 	local lines = {}
 	local hl_ranges = {}
 	for i, comment in ipairs(comments) do
@@ -451,7 +469,7 @@ function M.format_reply_comments_for_display(comments, format_date_fn)
 
 		if i < #comments then
 			table.insert(lines, "")
-			table.insert(lines, string.rep("-", 40))
+			table.insert(lines, M.build_comment_separator(separator_width))
 			table.insert(lines, "")
 		end
 	end
@@ -810,8 +828,9 @@ end
 --- @param all_comments table[] flat array of all review comments (for thread lookup)
 --- @param all_issue_comments table[] all PR-level issue comments
 --- @param format_date_fn fun(s: string): string
+--- @param separator_width number|nil width of the separator between comments (see build_comment_separator)
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_comment_browser_thread(entry, all_comments, all_issue_comments, format_date_fn)
+function M.format_comment_browser_thread(entry, all_comments, all_issue_comments, format_date_fn, separator_width)
 	if entry.type == "draft" then
 		-- Unsubmitted local draft: show its body as a preview.
 		local lines = { "Local draft (not yet submitted)", "" }
@@ -823,7 +842,7 @@ function M.format_comment_browser_thread(entry, all_comments, all_issue_comments
 
 	if entry.type == "issue" then
 		-- Show all issue comments as a thread
-		return M.format_reply_comments_for_display(all_issue_comments or {}, format_date_fn)
+		return M.format_reply_comments_for_display(all_issue_comments or {}, format_date_fn, separator_width)
 	end
 
 	-- Review comment: get the full thread
@@ -838,7 +857,7 @@ function M.format_comment_browser_thread(entry, all_comments, all_issue_comments
 		thread = entry.comments
 	end
 
-	return M.format_reply_comments_for_display(thread, format_date_fn)
+	return M.format_reply_comments_for_display(thread, format_date_fn, separator_width)
 end
 
 --- Parse a single line for Markdown inline elements using tree-sitter.

@@ -341,7 +341,15 @@ end
 --- @param opts table|nil { source_buf?: number, source_start_line?: number, source_end_line?: number }
 function M.show_comments_float(comments, opts)
 	opts = opts or {}
-	local result = format.format_comments_for_display(comments, config.format_date)
+
+	local dim = format.calculate_float_dimensions(
+		vim.o.columns,
+		vim.o.lines,
+		config.opts.float.width or 50,
+		config.opts.float.height or 50
+	)
+	-- The separator spans the window width.
+	local result = format.format_comments_for_display(comments, config.format_date, dim.width)
 
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, result.lines)
@@ -352,13 +360,6 @@ function M.show_comments_float(comments, opts)
 	-- Lets `close_comment_ui` find viewer floats: they show working-tree
 	-- comments, which the local commit scope must not keep on screen.
 	vim.b[buf].fude_comment_view = true
-
-	local dim = format.calculate_float_dimensions(
-		vim.o.columns,
-		vim.o.lines,
-		config.opts.float.width or 50,
-		config.opts.float.height or 50
-	)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -817,9 +818,6 @@ function M.open_edit_window(thread, comment, opts)
 
 	M.setup_reply_highlights()
 
-	-- Format thread for upper pane
-	local result = format.format_reply_comments_for_display(thread, config.format_date)
-
 	-- Calculate dimensions
 	local dim = format.calculate_float_dimensions(
 		vim.o.columns,
@@ -827,6 +825,8 @@ function M.open_edit_window(thread, comment, opts)
 		config.opts.float.width or 50,
 		config.opts.float.height or 50
 	)
+	-- Format thread for upper pane (separator spans the window width)
+	local result = format.format_reply_comments_for_display(thread, config.format_date, dim.width)
 
 	-- Split height: lower prefers 12 lines, but clamp to dim.height while keeping upper >= 3 lines
 	local min_upper_height = 3
@@ -1007,9 +1007,6 @@ function M.open_reply_window(comments, opts)
 
 	M.setup_reply_highlights()
 
-	-- Format comments
-	local result = format.format_reply_comments_for_display(comments, config.format_date)
-
 	-- Calculate dimensions
 	local dim = format.calculate_float_dimensions(
 		vim.o.columns,
@@ -1017,6 +1014,8 @@ function M.open_reply_window(comments, opts)
 		config.opts.float.width or 50,
 		config.opts.float.height or 50
 	)
+	-- Format comments (separator spans the window width)
+	local result = format.format_reply_comments_for_display(comments, config.format_date, dim.width)
 
 	-- Split height: lower prefers 12 lines, but clamp to dim.height while keeping upper >= 3 lines
 	local min_upper_height = 3
