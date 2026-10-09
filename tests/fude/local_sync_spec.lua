@@ -540,6 +540,34 @@ describe("comments facade in local mode", function()
 			end))
 		end)
 
+		it("comment browser reply drops the draft marker once the reply is saved", function()
+			local browser_mod = require("fude.ui.comment_browser")
+			local_sync.create_comment("f.lua", 1, 1, "root", nil, function() end)
+			local root_id = config.state.comments[1].id
+			local key = drafts.current_key("reply", root_id)
+			drafts.set(key, "reply draft")
+
+			browser_mod.open()
+			local browser = config.state.comment_browser
+			assert.is_true(browser.entries[1].has_draft)
+
+			vim.api.nvim_buf_set_lines(browser.lower_buf, 0, -1, false, { "final reply" })
+			local submit
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(browser.lower_buf, "n")) do
+				if map.lhs == "<CR>" then
+					submit = map.callback
+				end
+			end
+			submit()
+
+			-- The browser must rebuild after the draft removal, not before it.
+			assert.is_true(helpers.wait_for(function()
+				local b = config.state.comment_browser
+				return drafts.get(key) == nil and b ~= nil and b.entries[1] ~= nil and not b.entries[1].has_draft
+			end))
+			browser_mod.close()
+		end)
+
 		it("edit_comment offers the save-draft option", function()
 			local_sync.create_comment("f.lua", 1, 1, "root", nil, function() end)
 			local root_id = config.state.comments[1].id
