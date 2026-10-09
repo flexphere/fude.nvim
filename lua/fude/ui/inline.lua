@@ -72,6 +72,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 	local available_width = text_width - indent_width - right_margin
 	local box_width = math.min(max_box_width, math.max(50, available_width))
 	local body_max_width = box_width - 6
+	local border_width = math.max(2, text_width - indent_width)
 
 	for i, comment in ipairs(comments) do
 		local is_pending = comment.is_pending
@@ -93,7 +94,7 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 		local corner_width = 2 -- ╭ and ╮ are 1 cell each
 		local left_dash_width = 1 -- ─ after ╭
 		local label_display_width = vim.fn.strdisplaywidth(label)
-		local right_padding = math.max(0, box_width - corner_width - left_dash_width - label_display_width)
+		local right_padding = math.max(0, border_width - corner_width - left_dash_width - label_display_width)
 		local top_border = indent .. "╭─" .. label .. string.rep("─", right_padding) .. "╮"
 		table.insert(virt_lines, { { top_border, border_hl } })
 
@@ -143,8 +144,8 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 		end
 
 		-- Bottom border: ╰─────────────────────────────╯
-		-- box_width - 2 for corner characters (╰ and ╯ are 1 cell each)
-		local bottom_border = indent .. "╰" .. string.rep("─", box_width - 2) .. "╯"
+		-- border_width - 2 for corner characters (╰ and ╯ are 1 cell each)
+		local bottom_border = indent .. "╰" .. string.rep("─", border_width - 2) .. "╯"
 		table.insert(virt_lines, { { bottom_border, border_hl } })
 
 		-- Add spacing between multiple comments
