@@ -6,3 +6,6 @@ luacov.report.out
 
 # Local review mode store (per-worktree review comments)
 .fude/
+
+# Neovim log written to cwd when the state dir is unwritable (e.g. headless test runs)
+nvim.log
