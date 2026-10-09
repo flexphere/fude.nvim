@@ -23,6 +23,23 @@ function M.null_to(v, default)
 	return v
 end
 
+--- Compare two paths byte by byte, the order git and the GitHub PR file list
+--- use (uppercase before lowercase, `ui.lua` before `ui/`). Lua's `<` is not
+--- used because PUC Lua compares strings with strcoll, which depends on the
+--- locale.
+--- @param a string
+--- @param b string
+--- @return boolean true when `a` sorts before `b`
+function M.path_less(a, b)
+	for i = 1, math.min(#a, #b) do
+		local x, y = a:byte(i), b:byte(i)
+		if x ~= y then
+			return x < y
+		end
+	end
+	return #a < #b
+end
+
 --- Check whether every comment in the list is resolved.
 --- Shared by the comment browser entries, the comment viewer title, and the
 --- virtualText indicator so the "all resolved" rule stays consistent.

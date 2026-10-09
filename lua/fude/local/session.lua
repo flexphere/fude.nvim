@@ -11,6 +11,7 @@
 local M = {}
 local config = require("fude.config")
 local store = require("fude.local.store")
+local util = require("fude.util")
 
 -- === Pure functions ===
 
@@ -98,7 +99,9 @@ function M.is_store_path(path)
 end
 
 --- Build the changed_files array (same shape as the GitHub flow) from local
---- git output. Untracked files are appended as "added" with zero counts.
+--- git output. Untracked files are added as "added" with zero counts, and the
+--- result is sorted by path in byte order, as the GitHub PR file list is, so
+--- untracked files sit among the tracked ones instead of trailing them.
 --- @param name_status_out string|nil `git diff --name-status -M` output
 --- @param numstat_out string|nil `git diff --numstat -M` output
 --- @param untracked_out string|nil `git ls-files --others --exclude-standard` output
@@ -128,6 +131,9 @@ function M.build_changed_files(name_status_out, numstat_out, untracked_out)
 			end
 		end
 	end
+	table.sort(files, function(a, b)
+		return util.path_less(a.path, b.path)
+	end)
 	return files
 end
 
