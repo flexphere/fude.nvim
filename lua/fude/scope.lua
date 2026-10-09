@@ -87,7 +87,7 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 	local entries = {}
 	table.insert(entries, {
 		value = "full_pr",
-		display_text = string.format("PR全体 (%s...%s)", base_ref, head_ref),
+		display_text = string.format("Full PR (%s...%s)", base_ref, head_ref),
 		sha = nil,
 		is_full_pr = true,
 		reviewed = false,
@@ -667,7 +667,7 @@ function M.apply_full_pr_scope(on_done)
 		require("fude.ui.sidepanel").refresh()
 
 		vim.notify(
-			string.format("fude.nvim: Scope → PR全体 (%s...%s)", state.base_ref, state.head_ref),
+			string.format("fude.nvim: Scope → Full PR (%s...%s)", state.base_ref, state.head_ref),
 			vim.log.levels.INFO
 		)
 

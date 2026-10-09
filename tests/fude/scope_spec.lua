@@ -123,6 +123,7 @@ describe("build_scope_entries", function()
 		assert.is_true(entries[1].is_full_pr)
 		assert.are.equal("full_pr", entries[1].value)
 		assert.is_nil(entries[1].sha)
+		assert.are.equal("Full PR (main...feat/login)", entries[1].display_text)
 		assert.truthy(entries[1].display_text:find("main"))
 		assert.truthy(entries[1].display_text:find("feat/login"))
 
