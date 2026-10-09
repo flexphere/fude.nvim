@@ -1,29 +1,35 @@
 local M = {}
 
 --- Build a directory tree from a list of file entries.
+--- Children keep the order in which they first appear in `file_entries`
+--- (a directory sits where its first file appears), matching the GitHub PR
+--- file tree, which is laid out in the diff's path order. Given the
+--- path-sorted changed_files, flattening the tree therefore reproduces the
+--- flat list order, so flat and tree modes list files identically.
 --- @param file_entries table[] entries from files.build_file_entries (must have .path)
 --- @return table root tree node { name, path, type = "directory", children }
 function M.build_tree(file_entries)
-	local root = { name = "", path = "", type = "directory", _dirs = {}, _files = {} }
+	local root = { name = "", path = "", type = "directory", children = {}, _dirs = {} }
 
 	for _, file in ipairs(file_entries or {}) do
 		local parts = vim.split(file.path, "/", { plain = true })
 		local current = root
 		for i = 1, #parts - 1 do
 			local part = parts[i]
-			local child_path = table.concat(parts, "/", 1, i)
 			if not current._dirs[part] then
-				current._dirs[part] = {
+				local dir = {
 					name = part,
-					path = child_path,
+					path = table.concat(parts, "/", 1, i),
 					type = "directory",
+					children = {},
 					_dirs = {},
-					_files = {},
 				}
+				current._dirs[part] = dir
+				table.insert(current.children, dir)
 			end
 			current = current._dirs[part]
 		end
-		table.insert(current._files, {
+		table.insert(current.children, {
 			name = parts[#parts],
 			path = file.path,
 			type = "file",
@@ -32,26 +38,12 @@ function M.build_tree(file_entries)
 	end
 
 	local function finalize(node)
-		local children = {}
-		local dir_names = {}
-		for name, _ in pairs(node._dirs) do
-			table.insert(dir_names, name)
-		end
-		table.sort(dir_names)
-		for _, name in ipairs(dir_names) do
-			local child = node._dirs[name]
-			finalize(child)
-			table.insert(children, child)
-		end
-		table.sort(node._files, function(a, b)
-			return a.name < b.name
-		end)
-		for _, file in ipairs(node._files) do
-			table.insert(children, file)
-		end
-		node.children = children
 		node._dirs = nil
-		node._files = nil
+		for _, child in ipairs(node.children) do
+			if child.type == "directory" then
+				finalize(child)
+			end
+		end
 	end
 	finalize(root)
 
