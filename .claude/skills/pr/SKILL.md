@@ -33,6 +33,7 @@ argument-hint: ["[--auto]（省略可 — カレントブランチの変更をPR
 ### Step 2: コミット実行
 
 ユーザーの承認後（自律モードでは承認を待たずに）コミットを実行する。
+コミット完了後、`git push -u origin HEAD` で同名のリモートブランチを作成してから Step 3 へ進む。
 
 ### Step 3: draft PR 作成
 
