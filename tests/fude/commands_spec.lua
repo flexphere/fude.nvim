@@ -189,3 +189,124 @@ describe("plugin/fude.lua", function()
 		assert.are.equal(".", info.range)
 	end)
 end)
+
+describe("FudeReviewSubmit review body drafts", function()
+	local config = require("fude.config")
+	local drafts = require("fude.drafts")
+	local ui = require("fude.ui")
+	local comments = require("fude.comments")
+	local helpers = require("tests.helpers")
+	local tmp
+	local submitted
+
+	local function run_submit()
+		for _, cmd in ipairs(commands.list) do
+			if cmd.name == "FudeReviewSubmit" then
+				cmd.run({})
+				return
+			end
+		end
+		error("FudeReviewSubmit not registered")
+	end
+
+	--- Run :FudeReviewSubmit with the input float answering `body, action`.
+	--- @param submit_result string|nil error passed to the submit callback
+	--- @return table opts given to open_comment_input
+	local function submit_with(body, action, submit_result)
+		local seen
+		helpers.mock(ui, "select_review_event", function(cb)
+			cb("COMMENT")
+		end)
+		helpers.mock(ui, "open_comment_input", function(cb, opts)
+			seen = opts
+			cb(body, action)
+		end)
+		helpers.mock(comments, "submit_as_review", function(event, b, cb)
+			submitted = { event = event, body = b }
+			cb(submit_result)
+		end)
+		run_submit()
+		return seen
+	end
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.review_mode = "github"
+		config.state.pr_number = 132
+		config.state.pr_url = "https://github.com/owner/repo/pull/132"
+		tmp = vim.fn.tempname()
+		vim.fn.mkdir(tmp, "p")
+		drafts._dir = tmp
+		submitted = nil
+	end)
+
+	after_each(function()
+		drafts._dir = nil
+		vim.fn.delete(tmp, "rf")
+		helpers.cleanup()
+		config.reset_state()
+	end)
+
+	it("offers the save-draft option and prefills a saved draft", function()
+		drafts.set(drafts.current_key("review"), "saved body\nline 2")
+		local opts = submit_with(nil, "cancel")
+		assert.is_true(opts.allow_draft)
+		assert.same({ "saved body", "line 2" }, opts.initial_lines)
+	end)
+
+	it("closing an unedited restored draft keeps it and does not submit", function()
+		drafts.set(drafts.current_key("review"), "saved body")
+		submit_with(nil, "cancel")
+		assert.is_nil(submitted)
+		assert.equals("saved body", drafts.get(drafts.current_key("review")))
+	end)
+
+	it("q without a draft still skips the body and submits", function()
+		submit_with(nil, "cancel")
+		assert.same({ event = "COMMENT" }, submitted)
+	end)
+
+	it("saves the body as a draft without submitting the review", function()
+		submit_with("half written", "draft")
+		assert.is_nil(submitted)
+		assert.equals("half written", drafts.get(drafts.current_key("review")))
+	end)
+
+	it("removes the draft after the review is submitted", function()
+		drafts.set(drafts.current_key("review"), "saved body")
+		submit_with("final body", "submit")
+		assert.same({ event = "COMMENT", body = "final body" }, submitted)
+		assert.is_nil(drafts.get(drafts.current_key("review")))
+	end)
+
+	it("keeps the draft when the submit fails", function()
+		drafts.set(drafts.current_key("review"), "saved body")
+		submit_with("final body", "submit", "network error")
+		assert.equals("saved body", drafts.get(drafts.current_key("review")))
+	end)
+
+	it("keeps a draft re-saved while the submit is in flight", function()
+		local key = drafts.current_key("review")
+		drafts.set(key, "old")
+		helpers.mock(ui, "select_review_event", function(cb)
+			cb("COMMENT")
+		end)
+		helpers.mock(ui, "open_comment_input", function(cb)
+			cb("final body", "submit")
+		end)
+		helpers.mock(comments, "submit_as_review", function(_, _, cb)
+			drafts.set(key, "newer")
+			cb(nil)
+		end)
+		run_submit()
+		assert.equals("newer", drafts.get(key))
+	end)
+
+	it("discard drops the draft and submits without a body", function()
+		drafts.set(drafts.current_key("review"), "saved body")
+		submit_with(nil, "discard")
+		assert.same({ event = "COMMENT" }, submitted)
+		assert.is_nil(drafts.get(drafts.current_key("review")))
+	end)
+end)

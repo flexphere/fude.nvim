@@ -111,15 +111,37 @@ end
 --- @param rel_path string repo-relative path
 --- @param start_line number
 --- @param end_line number
---- @param initial_lines string[]|nil prefill for the input buffer
+--- @param kind string draft kind: "line" | "suggest"
+--- @param initial_lines string[]|nil prefill for the input buffer (a saved draft takes precedence)
 --- @param title string|nil input float title
 --- @param cursor_pos table|nil input float initial cursor
-local function create_local_comment(buf, rel_path, start_line, end_line, initial_lines, title, cursor_pos)
+local function create_local_comment(buf, rel_path, start_line, end_line, kind, initial_lines, title, cursor_pos)
 	-- Best-effort re-anchor aid: the commented source lines at creation time.
 	local context_lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
 	local context = table.concat(context_lines, "\n")
 
-	ui.open_comment_input(function(comment_body)
+	local draft_key = drafts.current_key(kind, rel_path, start_line, end_line)
+	local draft_body = drafts.get(draft_key)
+	if draft_body then
+		initial_lines = vim.split(format.normalize_newlines(draft_body), "\n")
+		if cursor_pos then
+			-- Same clamp as suggest_change: a restored draft may be shorter than
+			-- the ```suggestion template.
+			cursor_pos = { math.min(cursor_pos[1], #initial_lines), cursor_pos[2] }
+		end
+	end
+
+	ui.open_comment_input(function(comment_body, action)
+		if action == "draft" then
+			drafts.set(draft_key, comment_body)
+			ui.refresh_extmarks()
+			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			return
+		elseif action == "discard" then
+			drafts.remove(draft_key)
+			ui.refresh_extmarks()
+			return
+		end
 		if comment_body then
 			require("fude.comments.local_sync").create_comment(
 				rel_path,
@@ -132,15 +154,20 @@ local function create_local_comment(buf, rel_path, start_line, end_line, initial
 						vim.notify("fude.nvim: Failed to save comment: " .. err, vim.log.levels.ERROR)
 						return
 					end
+					-- The local backend saves synchronously, so no newer draft can
+					-- have been saved in between: drop it unconditionally.
+					drafts.remove(draft_key)
+					ui.refresh_extmarks()
 					vim.notify("fude.nvim: Comment saved", vim.log.levels.INFO)
 				end
 			)
 		end
+		-- "cancel": leave any existing draft untouched
 	end, {
 		initial_lines = initial_lines,
 		title = title,
 		cursor_pos = cursor_pos,
-		allow_draft = false,
+		allow_draft = draft_key ~= nil and drafts.enabled(),
 	})
 end
 
@@ -174,7 +201,7 @@ end
 local function post_single_comment(rel_path, start_line, end_line, body, draft_key, label)
 	-- The input is already closed, so the same location can be reopened and a
 	-- new draft saved while the request is in flight; keep that newer draft.
-	local draft_snapshot = drafts.get(draft_key)
+	local draft_snapshot = drafts.revision(draft_key)
 	sync.create_single_comment(rel_path, start_line, end_line, body, function(err)
 		if err then
 			vim.notify("fude.nvim: Failed to post " .. label:lower() .. ": " .. err, vim.log.levels.ERROR)
@@ -216,7 +243,7 @@ function M.create_comment(is_visual)
 	end
 
 	if is_local_mode() then
-		create_local_comment(buf, rel_path, start_line, end_line, nil, nil, nil)
+		create_local_comment(buf, rel_path, start_line, end_line, "line", nil, nil, nil)
 		return
 	end
 
@@ -248,7 +275,7 @@ function M.create_comment(is_visual)
 			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
-			local draft_snapshot = drafts.get(draft_key)
+			local draft_snapshot = drafts.revision(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
@@ -371,6 +398,11 @@ function M.reply_to_comment(comment_id)
 				end
 				-- Drop the local draft only after the reply is posted.
 				drafts.remove(draft_key)
+				-- The local backend re-renders before calling back, while the draft
+				-- still exists; refresh again so its marker disappears.
+				vim.schedule(function()
+					ui.refresh_extmarks()
+				end)
 				vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
 			end)
 		end,
@@ -513,6 +545,10 @@ function M.edit_comment(comment_id)
 						return
 					end
 					drafts.remove(draft_key)
+					-- See reply_to_comment: drop the marker the backend's refresh kept.
+					vim.schedule(function()
+						ui.refresh_extmarks()
+					end)
 					vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
 				end)
 			end
@@ -675,7 +711,7 @@ function M.suggest_change(is_visual)
 		local suggestion_lines = { "```suggestion" }
 		vim.list_extend(suggestion_lines, source_lines)
 		table.insert(suggestion_lines, "```")
-		create_local_comment(buf, rel_path, start_line, end_line, suggestion_lines, " Suggest Change ", { 2, 0 })
+		create_local_comment(buf, rel_path, start_line, end_line, "suggest", suggestion_lines, " Suggest Change ", { 2, 0 })
 		return
 	end
 
@@ -718,7 +754,7 @@ function M.suggest_change(is_visual)
 			-- Save as pending review on GitHub
 			local comment_obj = data.build_review_comment_object(rel_path, start_line, end_line, comment_body)
 			state.pending_comments[pending_key] = comment_obj
-			local draft_snapshot = drafts.get(draft_key)
+			local draft_snapshot = drafts.revision(draft_key)
 
 			sync.sync_pending_review(function(err)
 				vim.schedule(function()
