@@ -1011,7 +1011,7 @@ Default configuration: >lua
     comment_range = {
       number_hl = "DiagnosticInfo",        -- Line number highlight on the range
       cursor_number_hl = "DiagnosticWarn", -- Same, while on the comment line
-      start_marker_hl = "DiagnosticHint",  -- First-line marker, while on it
+      start_marker_hl = "DiagnosticHint",  -- First-line marker, while on the comment line
     },
   })
 <
