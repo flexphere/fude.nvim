@@ -163,6 +163,43 @@ describe("preview integration", function()
 			assert.is_truthy(content:find("New file", 1, true) or content:find("does not exist", 1, true))
 		end)
 
+		it("reads the base content of a renamed file from its old path", function()
+			local requested = {}
+			helpers.mock(require("fude.diff"), "get_base_content", function(_, path)
+				table.insert(requested, path)
+				if path == "old.lua" then
+					return "old content\n", nil
+				end
+				return nil, "File not found"
+			end)
+			config.state.changed_files = { { path = "source.lua", previous_path = "old.lua", status = "renamed" } }
+
+			open_for_buffer({ "new content" }, "source.lua")
+
+			assert.same({ "old.lua" }, requested)
+			local lines = vim.api.nvim_buf_get_lines(config.state.preview_buf, 0, -1, false)
+			assert.same({ "old content" }, lines)
+			assert.truthy(vim.api.nvim_buf_get_name(config.state.preview_buf):find("[base] old.lua", 1, true))
+		end)
+
+		it("falls back to the new path when the old path is missing at the base", function()
+			local requested = {}
+			helpers.mock(require("fude.diff"), "get_base_content", function(_, path)
+				table.insert(requested, path)
+				if path == "source.lua" then
+					return "same name content\n", nil
+				end
+				return nil, "File not found"
+			end)
+			config.state.changed_files = { { path = "source.lua", previous_path = "old.lua", status = "renamed" } }
+
+			open_for_buffer({ "new content" }, "source.lua")
+
+			assert.same({ "old.lua", "source.lua" }, requested)
+			local lines = vim.api.nvim_buf_get_lines(config.state.preview_buf, 0, -1, false)
+			assert.same({ "same name content" }, lines)
+		end)
+
 		it("records the source buffer the preview was built for", function()
 			local buf = open_for_buffer({ "line 1" }, "source.lua")
 			assert.are.equal(buf, config.state.preview_source_buf)

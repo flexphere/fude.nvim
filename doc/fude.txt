@@ -195,6 +195,8 @@ Using lazy.nvim: >lua
     Toggle the diff preview window. Opens a side-by-side diff view
     showing the base branch version of the current file, or closes
     it if already open. Requires an active review session.
+    For a renamed file, the base version is read from its old path,
+    so the diff shows the content changes rather than a new file.
 
 :FudeReviewComment                                  *:FudeReviewComment*
     Create a review comment on the current line (normal mode) or
@@ -766,6 +768,11 @@ File opening position                                 *fude-file-position*
     Files:~
       Lists all changed files in the current scope with status icons,
       right-aligned additions/deletions counts, and viewed state.
+      Files are ordered as in the GitHub PR file tree: by path in byte
+      order (`CLAUDE.md` before `lua/`, `ui.lua` before `ui/`). Tree mode
+      places each directory where its first file appears, so flat and
+      tree modes list files in the same order. In local review,
+      untracked files are sorted in among the tracked ones.
       Fixed columns show the current-file marker, review state (✓ / ○),
       and status (M modified, A added, D deleted, R renamed, C copied).
       Status letters use colorscheme foreground colors: DiagnosticWarn

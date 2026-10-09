@@ -836,22 +836,32 @@ describe("build_navigation_order", function()
 	end)
 
 	it("reorders to match the sidepanel tree render order in tree mode", function()
-		-- Tree order: directories then files, each alphabetical, depth-first.
-		-- lua/ before README.md (directory precedes file); within lua/, the
-		-- fude/ subdir precedes lua/z.lua; within fude/, a.lua before b.lua.
+		-- Tree order keeps first appearance, depth-first: lua/ comes first
+		-- (lua/z.lua appears first), so lua/fude/a.lua, separated from its
+		-- sibling in the input, is pulled up next to lua/fude/b.lua.
 		local result = files.build_navigation_order(changed, true)
 		assert.are.same({
-			"lua/fude/a.lua",
-			"lua/fude/b.lua",
 			"lua/z.lua",
+			"lua/fude/b.lua",
+			"lua/fude/a.lua",
 			"README.md",
 		}, paths(result))
 	end)
 
+	it("matches the flat order for path-sorted changed_files", function()
+		local sorted = {
+			{ path = "README.md" },
+			{ path = "lua/fude.lua" },
+			{ path = "lua/fude/a.lua" },
+			{ path = "lua/z.lua" },
+		}
+		assert.are.same(paths(sorted), paths(files.build_navigation_order(sorted, true)))
+	end)
+
 	it("preserves the original file entry fields in tree mode", function()
 		local result = files.build_navigation_order(changed, true)
-		assert.are.equal("added", result[1].status)
-		assert.are.equal("lua/fude/a.lua", result[1].path)
+		assert.are.equal("added", result[3].status)
+		assert.are.equal("lua/fude/a.lua", result[3].path)
 	end)
 
 	it("returns every file exactly once in tree mode", function()
@@ -1007,11 +1017,11 @@ describe("next_file / prev_file", function()
 	describe("tree mode order", function()
 		before_each(function()
 			-- Flat (changed_files) order differs from the tree render order:
-			-- the tree groups by directory and sorts, so z/a.lua comes before
-			-- the root-level m.lua even though it is listed last.
+			-- the tree groups files under their directory, so z/a.lua comes
+			-- right after z/b.lua, before m.lua, even though it is listed last.
 			config.state.changed_files = {
-				{ path = "m.lua" },
 				{ path = "z/b.lua" },
+				{ path = "m.lua" },
 				{ path = "z/a.lua" },
 			}
 		end)
@@ -1022,11 +1032,11 @@ describe("next_file / prev_file", function()
 				return 1 -- not the panel window
 			end)
 
-			set_current_path("z/a.lua")
-			files.next_file()
-			assert.are.equal("edit /repo/z/b.lua", last_cmd)
-
 			set_current_path("z/b.lua")
+			files.next_file()
+			assert.are.equal("edit /repo/z/a.lua", last_cmd)
+
+			set_current_path("z/a.lua")
 			files.next_file()
 			assert.are.equal("edit /repo/m.lua", last_cmd)
 		end)
@@ -1035,15 +1045,15 @@ describe("next_file / prev_file", function()
 			config.setup({ sidepanel = { file_tree = "tree" } })
 			config.state.active = true
 			config.state.changed_files = {
-				{ path = "m.lua" },
 				{ path = "z/b.lua" },
+				{ path = "m.lua" },
 				{ path = "z/a.lua" },
 			}
 			config.state.sidepanel = nil
 
-			set_current_path("z/a.lua")
+			set_current_path("z/b.lua")
 			files.next_file()
-			assert.are.equal("edit /repo/z/b.lua", last_cmd)
+			assert.are.equal("edit /repo/z/a.lua", last_cmd)
 		end)
 
 		it("keeps the flat order when the panel is in flat mode", function()
@@ -1052,9 +1062,9 @@ describe("next_file / prev_file", function()
 				return 1
 			end)
 
-			set_current_path("m.lua")
+			set_current_path("z/b.lua")
 			files.next_file()
-			assert.are.equal("edit /repo/z/b.lua", last_cmd)
+			assert.are.equal("edit /repo/m.lua", last_cmd)
 		end)
 	end)
 end)

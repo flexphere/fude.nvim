@@ -47,7 +47,16 @@ function M.open_preview(source_win)
 		base_ref = state.scope_commit_sha .. "^"
 	end
 
-	local content, _ = diff.get_base_content(base_ref, rel_path, local_session and local_session.worktree_root or nil)
+	-- Renamed files: the base content lives under the old path. Fall
+	-- back to the new path when the old one is missing at base_ref (the full PR
+	-- scope reads the base branch tip, which may have dropped the old file).
+	local cwd = local_session and local_session.worktree_root or nil
+	local base_path = M.find_base_path(rel_path, state.changed_files)
+	local content, _ = diff.get_base_content(base_ref, base_path, cwd)
+	if not content and base_path ~= rel_path then
+		base_path = rel_path
+		content, _ = diff.get_base_content(base_ref, base_path, cwd)
+	end
 	local source_view = vim.api.nvim_win_call(source_win, vim.fn.winsaveview)
 	local source_foldenable = vim.wo[source_win].foldenable
 	local source_foldlevel = vim.wo[source_win].foldlevel
@@ -86,7 +95,7 @@ function M.open_preview(source_win)
 	vim.wo[preview_win].signcolumn = "no"
 	vim.wo[preview_win].winfixwidth = true
 
-	pcall(vim.api.nvim_buf_set_name, preview_buf, "[base] " .. rel_path)
+	pcall(vim.api.nvim_buf_set_name, preview_buf, "[base] " .. base_path)
 
 	state.preview_win = preview_win
 	state.preview_buf = preview_buf
@@ -136,6 +145,20 @@ function M.open_preview(source_win)
 	})
 
 	opening = false
+end
+
+--- Resolve the path to read the base content from: the old path for a
+--- renamed/copied file, the given path otherwise.
+--- @param rel_path string repo-relative path of the file being viewed
+--- @param changed_files table[]|nil changed files list
+--- @return string
+function M.find_base_path(rel_path, changed_files)
+	for _, f in ipairs(changed_files or {}) do
+		if f.path == rel_path and type(f.previous_path) == "string" and f.previous_path ~= "" then
+			return f.previous_path
+		end
+	end
+	return rel_path
 end
 
 --- Close the preview window and clean up diff mode.

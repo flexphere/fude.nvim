@@ -100,6 +100,35 @@ describe("parse_viewed_files_response", function()
 	end)
 end)
 
+describe("build_changed_files", function()
+	it("converts API file objects to changed_files entries", function()
+		local files = gh.build_changed_files({
+			{ filename = "lua/a.lua", status = "modified", additions = 3, deletions = 1, patch = "@@ -1 +1 @@" },
+		})
+		assert.same({
+			{ path = "lua/a.lua", status = "modified", additions = 3, deletions = 1, patch = "@@ -1 +1 @@" },
+		}, files)
+	end)
+
+	it("keeps previous_filename of a renamed file as previous_path", function()
+		local files = gh.build_changed_files({
+			{ filename = "lua/new.lua", previous_filename = "lua/old.lua", status = "renamed", additions = 2, deletions = 2 },
+		})
+		assert.equals("lua/new.lua", files[1].path)
+		assert.equals("lua/old.lua", files[1].previous_path)
+		assert.equals("renamed", files[1].status)
+	end)
+
+	it("ignores a JSON null previous_filename", function()
+		local files = gh.build_changed_files({ { filename = "a.lua", previous_filename = vim.NIL, status = "modified" } })
+		assert.is_nil(files[1].previous_path)
+	end)
+
+	it("returns an empty list for no files", function()
+		assert.same({}, gh.build_changed_files({}))
+	end)
+end)
+
 describe("parse_commit_entries", function()
 	it("parses commits with full data", function()
 		local raw = {

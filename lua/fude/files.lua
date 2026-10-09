@@ -281,8 +281,9 @@ end
 
 --- Build the ordered file list used for next/prev navigation.
 --- In flat mode the changed_files order is used as-is. In tree mode the order
---- is made to match the sidepanel's tree rendering (directories then files, each
---- sorted alphabetically, depth-first) so navigation follows what is displayed.
+--- is made to match the sidepanel's tree rendering (each directory placed where
+--- its first file appears, depth-first) so navigation follows what is displayed.
+--- For path-sorted changed_files both orders are identical.
 --- @param changed_files table[] list of { path, ... }
 --- @param tree_mode boolean whether to use the sidepanel tree order
 --- @return table[] ordered list of file entries (each has .path)

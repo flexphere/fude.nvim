@@ -19,24 +19,30 @@ describe("build_tree", function()
 		assert.are.same({}, root.children)
 	end)
 
-	it("orders directories before files alphabetically", function()
+	it("keeps children in input order instead of putting directories first", function()
+		-- The GitHub PR file tree follows the diff's byte-order paths:
+		-- `CLAUDE.md` before `lua/`, and `ui.lua` before `ui/`.
 		local root = tree.build_tree({
-			make_file("zoo.md"),
-			make_file("apple.md"),
-			make_file("dir2/x.md"),
-			make_file("dir1/y.md"),
+			make_file("CLAUDE.md"),
+			make_file("lua/ui.lua"),
+			make_file("lua/ui/format.lua"),
+			make_file("tests/ui_spec.lua"),
 		})
-		assert.are.equal("dir1", root.children[1].name)
-		assert.are.equal("dir2", root.children[2].name)
-		assert.are.equal("apple.md", root.children[3].name)
-		assert.are.equal("zoo.md", root.children[4].name)
+		assert.are.equal("CLAUDE.md", root.children[1].name)
+		assert.are.equal("lua", root.children[2].name)
+		assert.are.equal("tests", root.children[3].name)
+		local lua = root.children[2]
+		assert.are.equal("ui.lua", lua.children[1].name)
+		assert.are.equal("file", lua.children[1].type)
+		assert.are.equal("ui", lua.children[2].name)
+		assert.are.equal("directory", lua.children[2].type)
 	end)
 
-	it("groups files under shared parent directories", function()
+	it("places a directory where its first file appears", function()
 		local root = tree.build_tree({
-			make_file("a/b/foo.lua"),
 			make_file("a/b/bar.lua"),
 			make_file("a/c.lua"),
+			make_file("a/b/foo.lua"),
 		})
 		local a = root.children[1]
 		assert.are.equal("a", a.name)
@@ -45,6 +51,29 @@ describe("build_tree", function()
 		assert.are.equal("c.lua", a.children[2].name)
 		assert.are.equal("bar.lua", a.children[1].children[1].name)
 		assert.are.equal("foo.lua", a.children[1].children[2].name)
+	end)
+
+	it("flattens path-sorted input into the same file order", function()
+		local paths = {
+			"CLAUDE.md",
+			"lua/fude/ui.lua",
+			"lua/fude/ui/comment_browser.lua",
+			"lua/fude/ui/format.lua",
+			"tests/fude/ui_spec.lua",
+		}
+		local files = {}
+		for _, path in ipairs(paths) do
+			table.insert(files, make_file(path))
+		end
+		local root = tree.build_tree(files)
+		tree.collapse_singleton_chains(root)
+		local flattened = {}
+		for _, entry in ipairs(tree.flatten_tree(root)) do
+			if entry.type == "file" then
+				table.insert(flattened, entry.path)
+			end
+		end
+		assert.are.same(paths, flattened)
 	end)
 end)
 
@@ -134,8 +163,9 @@ describe("flatten_tree", function()
 		local entries = tree.flatten_tree(root, {}, collapsed)
 		assert.are.equal(3, #entries)
 		assert.is_false(entries[1].collapsed)
-		assert.is_true(entries[2].collapsed)
-		assert.are.equal("src/a.lua", entries[3].path)
+		assert.are.equal("src/a.lua", entries[2].path)
+		assert.are.equal("src/nested", entries[3].path)
+		assert.is_true(entries[3].collapsed)
 	end)
 
 	it("uses the full path of a compacted directory chain as the fold key", function()
