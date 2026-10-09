@@ -9,19 +9,23 @@
 --- restarts.
 ---
 --- Keys are opaque strings produced by `make_draft_key` and include the repo
---- and PR number so drafts for different PRs / repos never collide.
+--- and PR number (in local review mode: the worktree and branch, see
+--- `build_draft_scope`) so drafts for different PRs / repos never collide.
 local M = {}
 local config = require("fude.config")
 
 -- Directory override for tests (nil = use stdpath("state")/fude).
 M._dir = nil
 
+-- Per-process save counter, part of each draft's revision (see M.set).
+local save_seq = 0
+
 -- === Pure functions ===
 
 --- Build an opaque draft storage key.
 --- @param repo string "owner/repo"
 --- @param pr_number number|string PR number
---- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"pr_edit"
+--- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"review"|"pr_edit"
 --- @param ... string|number additional discriminators (path, line range, ids)
 --- @return string
 function M.make_draft_key(repo, pr_number, kind, ...)
@@ -91,17 +95,53 @@ function M.prune(drafts, now, retention_days)
 	return result
 end
 
---- Build a draft key for the active review session, deriving repo / PR number
---- from `config.state`. Returns nil when there is no active PR.
---- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"pr_edit"
+--- Resolve the key namespace (the `repo` / `pr_number` parts of
+--- `make_draft_key`) for a review state. Pure: takes the state table as input.
+--- GitHub review: the repo slug and PR number. Local review: the worktree root
+--- (prefixed with `local:` so it never matches an `owner/repo` slug) and the
+--- branch, so drafts survive :FudeReviewStop and a later restart like a PR
+--- number does; a detached HEAD falls back to the session id. Git refnames
+--- cannot contain `:`, so the branch never breaks key parsing.
+--- @param st table config.state-shaped table
+--- @return string|nil repo, string|number|nil id (both nil when no review target)
+function M.build_draft_scope(st)
+	if not st then
+		return nil, nil
+	end
+	if st.review_mode == "local" then
+		local session = st.local_session
+		if not session or not session.worktree_root then
+			return nil, nil
+		end
+		return "local:" .. session.worktree_root, session.branch or ("detached:" .. tostring(session.id))
+	end
+	if not st.pr_number then
+		return nil, nil
+	end
+	return M.repo_slug(st.pr_url) or "?", st.pr_number
+end
+
+--- Draft kinds that have no target in local review mode: there is no PR to
+--- post a PR-level comment to (`issue`) or a review to submit (`review`), so a
+--- draft saved for them could never be sent.
+local LOCAL_UNSUPPORTED_KINDS = { issue = true, review = true }
+
+--- Build a draft key for the active review session, deriving the namespace
+--- from `config.state` via `build_draft_scope`. Returns nil when there is no
+--- review target, or the kind has none in local review mode.
+--- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"review"
 --- @param ... string|number additional discriminators
 --- @return string|nil
 function M.current_key(kind, ...)
 	local st = config.state
-	if not st.pr_number then
+	local repo, id = M.build_draft_scope(st)
+	if not repo then
 		return nil
 	end
-	return M.make_draft_key(M.repo_slug(st.pr_url) or "?", st.pr_number, kind, ...)
+	if st.review_mode == "local" and LOCAL_UNSUPPORTED_KINDS[kind] then
+		return nil
+	end
+	return M.make_draft_key(repo, id, kind, ...)
 end
 
 --- Collect draft markers for the active PR in a single load, used to render
@@ -115,15 +155,14 @@ function M.file_markers(rel_path)
 	if not M.enabled() then
 		return out
 	end
-	local st = config.state
-	if not st.pr_number then
+	local repo, scope_id = M.build_draft_scope(config.state)
+	if not repo then
 		return out
 	end
-	local repo = M.repo_slug(st.pr_url) or "?"
-	local line_pfx = rel_path and (M.make_draft_key(repo, st.pr_number, "line", rel_path) .. ":")
-	local sug_pfx = rel_path and (M.make_draft_key(repo, st.pr_number, "suggest", rel_path) .. ":")
-	local reply_pfx = M.make_draft_key(repo, st.pr_number, "reply") .. ":"
-	local edit_pfx = M.make_draft_key(repo, st.pr_number, "edit") .. ":"
+	local line_pfx = rel_path and (M.make_draft_key(repo, scope_id, "line", rel_path) .. ":")
+	local sug_pfx = rel_path and (M.make_draft_key(repo, scope_id, "suggest", rel_path) .. ":")
+	local reply_pfx = M.make_draft_key(repo, scope_id, "reply") .. ":"
+	local edit_pfx = M.make_draft_key(repo, scope_id, "edit") .. ":"
 
 	local function starts_with(s, prefix)
 		return prefix and s:sub(1, #prefix) == prefix
@@ -159,9 +198,9 @@ local function saved_at_iso(saved_at)
 	return ""
 end
 
---- Draft kinds surfaced in the comment browser. `pr_edit` is deliberately
---- absent: PR edit drafts are restored by :FudeEditPR itself and have no
---- comment thread / diff line to show.
+--- Draft kinds surfaced in the comment browser. `pr_edit` and `review` are
+--- deliberately absent: they are restored by :FudeEditPR / :FudeReviewSubmit
+--- themselves and have no comment thread / diff line to show.
 local BROWSER_KINDS = { line = true, suggest = true, issue = true, reply = true, edit = true }
 
 --- List the active PR's drafts as structured descriptors for the comment
@@ -174,12 +213,11 @@ function M.list_drafts()
 	if not M.enabled() then
 		return out
 	end
-	local st = config.state
-	if not st.pr_number then
+	local repo, scope_id = M.build_draft_scope(config.state)
+	if not repo then
 		return out
 	end
-	local repo = M.repo_slug(st.pr_url) or "?"
-	local prefix = repo .. ":#" .. tostring(st.pr_number) .. ":"
+	local prefix = M.make_draft_key(repo, scope_id, "") -- "<repo>:#<scope_id>:" (empty kind)
 	for key, entry in pairs(M.load()) do
 		if type(entry) == "table" and type(entry.body) == "string" and key:sub(1, #prefix) == prefix then
 			local rest = key:sub(#prefix + 1)
@@ -285,22 +323,50 @@ function M.set(key, body)
 	if not body or vim.trim(body) == "" then
 		drafts[key] = nil
 	else
-		-- UTC ISO-8601, matching GitHub comment timestamps (see M.prune).
-		drafts[key] = { body = body, saved_at = os.date("!%Y-%m-%dT%H:%M:%SZ") }
+		save_seq = save_seq + 1
+		drafts[key] = {
+			body = body,
+			-- UTC ISO-8601, matching GitHub comment timestamps (see M.prune).
+			saved_at = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+			-- Changes on every save, even of an identical body, so
+			-- remove_if_unchanged can tell a re-save from the original.
+			rev = string.format("%d-%d-%d", os.time(), vim.uv.hrtime(), save_seq),
+		}
 	end
 	M.save(drafts)
 end
 
---- Remove a draft only when its stored body still equals `snapshot` (the body
---- read when an async submit started; nil = no draft existed then). A draft
---- saved while the request was in flight is newer user intent and is kept.
+--- Identify the stored version of a draft, for `remove_if_unchanged`. Each
+--- save gets a new revision, so a draft re-saved with the same body still
+--- reads as changed. Entries written before revisions existed fall back to
+--- their body and timestamp.
+--- @param key string|nil
+--- @return string|nil revision (nil when there is no draft)
+function M.revision(key)
+	if not M.enabled() or not key then
+		return nil
+	end
+	local entry = M.load()[key]
+	if type(entry) ~= "table" or type(entry.body) ~= "string" then
+		return nil
+	end
+	if type(entry.rev) == "string" then
+		return entry.rev
+	end
+	return entry.body .. "\0" .. tostring(entry.saved_at)
+end
+
+--- Remove a draft only when it is still the version `snapshot` names (the
+--- `revision` read when an async submit started; nil = no draft existed then).
+--- A draft saved while the request was in flight — even with the same body —
+--- is newer user intent and is kept.
 --- @param key string|nil
 --- @param snapshot string|nil
 function M.remove_if_unchanged(key, snapshot)
 	if not key then
 		return
 	end
-	if M.get(key) == snapshot then
+	if M.revision(key) == snapshot then
 		M.remove(key)
 	end
 end

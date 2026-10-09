@@ -82,6 +82,7 @@ local function submit_review()
 
 	local ui = require("fude.ui")
 	local comments = require("fude.comments")
+	local drafts = require("fude.drafts")
 
 	-- Step 1: Select review event type
 	ui.select_review_event(function(event)
@@ -89,19 +90,42 @@ local function submit_review()
 			return
 		end
 
+		local draft_key = drafts.current_key("review")
+		local draft_body = drafts.get(draft_key)
+
 		-- Step 2: Input review body (optional)
-		ui.open_comment_input(function(body)
-			-- Step 3: Submit review
+		ui.open_comment_input(function(body, action)
+			if action == "draft" then
+				-- Saving a draft pauses the submit; the review is not sent.
+				drafts.set(draft_key, body)
+				vim.notify("fude.nvim: Draft saved (review not submitted)", vim.log.levels.INFO)
+				return
+			elseif action == "discard" then
+				drafts.remove(draft_key)
+			elseif action == "cancel" and draft_body then
+				-- Closing an unedited restored draft is not dirty, so no prompt was
+				-- shown; submitting here would send the review without the saved
+				-- body and then delete it. Keep the draft and stop instead.
+				vim.notify("fude.nvim: Review not submitted (draft kept)", vim.log.levels.INFO)
+				return
+			end
+			-- Step 3: Submit review. "cancel"/"discard" skip the body as before.
+			-- The input is already closed, so :FudeReviewSubmit can be reopened
+			-- and a new draft saved while the request is in flight; keep that one.
+			local draft_snapshot = drafts.revision(draft_key)
 			comments.submit_as_review(event, body, function(err)
 				if err then
 					vim.notify("fude.nvim: " .. err, vim.log.levels.ERROR)
 					return
 				end
+				drafts.remove_if_unchanged(draft_key, draft_snapshot)
 				vim.notify("fude.nvim: Review submitted", vim.log.levels.INFO)
 			end)
 		end, {
 			title = " Review Body (optional) ",
 			footer = " <CR> submit | q skip body ",
+			initial_lines = draft_body and vim.split(require("fude.ui.format").normalize_newlines(draft_body), "\n") or nil,
+			allow_draft = draft_key ~= nil and drafts.enabled(),
 		})
 	end)
 end

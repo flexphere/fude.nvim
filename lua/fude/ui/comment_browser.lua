@@ -473,6 +473,11 @@ local function create_browser(entries, issue_comments)
 			if vim.api.nvim_win_is_valid(left_win) then
 				vim.api.nvim_set_current_win(left_win)
 			end
+			-- Re-render only after the draft is gone: the local backend calls back
+			-- synchronously, so a refresh run by the caller would still see it and
+			-- keep the `✎draft` marker in the list and the diff.
+			refresh()
+			get_ui().refresh_visible_extmarks()
 		end)
 	end
 
@@ -507,7 +512,7 @@ local function create_browser(entries, issue_comments)
 
 		-- Capture the draft key now (mode/edit_target are reset after success)
 		pending_submit_key = lower_key_for_entry(entry, browser.mode, browser.edit_target)
-		pending_submit_snapshot = drafts.get(pending_submit_key)
+		pending_submit_snapshot = drafts.revision(pending_submit_key)
 
 		-- Save text for error recovery
 		local saved_lines = vim.api.nvim_buf_get_lines(lower_buf, 0, -1, false)
@@ -523,7 +528,6 @@ local function create_browser(entries, issue_comments)
 					end
 					vim.notify("fude.nvim: Reply posted", vim.log.levels.INFO)
 					restore_lower_after_submit()
-					refresh()
 				end)
 			end
 		elseif browser.mode == "edit" then
@@ -542,12 +546,12 @@ local function create_browser(entries, issue_comments)
 								if err then
 									vim.notify("fude.nvim: Edit failed: " .. err, vim.log.levels.ERROR)
 									restore_lower_text(saved_lines)
+									get_ui().refresh_extmarks()
+									refresh()
 								else
 									vim.notify("fude.nvim: Pending comment updated", vim.log.levels.INFO)
 									restore_lower_after_submit()
 								end
-								get_ui().refresh_extmarks()
-								refresh()
 							end)
 						end)
 					else
@@ -559,7 +563,6 @@ local function create_browser(entries, issue_comments)
 							end
 							vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
 							restore_lower_after_submit()
-							refresh()
 						end)
 					end
 				else
@@ -571,7 +574,6 @@ local function create_browser(entries, issue_comments)
 						end
 						vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
 						restore_lower_after_submit()
-						refresh()
 					end)
 				end
 			elseif entry.type == "issue" then
@@ -583,7 +585,6 @@ local function create_browser(entries, issue_comments)
 					end
 					vim.notify("fude.nvim: Comment updated", vim.log.levels.INFO)
 					restore_lower_after_submit()
-					refresh()
 				end)
 			end
 		elseif browser.mode == "new_pr_comment" then
@@ -599,7 +600,6 @@ local function create_browser(entries, issue_comments)
 				end
 				vim.notify("fude.nvim: Comment posted", vim.log.levels.INFO)
 				restore_lower_after_submit()
-				refresh()
 			end)
 		end
 
@@ -663,8 +663,9 @@ local function create_browser(entries, issue_comments)
 	local function close_with_confirm()
 		local key = lower_key_for_entry(current_entry(), browser.mode, browser.edit_target)
 		get_ui().confirm_close_with_draft(lower_buf, current_lower_original(), {
-			-- key is nil in local review mode (drafts need a PR number); disable
-			-- the save-draft option so we don't offer a no-op drafts.set(nil, …).
+			-- key is nil when there is no draft target (e.g. a PR-level comment in
+			-- local review mode); disable the save-draft option so we don't offer a
+			-- no-op drafts.set(nil, …).
 			allow_draft = key ~= nil and drafts.enabled(),
 			on_save_draft = function(text)
 				drafts.set(key, text)
@@ -856,7 +857,8 @@ local function create_browser(entries, issue_comments)
 	local function cancel_lower_with_confirm()
 		local key = lower_key_for_entry(current_entry(), browser.mode, browser.edit_target)
 		get_ui().confirm_close_with_draft(lower_buf, current_lower_original(), {
-			-- key is nil in local review mode; disable the no-op save-draft option.
+			-- key is nil when there is no draft target (e.g. a PR-level comment in
+			-- local review mode); disable the no-op save-draft option.
 			allow_draft = key ~= nil and drafts.enabled(),
 			on_save_draft = function(text)
 				drafts.set(key, text)
