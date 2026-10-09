@@ -634,16 +634,7 @@ function M.apply_full_pr_scope(on_done)
 		state.scope_commit_sha = nil
 		state.scope_commit_index = nil
 		state.gitsigns_reset = false
-		state.changed_files = {}
-		for _, f in ipairs(files) do
-			table.insert(state.changed_files, {
-				path = f.filename,
-				status = f.status,
-				additions = f.additions,
-				deletions = f.deletions,
-				patch = f.patch,
-			})
-		end
+		state.changed_files = gh_mod.build_changed_files(files)
 
 		-- Reset global gitsigns base (clearing commit scope base)
 		-- Then compute merge_base_sha and apply per-buffer base
@@ -747,16 +738,7 @@ function M.apply_commit_scope(sha, on_done)
 		state.scope_commit_sha = sha
 		state.scope_commit_index = M.find_commit_index(state.pr_commits, sha)
 		state.gitsigns_reset = false
-		state.changed_files = {}
-		for _, f in ipairs(files) do
-			table.insert(state.changed_files, {
-				path = f.filename,
-				status = f.status,
-				additions = f.additions,
-				deletions = f.deletions,
-				patch = f.patch,
-			})
-		end
+		state.changed_files = gh_mod.build_changed_files(files)
 
 		-- Update gitsigns base to parent commit
 		local has_gitsigns, gitsigns = pcall(require, "gitsigns")

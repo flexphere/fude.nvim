@@ -1240,8 +1240,8 @@ describe("sidepanel integration", function()
 		config.opts.sidepanel.file_tree = "tree"
 		config.opts.sidepanel.icons = false
 		config.state.changed_files = {
-			{ path = "src/a.lua", status = "modified" },
 			{ path = "src/nested/b.lua", status = "added" },
+			{ path = "src/z.lua", status = "modified" },
 		}
 		sidepanel.open()
 		local panel = config.state.sidepanel
@@ -1267,8 +1267,8 @@ describe("sidepanel integration", function()
 	it("keeps file navigation and scope auto-open working inside collapsed directories", function()
 		config.opts.sidepanel.file_tree = "tree"
 		config.state.changed_files = {
-			{ path = "src/a.lua", status = "modified" },
 			{ path = "src/nested/b.lua", status = "added" },
+			{ path = "src/z.lua", status = "modified" },
 		}
 		sidepanel.open()
 		local panel = config.state.sidepanel

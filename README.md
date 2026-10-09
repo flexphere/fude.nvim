@@ -116,7 +116,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewStart` | Start review session (PR detection, comments, extmarks) |
 | `:FudeReviewStop` | Stop review session |
 | `:FudeReviewToggle` | Toggle review session |
-| `:FudeReviewDiff` | Toggle diff preview window |
+| `:FudeReviewDiff` | Toggle diff preview window (renamed files diff against their old path) |
 | `:FudeReviewComment` | Create pending comment on current line/selection |
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
 | `:FudeReviewViewComment` | View comments on current line (`r` reply, `e` edit, `d` delete, `R` resolve/unresolve the thread) |
@@ -298,6 +298,11 @@ disabled mappings and mappings shadowed by an earlier action are omitted.
 Set `sidepanel.keymaps.help` to change the help key, or `false` to hide the
 hint and disable the mapping. Inside the help, `q` always closes it,
 independently of the panel's close key.
+
+Files are ordered as in the GitHub PR file tree: by path in byte order
+(`CLAUDE.md` before `lua/`, `ui.lua` before `ui/`). Tree mode places each
+directory where its first file appears, so flat and tree modes list files in
+the same order.
 
 The side panel uses fixed columns for the current file (`▶`), review state
 (`✓` / `○`), and change status (`M` modified, `A` added, `D` deleted,

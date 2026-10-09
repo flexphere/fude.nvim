@@ -11,6 +11,7 @@
 local M = {}
 local config = require("fude.config")
 local store = require("fude.local.store")
+local util = require("fude.util")
 
 -- === Pure functions ===
 
@@ -42,7 +43,7 @@ end
 
 --- Parse `git diff --name-status -M` output.
 --- @param output string|nil
---- @return table[] entries { path, status }
+--- @return table[] entries { path, previous_path?, status }
 function M.parse_name_status(output)
 	local entries = {}
 	if not output or output == "" then
@@ -51,15 +52,16 @@ function M.parse_name_status(output)
 	for line in output:gmatch("[^\n]+") do
 		local letter, rest = line:match("^(%S+)\t(.+)$")
 		if letter and rest then
-			local path = rest
+			local path, previous_path = rest, nil
 			if letter:sub(1, 1) == "R" or letter:sub(1, 1) == "C" then
-				-- "R100\told\tnew" — the review target is the new path
-				local _, new = rest:match("^(.-)\t(.+)$")
+				-- "R100\told\tnew" — the review target is the new path; the old
+				-- one is kept because the base content lives under it
+				local old, new = rest:match("^(.-)\t(.+)$")
 				if new then
-					path = new
+					path, previous_path = new, old
 				end
 			end
-			table.insert(entries, { path = path, status = M.status_word(letter) })
+			table.insert(entries, { path = path, previous_path = previous_path, status = M.status_word(letter) })
 		end
 	end
 	return entries
@@ -97,11 +99,13 @@ function M.is_store_path(path)
 end
 
 --- Build the changed_files array (same shape as the GitHub flow) from local
---- git output. Untracked files are appended as "added" with zero counts.
+--- git output. Untracked files are added as "added" with zero counts, and the
+--- result is sorted by path in byte order, as the GitHub PR file list is, so
+--- untracked files sit among the tracked ones instead of trailing them.
 --- @param name_status_out string|nil `git diff --name-status -M` output
 --- @param numstat_out string|nil `git diff --numstat -M` output
 --- @param untracked_out string|nil `git ls-files --others --exclude-standard` output
---- @return table[] changed files { path, status, additions, deletions }
+--- @return table[] changed files { path, previous_path?, status, additions, deletions }
 function M.build_changed_files(name_status_out, numstat_out, untracked_out)
 	local counts = M.parse_numstat(numstat_out)
 	local files = {}
@@ -111,6 +115,7 @@ function M.build_changed_files(name_status_out, numstat_out, untracked_out)
 			local c = counts[entry.path] or {}
 			table.insert(files, {
 				path = entry.path,
+				previous_path = entry.previous_path,
 				status = entry.status,
 				additions = c.additions or 0,
 				deletions = c.deletions or 0,
@@ -126,6 +131,9 @@ function M.build_changed_files(name_status_out, numstat_out, untracked_out)
 			end
 		end
 	end
+	table.sort(files, function(a, b)
+		return util.path_less(a.path, b.path)
+	end)
 	return files
 end
 
