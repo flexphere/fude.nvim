@@ -103,6 +103,15 @@ describe("format_comments_for_display", function()
 		assert.are.equal(0, result.hl_ranges[1].line)
 	end)
 
+	it("extends the separator to the given width", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
+			{ user = { login = "bob" }, created_at = "2024-01-02", body = "second" },
+		}
+		local result = ui.format_comments_for_display(comments, identity, 95)
+		assert.are.equal(string.rep("-", 95), result.lines[4])
+	end)
+
 	it("adds separator between multiple comments", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "first" },
@@ -1614,6 +1623,15 @@ describe("format_reply_comments_for_display", function()
 		assert.are.equal(string.rep("-", 40), result.lines[4])
 	end)
 
+	it("extends the separator to the given width", function()
+		local comments = {
+			{ user = { login = "a" }, created_at = "d1", body = "x" },
+			{ user = { login = "b" }, created_at = "d2", body = "y" },
+		}
+		local result = ui.format_reply_comments_for_display(comments, identity, 87)
+		assert.are.equal(string.rep("-", 87), result.lines[4])
+	end)
+
 	it("strips CRLF from body", function()
 		local comments = {
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "line1\r\nline2" },
@@ -2034,6 +2052,31 @@ describe("format_comment_browser_thread", function()
 		local entry = { type = "review", comments = {} }
 		local result = ui.format_comment_browser_thread(entry, {}, {}, id_fn)
 		assert.is_true(#result.lines > 0)
+	end)
+
+	it("passes the separator width to the thread display", function()
+		local entry = { type = "issue", comments = {} }
+		local all_issue_comments = {
+			{ id = 10, user = { login = "bob" }, created_at = "2024-01-01", body = "a" },
+			{ id = 11, user = { login = "carol" }, created_at = "2024-01-02", body = "b" },
+		}
+		local result = ui.format_comment_browser_thread(entry, {}, all_issue_comments, id_fn, 64)
+		assert.are.equal(string.rep("-", 64), result.lines[4])
+	end)
+end)
+
+describe("build_comment_separator", function()
+	it("spans the given width", function()
+		assert.are.equal(string.rep("-", 72), format.build_comment_separator(72))
+	end)
+
+	it("falls back to the default width without a number", function()
+		assert.are.equal(string.rep("-", format.DEFAULT_SEPARATOR_WIDTH), format.build_comment_separator(nil))
+	end)
+
+	it("keeps at least one character for a non-positive width", function()
+		assert.are.equal("-", format.build_comment_separator(0))
+		assert.are.equal("-", format.build_comment_separator(-5))
 	end)
 end)
 

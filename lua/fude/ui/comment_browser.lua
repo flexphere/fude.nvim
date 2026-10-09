@@ -98,8 +98,14 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 		return
 	end
 
-	-- Format thread for upper pane
-	local result = format.format_comment_browser_thread(entry, all_comments, all_issue_comments, config.format_date)
+	-- Format thread for upper pane. The separator between comments spans the
+	-- pane; the width is re-read on every entry change, so it follows resizes.
+	local separator_width = browser.upper_win
+			and vim.api.nvim_win_is_valid(browser.upper_win)
+			and vim.api.nvim_win_get_width(browser.upper_win)
+		or nil
+	local result =
+		format.format_comment_browser_thread(entry, all_comments, all_issue_comments, config.format_date, separator_width)
 
 	-- Update upper buffer
 	if vim.api.nvim_buf_is_valid(browser.upper_buf) then
