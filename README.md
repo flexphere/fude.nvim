@@ -260,6 +260,15 @@ require("fude").setup({
     label = "[resolved]",      -- Label string (comment browser / viewer / virtual text)
     hl_group = "DiagnosticOk", -- Highlight group for resolved labels
   },
+  -- Multi-line comment range display. A multi-line comment is shown on its
+  -- last line; inline boxes are titled with the range (e.g. "Comment L20-L29").
+  -- No background or sign column is used. Set a field to false to disable it.
+  comment_range = {
+    number_hl = "DiagnosticInfo",        -- Line number highlight on the range (needs 'number')
+    -- While the cursor is on the comment line:
+    cursor_number_hl = "DiagnosticWarn", -- replaces number_hl on the range
+    start_marker_hl = "DiagnosticHint",  -- "↓ comment L20-L29" at the end of the first line
+  },
   -- Side panel options
   sidepanel = {
     width = 40,          -- Panel width in columns
