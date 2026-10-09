@@ -47,7 +47,7 @@ function M.open_preview(source_win)
 		base_ref = state.scope_commit_sha .. "^"
 	end
 
-	-- Renamed/copied files: the base content lives under the old path. Fall
+	-- Renamed files: the base content lives under the old path. Fall
 	-- back to the new path when the old one is missing at base_ref (the full PR
 	-- scope reads the base branch tip, which may have dropped the old file).
 	local cwd = local_session and local_session.worktree_root or nil

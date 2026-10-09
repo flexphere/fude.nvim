@@ -195,9 +195,8 @@ Using lazy.nvim: >lua
     Toggle the diff preview window. Opens a side-by-side diff view
     showing the base branch version of the current file, or closes
     it if already open. Requires an active review session.
-    For a renamed or copied file, the base version is read from its
-    old path, so the diff shows the content changes rather than a new
-    file.
+    For a renamed file, the base version is read from its old path,
+    so the diff shows the content changes rather than a new file.
 
 :FudeReviewComment                                  *:FudeReviewComment*
     Create a review comment on the current line (normal mode) or
