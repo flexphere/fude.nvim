@@ -45,9 +45,14 @@ describe("session.parse_name_status", function()
 		assert.same({ path = "lua/c.lua", status = "removed" }, entries[3])
 	end)
 
-	it("uses the new path for renames", function()
-		local entries = session.parse_name_status("R100\told.lua\tnew.lua\n")
-		assert.same({ path = "new.lua", status = "renamed" }, entries[1])
+	it("uses the new path for renames and keeps the old one", function()
+		local entries = session.parse_name_status("R087\told.lua\tnew.lua\n")
+		assert.same({ path = "new.lua", previous_path = "old.lua", status = "renamed" }, entries[1])
+	end)
+
+	it("keeps the source path for copies", function()
+		local entries = session.parse_name_status("C075\tsrc.lua\tcopy.lua\n")
+		assert.same({ path = "copy.lua", previous_path = "src.lua", status = "copied" }, entries[1])
 	end)
 
 	it("returns empty for nil / empty output", function()
@@ -90,6 +95,18 @@ describe("session.build_changed_files", function()
 	it("defaults counts to zero when numstat is missing", function()
 		local files = session.build_changed_files("M\tlua/a.lua\n", nil, nil)
 		assert.same({ path = "lua/a.lua", status = "modified", additions = 0, deletions = 0 }, files[1])
+	end)
+
+	it("carries the old path of a renamed file", function()
+		local files =
+			session.build_changed_files("R087\tlua/old.lua\tlua/new.lua\n", "4\t2\tlua/{old.lua => new.lua}\n", nil)
+		assert.same({
+			path = "lua/new.lua",
+			previous_path = "lua/old.lua",
+			status = "renamed",
+			additions = 4,
+			deletions = 2,
+		}, files[1])
 	end)
 
 	it("excludes the plugin's own .fude/ store artifacts", function()
