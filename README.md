@@ -264,7 +264,7 @@ require("fude").setup({
   -- last line; inline boxes are titled with the range (e.g. "Comment L20-L29").
   -- No background or sign column is used. Set a field to false to disable it.
   comment_range = {
-    number_hl = "DiagnosticInfo",        -- Line number highlight on the range (needs 'number')
+    number_hl = "DiagnosticInfo",        -- Line number highlight on the range (needs 'number' or 'relativenumber')
     -- While the cursor is on the comment line:
     cursor_number_hl = "DiagnosticWarn", -- replaces number_hl on the range
     start_marker_hl = "DiagnosticHint",  -- "↓ comment L20-L29" at the end of the first line
