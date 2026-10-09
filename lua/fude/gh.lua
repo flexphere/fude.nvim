@@ -113,6 +113,28 @@ function M.get_pr_files(pr_number, callback)
 	}, callback)
 end
 
+--- Convert a files listing from the GitHub API (`pulls/{pr}/files` or
+--- `commits/{sha}`.files) to the changed_files entries used across the plugin.
+--- `previous_path` is set only for renamed/copied files, whose base content
+--- lives under the old name.
+--- @param files table[] API file objects
+--- @return table[] changed files { path, previous_path?, status, additions, deletions, patch }
+function M.build_changed_files(files)
+	local changed = {}
+	for _, f in ipairs(files) do
+		table.insert(changed, {
+			path = f.filename,
+			-- JSON null decodes to vim.NIL, so check the type rather than truthiness
+			previous_path = type(f.previous_filename) == "string" and f.previous_filename or nil,
+			status = f.status,
+			additions = f.additions,
+			deletions = f.deletions,
+			patch = f.patch,
+		})
+	end
+	return changed
+end
+
 --- Get review comments on a PR.
 --- @param pr_number number
 --- @param callback fun(err: string|nil, comments: table|nil)

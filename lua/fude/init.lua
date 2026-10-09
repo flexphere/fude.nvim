@@ -239,32 +239,14 @@ function M.start()
 		if started_detached and state.original_head_sha then
 			gh_mod.get_commit_files(state.original_head_sha, function(files_err, files)
 				if not files_err and files then
-					state.changed_files = {}
-					for _, f in ipairs(files) do
-						table.insert(state.changed_files, {
-							path = f.filename,
-							status = f.status,
-							additions = f.additions,
-							deletions = f.deletions,
-							patch = f.patch,
-						})
-					end
+					state.changed_files = gh_mod.build_changed_files(files)
 				end
 				on_ready()
 			end)
 		else
 			gh_mod.get_pr_files(state.pr_number, function(files_err, files)
 				if not files_err and files then
-					state.changed_files = {}
-					for _, f in ipairs(files) do
-						table.insert(state.changed_files, {
-							path = f.filename,
-							status = f.status,
-							additions = f.additions,
-							deletions = f.deletions,
-							patch = f.patch,
-						})
-					end
+					state.changed_files = gh_mod.build_changed_files(files)
 				end
 				on_ready()
 			end)
@@ -674,32 +656,14 @@ function M.reload(silent)
 	if config.state.scope == "commit" and config.state.scope_commit_sha then
 		gh_mod.get_commit_files(config.state.scope_commit_sha, function(err, files)
 			if not err and files and config.state == captured_state and config.state.active then
-				config.state.changed_files = {}
-				for _, f in ipairs(files) do
-					table.insert(config.state.changed_files, {
-						path = f.filename,
-						status = f.status,
-						additions = f.additions,
-						deletions = f.deletions,
-						patch = f.patch,
-					})
-				end
+				config.state.changed_files = gh_mod.build_changed_files(files)
 			end
 			on_done()
 		end)
 	else
 		gh_mod.get_pr_files(config.state.pr_number, function(err, files)
 			if not err and files and config.state == captured_state and config.state.active then
-				config.state.changed_files = {}
-				for _, f in ipairs(files) do
-					table.insert(config.state.changed_files, {
-						path = f.filename,
-						status = f.status,
-						additions = f.additions,
-						deletions = f.deletions,
-						patch = f.patch,
-					})
-				end
+				config.state.changed_files = gh_mod.build_changed_files(files)
 			end
 			on_done()
 		end)
