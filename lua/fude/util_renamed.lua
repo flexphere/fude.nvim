@@ -1,3 +1,4 @@
+-- rename diff check
 local M = {}
 
 --- Check if a value is null (nil or vim.NIL).
