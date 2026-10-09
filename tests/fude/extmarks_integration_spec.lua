@@ -537,6 +537,35 @@ describe("extmarks integration", function()
 				assert.are.same({ 6 }, vim.tbl_keys(texts))
 			end)
 
+			it("rebuilds the feedback when the comments are re-rendered without a cursor move", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+				-- A reload moved the range start from line 2 to line 3
+				config.state.comment_map["test.lua"][4] = { { id = 1, body = "range", start_line = 3, line = 4 } }
+				extmarks.refresh_extmarks()
+
+				assert.are.same({ 3, 4 }, hl_lines(buf, hint_ns, "number_hl_group"))
+				local texts = eol_texts(buf)
+				assert.is_nil(texts[2])
+				assert.are.equal(" ↓ comment L3-L4", texts[3])
+			end)
+
+			it("removes the feedback when the re-rendered line has no comment left", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+				config.state.comment_map["test.lua"][4] = nil
+				extmarks.refresh_extmarks()
+
+				assert.are.same({}, hl_lines(buf, hint_ns, "number_hl_group"))
+				assert.are.same({}, eol_texts(buf))
+			end)
+
 			it("shows neither when both options are false", function()
 				config.setup({ comment_range = { cursor_number_hl = false, start_marker_hl = false } })
 				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")

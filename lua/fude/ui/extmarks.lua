@@ -169,6 +169,7 @@ function M.refresh_extmarks()
 	-- unrelated lines; clear instead.
 	if require("fude.local.session").in_commit_scope() then
 		vim.api.nvim_buf_clear_namespace(buf, state.ns_id, 0, -1)
+		M.rebuild_inline_hint(buf)
 		return
 	end
 
@@ -269,6 +270,8 @@ function M.refresh_extmarks()
 			priority = 44,
 		})
 	end
+
+	M.rebuild_inline_hint(buf)
 end
 
 --- Clear all extmarks for a specific buffer.
@@ -540,6 +543,21 @@ end
 
 -- Autocmd group for inline hint
 local hint_augroup = nil
+
+--- Rebuild the cursor-line hint and range feedback after a buffer's comments
+--- were re-rendered. update_inline_hint skips a line it already marked, so a
+--- reload or re-anchor would otherwise leave stale ranges until the cursor
+--- moves. Only a hint already shown in `buf` is rebuilt: refresh_visible_extmarks
+--- re-renders other windows through nvim_win_call, and rebuilding there would
+--- move the hint out of the window the user is in.
+--- @param buf number buffer whose comments were re-rendered
+function M.rebuild_inline_hint(buf)
+	if current_hint.buf ~= buf then
+		return
+	end
+	M.clear_inline_hint()
+	M.update_inline_hint()
+end
 
 --- Setup autocmd for inline hint updates.
 function M.setup_inline_hint_autocmd()
