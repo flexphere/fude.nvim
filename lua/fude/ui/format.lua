@@ -24,6 +24,31 @@ function M.build_comment_separator(width)
 	return string.rep("-", math.max(1, math.floor(width)))
 end
 
+--- Format a multi-line comment range as "L20-L29".
+--- @param start_line number|nil 1-indexed first line
+--- @param end_line number|nil 1-indexed last line
+--- @return string|nil label, nil for a single line or an invalid range
+function M.format_line_range(start_line, end_line)
+	if type(start_line) ~= "number" or type(end_line) ~= "number" or start_line >= end_line then
+		return nil
+	end
+	return string.format("L%d-L%d", start_line, end_line)
+end
+
+--- Build the end-of-line marker shown on the first line of a multi-line
+--- comment range while the cursor is on the comment ("↓ comment L20-L29").
+--- The arrow points down because the comment is drawn on the range's last line.
+--- @param start_line number 1-indexed first line
+--- @param end_line number 1-indexed last line
+--- @return string marker text ("" for a single line or an invalid range)
+function M.build_range_start_marker(start_line, end_line)
+	local range = M.format_line_range(start_line, end_line)
+	if not range then
+		return ""
+	end
+	return "↓ comment " .. range
+end
+
 --- Build status badges for a comment header (" [agent]", " [approved]", ...).
 --- Local review comments carry author_type ("human"|"agent"); plain GitHub
 --- comments get "". A submitted review body (`review_state`, see

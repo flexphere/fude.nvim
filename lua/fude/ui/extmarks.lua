@@ -1,6 +1,8 @@
 local M = {}
 local config = require("fude.config")
+local data = require("fude.comments.data")
 local drafts = require("fude.drafts")
+local format = require("fude.ui.format")
 local util = require("fude.util")
 
 --- Get the namespace ID for flash/highlight extmarks.
@@ -75,6 +77,31 @@ function M.clear_comment_line_highlight()
 	end
 	comment_line_highlight.buf = nil
 	comment_line_highlight.extmark_ids = {}
+end
+
+--- Highlight the line numbers of every line in the ranges, clamped to the
+--- buffer (a local comment can point past EOF until it is marked outdated).
+--- @param buf number buffer handle
+--- @param ns number namespace
+--- @param ranges table[] { start_line, end_line } (1-indexed, inclusive)
+--- @param hl_group string highlight group for the number column
+--- @param priority number extmark priority (a higher one wins on the same line)
+--- @return number[] extmark ids
+local function highlight_range_numbers(buf, ns, ranges, hl_group, priority)
+	local ids = {}
+	local line_count = vim.api.nvim_buf_line_count(buf)
+	for _, range in ipairs(ranges) do
+		for line = math.max(1, range.start_line), math.min(range.end_line, line_count) do
+			local ok, id = pcall(vim.api.nvim_buf_set_extmark, buf, ns, line - 1, 0, {
+				number_hl_group = hl_group,
+				priority = priority,
+			})
+			if ok then
+				table.insert(ids, id)
+			end
+		end
+	end
+	return ids
 end
 
 --- Render end-of-line virtualText indicators (comment count, pending, resolved)
@@ -163,9 +190,16 @@ function M.refresh_extmarks()
 	if style == "inline" then
 		inline_opts = config.opts.inline or {}
 	end
+	local number_hl = (config.opts.comment_range or {}).number_hl
 
 	for _, line in ipairs(comment_lines) do
 		local comments = comments_mod.get_comments_at(rel_path, line)
+
+		-- Mark the line numbers a multi-line comment covers. Comments are drawn on
+		-- their last line only, so without this the first line is not visible.
+		if number_hl then
+			highlight_range_numbers(buf, state.ns_id, data.get_multiline_ranges(comments), number_hl, 40)
+		end
 
 		if style == "inline" then
 			-- Inline mode: display full comment content below the line.
@@ -293,6 +327,8 @@ local current_hint = {
 	buf = nil,
 	line = nil,
 	extmark_id = nil,
+	-- Range feedback (line numbers, start markers) for the comments on the hinted line
+	range_ids = {},
 }
 
 -- Cache for keymaps (avoid repeated keymap lookups on CursorMoved)
@@ -308,9 +344,51 @@ function M.clear_inline_hint()
 	if current_hint.buf and current_hint.extmark_id then
 		pcall(vim.api.nvim_buf_del_extmark, current_hint.buf, get_hint_ns(), current_hint.extmark_id)
 	end
+	if current_hint.buf then
+		for _, id in ipairs(current_hint.range_ids) do
+			pcall(vim.api.nvim_buf_del_extmark, current_hint.buf, get_hint_ns(), id)
+		end
+	end
 	current_hint.buf = nil
 	current_hint.line = nil
 	current_hint.extmark_id = nil
+	current_hint.range_ids = {}
+end
+
+--- Mark the multi-line ranges of the comments on the cursor line: emphasize
+--- their line numbers and put a marker at the end of each range's first line.
+--- A comment is drawn on the last line of its range, so this shows where it
+--- starts. No background highlight is used, so diff colors stay visible.
+--- @param buf number buffer handle
+--- @param ns number hint namespace
+--- @param comments table[] comments on the cursor line
+--- @return number[] extmark ids
+local function mark_cursor_ranges(buf, ns, comments)
+	local range_opts = config.opts.comment_range or {}
+	local ranges = data.get_multiline_ranges(comments)
+	local ids = {}
+	if range_opts.cursor_number_hl then
+		-- Above refresh_extmarks' number_hl (40) so it replaces it on these lines
+		ids = highlight_range_numbers(buf, ns, ranges, range_opts.cursor_number_hl, 45)
+	end
+	if range_opts.start_marker_hl then
+		local line_count = vim.api.nvim_buf_line_count(buf)
+		for _, range in ipairs(ranges) do
+			if range.start_line >= 1 and range.start_line <= line_count then
+				local ok, id = pcall(vim.api.nvim_buf_set_extmark, buf, ns, range.start_line - 1, 0, {
+					virt_text = {
+						{ " " .. format.build_range_start_marker(range.start_line, range.end_line), range_opts.start_marker_hl },
+					},
+					virt_text_pos = "eol",
+					priority = 200,
+				})
+				if ok then
+					table.insert(ids, id)
+				end
+			end
+		end
+	end
+	return ids
 end
 
 --- Convert internal keymap lhs to human-readable format.
@@ -457,6 +535,7 @@ function M.update_inline_hint()
 	current_hint.buf = buf
 	current_hint.line = cursor_line
 	current_hint.extmark_id = extmark_id
+	current_hint.range_ids = mark_cursor_ranges(buf, ns, comments)
 end
 
 -- Autocmd group for inline hint

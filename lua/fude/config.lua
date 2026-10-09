@@ -83,6 +83,16 @@ M.defaults = {
 		label = "[resolved]", -- Label string for resolved threads
 		hl_group = "DiagnosticOk", -- Highlight group for resolved labels
 	},
+	-- Show which lines a multi-line comment covers. None of these use a background
+	-- or the sign column, so diff colors and gitsigns stay visible. Set a field to
+	-- false to disable it.
+	comment_range = {
+		-- Line number highlight on every line of the range (needs 'number' or 'relativenumber').
+		number_hl = "DiagnosticInfo",
+		-- While the cursor is on the comment's line (the range's last line):
+		cursor_number_hl = "DiagnosticWarn", -- replaces number_hl on the range
+		start_marker_hl = "DiagnosticHint", -- "↓ comment L20-L29" at the end of the first line
+	},
 	keymaps = {
 		create_comment = "<leader>Rc",
 		view_comments = "<leader>Rv",

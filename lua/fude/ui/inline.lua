@@ -1,5 +1,6 @@
 local M = {}
 
+local data = require("fude.comments.data")
 local format = require("fude.ui.format")
 local util = require("fude.util")
 
@@ -83,12 +84,19 @@ function M.format_comments_for_inline(comments, format_date_fn, opts)
 		-- `is_resolved` is a thread-level state applied to every comment in the
 		-- thread, so the `[resolved thread]` label is shown only on the thread's
 		-- head comment (the oldest one, which has no in_reply_to_id) instead of
-		-- repeating on every reply box.
-		local label = " Comment "
+		-- repeating on every reply box. The line range of a multi-line comment
+		-- (` Comment L20-L29 `) is thread-level too, so it follows the same rule.
+		local is_head = util.is_null(comment.in_reply_to_id)
+		local title = "Comment"
+		local range = is_head and format.format_line_range(data.get_comment_line_range(comment))
+		if range then
+			title = title .. " " .. range
+		end
+		local label = " " .. title .. " "
 		if is_pending then
-			label = " Comment [pending] "
-		elseif comment.is_resolved and util.is_null(comment.in_reply_to_id) then
-			label = " Comment [resolved thread] "
+			label = " " .. title .. " [pending] "
+		elseif comment.is_resolved and is_head then
+			label = " " .. title .. " [resolved thread] "
 		end
 		local corner_width = 2 -- ╭ and ╮ are 1 cell each
 		local left_dash_width = 1 -- ─ after ╭
