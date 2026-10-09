@@ -308,7 +308,7 @@ File opening position                                 *fude-file-position*
 
 :FudeReviewScope                                    *:FudeReviewScope*
     Select the review scope. Opens a picker showing the PR's commit
-    history and a "Full PR" option. By default, the scope is the full
+    history and an "Entire PR" option. By default, the scope is the full
     PR (base...HEAD).
 
     Each commit entry shows its position as `[1/10]` to indicate
@@ -320,7 +320,7 @@ File opening position                                 *fude-file-position*
     only files changed in that commit, and the diff preview uses the
     commit's parent as the base. Gitsigns base is also updated.
 
-    When "Full PR" is selected, the original HEAD is restored and
+    When "Entire PR" is selected, the original HEAD is restored and
     the full PR scope is re-applied.
 
     When using Telescope, a preview pane shows the changed files
@@ -341,7 +341,7 @@ File opening position                                 *fude-file-position*
 
 :FudeReviewScopeNext                            *:FudeReviewScopeNext*
     Move to the next review scope. Cycles through:
-    Full PR → commit 1 → commit 2 → ... → commit N → Full PR.
+    Entire PR → commit 1 → commit 2 → ... → commit N → Entire PR.
     After the switch, opens the first changed file of the new scope (as
     selecting a scope in the side panel does), unless focus moved elsewhere
     while the switch was in progress.
@@ -358,7 +358,7 @@ File opening position                                 *fude-file-position*
 
 :FudeReviewScopePrev                            *:FudeReviewScopePrev*
     Move to the previous review scope. Cycles through:
-    Full PR → commit N → ... → commit 2 → commit 1 → Full PR.
+    Entire PR → commit N → ... → commit 2 → commit 1 → Entire PR.
     After the switch, opens the first changed file of the new scope (as
     selecting a scope in the side panel does), unless focus moved elsewhere
     while the switch was in progress.
@@ -746,7 +746,7 @@ File opening position                                 *fude-file-position*
     The panel is a sidebar split window that shows two sections:
 
     Review Scope:~
-      In PR review, lists the PR's commit history with a "Full PR"
+      In PR review, lists the PR's commit history with an "Entire PR"
       option at the top; reviewed commits show a checkmark indicator,
       and `<Tab>` toggles a commit's reviewed state.
       In local review (|fude-local-review|), lists the local diff scopes
@@ -866,7 +866,7 @@ command). Suggested mappings:
   `<leader>ed`  Toggle diff preview
   `<leader>eb`  Open PR in browser
   `<leader>ey`  Copy PR URL to clipboard
-  `<leader>eC`  Select review scope (commit or full PR)
+  `<leader>eC`  Select review scope (commit or Entire PR)
   `<leader>e]`  Next review scope
   `<leader>e[`  Previous review scope
   `<leader>ep`  Toggle review side panel

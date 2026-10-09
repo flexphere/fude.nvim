@@ -311,7 +311,7 @@ M.list = {
 	-- Scope ----------------------------------------------------------------
 	{
 		name = "FudeReviewScope",
-		desc = "Select review scope (full PR / commit, or the local scope picker)",
+		desc = "Select review scope (entire PR / commit, or the local scope picker)",
 		category = "Scope",
 		available = when_active,
 		run = function()
