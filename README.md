@@ -299,6 +299,11 @@ Set `sidepanel.keymaps.help` to change the help key, or `false` to hide the
 hint and disable the mapping. Inside the help, `q` always closes it,
 independently of the panel's close key.
 
+Files are ordered as in the GitHub PR file tree: by path in byte order
+(`CLAUDE.md` before `lua/`, `ui.lua` before `ui/`). Tree mode places each
+directory where its first file appears, so flat and tree modes list files in
+the same order.
+
 The side panel uses fixed columns for the current file (`▶`), review state
 (`✓` / `○`), and change status (`M` modified, `A` added, `D` deleted,
 `R` renamed, `C` copied). Status letters use foreground colors from the
