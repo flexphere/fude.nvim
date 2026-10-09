@@ -2262,6 +2262,32 @@ describe("apply_markdown_highlight_to_line", function()
 	end)
 end)
 
+describe("build_range_start_marker", function()
+	it("points down to the comment drawn on the last line", function()
+		assert.are.equal("↓ comment L20-L29", ui.build_range_start_marker(20, 29))
+	end)
+
+	it("returns an empty string for a single line", function()
+		assert.are.equal("", ui.build_range_start_marker(29, 29))
+	end)
+end)
+
+describe("format_line_range", function()
+	it("formats a multi-line range", function()
+		assert.are.equal("L20-L29", ui.format_line_range(20, 29))
+	end)
+
+	it("returns nil for a single line", function()
+		assert.is_nil(ui.format_line_range(29, 29))
+	end)
+
+	it("returns nil for a reversed or non-numeric range", function()
+		assert.is_nil(ui.format_line_range(29, 20))
+		assert.is_nil(ui.format_line_range(nil, 20))
+		assert.is_nil(ui.format_line_range(vim.NIL, 20))
+	end)
+end)
+
 describe("format_comments_for_inline", function()
 	local identity = function(s)
 		return s or ""
@@ -2381,6 +2407,55 @@ describe("format_comments_for_inline", function()
 		local result = ui.format_comments_for_inline(comments, identity)
 		assert.is_true(find_in_border_at(result, 1, "%[resolved thread%]"), "head box should show the label")
 		assert.is_false(find_in_border_at(result, 2, "%[resolved thread%]"), "reply box should not show the label")
+	end)
+
+	it("shows the line range of a multi-line comment in the top border", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "x", start_line = 20, line = 29 },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_true(find_in_top_border(result, "Comment L20%-L29 ─"))
+	end)
+
+	it("puts the line range before the pending label", function()
+		local comments = {
+			{
+				user = { login = "alice" },
+				created_at = "2024-01-01",
+				body = "x",
+				start_line = 20,
+				line = 29,
+				is_pending = true,
+			},
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_true(find_in_top_border(result, "Comment L20%-L29 %[pending%]"))
+	end)
+
+	it("does not show a line range for a single-line comment", function()
+		local comments = {
+			{ user = { login = "alice" }, created_at = "2024-01-01", body = "x", line = 29 },
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_false(find_in_top_border(result, "L29"))
+	end)
+
+	it("shows the line range only on the thread head, not on replies", function()
+		local comments = {
+			{ id = 1, user = { login = "alice" }, created_at = "2024-01-01", body = "root", start_line = 3, line = 8 },
+			{
+				id = 2,
+				user = { login = "bob" },
+				created_at = "2024-01-02",
+				body = "reply",
+				start_line = 3,
+				line = 8,
+				in_reply_to_id = 1,
+			},
+		}
+		local result = ui.format_comments_for_inline(comments, identity)
+		assert.is_true(find_in_border_at(result, 1, "L3%-L8"), "head box should show the range")
+		assert.is_false(find_in_border_at(result, 2, "L3%-L8"), "reply box should not show the range")
 	end)
 
 	it("prefers pending label over resolved label in top border", function()

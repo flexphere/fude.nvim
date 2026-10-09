@@ -325,6 +325,25 @@ function M.get_comment_line_range(comment)
 	return start_line, end_line
 end
 
+--- Collect the distinct line ranges of the multi-line comments in a list.
+--- Single-line comments are skipped: their range is the line the comment is
+--- shown on, so marking it adds nothing.
+--- @param comments table[] comment objects
+--- @return table[] ranges { start_line, end_line } in first-seen order
+function M.get_multiline_ranges(comments)
+	local ranges = {}
+	local seen = {}
+	for _, comment in ipairs(comments) do
+		local start_line, end_line = M.get_comment_line_range(comment)
+		local key = start_line .. ":" .. end_line
+		if start_line < end_line and not seen[key] then
+			seen[key] = true
+			table.insert(ranges, { start_line = start_line, end_line = end_line })
+		end
+	end
+	return ranges
+end
+
 --- Get the reply target ID for a comment.
 --- GitHub API doesn't allow replying to replies, so we need to find the top-level comment.
 --- @param comment_id number the comment ID

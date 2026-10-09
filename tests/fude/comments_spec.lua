@@ -617,6 +617,35 @@ describe("get_comment_line_range", function()
 	end)
 end)
 
+describe("get_multiline_ranges", function()
+	it("returns the range of a multi-line comment", function()
+		local ranges = comments.get_multiline_ranges({ { start_line = 20, line = 29 } })
+		assert.are.same({ { start_line = 20, end_line = 29 } }, ranges)
+	end)
+
+	it("skips single-line comments, including a JSON null start_line", function()
+		local ranges = comments.get_multiline_ranges({
+			{ line = 5 },
+			{ start_line = vim.NIL, line = 6 },
+			{ start_line = 7, line = 7 },
+		})
+		assert.are.same({}, ranges)
+	end)
+
+	it("deduplicates a thread's root and replies that share a range", function()
+		local ranges = comments.get_multiline_ranges({
+			{ id = 1, start_line = 3, line = 8 },
+			{ id = 2, start_line = 3, line = 8, in_reply_to_id = 1 },
+			{ id = 3, start_line = 5, line = 8 },
+		})
+		assert.are.same({ { start_line = 3, end_line = 8 }, { start_line = 5, end_line = 8 } }, ranges)
+	end)
+
+	it("returns an empty list for no comments", function()
+		assert.are.same({}, comments.get_multiline_ranges({}))
+	end)
+end)
+
 -- Tests for pure data functions added during refactoring
 
 describe("data.line_from_diff_hunk", function()

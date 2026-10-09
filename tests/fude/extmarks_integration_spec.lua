@@ -391,6 +391,195 @@ describe("extmarks integration", function()
 		end)
 	end)
 
+	describe("comment range", function()
+		local function hl_lines(buf, ns, key)
+			local lines = {}
+			for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+				if mark[4][key] then
+					table.insert(lines, mark[2] + 1)
+				end
+			end
+			table.sort(lines)
+			return lines
+		end
+
+		local function setup_range_comment(buf)
+			vim.api.nvim_set_current_buf(buf)
+			config.state.active = true
+			config.state.pending_comments = {}
+			config.state.comment_map = {
+				["test.lua"] = {
+					[4] = { { id = 1, body = "range", start_line = 2, line = 4 } },
+					[6] = { { id = 2, body = "single", line = 6 } },
+				},
+			}
+		end
+
+		it("highlights the line numbers of a multi-line comment range", function()
+			local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+			setup_range_comment(buf)
+
+			extmarks.refresh_extmarks()
+
+			assert.are.same({ 2, 3, 4 }, hl_lines(buf, config.state.ns_id, "number_hl_group"))
+		end)
+
+		it("clamps the range to the buffer", function()
+			local buf = helpers.create_buf({ "1", "2", "3" }, "test.lua")
+			vim.api.nvim_set_current_buf(buf)
+			config.state.active = true
+			config.state.pending_comments = {}
+			config.state.comment_map = {
+				["test.lua"] = { [5] = { { id = 1, body = "past EOF", start_line = 2, line = 5 } } },
+			}
+
+			extmarks.refresh_extmarks()
+
+			assert.are.same({ 2, 3 }, hl_lines(buf, config.state.ns_id, "number_hl_group"))
+		end)
+
+		it("does not highlight line numbers when number_hl is false", function()
+			config.setup({ comment_range = { number_hl = false } })
+			local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+			setup_range_comment(buf)
+
+			extmarks.refresh_extmarks()
+
+			assert.are.same({}, hl_lines(buf, config.state.ns_id, "number_hl_group"))
+		end)
+
+		describe("cursor feedback", function()
+			local hint_ns = vim.api.nvim_create_namespace("fude_inline_hint")
+
+			-- End-of-line texts in the hint namespace, keyed by 1-indexed line
+			local function eol_texts(buf)
+				local texts = {}
+				for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, hint_ns, 0, -1, { details = true })) do
+					if mark[4].virt_text then
+						texts[mark[2] + 1] = mark[4].virt_text[1][1]
+					end
+				end
+				return texts
+			end
+
+			before_each(function()
+				local diff = require("fude.diff")
+				helpers.mock(diff, "get_repo_root", function()
+					return "/repo"
+				end)
+				helpers.mock(diff, "make_relative", function()
+					return "test.lua"
+				end)
+			end)
+
+			after_each(function()
+				-- Resets the cached repo root and clears the hint
+				extmarks.teardown_inline_hint_autocmd()
+			end)
+
+			it("emphasizes the range line numbers while the cursor is on the comment line", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+
+				assert.are.same({ 2, 3, 4 }, hl_lines(buf, hint_ns, "number_hl_group"))
+				for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, hint_ns, 0, -1, { details = true })) do
+					if mark[4].number_hl_group then
+						assert.are.equal("DiagnosticWarn", mark[4].number_hl_group)
+					end
+				end
+			end)
+
+			it("puts a marker at the end of the range's first line", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+
+				assert.are.equal(" ↓ comment L2-L4", eol_texts(buf)[2])
+			end)
+
+			it("uses no background highlight", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+
+				assert.are.same({}, hl_lines(buf, hint_ns, "line_hl_group"))
+			end)
+
+			it("removes the feedback when the cursor leaves the comment line", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+				vim.api.nvim_win_set_cursor(0, { 6, 0 })
+				extmarks.update_inline_hint()
+
+				assert.are.same({}, hl_lines(buf, hint_ns, "number_hl_group"))
+				assert.is_nil(eol_texts(buf)[2])
+			end)
+
+			it("shows nothing for a single-line comment beyond the usual hint", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 6, 0 })
+				extmarks.update_inline_hint()
+
+				assert.are.same({}, hl_lines(buf, hint_ns, "number_hl_group"))
+				local texts = eol_texts(buf)
+				assert.are.same({ 6 }, vim.tbl_keys(texts))
+			end)
+
+			it("rebuilds the feedback when the comments are re-rendered without a cursor move", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+				-- A reload moved the range start from line 2 to line 3
+				config.state.comment_map["test.lua"][4] = { { id = 1, body = "range", start_line = 3, line = 4 } }
+				extmarks.refresh_extmarks()
+
+				assert.are.same({ 3, 4 }, hl_lines(buf, hint_ns, "number_hl_group"))
+				local texts = eol_texts(buf)
+				assert.is_nil(texts[2])
+				assert.are.equal(" ↓ comment L3-L4", texts[3])
+			end)
+
+			it("removes the feedback when the re-rendered line has no comment left", function()
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+				config.state.comment_map["test.lua"][4] = nil
+				extmarks.refresh_extmarks()
+
+				assert.are.same({}, hl_lines(buf, hint_ns, "number_hl_group"))
+				assert.are.same({}, eol_texts(buf))
+			end)
+
+			it("shows neither when both options are false", function()
+				config.setup({ comment_range = { cursor_number_hl = false, start_marker_hl = false } })
+				local buf = helpers.create_buf({ "1", "2", "3", "4", "5", "6" }, "test.lua")
+				setup_range_comment(buf)
+
+				vim.api.nvim_win_set_cursor(0, { 4, 0 })
+				extmarks.update_inline_hint()
+
+				assert.are.same({}, hl_lines(buf, hint_ns, "number_hl_group"))
+				assert.is_nil(eol_texts(buf)[2])
+			end)
+		end)
+	end)
+
 	describe("flash_line", function()
 		it("creates a temporary highlight extmark", function()
 			local buf = helpers.create_buf({ "line1", "line2", "line3", "line4", "line5" }, "flash_test.lua")

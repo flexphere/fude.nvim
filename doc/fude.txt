@@ -720,6 +720,15 @@ File opening position                                 *fude-file-position*
     |:FudeReviewToggleCommentStyle| are detected, the hint shows those
     keybindings with `<leader>` notation. Otherwise, it shows the command
     names. The hint disappears when the cursor moves to a non-comment line.
+
+    A multi-line comment is shown on its last line, so its first line is
+    marked separately: the inline box of the thread's head comment is
+    titled with the range (e.g. `Comment L20-L29`), the line numbers of the
+    range are highlighted with `comment_range.number_hl`, and while the
+    cursor is on the comment line the range's line numbers switch to
+    `comment_range.cursor_number_hl` and its first line gets a
+    `↓ comment L20-L29` marker at the end. None of these use a background
+    or the sign column, so diff colors and gitsigns stay visible.
     Requires an active review session.
 
 :FudeReviewToggleResolved                *:FudeReviewToggleResolved*
@@ -1014,6 +1023,12 @@ Default configuration: >lua
       label = "[resolved]",      -- Label string
       hl_group = "DiagnosticOk", -- Highlight group for resolved labels
     },
+    -- Multi-line comment range display (false disables a field)
+    comment_range = {
+      number_hl = "DiagnosticInfo",        -- Line number highlight on the range
+      cursor_number_hl = "DiagnosticWarn", -- Same, while on the comment line
+      start_marker_hl = "DiagnosticHint",  -- First-line marker, while on the comment line
+    },
   })
 <
 
@@ -1278,6 +1293,26 @@ Options:
 
 `resolved.hl_group` Highlight group for resolved labels
                   (default: "DiagnosticOk").
+
+`comment_range.number_hl`
+                  Highlight group for the line numbers of every line a
+                  multi-line comment covers (default: "DiagnosticInfo").
+                  Applied in both comment styles. Only the number column is
+                  colored, so it takes no sign column slot and does not
+                  override diff colors; it is invisible without 'number' or
+                  'relativenumber'. Set to false to disable.
+
+`comment_range.cursor_number_hl`
+                  Highlight group that replaces `comment_range.number_hl` on
+                  the range while the cursor is on the comment's line (its
+                  last line); removed when the cursor leaves it
+                  (default: "DiagnosticWarn"). Set to false to disable.
+
+`comment_range.start_marker_hl`
+                  Highlight group for the `↓ comment L20-L29` marker shown at
+                  the end of the range's first line while the cursor is on
+                  the comment's line (default: "DiagnosticHint"). Set to
+                  false to disable.
 
 `auto_reload.enabled`
                   Enable automatic periodic reload of review data

@@ -155,3 +155,8 @@
 - **問題**: `parse_name_status`の`C`（copy）分岐があることを根拠に「copied fileも旧パスと比較する」と書いたが、実際の入力元`diff.get_name_status`は`git diff -M`でrenameしか検出しないため、local modeではcopyが`added`になり分岐に到達しなかった
 - **対策**: パーサーの分岐を根拠に挙動を文書化するときは、呼び出し元のコマンドやAPIがその形式を実際に出力するか（gitのフラグ、APIのstatus値）まで遡って確認する。到達しない分岐はmode限定で書くか、記載から外す
 - **該当箇所**: lua/fude/local/session.lua, doc/fude.txt
+
+### エッジケース: カーソル連動の表示が「同じ行ならskip」のキャッシュで再描画に追従しない (PR #237, 2026-10-10)
+- **問題**: 複数行コメントの範囲強調を`update_inline_hint`（CursorMovedで呼ばれ、同じbuffer/lineなら早期return）に載せたため、カーソルを動かさないままreloadや再anchorで`comment_map`が変わると、削除・移動された範囲の強調と開始マーカーが次のカーソル移動まで残った
+- **対策**: カーソル位置をキーに「表示済みならskip」するextmarkを足すときは、そのデータを書き換える描画経路（`refresh_extmarks`等）からも無効化・再構築する。他windowを`nvim_win_call`で描画する経路があるので、再構築は表示中のバッファに限り、カーソルのあるwindowから表示を移さない
+- **該当箇所**: lua/fude/ui/extmarks.lua
