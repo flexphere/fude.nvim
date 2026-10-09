@@ -55,6 +55,27 @@ describe("null_to", function()
 	end)
 end)
 
+describe("path_less", function()
+	it("orders uppercase before lowercase", function()
+		assert.is_true(util.path_less("CLAUDE.md", "lua/a.lua"))
+		assert.is_false(util.path_less("lua/a.lua", "CLAUDE.md"))
+	end)
+
+	it("orders a file before a same-named directory ('.' < '/')", function()
+		assert.is_true(util.path_less("lua/ui.lua", "lua/ui/format.lua"))
+		assert.is_false(util.path_less("lua/ui/format.lua", "lua/ui.lua"))
+	end)
+
+	it("orders a prefix before the longer path", function()
+		assert.is_true(util.path_less("a", "a/b"))
+		assert.is_false(util.path_less("a/b", "a"))
+	end)
+
+	it("returns false for equal paths", function()
+		assert.is_false(util.path_less("a.lua", "a.lua"))
+	end)
+end)
+
 describe("all_comments_resolved", function()
 	it("returns false for an empty list", function()
 		assert.is_false(util.all_comments_resolved({}))

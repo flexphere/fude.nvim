@@ -87,6 +87,26 @@ describe("session.build_changed_files", function()
 		assert.same({ path = "notes.md", status = "added", additions = 0, deletions = 0 }, files[2])
 	end)
 
+	it("sorts untracked files among tracked ones by byte-order path", function()
+		local files = session.build_changed_files(
+			"M\tlua/ui.lua\nM\tlua/ui/format.lua\nM\tz.lua\n",
+			nil,
+			"lua/ui/new.lua\nREADME.md\na.lua\n"
+		)
+		local paths = {}
+		for _, f in ipairs(files) do
+			table.insert(paths, f.path)
+		end
+		assert.same({
+			"README.md",
+			"a.lua",
+			"lua/ui.lua",
+			"lua/ui/format.lua",
+			"lua/ui/new.lua",
+			"z.lua",
+		}, paths)
+	end)
+
 	it("does not duplicate files present in both diff and untracked output", function()
 		local files = session.build_changed_files("A\tnew.lua\n", nil, "new.lua\n")
 		assert.equals(1, #files)
