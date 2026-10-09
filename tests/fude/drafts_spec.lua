@@ -97,6 +97,10 @@ describe("drafts.current_key", function()
 		config.setup({})
 	end)
 
+	after_each(function()
+		config.reset_state()
+	end)
+
 	it("derives repo and PR number from config.state", function()
 		config.state.pr_number = 132
 		config.state.pr_url = "https://github.com/owner/repo/pull/132"
@@ -108,6 +112,131 @@ describe("drafts.current_key", function()
 	it("returns nil when no active PR", function()
 		config.state.pr_number = nil
 		assert.is_nil(drafts.current_key("line", "f", 1, 2))
+	end)
+
+	it("derives the worktree and branch in local review mode", function()
+		config.state.review_mode = "local"
+		config.state.local_session = { id = "s1", worktree_root = "/repo", branch = "feat/x" }
+		assert.equals(
+			drafts.make_draft_key("local:/repo", "feat/x", "line", "f", 1, 2),
+			drafts.current_key("line", "f", 1, 2)
+		)
+		assert.equals(
+			drafts.make_draft_key("local:/repo", "feat/x", "reply", "uuid-1"),
+			drafts.current_key("reply", "uuid-1")
+		)
+	end)
+
+	it("returns nil for kinds with no target in local review mode", function()
+		config.state.review_mode = "local"
+		config.state.local_session = { id = "s1", worktree_root = "/repo", branch = "feat/x" }
+		-- No PR to post a PR-level comment to, and no review to submit.
+		assert.is_nil(drafts.current_key("issue"))
+		assert.is_nil(drafts.current_key("review"))
+	end)
+
+	it("keeps the review kind in GitHub review mode", function()
+		config.state.pr_number = 132
+		config.state.pr_url = "https://github.com/owner/repo/pull/132"
+		assert.equals(drafts.make_draft_key("owner/repo", 132, "review"), drafts.current_key("review"))
+	end)
+end)
+
+describe("drafts.build_draft_scope", function()
+	it("returns the repo slug and PR number in GitHub review mode", function()
+		local repo, id = drafts.build_draft_scope({
+			review_mode = "github",
+			pr_number = 132,
+			pr_url = "https://github.com/owner/repo/pull/132",
+		})
+		assert.equals("owner/repo", repo)
+		assert.equals(132, id)
+	end)
+
+	it("falls back to a placeholder repo when the PR url is unknown", function()
+		local repo, id = drafts.build_draft_scope({ pr_number = 5 })
+		assert.equals("?", repo)
+		assert.equals(5, id)
+	end)
+
+	it("returns the local-prefixed worktree and the branch in local review mode", function()
+		local repo, id = drafts.build_draft_scope({
+			review_mode = "local",
+			local_session = { id = "s1", worktree_root = "/repo", branch = "feat/x" },
+		})
+		assert.equals("local:/repo", repo)
+		assert.equals("feat/x", id)
+	end)
+
+	it("uses the session id on a detached HEAD in local review mode", function()
+		local repo, id = drafts.build_draft_scope({
+			review_mode = "local",
+			local_session = { id = "s1", worktree_root = "/repo" },
+		})
+		assert.equals("local:/repo", repo)
+		assert.equals("detached:s1", id)
+	end)
+
+	it("ignores a leftover pr_number in local review mode", function()
+		local repo = drafts.build_draft_scope({
+			review_mode = "local",
+			pr_number = 132,
+			local_session = { id = "s1", worktree_root = "/repo", branch = "feat/x" },
+		})
+		assert.equals("local:/repo", repo)
+	end)
+
+	it("returns nil without a review target", function()
+		assert.is_nil(drafts.build_draft_scope({}))
+		assert.is_nil(drafts.build_draft_scope({ review_mode = "local" }))
+		assert.is_nil(drafts.build_draft_scope(nil))
+	end)
+end)
+
+describe("drafts in local review mode", function()
+	local tmp
+
+	before_each(function()
+		config.setup({})
+		tmp = vim.fn.tempname()
+		vim.fn.mkdir(tmp, "p")
+		drafts._dir = tmp
+		-- A GitHub draft at the same path/line must not leak into the local session.
+		drafts.set(drafts.make_draft_key("owner/repo", 132, "line", "a.lua", 3, 3), "github")
+		config.state.review_mode = "local"
+		config.state.local_session = { id = "s1", worktree_root = "/repo", branch = "feat/x" }
+	end)
+
+	after_each(function()
+		drafts._dir = nil
+		vim.fn.delete(tmp, "rf")
+		config.reset_state()
+	end)
+
+	it("file_markers reports local line drafts and string comment ids", function()
+		drafts.set(drafts.current_key("line", "a.lua", 10, 10), "x")
+		drafts.set(drafts.current_key("reply", "uuid-1"), "r")
+		local m = drafts.file_markers("a.lua")
+		assert.is_true(m.lines[10])
+		assert.is_nil(m.lines[3]) -- the GitHub draft
+		assert.is_true(m.comment_ids["uuid-1"])
+	end)
+
+	it("list_drafts lists only the local session's drafts", function()
+		drafts.set(drafts.current_key("suggest", "a.lua", 4, 6), "s")
+		local list = drafts.list_drafts()
+		assert.equals(1, #list)
+		assert.equals("suggest", list[1].kind)
+		assert.equals("a.lua", list[1].path)
+		assert.equals(4, list[1].start_line)
+		assert.equals(6, list[1].end_line)
+	end)
+
+	it("does not mix drafts of another branch in the same worktree", function()
+		drafts.set(drafts.current_key("line", "a.lua", 10, 10), "x")
+		config.state.local_session = { id = "s2", worktree_root = "/repo", branch = "feat/y" }
+		assert.same({}, drafts.list_drafts())
+		assert.is_nil(drafts.file_markers("a.lua").lines[10])
 	end)
 end)
 

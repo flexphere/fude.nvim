@@ -317,15 +317,19 @@ end)
 
 describe("comments facade in local mode", function()
 	local comments = require("fude.comments")
-	local tmp_store, tmp_repo
+	local drafts = require("fude.drafts")
+	local tmp_store, tmp_repo, tmp_drafts
 
 	before_each(function()
 		tmp_store = vim.fn.tempname()
 		tmp_repo = vim.fn.tempname()
+		tmp_drafts = vim.fn.tempname()
 		vim.fn.mkdir(tmp_store, "p")
 		vim.fn.mkdir(tmp_repo, "p")
+		vim.fn.mkdir(tmp_drafts, "p")
 		vim.fn.writefile({ "line1", "line2", "line3", "line4", "line5" }, tmp_repo .. "/f.lua")
 		store._dir = tmp_store
+		drafts._dir = tmp_drafts
 		config.setup({})
 		start_session(tmp_repo)
 		helpers.mock_diff({ ["f.lua"] = "f.lua" })
@@ -336,15 +340,24 @@ describe("comments facade in local mode", function()
 			session.stop()
 		end
 		store._dir = nil
+		drafts._dir = nil
 		vim.fn.delete(tmp_store, "rf")
 		vim.fn.delete(tmp_repo, "rf")
+		vim.fn.delete(tmp_drafts, "rf")
 		helpers.cleanup()
 	end)
+
+	local function focus_f_lua(line)
+		local buf = helpers.create_buf({ "line1", "line2", "line3" }, tmp_repo .. "/f.lua")
+		vim.api.nvim_win_set_buf(0, buf)
+		vim.api.nvim_win_set_cursor(0, { line or 1, 0 })
+		return buf
+	end
 
 	it("create_comment routes to the local backend", function()
 		local ui = require("fude.ui")
 		helpers.mock(ui, "open_comment_input", function(cb, opts)
-			assert.is_false(opts.allow_draft)
+			assert.is_true(opts.allow_draft)
 			cb("via facade")
 		end)
 
@@ -386,6 +399,158 @@ describe("comments facade in local mode", function()
 		assert.same({ "```suggestion", "target line", "```" }, seen_initial)
 		assert.equals(1, #config.state.comments)
 		assert.is_truthy(config.state.comments[1].body:find("```suggestion", 1, true))
+	end)
+
+	describe("local drafts", function()
+		local ui = require("fude.ui")
+
+		before_each(function()
+			helpers.mock(ui, "refresh_extmarks", function() end)
+		end)
+
+		it("create_comment with action 'draft' saves the text under the local session key", function()
+			helpers.mock(ui, "open_comment_input", function(cb)
+				cb("half written", "draft")
+			end)
+			focus_f_lua(2)
+			comments.create_comment(false)
+
+			assert.equals("half written", drafts.get(drafts.current_key("line", "f.lua", 2, 2)))
+			assert.equals(0, #config.state.comments)
+		end)
+
+		it("create_comment prefills from a saved draft and removes it once saved", function()
+			local key = drafts.current_key("line", "f.lua", 2, 2)
+			drafts.set(key, "draft body\nsecond line")
+			local seen_initial
+			helpers.mock(ui, "open_comment_input", function(cb, opts)
+				seen_initial = opts.initial_lines
+				cb("final body", "submit")
+			end)
+			focus_f_lua(2)
+			comments.create_comment(false)
+
+			assert.same({ "draft body", "second line" }, seen_initial)
+			assert.equals("final body", config.state.comments[1].body)
+			assert.is_nil(drafts.get(key))
+		end)
+
+		it("create_comment keeps the draft when the local save fails", function()
+			local key = drafts.current_key("line", "f.lua", 2, 2)
+			drafts.set(key, "keep me")
+			helpers.mock(local_sync, "create_comment", function(_, _, _, _, _, cb)
+				cb("disk full")
+			end)
+			helpers.mock(ui, "open_comment_input", function(cb)
+				cb("final body", "submit")
+			end)
+			focus_f_lua(2)
+			comments.create_comment(false)
+
+			assert.equals("keep me", drafts.get(key))
+		end)
+
+		it("create_comment with action 'discard' removes the draft", function()
+			local key = drafts.current_key("line", "f.lua", 2, 2)
+			drafts.set(key, "old")
+			helpers.mock(ui, "open_comment_input", function(cb)
+				cb(nil, "discard")
+			end)
+			focus_f_lua(2)
+			comments.create_comment(false)
+
+			assert.is_nil(drafts.get(key))
+		end)
+
+		it("create_comment cancel leaves an existing draft untouched", function()
+			local key = drafts.current_key("line", "f.lua", 2, 2)
+			drafts.set(key, "old")
+			helpers.mock(ui, "open_comment_input", function(cb)
+				cb(nil, "cancel")
+			end)
+			focus_f_lua(2)
+			comments.create_comment(false)
+
+			assert.equals("old", drafts.get(key))
+		end)
+
+		it("suggest_change restores a draft and clamps the cursor for a short one", function()
+			drafts.set(drafts.current_key("suggest", "f.lua", 1, 1), "one line")
+			local seen
+			helpers.mock(ui, "open_comment_input", function(_, opts)
+				seen = opts
+			end)
+			focus_f_lua(1)
+			comments.suggest_change(false)
+
+			assert.same({ "one line" }, seen.initial_lines)
+			assert.same({ 1, 0 }, seen.cursor_pos)
+			assert.is_true(seen.allow_draft)
+		end)
+
+		it("suggest_change keeps the cursor below the fence without a draft", function()
+			local seen
+			helpers.mock(ui, "open_comment_input", function(_, opts)
+				seen = opts
+			end)
+			focus_f_lua(1)
+			comments.suggest_change(false)
+
+			assert.same({ 2, 0 }, seen.cursor_pos)
+		end)
+
+		it("reply_to_comment offers the save-draft option and saves under the local key", function()
+			local_sync.create_comment("f.lua", 1, 1, "root", nil, function() end)
+			local root_id = config.state.comments[1].id
+			local seen
+			helpers.mock(ui, "open_reply_window", function(_, opts)
+				seen = opts
+			end)
+			comments.reply_to_comment(root_id)
+
+			assert.is_true(seen.allow_draft)
+			seen.on_save_draft("reply draft")
+			assert.equals("reply draft", drafts.get(drafts.current_key("reply", root_id)))
+		end)
+
+		it("reply_to_comment removes the draft and re-renders after the reply is saved", function()
+			local_sync.create_comment("f.lua", 1, 1, "root", nil, function() end)
+			local root_id = config.state.comments[1].id
+			local key = drafts.current_key("reply", root_id)
+			drafts.set(key, "reply draft")
+			local seen
+			helpers.mock(ui, "open_reply_window", function(_, opts)
+				seen = opts
+			end)
+			comments.reply_to_comment(root_id)
+
+			-- Record whether the draft was gone when each refresh ran: the backend's
+			-- own refresh runs before the removal and must not be the last one.
+			local refreshed_without_draft = false
+			helpers.mock(ui, "refresh_extmarks", function()
+				if drafts.get(key) == nil then
+					refreshed_without_draft = true
+				end
+			end)
+			seen.on_submit("final reply")
+
+			assert.is_nil(drafts.get(key))
+			assert.is_true(helpers.wait_for(function()
+				return refreshed_without_draft
+			end))
+		end)
+
+		it("edit_comment offers the save-draft option", function()
+			local_sync.create_comment("f.lua", 1, 1, "root", nil, function() end)
+			local root_id = config.state.comments[1].id
+			local seen
+			helpers.mock(ui, "open_edit_window", function(_, _, opts)
+				seen = opts
+			end)
+			comments.edit_comment(root_id)
+
+			assert.is_true(seen.allow_draft)
+		end)
 	end)
 end)
 
