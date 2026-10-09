@@ -52,7 +52,7 @@
 
 ### エッジケース: 非同期submit成功後のdraft削除が送信中の保存を消す (PR #179, 2026-09-14)
 - **問題**: 「API成功後に削除」の原則を守っていても、削除対象（draft等の永続データ）がリクエスト往復中にユーザー操作で更新され得る場合、成功callbackの無条件削除が新しい保存を消す。PR editフロート・comment browser下ペインのように入力UIがリクエスト中も開いたまま操作可能な設計では特に到達しやすい
-- **対策**: 非同期成功後にユーザーデータを削除するときは「送信時点の対象と同一か」を確認する。同一クロージャ内で完結するなら保存ハンドラでフラグを立てる方式（内容一致のエッジも塞げる）、クロージャをまたぐならsnapshot比較（`drafts.remove_if_unchanged`）を使う。修正時は同パターンの全サイト（`drafts.remove`等の成功後削除）をGrepで列挙し、UIが開いたままのサイトを優先する
+- **対策**: 非同期成功後にユーザーデータを削除するときは「送信時点の対象と同一か」を確認する。同一クロージャ内で完結するなら保存ハンドラでフラグを立てる方式（内容一致のエッジも塞げる）、クロージャをまたぐならsnapshot比較（`drafts.remove_if_unchanged`）を使う。snapshotは本文ではなく保存ごとに変わるrevision（`drafts.revision`）にする。本文比較だと同じ本文の再保存を「変更なし」と見なして消す（PR #236）。修正時は同パターンの全サイト（`drafts.remove`等の成功後削除）をGrepで列挙し、UIが開いたままのサイトを優先する
 - **該当箇所**: lua/fude/pr.lua, lua/fude/ui/comment_browser.lua, lua/fude/drafts.lua
 
 ### ドキュメント: 非nilデフォルトのオプションを「nilで無効化」と案内していた (PR #176, 2026-09-09)
@@ -118,7 +118,8 @@
 ### アーキテクチャ: review_modeごとの並行実装で、ガード・状態・失敗方針が片側にしか無い (PR #207, 2026-10-03)
 - **問題**: local commit scopeを足した際、(1) 読み取り専用ガードを`comments.lua`のfacadeにだけ置いたため、backend（`local_sync`）を直接呼ぶcomment browserからは書き込めた。(2) `apply_gitsigns_base_for_buffer`はGitHub側の`state.scope`しか見ておらず、同じ概念をlocal側は`state.local_session.scope`に持つため分岐に入らなかった。(3) `init.stop()`はHEAD復元失敗でセッションを維持する方針だったが、`local/session.stop()`は復元失敗後もteardownを続けてdetached HEADに取り残した
 - **対策**: 横断的な制約（read-only等）は呼び出し経路に依存しないbackend層で強制し、facadeのガードは通知用に留める。GitHub/localで同じ概念を別フィールドに持つ場合、共通helperが両方を見ているか`state.review_mode`で確認する。片側に既に存在する失敗時の方針（復元失敗→中断・維持）は、もう片側に同種の処理を足すとき必ず照合する
-- **該当箇所**: lua/fude/comments/local_sync.lua, lua/fude/init.lua, lua/fude/local/session.lua
+- **再発 (PR #236, 2026-10-10)**: ローカルbackend（`local_sync`）はcallbackを同期で呼び、その中で再描画まで済ませる。GitHub backendの非同期callbackを前提に「callback→`vim.schedule`で下書き削除→直後に`refresh()`」と書いた箇所は、ローカルでは削除前に再描画が走り`✎draft`が残った。同じ呼び出し元を両backendで共有するときは、callbackが同期か非同期かで後始末と再描画の順序が変わらないか確認し、再描画は後始末の後に置く
+- **該当箇所**: lua/fude/comments/local_sync.lua, lua/fude/init.lua, lua/fude/local/session.lua, lua/fude/ui/comment_browser.lua
 
 ### 堅牢性: HEADを動かす操作の前提条件と復旧情報は、全経路・全方向で揃える (PR #207, 2026-10-03)
 - **問題**: commit scopeのcheckoutについてCopilotが7ラウンドにわたり同系統の穴を指摘した。(1) clean判定が初回進入時だけで、commit→commitや「戻る」方向では未検査だった。(2) `git status`が見ない状態（未保存バッファ、未送信のコメント入力、別tabの入力float、内側worktreeのバッファの誤判定）を見落としていた。(3) 復旧用pointerをcheckoutの後に書いていたため、その間のクラッシュで復帰不能だった。pointerの書き込み失敗を無視して進んでいた。復元後にstaleなcommit pointerが残り、意図的なdetachを誤認した
