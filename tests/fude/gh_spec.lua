@@ -205,13 +205,14 @@ describe("parse_pr_from_commit_api", function()
 				number = 42,
 				state = "open",
 				html_url = "https://github.com/owner/repo/pull/42",
-				base = { ref = "main" },
+				base = { ref = "main", sha = "base0123" },
 				head = { ref = "feature-branch" },
 			},
 		}
 		local result = gh.parse_pr_from_commit_api(data)
 		assert.are.equal(42, result.number)
 		assert.are.equal("main", result.baseRefName)
+		assert.are.equal("base0123", result.baseRefOid)
 		assert.are.equal("feature-branch", result.headRefName)
 		assert.are.equal("https://github.com/owner/repo/pull/42", result.url)
 		assert.are.equal("open", result.state)
@@ -297,6 +298,21 @@ describe("parse_pr_from_commit_api", function()
 		assert.are.equal(99, result.number)
 		assert.are.equal("", result.baseRefName)
 		assert.are.equal("", result.headRefName)
+		assert.is_nil(result.baseRefOid)
+	end)
+
+	it("leaves baseRefOid nil when base.sha is JSON null", function()
+		local data = {
+			{
+				number = 7,
+				state = "open",
+				html_url = "https://github.com/owner/repo/pull/7",
+				base = { ref = "main", sha = vim.NIL },
+				head = { ref = "branch" },
+			},
+		}
+		local result = gh.parse_pr_from_commit_api(data)
+		assert.is_nil(result.baseRefOid)
 	end)
 end)
 

@@ -34,6 +34,7 @@ local function setup_gh_mocks()
 		["pr:view"] = {
 			number = 42,
 			baseRefName = "main",
+			baseRefOid = "base0123",
 			headRefName = "feature-branch",
 			url = "https://github.com/owner/repo/pull/42",
 		},
@@ -90,6 +91,7 @@ describe("init integration", function()
 
 			assert.are.equal(42, config.state.pr_number)
 			assert.are.equal("main", config.state.base_ref)
+			assert.are.equal("base0123", config.state.base_sha)
 			assert.are.equal("feature-branch", config.state.head_ref)
 			assert.are.equal("https://github.com/owner/repo/pull/42", config.state.pr_url)
 		end)
@@ -817,46 +819,58 @@ describe("init integration", function()
 		end)
 	end)
 
-	describe("is_new_file", function()
-		it("returns true for added file", function()
-			local changed_files = {
-				{ path = "lua/fude/new.lua", status = "added" },
-				{ path = "lua/fude/init.lua", status = "modified" },
-			}
-			assert.is_true(init.is_new_file("lua/fude/new.lua", changed_files))
+	describe("compute_merge_base", function()
+		local merge_base_calls
+
+		--- Mock diff.get_merge_base with a ref -> merge-base map, recording the refs asked.
+		local function mock_merge_base(map)
+			merge_base_calls = {}
+			helpers.mock(require("fude.diff"), "get_merge_base", function(ref)
+				table.insert(merge_base_calls, ref)
+				return map[ref]
+			end)
+		end
+
+		it("starts from the PR's base commit rather than the base branch", function()
+			-- A merged PR: the base branch tip contains HEAD, so its merge-base is HEAD itself
+			mock_merge_base({ base0123 = "forkpoint", main = "headsha" })
+			config.state.base_sha = "base0123"
+
+			init.compute_merge_base("main")
+
+			assert.equals("forkpoint", config.state.merge_base_sha)
+			assert.same({ "base0123" }, merge_base_calls)
 		end)
 
-		it("returns false for modified file", function()
-			local changed_files = {
-				{ path = "lua/fude/new.lua", status = "added" },
-				{ path = "lua/fude/init.lua", status = "modified" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/init.lua", changed_files))
+		it("falls back to the base branch when the base commit is not available locally", function()
+			mock_merge_base({ main = "frommain" })
+			config.state.base_sha = "notfetched"
+
+			init.compute_merge_base("main")
+
+			assert.equals("frommain", config.state.merge_base_sha)
+			assert.same({ "notfetched", "main" }, merge_base_calls)
 		end)
 
-		it("returns false for file not in changed_files", function()
-			local changed_files = {
-				{ path = "lua/fude/new.lua", status = "added" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/other.lua", changed_files))
+		it("uses the base branch when the PR info had no base commit", function()
+			mock_merge_base({ main = "frommain" })
+			config.state.base_sha = nil
+
+			init.compute_merge_base("main")
+
+			assert.equals("frommain", config.state.merge_base_sha)
+			assert.same({ "main" }, merge_base_calls)
 		end)
 
-		it("returns false for empty changed_files", function()
-			assert.is_false(init.is_new_file("lua/fude/any.lua", {}))
-		end)
+		it("keeps a merge-base already computed", function()
+			mock_merge_base({ base0123 = "forkpoint" })
+			config.state.base_sha = "base0123"
+			config.state.merge_base_sha = "cached"
 
-		it("returns false for removed file", function()
-			local changed_files = {
-				{ path = "lua/fude/deleted.lua", status = "removed" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/deleted.lua", changed_files))
-		end)
+			init.compute_merge_base("main")
 
-		it("returns false for renamed file", function()
-			local changed_files = {
-				{ path = "lua/fude/renamed.lua", status = "renamed" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/renamed.lua", changed_files))
+			assert.equals("cached", config.state.merge_base_sha)
+			assert.same({}, merge_base_calls)
 		end)
 	end)
 
@@ -896,8 +910,10 @@ describe("init integration", function()
 			helpers.cleanup()
 		end)
 
-		it("calls change_base with base_ref for new file", function()
+		it("uses merge_base_sha for a file the PR adds", function()
 			config.state.active = true
+			-- The base branch tip may already hold the file (a merged PR), so
+			-- comparing against it would show no hunks
 			config.state.base_ref = "main"
 			config.state.merge_base_sha = "abc123"
 			config.state.changed_files = {
@@ -914,7 +930,7 @@ describe("init integration", function()
 			init.apply_gitsigns_base_for_buffer(bufnr)
 
 			assert.equals(1, #change_base_calls)
-			assert.equals("main", change_base_calls[1].base)
+			assert.equals("abc123", change_base_calls[1].base)
 			assert.equals(false, change_base_calls[1].global)
 
 			vim.api.nvim_buf_delete(bufnr, { force = true })
