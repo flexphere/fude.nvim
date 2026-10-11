@@ -20,21 +20,8 @@ local function stop_reload_timer()
 	end
 end
 
---- Check if a file is new (added in the PR/commit).
---- @param rel_path string repo-relative file path
---- @param changed_files table[] changed files list
---- @return boolean
-function M.is_new_file(rel_path, changed_files)
-	for _, f in ipairs(changed_files) do
-		if f.path == rel_path and f.status == "added" then
-			return true
-		end
-	end
-	return false
-end
-
 --- Apply gitsigns base for a specific buffer.
---- New files use base_ref, existing files use merge_base_sha.
+--- The full PR scope uses merge_base_sha for every file (base_ref without it).
 --- @param bufnr number|nil buffer number (defaults to current buffer)
 function M.apply_gitsigns_base_for_buffer(bufnr)
 	local state = config.state
@@ -77,15 +64,11 @@ function M.apply_gitsigns_base_for_buffer(bufnr)
 		-- Commit scope: all files use commit^ as base
 		base_ref = state.scope_commit_sha .. "^"
 	else
-		-- Full PR scope: new files use base_ref, existing files use merge_base_sha
-		local is_new = M.is_new_file(rel_path, state.changed_files or {})
-		if is_new or not state.merge_base_sha then
-			-- New file, or merge-base not available: use base_ref
-			base_ref = state.base_ref
-		else
-			-- Existing file with merge-base available: use merge_base_sha (excludes merge commit noise)
-			base_ref = state.merge_base_sha
-		end
+		-- Full PR scope: the merge-base, also for files the PR adds. GitHub
+		-- reports a file as added against the merge-base, so it is absent
+		-- there, while the base branch tip may hold it (a merged PR, or the
+		-- same path added on the base branch later).
+		base_ref = state.merge_base_sha or state.base_ref
 	end
 
 	if not base_ref then
@@ -99,7 +82,36 @@ function M.apply_gitsigns_base_for_buffer(bufnr)
 	end)
 end
 
---- Compute and cache merge-base for the given ref.
+--- Pick the commit the PR branched off from two merge-base candidates.
+--- `from_base_sha` (merge-base with GitHub's `base.sha`, frozen at merge time
+--- once the PR is merged) survives a merged PR, while `from_base_ref`
+--- (merge-base with the local/remote base branch) is fresher when GitHub's
+--- `base.sha` lags behind a base branch merged into the PR. The later of
+--- the two wins, except that `from_base_ref` equal to HEAD means the base
+--- branch already contains the PR (merged with a merge commit), where it
+--- would empty every diff.
+--- @param from_base_sha string|nil merge-base of HEAD and base.sha
+--- @param from_base_ref string|nil merge-base of HEAD and the base branch
+--- @param head_sha string|nil HEAD commit
+--- @param is_ancestor fun(ancestor: string, descendant: string): boolean
+--- @return string|nil merge-base
+function M.find_fork_point(from_base_sha, from_base_ref, head_sha, is_ancestor)
+	if not from_base_sha then
+		return from_base_ref
+	end
+	if not from_base_ref or from_base_ref == head_sha then
+		return from_base_sha
+	end
+	if is_ancestor(from_base_sha, from_base_ref) then
+		return from_base_ref
+	end
+	return from_base_sha
+end
+
+--- Compute and cache the merge-base of HEAD and the PR's base, from both
+--- `state.base_sha` and the base branch (see `find_fork_point`). A base
+--- commit that is not available locally (not fetched yet) leaves only the
+--- base branch.
 --- @param base_ref string base branch name
 function M.compute_merge_base(base_ref)
 	local state = config.state
@@ -108,7 +120,10 @@ function M.compute_merge_base(base_ref)
 	end
 
 	local diff_mod = require("fude.diff")
-	local merge_base = diff_mod.get_merge_base(base_ref)
+	local from_base_sha = state.base_sha and diff_mod.get_merge_base(state.base_sha) or nil
+	local from_base_ref = diff_mod.get_merge_base(base_ref)
+	local head_sha = (from_base_sha and from_base_ref) and diff_mod.get_head_sha() or nil
+	local merge_base = M.find_fork_point(from_base_sha, from_base_ref, head_sha, diff_mod.is_ancestor)
 	if merge_base then
 		state.merge_base_sha = merge_base
 	end
@@ -125,17 +140,9 @@ function M.update_gitsigns_base(base_ref)
 	end
 
 	local state = config.state
+	M.compute_merge_base(base_ref)
 	if state.merge_base_sha then
 		gitsigns.change_base(state.merge_base_sha, true)
-		return
-	end
-
-	-- Compute merge-base if not cached
-	local diff_mod = require("fude.diff")
-	local merge_base = diff_mod.get_merge_base(base_ref)
-	if merge_base then
-		state.merge_base_sha = merge_base
-		gitsigns.change_base(merge_base, true)
 	else
 		-- Fallback: if merge-base fails, use base_ref directly
 		gitsigns.change_base(base_ref, true)
@@ -173,6 +180,7 @@ function M.start()
 		state.review_mode = "github"
 		state.pr_number = pr_info.number
 		state.base_ref = pr_info.baseRefName
+		state.base_sha = type(pr_info.baseRefOid) == "string" and pr_info.baseRefOid ~= "" and pr_info.baseRefOid or nil
 		state.head_ref = pr_info.headRefName
 		state.pr_url = pr_info.url
 

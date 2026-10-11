@@ -199,8 +199,12 @@ Using lazy.nvim: >lua
     the base branch and HEAD, the commit the PR branched off, like
     GitHub's PR diff, so commits that landed on the base branch later do
     not show up as changes (the base branch tip is used only when the
-    merge-base cannot be computed). In the commit scope it is the
-    commit's parent; in a local review, the base of the current scope.
+    merge-base cannot be computed). The merge-base is also computed
+    from the base commit GitHub records for the PR, so a merged PR
+    still shows its own changes; when that commit has not been
+    fetched, only the base branch is used. Gitsigns uses the same
+    merge-base. In the commit scope the base version is the commit's
+    parent; in a local review, the base of the current scope.
     For a renamed file, the base version is read from its old path,
     so the diff shows the content changes rather than a new file.
 

@@ -160,3 +160,8 @@
 - **問題**: 複数行コメントの範囲強調を`update_inline_hint`（CursorMovedで呼ばれ、同じbuffer/lineなら早期return）に載せたため、カーソルを動かさないままreloadや再anchorで`comment_map`が変わると、削除・移動された範囲の強調と開始マーカーが次のカーソル移動まで残った
 - **対策**: カーソル位置をキーに「表示済みならskip」するextmarkを足すときは、そのデータを書き換える描画経路（`refresh_extmarks`等）からも無効化・再構築する。他windowを`nvim_win_call`で描画する経路があるので、再構築は表示中のバッファに限り、カーソルのあるwindowから表示を移さない
 - **該当箇所**: lua/fude/ui/extmarks.lua
+
+### テスト: `helpers.mock_gh`は要求フィールドを見ずに応答するので、取得フィールドの追加が未検証になる (PR #239, 2026-10-11)
+- **問題**: `gh pr view --json`に`baseRefOid`を追加し、integration testではmockの応答に`baseRefOid`を足して`state.base_sha`を検証した。しかし`mock_gh`は`args[1]:args[2]`だけで応答を引くため、実装側の`--json`から`baseRefOid`を消してもテストが通った
+- **対策**: gh/APIの取得フィールドやクエリを追加したら、応答側のmockとは別に、`run_json`/`run`の引数を捕捉して要求に新フィールドが含まれることを検証する。追加後はフィールドを一時的に外し、テストが落ちることを確認する
+- **該当箇所**: lua/fude/gh.lua, tests/fude/gh_spec.lua

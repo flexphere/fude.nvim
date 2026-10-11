@@ -579,6 +579,33 @@ describe("get_merge_base", function()
 	end)
 end)
 
+describe("is_ancestor", function()
+	local original_system
+
+	before_each(function()
+		original_system = vim.system
+	end)
+
+	after_each(function()
+		vim.system = original_system
+	end)
+
+	it("asks git merge-base --is-ancestor and maps its exit code", function()
+		local seen
+		vim.system = function(cmd, _opts)
+			seen = cmd
+			return {
+				wait = function()
+					return { code = cmd[4] == "old" and 0 or 1 }
+				end,
+			}
+		end
+		assert.is_true(diff.is_ancestor("old", "new"))
+		assert.same({ "git", "merge-base", "--is-ancestor", "old", "new" }, seen)
+		assert.is_false(diff.is_ancestor("new", "old"))
+	end)
+end)
+
 describe("get_review_patch", function()
 	local original_system
 

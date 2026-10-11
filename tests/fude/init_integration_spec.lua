@@ -34,6 +34,7 @@ local function setup_gh_mocks()
 		["pr:view"] = {
 			number = 42,
 			baseRefName = "main",
+			baseRefOid = "base0123",
 			headRefName = "feature-branch",
 			url = "https://github.com/owner/repo/pull/42",
 		},
@@ -90,6 +91,7 @@ describe("init integration", function()
 
 			assert.are.equal(42, config.state.pr_number)
 			assert.are.equal("main", config.state.base_ref)
+			assert.are.equal("base0123", config.state.base_sha)
 			assert.are.equal("feature-branch", config.state.head_ref)
 			assert.are.equal("https://github.com/owner/repo/pull/42", config.state.pr_url)
 		end)
@@ -817,46 +819,98 @@ describe("init integration", function()
 		end)
 	end)
 
-	describe("is_new_file", function()
-		it("returns true for added file", function()
-			local changed_files = {
-				{ path = "lua/fude/new.lua", status = "added" },
-				{ path = "lua/fude/init.lua", status = "modified" },
-			}
-			assert.is_true(init.is_new_file("lua/fude/new.lua", changed_files))
+	describe("find_fork_point", function()
+		--- is_ancestor over a linear history given oldest first.
+		local function linear(history)
+			local pos = {}
+			for i, sha in ipairs(history) do
+				pos[sha] = i
+			end
+			return function(ancestor, descendant)
+				return pos[ancestor] ~= nil and pos[descendant] ~= nil and pos[ancestor] <= pos[descendant]
+			end
+		end
+
+		it("keeps the base-commit merge-base when the base branch contains HEAD", function()
+			-- Merged with a merge commit: the base branch's merge-base is HEAD itself
+			local is_ancestor = linear({ "fork", "head" })
+			assert.equals("fork", init.find_fork_point("fork", "head", "head", is_ancestor))
 		end)
 
-		it("returns false for modified file", function()
-			local changed_files = {
-				{ path = "lua/fude/new.lua", status = "added" },
-				{ path = "lua/fude/init.lua", status = "modified" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/init.lua", changed_files))
+		it("takes the base branch's merge-base when it is newer", function()
+			-- base.sha lags behind a base branch merged into the PR after it
+			local is_ancestor = linear({ "oldfork", "newfork", "head" })
+			assert.equals("newfork", init.find_fork_point("oldfork", "newfork", "head", is_ancestor))
 		end)
 
-		it("returns false for file not in changed_files", function()
-			local changed_files = {
-				{ path = "lua/fude/new.lua", status = "added" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/other.lua", changed_files))
+		it("takes the base-commit merge-base when the local base branch is stale", function()
+			local is_ancestor = linear({ "stalefork", "fork", "head" })
+			assert.equals("fork", init.find_fork_point("fork", "stalefork", "head", is_ancestor))
 		end)
 
-		it("returns false for empty changed_files", function()
-			assert.is_false(init.is_new_file("lua/fude/any.lua", {}))
+		it("uses whichever exists when only one candidate is known", function()
+			local never = function()
+				error("is_ancestor must not be called")
+			end
+			assert.equals("fromref", init.find_fork_point(nil, "fromref", "head", never))
+			assert.equals("fromsha", init.find_fork_point("fromsha", nil, "head", never))
+			assert.is_nil(init.find_fork_point(nil, nil, "head", never))
+		end)
+	end)
+
+	describe("compute_merge_base", function()
+		local merge_base_calls
+
+		--- Mock diff.get_merge_base with a ref -> merge-base map, recording the refs asked.
+		local function mock_merge_base(map)
+			merge_base_calls = {}
+			helpers.mock(require("fude.diff"), "get_merge_base", function(ref)
+				table.insert(merge_base_calls, ref)
+				return map[ref]
+			end)
+		end
+
+		it("uses the base-commit merge-base when the base branch already contains HEAD", function()
+			mock_merge_base({ base0123 = "forkpoint", main = "headsha" })
+			helpers.mock(require("fude.diff"), "get_head_sha", function()
+				return "headsha"
+			end)
+			config.state.base_sha = "base0123"
+
+			init.compute_merge_base("main")
+
+			assert.equals("forkpoint", config.state.merge_base_sha)
+			assert.same({ "base0123", "main" }, merge_base_calls)
 		end)
 
-		it("returns false for removed file", function()
-			local changed_files = {
-				{ path = "lua/fude/deleted.lua", status = "removed" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/deleted.lua", changed_files))
+		it("falls back to the base branch when the base commit is not available locally", function()
+			mock_merge_base({ main = "frommain" })
+			config.state.base_sha = "notfetched"
+
+			init.compute_merge_base("main")
+
+			assert.equals("frommain", config.state.merge_base_sha)
 		end)
 
-		it("returns false for renamed file", function()
-			local changed_files = {
-				{ path = "lua/fude/renamed.lua", status = "renamed" },
-			}
-			assert.is_false(init.is_new_file("lua/fude/renamed.lua", changed_files))
+		it("uses the base branch when the PR info had no base commit", function()
+			mock_merge_base({ main = "frommain" })
+			config.state.base_sha = nil
+
+			init.compute_merge_base("main")
+
+			assert.equals("frommain", config.state.merge_base_sha)
+			assert.same({ "main" }, merge_base_calls)
+		end)
+
+		it("keeps a merge-base already computed", function()
+			mock_merge_base({ base0123 = "forkpoint" })
+			config.state.base_sha = "base0123"
+			config.state.merge_base_sha = "cached"
+
+			init.compute_merge_base("main")
+
+			assert.equals("cached", config.state.merge_base_sha)
+			assert.same({}, merge_base_calls)
 		end)
 	end)
 
@@ -896,8 +950,10 @@ describe("init integration", function()
 			helpers.cleanup()
 		end)
 
-		it("calls change_base with base_ref for new file", function()
+		it("uses merge_base_sha for a file the PR adds", function()
 			config.state.active = true
+			-- The base branch tip may already hold the file (a merged PR), so
+			-- comparing against it would show no hunks
 			config.state.base_ref = "main"
 			config.state.merge_base_sha = "abc123"
 			config.state.changed_files = {
@@ -914,7 +970,7 @@ describe("init integration", function()
 			init.apply_gitsigns_base_for_buffer(bufnr)
 
 			assert.equals(1, #change_base_calls)
-			assert.equals("main", change_base_calls[1].base)
+			assert.equals("abc123", change_base_calls[1].base)
 			assert.equals(false, change_base_calls[1].global)
 
 			vim.api.nvim_buf_delete(bufnr, { force = true })

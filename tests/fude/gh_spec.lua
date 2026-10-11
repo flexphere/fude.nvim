@@ -205,13 +205,14 @@ describe("parse_pr_from_commit_api", function()
 				number = 42,
 				state = "open",
 				html_url = "https://github.com/owner/repo/pull/42",
-				base = { ref = "main" },
+				base = { ref = "main", sha = "base0123" },
 				head = { ref = "feature-branch" },
 			},
 		}
 		local result = gh.parse_pr_from_commit_api(data)
 		assert.are.equal(42, result.number)
 		assert.are.equal("main", result.baseRefName)
+		assert.are.equal("base0123", result.baseRefOid)
 		assert.are.equal("feature-branch", result.headRefName)
 		assert.are.equal("https://github.com/owner/repo/pull/42", result.url)
 		assert.are.equal("open", result.state)
@@ -297,6 +298,21 @@ describe("parse_pr_from_commit_api", function()
 		assert.are.equal(99, result.number)
 		assert.are.equal("", result.baseRefName)
 		assert.are.equal("", result.headRefName)
+		assert.is_nil(result.baseRefOid)
+	end)
+
+	it("leaves baseRefOid nil when base.sha is JSON null", function()
+		local data = {
+			{
+				number = 7,
+				state = "open",
+				html_url = "https://github.com/owner/repo/pull/7",
+				base = { ref = "main", sha = vim.NIL },
+				head = { ref = "branch" },
+			},
+		}
+		local result = gh.parse_pr_from_commit_api(data)
+		assert.is_nil(result.baseRefOid)
 	end)
 end)
 
@@ -359,6 +375,38 @@ describe("set_review_thread_resolved", function()
 		assert.are.equal("graphql", seen[2])
 		assert.are.equal("query=" .. gh.build_resolve_thread_mutation(false), seen[4])
 		assert.are.equal("threadId=THREAD_1", seen[6])
+	end)
+end)
+
+describe("get_pr_info", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("requests the base commit from gh pr view on a branch", function()
+		local original_system = vim.system
+		helpers.mock(vim, "system", function(cmd, ...)
+			if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
+				return {
+					wait = function()
+						return { code = 0, stdout = "refs/heads/feature\n", stderr = "" }
+					end,
+				}
+			end
+			return original_system(cmd, ...)
+		end)
+		local seen
+		helpers.mock(gh, "run_json", function(args, callback)
+			seen = args
+			callback(nil, {})
+		end)
+
+		gh.get_pr_info(function() end)
+
+		assert.same({ "pr", "view", "--json" }, { seen[1], seen[2], seen[3] })
+		assert.is_true(vim.tbl_contains(vim.split(seen[4], ","), "baseRefOid"))
 	end)
 end)
 
