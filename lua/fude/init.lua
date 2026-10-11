@@ -82,12 +82,36 @@ function M.apply_gitsigns_base_for_buffer(bufnr)
 	end)
 end
 
---- Compute and cache the merge-base of HEAD and the PR's base.
---- Starts from `state.base_sha` (the base commit GitHub reports, frozen at
---- merge time once the PR is merged): the base branch tip of a merged PR
---- contains the PR, so a merge-commit merge would make the merge-base HEAD
---- itself and every diff empty. Falls back to the base branch when that
---- commit is not available locally (not fetched yet).
+--- Pick the commit the PR branched off from two merge-base candidates.
+--- `from_base_sha` (merge-base with GitHub's `base.sha`, frozen at merge time
+--- once the PR is merged) survives a merged PR, while `from_base_ref`
+--- (merge-base with the local/remote base branch) is fresher when GitHub's
+--- `base.sha` lags behind a base branch merged into the PR. The later of
+--- the two wins, except that `from_base_ref` equal to HEAD means the base
+--- branch already contains the PR (merged with a merge commit), where it
+--- would empty every diff.
+--- @param from_base_sha string|nil merge-base of HEAD and base.sha
+--- @param from_base_ref string|nil merge-base of HEAD and the base branch
+--- @param head_sha string|nil HEAD commit
+--- @param is_ancestor fun(ancestor: string, descendant: string): boolean
+--- @return string|nil merge-base
+function M.find_fork_point(from_base_sha, from_base_ref, head_sha, is_ancestor)
+	if not from_base_sha then
+		return from_base_ref
+	end
+	if not from_base_ref or from_base_ref == head_sha then
+		return from_base_sha
+	end
+	if is_ancestor(from_base_sha, from_base_ref) then
+		return from_base_ref
+	end
+	return from_base_sha
+end
+
+--- Compute and cache the merge-base of HEAD and the PR's base, from both
+--- `state.base_sha` and the base branch (see `find_fork_point`). A base
+--- commit that is not available locally (not fetched yet) leaves only the
+--- base branch.
 --- @param base_ref string base branch name
 function M.compute_merge_base(base_ref)
 	local state = config.state
@@ -96,10 +120,10 @@ function M.compute_merge_base(base_ref)
 	end
 
 	local diff_mod = require("fude.diff")
-	local merge_base = state.base_sha and diff_mod.get_merge_base(state.base_sha) or nil
-	if not merge_base then
-		merge_base = diff_mod.get_merge_base(base_ref)
-	end
+	local from_base_sha = state.base_sha and diff_mod.get_merge_base(state.base_sha) or nil
+	local from_base_ref = diff_mod.get_merge_base(base_ref)
+	local head_sha = (from_base_sha and from_base_ref) and diff_mod.get_head_sha() or nil
+	local merge_base = M.find_fork_point(from_base_sha, from_base_ref, head_sha, diff_mod.is_ancestor)
 	if merge_base then
 		state.merge_base_sha = merge_base
 	end

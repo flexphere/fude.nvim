@@ -721,6 +721,17 @@ function M.get_head_sha(cwd)
 	return nil
 end
 
+--- Whether commit `ancestor` is reachable from commit `descendant` (a commit
+--- counts as its own ancestor).
+--- @param ancestor string commit-ish
+--- @param descendant string commit-ish
+--- @param cwd string|nil repo root (default: Neovim's cwd)
+--- @return boolean
+function M.is_ancestor(ancestor, descendant, cwd)
+	local result = vim.system({ "git", "merge-base", "--is-ancestor", ancestor, descendant }, { cwd = cwd }):wait()
+	return result.code == 0
+end
+
 --- Get the repository's empty-tree object hash. Used as a diff base for
 --- zero-commit repos (no HEAD), where diffing against the empty tree shows
 --- every tracked/staged file as added. Computed via `git hash-object` so it
