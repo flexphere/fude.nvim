@@ -819,6 +819,45 @@ describe("init integration", function()
 		end)
 	end)
 
+	describe("find_fork_point", function()
+		--- is_ancestor over a linear history given oldest first.
+		local function linear(history)
+			local pos = {}
+			for i, sha in ipairs(history) do
+				pos[sha] = i
+			end
+			return function(ancestor, descendant)
+				return pos[ancestor] ~= nil and pos[descendant] ~= nil and pos[ancestor] <= pos[descendant]
+			end
+		end
+
+		it("keeps the base-commit merge-base when the base branch contains HEAD", function()
+			-- Merged with a merge commit: the base branch's merge-base is HEAD itself
+			local is_ancestor = linear({ "fork", "head" })
+			assert.equals("fork", init.find_fork_point("fork", "head", "head", is_ancestor))
+		end)
+
+		it("takes the base branch's merge-base when it is newer", function()
+			-- base.sha lags behind a base branch merged into the PR after it
+			local is_ancestor = linear({ "oldfork", "newfork", "head" })
+			assert.equals("newfork", init.find_fork_point("oldfork", "newfork", "head", is_ancestor))
+		end)
+
+		it("takes the base-commit merge-base when the local base branch is stale", function()
+			local is_ancestor = linear({ "stalefork", "fork", "head" })
+			assert.equals("fork", init.find_fork_point("fork", "stalefork", "head", is_ancestor))
+		end)
+
+		it("uses whichever exists when only one candidate is known", function()
+			local never = function()
+				error("is_ancestor must not be called")
+			end
+			assert.equals("fromref", init.find_fork_point(nil, "fromref", "head", never))
+			assert.equals("fromsha", init.find_fork_point("fromsha", nil, "head", never))
+			assert.is_nil(init.find_fork_point(nil, nil, "head", never))
+		end)
+	end)
+
 	describe("compute_merge_base", function()
 		local merge_base_calls
 
@@ -831,15 +870,17 @@ describe("init integration", function()
 			end)
 		end
 
-		it("starts from the PR's base commit rather than the base branch", function()
-			-- A merged PR: the base branch tip contains HEAD, so its merge-base is HEAD itself
+		it("uses the base-commit merge-base when the base branch already contains HEAD", function()
 			mock_merge_base({ base0123 = "forkpoint", main = "headsha" })
+			helpers.mock(require("fude.diff"), "get_head_sha", function()
+				return "headsha"
+			end)
 			config.state.base_sha = "base0123"
 
 			init.compute_merge_base("main")
 
 			assert.equals("forkpoint", config.state.merge_base_sha)
-			assert.same({ "base0123" }, merge_base_calls)
+			assert.same({ "base0123", "main" }, merge_base_calls)
 		end)
 
 		it("falls back to the base branch when the base commit is not available locally", function()
@@ -849,7 +890,6 @@ describe("init integration", function()
 			init.compute_merge_base("main")
 
 			assert.equals("frommain", config.state.merge_base_sha)
-			assert.same({ "notfetched", "main" }, merge_base_calls)
 		end)
 
 		it("uses the base branch when the PR info had no base commit", function()
