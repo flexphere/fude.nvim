@@ -39,17 +39,12 @@ function M.open_preview(source_win)
 		return
 	end
 
-	local base_ref = state.base_ref
-	if local_session and local_session.content_ref then
-		-- Local review: base pane follows the scope (base branch vs HEAD)
-		base_ref = local_session.content_ref
-	elseif state.scope == "commit" and state.scope_commit_sha then
-		base_ref = state.scope_commit_sha .. "^"
-	end
+	local base_ref, base_label = M.find_base_ref(state, local_session)
 
 	-- Renamed files: the base content lives under the old path. Fall
-	-- back to the new path when the old one is missing at base_ref (the full PR
-	-- scope reads the base branch tip, which may have dropped the old file).
+	-- back to the new path when the old one is missing at base_ref (only the
+	-- fallback to the base branch tip, used without a merge-base, can have
+	-- dropped the old file).
 	local cwd = local_session and local_session.worktree_root or nil
 	local base_path = M.find_base_path(rel_path, state.changed_files)
 	local content, _ = diff.get_base_content(base_ref, base_path, cwd)
@@ -64,7 +59,7 @@ function M.open_preview(source_win)
 	M.close_preview()
 
 	if not content then
-		content = "-- [fude.nvim] New file: does not exist in " .. base_ref
+		content = "-- [fude.nvim] New file: does not exist in " .. (base_label or "?")
 	end
 
 	local preview_buf = vim.api.nvim_create_buf(false, true)
@@ -145,6 +140,33 @@ function M.open_preview(source_win)
 	})
 
 	opening = false
+end
+
+--- Resolve the ref the base pane reads, and how to name it to the user.
+--- No scope reads the base branch tip while a merge-base is known, so commits
+--- that land on the base branch after the PR branched off never show up as
+--- changes:
+--- - local review: the scope's content ref (merge-base, upstream, HEAD, ...)
+--- - commit scope: the commit's parent
+--- - full PR scope: the merge-base with the base branch, as GitHub's PR diff
+---   and gitsigns do; the base branch tip only when no merge-base is known
+--- @param state table review state (base_ref, merge_base_sha, scope, scope_commit_sha)
+--- @param local_session table|nil active local review session
+--- @return string|nil ref ref for `git show`
+--- @return string|nil label ref description for messages
+function M.find_base_ref(state, local_session)
+	if local_session and local_session.content_ref then
+		return local_session.content_ref, local_session.content_ref
+	end
+	if state.scope == "commit" and state.scope_commit_sha then
+		local ref = state.scope_commit_sha .. "^"
+		return ref, ref
+	end
+	if state.merge_base_sha then
+		return state.merge_base_sha,
+			string.format("%s (merge-base %s)", state.base_ref or "?", state.merge_base_sha:sub(1, 7))
+	end
+	return state.base_ref, state.base_ref
 end
 
 --- Resolve the path to read the base content from: the old path for a
