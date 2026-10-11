@@ -378,6 +378,38 @@ describe("set_review_thread_resolved", function()
 	end)
 end)
 
+describe("get_pr_info", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("requests the base commit from gh pr view on a branch", function()
+		local original_system = vim.system
+		helpers.mock(vim, "system", function(cmd, ...)
+			if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
+				return {
+					wait = function()
+						return { code = 0, stdout = "refs/heads/feature\n", stderr = "" }
+					end,
+				}
+			end
+			return original_system(cmd, ...)
+		end)
+		local seen
+		helpers.mock(gh, "run_json", function(args, callback)
+			seen = args
+			callback(nil, {})
+		end)
+
+		gh.get_pr_info(function() end)
+
+		assert.same({ "pr", "view", "--json" }, { seen[1], seen[2], seen[3] })
+		assert.is_true(vim.tbl_contains(vim.split(seen[4], ","), "baseRefOid"))
+	end)
+end)
+
 describe("parse_review_threads_response", function()
 	it("parses valid response with outdated and resolved threads", function()
 		local data = {
