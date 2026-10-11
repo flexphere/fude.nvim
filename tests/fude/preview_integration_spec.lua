@@ -163,6 +163,31 @@ describe("preview integration", function()
 			assert.is_truthy(content:find("New file", 1, true) or content:find("does not exist", 1, true))
 		end)
 
+		it("reads the base content at the merge-base, not the base branch tip", function()
+			local requested_refs = {}
+			helpers.mock(require("fude.diff"), "get_base_content", function(ref)
+				table.insert(requested_refs, ref)
+				return "merge-base content\n", nil
+			end)
+			config.state.merge_base_sha = "0123456789abcdef0123456789abcdef01234567"
+
+			open_for_buffer({ "new content" }, "source.lua")
+
+			assert.same({ "0123456789abcdef0123456789abcdef01234567" }, requested_refs)
+			local lines = vim.api.nvim_buf_get_lines(config.state.preview_buf, 0, -1, false)
+			assert.same({ "merge-base content" }, lines)
+		end)
+
+		it("names the base branch and the short merge-base for a new file", function()
+			helpers.mock_base_content(nil)
+			config.state.merge_base_sha = "0123456789abcdef0123456789abcdef01234567"
+
+			open_for_buffer({ "new file content" }, "source.lua")
+
+			local lines = vim.api.nvim_buf_get_lines(config.state.preview_buf, 0, -1, false)
+			assert.same({ "-- [fude.nvim] New file: does not exist in main (merge-base 0123456)" }, lines)
+		end)
+
 		it("reads the base content of a renamed file from its old path", function()
 			local requested = {}
 			helpers.mock(require("fude.diff"), "get_base_content", function(_, path)
