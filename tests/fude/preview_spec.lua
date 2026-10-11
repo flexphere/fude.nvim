@@ -80,3 +80,39 @@ describe("find_base_path", function()
 		assert.equals("lua/a.lua", preview.find_base_path("lua/a.lua", nil))
 	end)
 end)
+
+describe("find_base_ref", function()
+	local merge_base = "0123456789abcdef0123456789abcdef01234567"
+
+	it("uses the merge-base in the full PR scope", function()
+		local ref, label = preview.find_base_ref({ base_ref = "main", merge_base_sha = merge_base, scope = "full_pr" })
+		assert.equals(merge_base, ref)
+		assert.equals("main (merge-base 0123456)", label)
+	end)
+
+	it("falls back to the base branch when no merge-base is known", function()
+		local ref, label = preview.find_base_ref({ base_ref = "main", scope = "full_pr" })
+		assert.equals("main", ref)
+		assert.equals("main", label)
+	end)
+
+	it("uses the commit's parent in the commit scope even with a merge-base", function()
+		local ref, label = preview.find_base_ref({
+			base_ref = "main",
+			merge_base_sha = merge_base,
+			scope = "commit",
+			scope_commit_sha = "abc123",
+		})
+		assert.equals("abc123^", ref)
+		assert.equals("abc123^", label)
+	end)
+
+	it("uses the local session's content ref over every GitHub field", function()
+		local ref, label = preview.find_base_ref(
+			{ base_ref = "main", merge_base_sha = merge_base, scope = "commit", scope_commit_sha = "abc123" },
+			{ content_ref = "def456" }
+		)
+		assert.equals("def456", ref)
+		assert.equals("def456", label)
+	end)
+end)
