@@ -195,6 +195,12 @@ Using lazy.nvim: >lua
     Toggle the diff preview window. Opens a side-by-side diff view
     showing the base branch version of the current file, or closes
     it if already open. Requires an active review session.
+    For the whole PR, the base version is read at the merge-base of
+    the base branch and HEAD, the commit the PR branched off, like
+    GitHub's PR diff, so commits that landed on the base branch later do
+    not show up as changes (the base branch tip is used only when the
+    merge-base cannot be computed). In the commit scope it is the
+    commit's parent; in a local review, the base of the current scope.
     For a renamed file, the base version is read from its old path,
     so the diff shows the content changes rather than a new file.
 
