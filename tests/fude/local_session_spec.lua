@@ -1221,6 +1221,17 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("main", store.read_current(tmp_repo, "feat/x").base_ref)
 	end)
 
+	it("set_base rejects an unresolvable ref even in a scope that ignores the base", function()
+		mock_release_merge_base()
+		session.start(nil)
+		session.set_scope("uncommitted")
+		helpers.mock(vim, "notify", function() end)
+
+		assert.is_false(session.set_base("typo"))
+		assert.equals("main", config.state.base_ref)
+		assert.equals("main", store.read_current(tmp_repo, "feat/x").base_ref)
+	end)
+
 	it("select_base lists branches of the reviewed worktree, not the cwd", function()
 		mock_release_merge_base()
 		local diff = require("fude.diff")

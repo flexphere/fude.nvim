@@ -1434,8 +1434,14 @@ function M.set_base(base_ref)
 		return false
 	end
 
+	-- Validate the ref itself, not only the current scope: `uncommitted` and
+	-- `unpushed` never read the base, so a typo would otherwise be saved.
+	local root = session.worktree_root
 	local scope = M.resolve_scope_after_base_change(session.scope, base_ref, session.branch)
-	local diff_base, content_ref = M.resolve_scope_base(scope, base_ref, session.worktree_root)
+	local diff_base, content_ref
+	if require("fude.diff").get_merge_base(base_ref, root) then
+		diff_base, content_ref = M.resolve_scope_base(scope, base_ref, root)
+	end
 	if not diff_base then
 		vim.notify("fude.nvim: Cannot resolve base branch " .. base_ref, vim.log.levels.ERROR)
 		return false
