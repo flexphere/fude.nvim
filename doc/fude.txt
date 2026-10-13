@@ -179,6 +179,20 @@ Using lazy.nvim: >lua
                     the next |:FudeReviewLocal| on that detached HEAD
                     returns to the branch first.
 
+:FudeReviewLocalBase [{ref}]                       *:FudeReviewLocalBase*
+    Change the base branch of the active local review without stopping
+    it. With {ref}, switches to that ref (any ref `git merge-base`
+    accepts, including a branch that exists only locally); without it,
+    opens a picker of the `origin` branches (default branch first, the
+    current base marked `(current)`). `b` in the side panel opens the
+    same picker. Comments are kept, since they anchor to the working
+    tree rather than the base; the changed files, commit list, gitsigns
+    base and preview follow the new base, and the new base is saved so
+    a later |:FudeReviewLocal| resumes with it. Choosing the reviewed
+    branch itself moves the `base` scope to `uncommitted`. Refused while
+    a commit is checked out (`commit` scope) and when the ref cannot be
+    resolved, in which case nothing changes.
+
 :FudeReviewResolve                                   *:FudeReviewResolve*
     Toggle resolved status of the comment thread on the current line.
     In PR review mode this resolves or unresolves the conversation on
@@ -782,7 +796,8 @@ File opening position                                 *fude-file-position*
       In local review (|fude-local-review|), lists the local diff scopes
       available for the current git state ("Base branch", "Unpushed",
       "Uncommitted" — see |:FudeReviewLocalScope|); here `<CR>` or `<Tab>`
-      switches scope. The active scope is marked with `▶`.
+      switches scope, and `b` changes the base branch
+      (|:FudeReviewLocalBase|). The active scope is marked with `▶`.
 
     Files:~
       Lists all changed files in the current scope with status icons,
@@ -1018,6 +1033,7 @@ Default configuration: >lua
         close = "q",
         next_entry = "j",
         prev_entry = "k",
+        change_base = "b",
         help = "?",
       },
     },
@@ -1259,6 +1275,8 @@ Options:
                   - `next_entry`: "j" / `prev_entry`: "k" (jump between
                     selectable entry lines, skipping headers, separators,
                     and blank lines; includes tree-mode directory rows)
+                  - `change_base`: "b" (local review only: pick a new base
+                    branch, as |:FudeReviewLocalBase|)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
                   Set an action to `false` or an empty string to disable its

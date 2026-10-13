@@ -48,7 +48,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   cmd = {
     "FudeCommandPalette",
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
-    "FudeReviewLocal", "FudeReviewLocalToggle", "FudeReviewLocalScope", "FudeReviewResolve",
+    "FudeReviewLocal", "FudeReviewLocalToggle", "FudeReviewLocalScope", "FudeReviewLocalBase",
+    "FudeReviewResolve",
     "FudeReviewComment", "FudeReviewSuggest", "FudeReviewViewComment", "FudeReviewListComments",
     "FudeReviewFiles", "FudeReviewNextFile", "FudeReviewPrevFile",
     "FudeReviewNextUnviewedFile", "FudeReviewPrevUnviewedFile",
@@ -149,6 +150,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
 | `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted` / `commit`) |
+| `:FudeReviewLocalBase [ref]` | Change the local review's base branch without restarting it (no argument: pick from `origin` branches; `b` in the side panel does the same) |
 
 ### File opening position
 
@@ -283,6 +285,7 @@ require("fude").setup({
       close = "q",
       next_entry = "j",          -- jump to next selectable entry (includes directories)
       prev_entry = "k",          -- jump to previous selectable entry
+      change_base = "b",         -- local review only: pick a new base branch
       help = "?",                -- show configured panel keymaps
     },
   },
@@ -378,7 +381,10 @@ happens in this mode:
   ref, so comments stay anchored:
   - `base` — merge-base with `base` (default: the remote default branch, else
     a local `main`/`master`): the whole branch diff, including committed work.
-    Shown only on a branch that differs from its base ref.
+    Shown only on a branch that differs from its base ref. To compare against
+    another branch (e.g. a release branch) mid-review, run
+    `:FudeReviewLocalBase [ref]` or press `b` in the side panel; comments are
+    kept and the new base is remembered on resume.
   - `unpushed` — the upstream tracking ref (`@{upstream}`): changes not yet
     pushed. Shown only when the branch has an upstream.
   - `uncommitted` — `HEAD`: only staged + unstaged working-tree changes. Always
