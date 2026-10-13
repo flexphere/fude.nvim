@@ -165,3 +165,13 @@
 - **問題**: `gh pr view --json`に`baseRefOid`を追加し、integration testではmockの応答に`baseRefOid`を足して`state.base_sha`を検証した。しかし`mock_gh`は`args[1]:args[2]`だけで応答を引くため、実装側の`--json`から`baseRefOid`を消してもテストが通った
 - **対策**: gh/APIの取得フィールドやクエリを追加したら、応答側のmockとは別に、`run_json`/`run`の引数を捕捉して要求に新フィールドが含まれることを検証する。追加後はフィールドを一時的に外し、テストが落ちることを確認する
 - **該当箇所**: lua/fude/gh.lua, tests/fude/gh_spec.lua
+
+### エッジケース: ローカルレビューの新しいgit呼び出しがNeovimのcwdで走る (PR #244, 2026-10-13)
+- **問題**: base branchのpickerとコマンド補完が`diff.get_remote_branches()`/`get_default_branch()`をcwdで実行していたため、`:cd`でworktree外へ移ると別リポジトリのブランチが候補に出た
+- **対策**: ローカルレビュー中のgit呼び出しは、cwdではなく`local_session.worktree_root`を`cwd`として渡す。`diff`のヘルパーが`cwd`を受け取らない場合は省略可能な引数を足す
+- **該当箇所**: lua/fude/diff.lua, lua/fude/local/session.lua, lua/fude/commands.lua
+
+### エッジケース: 入力の検証を現在のモードの処理に任せた (PR #244, 2026-10-13)
+- **問題**: `set_base`は「現在のscopeで解決できるか」で新baseを検証していたが、`uncommitted`/`unpushed` scopeはbaseを読まないため、存在しないrefが保存され成功通知まで出た
+- **対策**: 永続化する入力は、現在のモードがその値を使うかどうかとは別に、値そのものを検証してから保存する
+- **該当箇所**: lua/fude/local/session.lua
