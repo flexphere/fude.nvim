@@ -664,6 +664,26 @@ describe("sidepanel integration", function()
 		assert.truthy(help_text(panel):find("<Tab>  Switch scope / toggle file viewed", 1, true))
 	end)
 
+	it("maps b to the base branch picker only in local review", function()
+		local session = require("fude.local.session")
+		local picked = 0
+		helpers.mock(session, "select_base", function()
+			picked = picked + 1
+		end)
+
+		sidepanel.open()
+		assert.is_nil(buf_keymap(config.state.sidepanel.buf, "b"))
+		sidepanel.close()
+
+		config.state.review_mode = "local"
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		buf_keymap(panel.buf, "b").callback()
+		assert.are.equal(1, picked)
+		buf_keymap(panel.buf, "?").callback()
+		assert.truthy(help_text(panel):find("b  Change base branch", 1, true))
+	end)
+
 	it("q in help remains available when the panel close key is overridden", function()
 		config.setup({ sidepanel = { keymaps = { close = "x", help = "q" } } })
 		sidepanel.open()
