@@ -160,6 +160,41 @@ describe("session.is_store_path", function()
 	end)
 end)
 
+describe("session.resolve_scope_after_base_change", function()
+	it("drops the base scope when the new base is the reviewed branch", function()
+		assert.equals("uncommitted", session.resolve_scope_after_base_change("base", "feat/x", "feat/x"))
+	end)
+
+	it("keeps the base scope for another base", function()
+		assert.equals("base", session.resolve_scope_after_base_change("base", "release/1", "feat/x"))
+	end)
+
+	it("keeps other scopes and a detached HEAD as they are", function()
+		assert.equals("unpushed", session.resolve_scope_after_base_change("unpushed", "feat/x", "feat/x"))
+		assert.equals("base", session.resolve_scope_after_base_change("base", "main", nil))
+	end)
+end)
+
+describe("session.mark_current_base", function()
+	it("suffixes the current base without touching the input", function()
+		local entries = {
+			{ display = "main (default)", value = "main", is_default = true },
+			{ display = "release/1", value = "release/1", is_default = false },
+		}
+		local marked = session.mark_current_base(entries, "release/1")
+		assert.equals("main (default)", marked[1].display)
+		assert.equals("release/1 (current)", marked[2].display)
+		assert.equals("release/1", marked[2].value)
+		assert.equals("release/1", entries[2].display)
+	end)
+
+	it("marks nothing when the base is absent or nil", function()
+		local entries = { { display = "main", value = "main" } }
+		assert.equals("main", session.mark_current_base(entries, "local-only")[1].display)
+		assert.equals("main", session.mark_current_base(entries, nil)[1].display)
+	end)
+end)
+
 describe("session lifecycle (start/reload/stop)", function()
 	local tmp_store, tmp_repo
 
@@ -1117,6 +1152,158 @@ describe("session lifecycle (start/reload/stop)", function()
 		captured({ scope = "commit", commit_sha = "c1sha" })
 		assert.same({}, calls.checkout)
 		assert.equals("base", config.state.local_session.scope)
+	end)
+
+	local function mock_release_merge_base()
+		mock_local_git({
+			get_merge_base = function(ref)
+				if ref == "release/1" then
+					return "relsha"
+				end
+				if ref == "main" then
+					return "basesha"
+				end
+				return nil
+			end,
+		})
+	end
+
+	it("set_base switches the diff base and persists the new base", function()
+		mock_release_merge_base()
+		local diff = require("fude.diff")
+		local commit_range_base
+		helpers.mock(diff, "get_commit_log", function(base)
+			commit_range_base = base
+			return {}
+		end)
+		session.start(nil)
+
+		assert.is_true(session.set_base("release/1"))
+		local s = config.state.local_session
+		assert.equals("release/1", s.base_ref)
+		assert.equals("release/1", config.state.base_ref)
+		assert.equals("base", s.scope)
+		assert.equals("relsha", s.base_sha)
+		assert.equals("relsha", s.content_ref)
+		assert.equals("relsha", config.state.merge_base_sha)
+		assert.equals("release/1", commit_range_base)
+		assert.equals("Local: release/1", require("fude.scope").statusline())
+		assert.equals("release/1", store.read_current(tmp_repo, "feat/x").base_ref)
+	end)
+
+	it("a resume after set_base keeps the new base", function()
+		mock_release_merge_base()
+		session.start(nil)
+		local id = config.state.local_session.id
+		session.set_base("release/1")
+
+		-- Restart (pointer left in place) → resumes with the new base
+		config.state.active = false
+		config.state.review_mode = nil
+		session.start(nil)
+		assert.equals(id, config.state.local_session.id)
+		assert.equals("release/1", config.state.base_ref)
+	end)
+
+	it("set_base leaves the session untouched when the new base cannot be resolved", function()
+		mock_release_merge_base()
+		session.start(nil)
+		helpers.mock(vim, "notify", function() end)
+
+		assert.is_false(session.set_base("nope"))
+		local s = config.state.local_session
+		assert.equals("main", s.base_ref)
+		assert.equals("main", config.state.base_ref)
+		assert.equals("basesha", s.base_sha)
+		assert.equals("main", store.read_current(tmp_repo, "feat/x").base_ref)
+	end)
+
+	it("set_base onto the reviewed branch itself drops the base scope to uncommitted", function()
+		mock_release_merge_base()
+		session.start(nil)
+
+		assert.is_true(session.set_base("feat/x"))
+		local s = config.state.local_session
+		assert.equals("feat/x", s.base_ref)
+		assert.equals("uncommitted", s.scope)
+		assert.equals("HEAD", s.base_sha)
+	end)
+
+	it("set_base keeps a non-base scope", function()
+		mock_release_merge_base()
+		session.start(nil)
+		session.set_scope("uncommitted")
+
+		assert.is_true(session.set_base("release/1"))
+		assert.equals("uncommitted", config.state.local_session.scope)
+		assert.equals("release/1", config.state.base_ref)
+		-- back to the base scope uses the new base
+		session.set_scope("base")
+		assert.equals("relsha", config.state.local_session.base_sha)
+	end)
+
+	it("set_base is a no-op for the current base and refused without a session", function()
+		mock_release_merge_base()
+		helpers.mock(vim, "notify", function() end)
+		assert.is_false(session.set_base("main"))
+		session.start(nil)
+		assert.is_false(session.set_base("main"))
+		assert.is_false(session.set_base(""))
+	end)
+
+	it("set_base is refused while a commit is checked out", function()
+		mock_commit_git()
+		session.start(nil)
+		session.set_scope("commit", { commit_sha = "c1sha" })
+		helpers.mock(vim, "notify", function() end)
+
+		assert.is_false(session.set_base("release/1"))
+		assert.equals("main", config.state.local_session.base_ref)
+		assert.equals("commit", config.state.local_session.scope)
+	end)
+
+	it("select_base offers the remote branches with the current base marked", function()
+		mock_release_merge_base()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_remote_branches", function()
+			return { "feat/x", "release/1", "main" }
+		end)
+		local pr = require("fude.pr")
+		local offered, captured
+		helpers.mock(pr, "select_base_branch", function(entries, cb)
+			offered = entries
+			captured = cb
+		end)
+		session.start(nil)
+
+		session.select_base()
+		assert.same({ "main (default) (current)", "release/1" }, {
+			offered[1].display,
+			offered[2].display,
+		})
+		assert.equals(2, #offered)
+		captured("release/1")
+		assert.equals("release/1", config.state.base_ref)
+	end)
+
+	it("ignores a base picked from a picker built for an earlier session", function()
+		mock_release_merge_base()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_remote_branches", function()
+			return { "release/1", "main" }
+		end)
+		local captured
+		helpers.mock(require("fude.pr"), "select_base_branch", function(_, cb)
+			captured = cb
+		end)
+		session.start(nil)
+		session.select_base()
+
+		session.stop()
+		session.start(nil)
+		helpers.mock(vim, "notify", function() end)
+		captured("release/1")
+		assert.equals("main", config.state.base_ref)
 	end)
 
 	it("rewrites the stranded pointer right after returning to the branch", function()

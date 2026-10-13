@@ -102,6 +102,16 @@ describe("commands.list", function()
 		assert.are.equal("?", by_name.FudeReviewLocalToggle.nargs)
 		assert.are.equal("?", by_name.FudeReviewLocalScope.nargs)
 		assert.are.same(require("fude.local.session").SCOPES, by_name.FudeReviewLocalScope.complete())
+		assert.are.equal("?", by_name.FudeReviewLocalBase.nargs)
+		local diff = require("fude.diff")
+		local original = diff.get_remote_branches
+		diff.get_remote_branches = function()
+			return { "main", "release/1" }
+		end
+		local ok, completed = pcall(by_name.FudeReviewLocalBase.complete)
+		diff.get_remote_branches = original
+		assert.is_true(ok)
+		assert.are.same({ "main", "release/1" }, completed)
 		-- No other entry carries these attributes
 		local range_count, nargs_count = 0, 0
 		for _, cmd in ipairs(commands.list) do
@@ -113,7 +123,7 @@ describe("commands.list", function()
 			end
 		end
 		assert.are.equal(2, range_count)
-		assert.are.equal(3, nargs_count)
+		assert.are.equal(4, nargs_count)
 	end)
 
 	it("hides only the toggle commands from the palette", function()
@@ -143,6 +153,7 @@ describe("commands availability", function()
 
 	it("lists local-only commands in local mode", function()
 		local expected = concat(ALWAYS, ANY_REVIEW, {
+			"FudeReviewLocalBase",
 			"FudeReviewLocalScope",
 		})
 		assert.are.same(sorted(expected), names_where(LOCAL))
