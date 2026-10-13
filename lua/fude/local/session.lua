@@ -1373,4 +1373,117 @@ function M.select_scope()
 	end)
 end
 
+-- === Base branch ===
+
+--- Decide the scope to show after the base branch changes. The base scope
+--- needs a base that differs from the branch under review (see `scope_specs`),
+--- so switching the base to that branch itself drops to the uncommitted view.
+--- @param scope string the current scope
+--- @param base_ref string the new base branch
+--- @param branch string|nil the branch under review
+--- @return string scope
+function M.resolve_scope_after_base_change(scope, base_ref, branch)
+	if scope == "base" and branch ~= nil and branch == base_ref then
+		return "uncommitted"
+	end
+	return scope
+end
+
+--- Mark the entry for the current base branch with `(current)`.
+--- @param entries table[] entries from `pr.build_base_branch_entries`
+--- @param base_ref string|nil the current base branch
+--- @return table[] entries (new table; the input is not modified)
+function M.mark_current_base(entries, base_ref)
+	local marked = {}
+	for _, e in ipairs(entries) do
+		if base_ref and e.value == base_ref then
+			marked[#marked + 1] = vim.tbl_extend("force", e, { display = e.display .. " (current)" })
+		else
+			marked[#marked + 1] = e
+		end
+	end
+	return marked
+end
+
+--- Change the base branch of the active local session without restarting it.
+--- Comments anchor to the working tree, not the base, so they are kept as is;
+--- only the diff base, the commit list and everything derived from them are
+--- recomputed. The new base is resolved before any state changes, so a failure
+--- leaves the session untouched.
+--- @param base_ref string the new base branch (any ref `git merge-base` accepts)
+--- @return boolean changed
+function M.set_base(base_ref)
+	local state = config.state
+	if not state.active or state.review_mode ~= "local" then
+		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
+		return false
+	end
+	if type(base_ref) ~= "string" or base_ref == "" then
+		vim.notify("fude.nvim: Base branch is empty", vim.log.levels.WARN)
+		return false
+	end
+	local session = state.local_session
+	-- HEAD is detached on a past commit, and the commit list the scope indexes
+	-- into is derived from the base; leave the commit first.
+	if M.is_commit_scope(session) then
+		vim.notify("fude.nvim: Leave the commit scope before changing the base branch", vim.log.levels.WARN)
+		return false
+	end
+	if session.base_ref == base_ref then
+		vim.notify("fude.nvim: Base branch is already " .. base_ref, vim.log.levels.INFO)
+		return false
+	end
+
+	local scope = M.resolve_scope_after_base_change(session.scope, base_ref, session.branch)
+	local diff_base, content_ref = M.resolve_scope_base(scope, base_ref, session.worktree_root)
+	if not diff_base then
+		vim.notify("fude.nvim: Cannot resolve base branch " .. base_ref, vim.log.levels.ERROR)
+		return false
+	end
+
+	session.base_ref = base_ref
+	state.base_ref = base_ref
+	M.refresh_commits(session)
+	apply_scope(state, session, scope, nil, diff_base, content_ref)
+	vim.notify("fude.nvim: Base branch → " .. base_ref .. " (scope: " .. scope .. ")", vim.log.levels.INFO)
+	return true
+end
+
+--- Pick a new base branch for the active local session from the `origin`
+--- branches. A ref that is not on the remote can be passed to
+--- `:FudeReviewLocalBase <ref>` instead.
+function M.select_base()
+	local state = config.state
+	if not state.active or state.review_mode ~= "local" then
+		vim.notify("fude.nvim: No local review session", vim.log.levels.WARN)
+		return
+	end
+	local session = state.local_session
+	if M.is_commit_scope(session) then
+		vim.notify("fude.nvim: Leave the commit scope before changing the base branch", vim.log.levels.WARN)
+		return
+	end
+	local diff_mod = require("fude.diff")
+	local pr = require("fude.pr")
+	local entries = pr.build_base_branch_entries(
+		diff_mod.get_remote_branches(),
+		diff_mod.get_default_branch(),
+		{ current_branch = session.branch }
+	)
+	if #entries == 0 then
+		vim.notify("fude.nvim: No base branch candidates — pass one to :FudeReviewLocalBase", vim.log.levels.WARN)
+		return
+	end
+	pr.select_base_branch(M.mark_current_base(entries, session.base_ref), function(base)
+		if not base then
+			return
+		end
+		if config.state.local_session ~= session then
+			vim.notify("fude.nvim: The review session changed while the picker was open — pick again", vim.log.levels.WARN)
+			return
+		end
+		M.set_base(base)
+	end)
+end
+
 return M
