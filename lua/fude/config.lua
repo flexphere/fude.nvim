@@ -128,6 +128,7 @@ M.defaults = {
 			close = "q",
 			next_entry = "j", -- Jump to the next selectable (<CR>-able) line
 			prev_entry = "k", -- Jump to the previous selectable (<CR>-able) line
+			change_base = "b", -- Local review only: pick a new base branch
 			help = "?", -- Show the side panel's configured keymaps
 		},
 	},

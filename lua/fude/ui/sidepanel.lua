@@ -937,6 +937,13 @@ function M.setup_keymaps(panel)
 		M.move_to_adjacent_entry(panel, -1, vim.v.count1)
 	end, "Move to previous selectable entry")
 
+	-- A PR's base belongs to the PR on GitHub, so only the local review offers it.
+	if config.state.review_mode == "local" then
+		map("change_base", function()
+			require("fude.local.session").select_base()
+		end, "Change base branch")
+	end
+
 	map("help", function()
 		M.toggle_help(panel)
 	end, "Show panel keymaps")

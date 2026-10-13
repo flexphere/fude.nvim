@@ -388,6 +388,24 @@ M.list = {
 			end
 		end,
 	},
+	{
+		name = "FudeReviewLocalBase",
+		desc = "Change the base branch of the local review",
+		category = "Scope",
+		available = when_local,
+		nargs = "?",
+		complete = function()
+			return require("fude.diff").get_remote_branches()
+		end,
+		run = function(opts)
+			local session = require("fude.local.session")
+			if opts.args ~= "" then
+				session.set_base(opts.args)
+			else
+				session.select_base()
+			end
+		end,
+	},
 
 	-- Review ---------------------------------------------------------------
 	{
