@@ -459,10 +459,13 @@ function M.get_merge_base(ref, cwd)
 end
 
 --- Get the repository's default branch name.
+--- @param cwd string|nil repository directory (default: Neovim's cwd)
 --- @return string|nil branch name (e.g., "main", "master")
-function M.get_default_branch()
+function M.get_default_branch(cwd)
 	-- Try to get default branch from remote HEAD
-	local result = vim.system({ "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD" }, { text = true }):wait()
+	local result = vim
+		.system({ "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD" }, { text = true, cwd = cwd })
+		:wait()
 	if result.code == 0 and result.stdout then
 		local branch = vim.trim(result.stdout)
 		if branch == "" then
@@ -474,7 +477,7 @@ function M.get_default_branch()
 
 	-- Fallback: check common default branch names on the remote
 	for _, name in ipairs({ "main", "master" }) do
-		local check = vim.system({ "git", "rev-parse", "--verify", "origin/" .. name }, { text = true }):wait()
+		local check = vim.system({ "git", "rev-parse", "--verify", "origin/" .. name }, { text = true, cwd = cwd }):wait()
 		if check.code == 0 then
 			return name
 		end
@@ -482,7 +485,7 @@ function M.get_default_branch()
 
 	-- Fallback: local main/master (remote-less repos, e.g. pre-push agent work)
 	for _, name in ipairs({ "main", "master" }) do
-		local check = vim.system({ "git", "rev-parse", "--verify", name }, { text = true }):wait()
+		local check = vim.system({ "git", "rev-parse", "--verify", name }, { text = true, cwd = cwd }):wait()
 		if check.code == 0 then
 			return name
 		end
@@ -513,8 +516,9 @@ end
 --- Get the branch names on the `origin` remote, most recently committed first.
 --- Uses the local remote-tracking refs (no network), so the list is as fresh as
 --- the last `git fetch`.
+--- @param cwd string|nil repository directory (default: Neovim's cwd)
 --- @return string[] branch names without the `origin/` prefix (empty when there is no remote)
-function M.get_remote_branches()
+function M.get_remote_branches(cwd)
 	local result = vim
 		.system({
 			"git",
@@ -522,7 +526,7 @@ function M.get_remote_branches()
 			"--sort=-committerdate",
 			"--format=%(refname:strip=3)",
 			"refs/remotes/origin/",
-		}, { text = true })
+		}, { text = true, cwd = cwd })
 		:wait()
 	if result.code ~= 0 then
 		return {}

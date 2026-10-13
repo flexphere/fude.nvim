@@ -395,7 +395,9 @@ M.list = {
 		available = when_local,
 		nargs = "?",
 		complete = function()
-			return require("fude.diff").get_remote_branches()
+			-- The reviewed worktree, not Neovim's cwd, which a `:cd` may have moved.
+			local session = require("fude.config").state.local_session
+			return require("fude.diff").get_remote_branches(session and session.worktree_root)
 		end,
 		run = function(opts)
 			local session = require("fude.local.session")

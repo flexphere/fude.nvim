@@ -1163,6 +1163,9 @@ describe("session lifecycle (start/reload/stop)", function()
 				if ref == "main" then
 					return "basesha"
 				end
+				if ref == "feat/x" then
+					return "headsha" -- the branch is its own merge-base with HEAD
+				end
 				return nil
 			end,
 		})
@@ -1216,6 +1219,27 @@ describe("session lifecycle (start/reload/stop)", function()
 		assert.equals("main", config.state.base_ref)
 		assert.equals("basesha", s.base_sha)
 		assert.equals("main", store.read_current(tmp_repo, "feat/x").base_ref)
+	end)
+
+	it("select_base lists branches of the reviewed worktree, not the cwd", function()
+		mock_release_merge_base()
+		local diff = require("fude.diff")
+		local asked = {}
+		helpers.mock(diff, "get_remote_branches", function(cwd)
+			asked.remote = cwd
+			return { "main" }
+		end)
+		helpers.mock(diff, "get_default_branch", function(cwd)
+			asked.default = cwd
+			return "main"
+		end)
+		helpers.mock(require("fude.pr"), "select_base_branch", function() end)
+		session.start(nil)
+		asked.remote, asked.default = nil, nil
+
+		session.select_base()
+		assert.equals(tmp_repo, asked.remote)
+		assert.equals(tmp_repo, asked.default)
 	end)
 
 	it("set_base onto the reviewed branch itself drops the base scope to uncommitted", function()

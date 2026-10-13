@@ -105,13 +105,21 @@ describe("commands.list", function()
 		assert.are.equal("?", by_name.FudeReviewLocalBase.nargs)
 		local diff = require("fude.diff")
 		local original = diff.get_remote_branches
-		diff.get_remote_branches = function()
+		local asked_cwd
+		diff.get_remote_branches = function(cwd)
+			asked_cwd = cwd
 			return { "main", "release/1" }
 		end
+		local state = require("fude.config").state
+		local original_session = state.local_session
+		state.local_session = { worktree_root = "/repo" }
 		local ok, completed = pcall(by_name.FudeReviewLocalBase.complete)
 		diff.get_remote_branches = original
+		state.local_session = original_session
 		assert.is_true(ok)
 		assert.are.same({ "main", "release/1" }, completed)
+		-- the reviewed worktree, not Neovim's cwd
+		assert.are.equal("/repo", asked_cwd)
 		-- No other entry carries these attributes
 		local range_count, nargs_count = 0, 0
 		for _, cmd in ipairs(commands.list) do

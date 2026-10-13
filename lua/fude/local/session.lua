@@ -885,7 +885,7 @@ function M.start(base_arg)
 
 	local base_ref = base_arg
 	if base_ref == nil or base_ref == "" then
-		base_ref = existing and existing.base_ref or diff_mod.get_default_branch()
+		base_ref = existing and existing.base_ref or diff_mod.get_default_branch(repo_root)
 	end
 
 	if existing and base_ref and existing.base_ref ~= base_ref then
@@ -1465,9 +1465,11 @@ function M.select_base()
 	end
 	local diff_mod = require("fude.diff")
 	local pr = require("fude.pr")
+	-- Ask the reviewed worktree, not Neovim's cwd, which a `:cd` may have moved.
+	local root = session.worktree_root
 	local entries = pr.build_base_branch_entries(
-		diff_mod.get_remote_branches(),
-		diff_mod.get_default_branch(),
+		diff_mod.get_remote_branches(root),
+		diff_mod.get_default_branch(root),
 		{ current_branch = session.branch }
 	)
 	if #entries == 0 then
