@@ -116,8 +116,9 @@ M.defaults = {
 	format_path = nil,
 	-- Side panel options
 	sidepanel = {
-		width = 40, -- Panel width in columns
-		position = "left", -- "left" or "right"
+		width = 40, -- Panel width in columns (position "left"/"right")
+		height = 15, -- Panel height in lines (position "top"/"bottom")
+		position = "left", -- "left", "right", "top", or "bottom"
 		file_tree = "flat", -- "flat" or "tree"
 		icons = true, -- Use nvim-web-devicons when available
 		-- Commit Message section, shown while a single commit is the review scope

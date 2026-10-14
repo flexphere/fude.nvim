@@ -787,7 +787,7 @@ File opening position                                 *fude-file-position*
     to the window the panel was opened or focused from. When the panel
     lives in another tabpage, this command reopens it in the current
     tabpage instead of jumping tabs.
-    The panel is a sidebar split window that shows these sections:
+    The panel is a split window that shows these sections:
 
     Review Scope:~
       In PR review, lists the PR's commit history with an "Entire PR"
@@ -1033,7 +1033,8 @@ Default configuration: >lua
     -- Side panel options
     sidepanel = {
       width = 40,       -- Panel width in columns (minimum 20)
-      position = "left", -- "left" or "right"
+      height = 15,      -- Panel height in lines for top/bottom (minimum 5)
+      position = "left", -- "left", "right", "top", or "bottom"
       file_tree = "flat", -- "flat" or "tree"
       icons = true, -- Use nvim-web-devicons when available
       commit_message = {
@@ -1260,11 +1261,17 @@ Options:
                   timezone before formatting.
 
 `sidepanel.width`   Width of the side panel in columns (default: 40).
-                  Minimum effective width is 20 columns.
+                  Minimum effective width is 20 columns. Used when
+                  `sidepanel.position` is "left" or "right".
+
+`sidepanel.height`  Height of the side panel in lines (default: 15).
+                  Minimum effective height is 5 lines. Used when
+                  `sidepanel.position` is "top" or "bottom".
 
 `sidepanel.position`
-                  Side of the editor to open the panel: "left" or "right"
-                  (default: "left").
+                  Edge of the editor to open the panel: "left", "right",
+                  "top", or "bottom" (default: "left"). A top/bottom panel
+                  spans the full editor width.
 
 `sidepanel.file_tree`
                   Files section layout for the side panel: "flat" or "tree"

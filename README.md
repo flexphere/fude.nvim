@@ -273,8 +273,9 @@ require("fude").setup({
   },
   -- Side panel options
   sidepanel = {
-    width = 40,          -- Panel width in columns
-    position = "left",   -- "left" or "right"
+    width = 40,          -- Panel width in columns (left/right)
+    height = 15,         -- Panel height in lines (top/bottom)
+    position = "left",   -- "left", "right", "top", or "bottom"
     file_tree = "flat",  -- "flat" or "tree"
     icons = true,       -- Use nvim-web-devicons when available; false hides icons
     commit_message = {

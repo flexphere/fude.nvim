@@ -151,6 +151,27 @@ describe("sidepanel integration", function()
 		assert.are.equal(panel.win, rightmost[2])
 	end)
 
+	for position, index in pairs({ top = 1, bottom = -1 }) do
+		it("open places a full-width panel at the " .. position .. " with the configured height", function()
+			config.setup({ sidepanel = { position = position, height = 8 } })
+			-- Diff layout [preview][source]: the panel must span both columns
+			vim.cmd("vsplit")
+
+			sidepanel.open()
+
+			local panel = config.state.sidepanel
+			local layout = vim.fn.winlayout()
+			assert.are.equal("col", layout[1])
+			assert.are.equal(2, #layout[2])
+			local edge = layout[2][index == 1 and 1 or #layout[2]]
+			assert.same({ "leaf", panel.win }, edge)
+			assert.are.equal(vim.o.columns, vim.api.nvim_win_get_width(panel.win))
+			assert.are.equal(8, vim.api.nvim_win_get_height(panel.win))
+			assert.is_true(vim.wo[panel.win].winfixheight)
+			assert.is_false(vim.wo[panel.win].winfixwidth)
+		end)
+	end
+
 	it("open uses the default sidepanel keymaps", function()
 		sidepanel.open()
 		local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")

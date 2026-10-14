@@ -923,6 +923,28 @@ function M.reveal_file(path)
 	end
 end
 
+local SPLIT_DIRECTIONS = { left = "left", right = "right", top = "above", bottom = "below" }
+
+--- Build the nvim_open_win config for the panel split.
+--- Left/right panels are sized by width, top/bottom panels by height; the
+--- matching winfix option keeps that size when other windows are opened.
+--- @param position string|nil "left" | "right" | "top" | "bottom" (unknown → "left")
+--- @param width number|nil panel width for left/right (min 20, default 40)
+--- @param height number|nil panel height for top/bottom (min 5, default 15)
+--- @return table { win_config: table, fix_option: string }
+function M.build_split_config(position, width, height)
+	local split = SPLIT_DIRECTIONS[position] or "left"
+	-- Top-level split: keep the panel at the tabpage edge regardless of
+	-- which window is focused (e.g. the right pane of a diff layout).
+	local win_config = { split = split, win = -1 }
+	if split == "above" or split == "below" then
+		win_config.height = math.max(5, height or 15)
+		return { win_config = win_config, fix_option = "winfixheight" }
+	end
+	win_config.width = math.max(20, width or 40)
+	return { win_config = win_config, fix_option = "winfixwidth" }
+end
+
 --- Open the sidepanel.
 function M.open()
 	local state = config.state
@@ -936,8 +958,7 @@ function M.open()
 
 	local prev_win = vim.api.nvim_get_current_win()
 	local sp_opts = config.opts.sidepanel or {}
-	local width = math.max(20, sp_opts.width or 40)
-	local position = sp_opts.position or "left"
+	local split = M.build_split_config(sp_opts.position, sp_opts.width, sp_opts.height)
 
 	-- Create buffer
 	local buf = vim.api.nvim_create_buf(false, true)
@@ -945,20 +966,12 @@ function M.open()
 	vim.bo[buf].bufhidden = "wipe"
 	vim.bo[buf].modifiable = false
 
-	-- Create split window
-	local split_dir = position == "right" and "right" or "left"
-	local win = vim.api.nvim_open_win(buf, true, {
-		split = split_dir,
-		-- Top-level split: keep the panel at the tabpage edge regardless of
-		-- which window is focused (e.g. the right pane of a diff layout).
-		win = -1,
-		width = width,
-	})
+	local win = vim.api.nvim_open_win(buf, true, split.win_config)
 
 	vim.wo[win].number = false
 	vim.wo[win].relativenumber = false
 	vim.wo[win].signcolumn = "no"
-	vim.wo[win].winfixwidth = true
+	vim.wo[win][split.fix_option] = true
 	vim.wo[win].cursorline = true
 	vim.wo[win].wrap = false
 	vim.wo[win].foldcolumn = "0"
