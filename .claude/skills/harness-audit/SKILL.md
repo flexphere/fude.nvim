@@ -63,6 +63,9 @@ argument-hint: [対象PR件数（省略時は10）]
    # luacov 発火 = coverage 関連 (将来段階 3 の閾値違反含む)
    git log --oneline --since="$SINCE" | grep -E "coverage|カバレッジ"
    ```
+   本リポジトリはsquash mergeのため、PR内でsensor違反を直したコミットはmainの履歴から消える。
+   対象PRごとに`gh pr view <n> --json commits --jq '.commits[].messageHeadline'`でPR内のコミット件名も集計し、
+   上と同じ観点で発火を数える
 6. **HARNESS.md の現状表**: §1 (Guides) と §2 (Sensors) の表内容を §3.6 で 4-quadrant matrix 再生成のため記憶
 
 ### Phase 3: 分析 [自律実行可]

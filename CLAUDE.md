@@ -19,7 +19,7 @@ fude.nvim is a Neovim plugin for GitHub PR code review. It shows base branch dif
   - Test files: `tests/fude/*_spec.lua`
   - Bootstrap: `tests/minimal_init.lua`
   - Shared helpers: `tests/helpers.lua` (mock management, test buffer creation, async wait)
-- **All checks**: `make all` (lint + format-check + test)
+- **All checks**: `make all` (lint + format-check + test + check-state-deps + check-purity + check-docs)
 
 ## Architecture
 
