@@ -277,6 +277,9 @@ require("fude").setup({
     position = "left",   -- "left" or "right"
     file_tree = "flat",  -- "flat" or "tree"
     icons = true,       -- Use nvim-web-devicons when available; false hides icons
+    commit_message = {
+      max_lines = 8,    -- Commit Message section rows before the rest is folded
+    },
     keymaps = {
       select = "<CR>",           -- scope: switch / directory: fold / file: open
       toggle_reviewed = "<Tab>", -- PR scope reviewed / local scope switch / file viewed
@@ -286,6 +289,7 @@ require("fude").setup({
       next_entry = "j",          -- jump to next selectable entry (includes directories)
       prev_entry = "k",          -- jump to previous selectable entry
       change_base = "b",         -- local review only: pick a new base branch
+      toggle_commit_message = "m", -- expand/collapse a folded commit message
       help = "?",                -- show configured panel keymaps
     },
   },
@@ -341,6 +345,11 @@ The unviewed settings apply to the side panel, not the file pickers.
 File and folder icons use the optional nvim-web-devicons integration;
 folders use open/closed icons to match their fold state.
 Set `sidepanel.icons = false` to hide them; fold arrows remain visible.
+
+While a single commit is the review scope, a Commit Message section between
+Review Scope and Files shows the commit's full message, wrapped to the panel
+width. Messages longer than `sidepanel.commit_message.max_lines` rows (default 8)
+are folded into a `… N more lines` hint; press `m` to expand or collapse them.
 
 ## Comment drafts
 

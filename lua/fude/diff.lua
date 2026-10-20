@@ -187,6 +187,18 @@ function M.get_commit_log(base_ref, tip, cwd, limit)
 	return M.parse_commit_log(result.stdout)
 end
 
+--- Full message (subject and body) of a commit.
+--- @param sha string commit SHA
+--- @param cwd string|nil repo root
+--- @return string|nil message trailing newlines removed; nil when git fails
+function M.get_commit_message(sha, cwd)
+	local result = vim.system({ "git", "log", "-1", "--format=%B", sha }, { text = true, cwd = cwd }):wait()
+	if result.code ~= 0 then
+		return nil
+	end
+	return ((result.stdout or ""):gsub("%s+$", ""))
+end
+
 --- Whether the working tree has staged or unstaged changes.
 --- Untracked files do not count here: `git checkout` carries them across —
 --- except when the target tracks a file of the same path, which

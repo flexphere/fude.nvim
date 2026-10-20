@@ -61,6 +61,97 @@ function M.format_scope_section(scope_entries, width)
 	return lines, highlights, #scope_entries
 end
 
+--- Find a commit's full message in the raw `pulls/{pr}/commits` listing.
+--- @param pr_commits table[]|nil raw commit objects (`state.pr_commits`)
+--- @param sha string|nil commit SHA
+--- @return string|nil message
+function M.find_pr_commit_message(pr_commits, sha)
+	if type(pr_commits) ~= "table" or not sha then
+		return nil
+	end
+	for _, c in ipairs(pr_commits) do
+		if type(c) == "table" and c.sha == sha and type(c.commit) == "table" then
+			local message = c.commit.message
+			return type(message) == "string" and message or nil
+		end
+	end
+	return nil
+end
+
+-- Split text into rows of at most `width` display cells, breaking after the
+-- last space of a row when there is one so words stay whole.
+local function wrap_display(text, width)
+	if width < 1 or vim.fn.strdisplaywidth(text) <= width then
+		return { text }
+	end
+	local rows, row, row_width = {}, "", 0
+	for _, char in ipairs(vim.fn.split(text, "\\zs")) do
+		local char_width = vim.fn.strdisplaywidth(char)
+		if row_width + char_width > width and row ~= "" then
+			local cut = row:match(".*() ")
+			if cut and row:sub(1, cut - 1):find("%S") then
+				table.insert(rows, row:sub(1, cut - 1))
+				row = row:sub(cut + 1)
+			else
+				table.insert(rows, row)
+				row = ""
+			end
+			row_width = vim.fn.strdisplaywidth(row)
+		end
+		row = row .. char
+		row_width = row_width + char_width
+	end
+	table.insert(rows, row)
+	return rows
+end
+
+--- Format the Commit Message section shown while one commit is the scope.
+--- Rows past `max_lines` (counted after wrapping) are folded into a hint
+--- line unless `expanded`.
+--- @param message string full commit message
+--- @param width number available width in display cells
+--- @param max_lines number|nil rows shown while collapsed (min 1, default 8)
+--- @param expanded boolean|nil show every row
+--- @param toggle_lhs string|nil effective toggle key, named in the hint line
+--- @return string[] lines
+--- @return table[] highlights { { line_0idx, col_start, col_end, hl_group } }
+--- @return boolean foldable whether the message exceeds max_lines
+function M.format_commit_message_section(message, width, max_lines, expanded, toggle_lhs)
+	max_lines = math.max(1, math.floor(tonumber(max_lines) or 8))
+	local lines = { " Commit Message", string.rep("─", math.max(0, width)) }
+	local highlights = { { 0, 0, -1, "Title" } }
+
+	local text = message:gsub("\r\n", "\n"):gsub("\t", "    ")
+	local rows = {}
+	for _, raw in ipairs(vim.split(text, "\n", { plain = true })) do
+		for _, row in ipairs(wrap_display(raw, width - 1)) do
+			table.insert(rows, " " .. row)
+		end
+	end
+
+	local hidden = #rows - max_lines
+	local shown = (expanded or hidden <= 0) and #rows or max_lines
+	for i = 1, shown do
+		table.insert(lines, rows[i])
+	end
+	if hidden > 0 then
+		local hint
+		if not expanded then
+			hint = string.format(" … %d more line%s", hidden, hidden == 1 and "" or "s")
+			if toggle_lhs then
+				hint = hint .. " (" .. toggle_lhs .. ": expand)"
+			end
+		elseif toggle_lhs then
+			hint = " (" .. toggle_lhs .. ": collapse)"
+		end
+		if hint then
+			table.insert(highlights, { #lines, 0, -1, "Comment" })
+			table.insert(lines, hint)
+		end
+	end
+	return lines, highlights, hidden > 0
+end
+
 -- Widths use display cells; highlight columns use byte offsets.
 local function truncate_display(text, width)
 	if width <= 0 then
@@ -281,10 +372,19 @@ end
 --- @param file_lines string[]
 --- @param file_hls table[]
 --- @param file_count number
+--- @param message_section table|nil { lines, highlights } placed between scope and files
 --- @return string[] lines combined lines
 --- @return table[] highlights combined highlights (line indices adjusted)
 --- @return table section_map { scope_start, scope_end, files_start, files_end, scope_entry_offset, files_entry_offset }
-function M.build_sidepanel_content(scope_lines, scope_hls, scope_count, file_lines, file_hls, file_count)
+function M.build_sidepanel_content(
+	scope_lines,
+	scope_hls,
+	scope_count,
+	file_lines,
+	file_hls,
+	file_count,
+	message_section
+)
 	local lines = {}
 	local highlights = {}
 
@@ -299,6 +399,18 @@ function M.build_sidepanel_content(scope_lines, scope_hls, scope_count, file_lin
 
 	-- Blank line separator
 	table.insert(lines, "")
+
+	-- Commit message section (non-selectable)
+	if message_section then
+		local message_offset = #lines
+		for _, l in ipairs(message_section.lines) do
+			table.insert(lines, l)
+		end
+		for _, hl in ipairs(message_section.highlights) do
+			table.insert(highlights, { hl[1] + message_offset, hl[2], hl[3], hl[4] })
+		end
+		table.insert(lines, "")
+	end
 
 	-- Files section
 	local files_offset = #lines
@@ -487,6 +599,39 @@ local function add_file_icons(file_entries)
 	return "", ""
 end
 
+-- Full message of the commit under review, or nil outside a commit scope.
+-- Local messages come from git and are cached per panel, since render runs
+-- on every BufEnter; GitHub messages are already in `state.pr_commits`.
+local function current_commit_message(panel)
+	local state = config.state
+	if state.review_mode == "local" then
+		local session = state.local_session
+		if not require("fude.local.session").in_commit_scope() or not session.scope_commit_sha then
+			return nil
+		end
+		local sha = session.scope_commit_sha
+		panel.commit_messages = panel.commit_messages or {}
+		if panel.commit_messages[sha] == nil then
+			panel.commit_messages[sha] = get_diff().get_commit_message(sha, session.worktree_root) or false
+		end
+		return panel.commit_messages[sha] or nil
+	end
+	if state.scope == "commit" then
+		return M.find_pr_commit_message(state.pr_commits, state.scope_commit_sha)
+	end
+	return nil
+end
+
+-- Effective lhs of a registered panel action (nil when disabled or shadowed).
+local function effective_lhs(panel, action)
+	for _, mapping in ipairs(panel.help_mappings or {}) do
+		if mapping.action == action then
+			return mapping.lhs
+		end
+	end
+	return nil
+end
+
 --- Render the sidepanel content into the buffer.
 --- @param panel table sidepanel state
 local function render(panel)
@@ -595,15 +740,29 @@ local function render(panel)
 			M.format_files_section(file_entries, width, config.format_path, viewed_count, current_path, row_opts)
 	end
 
+	local message_section
+	panel.commit_message_foldable = false
+	local message = current_commit_message(panel)
+	if message and message ~= "" then
+		local message_opts = type(sp_opts.commit_message) == "table" and sp_opts.commit_message or {}
+		local message_lines, message_hls, foldable = M.format_commit_message_section(
+			message,
+			width,
+			message_opts.max_lines,
+			panel.commit_message_expanded,
+			effective_lhs(panel, "toggle_commit_message")
+		)
+		message_section = { lines = message_lines, highlights = message_hls }
+		panel.commit_message_foldable = foldable
+	end
+
 	local lines, highlights, section_map =
-		M.build_sidepanel_content(scope_lines, scope_hls, scope_count, file_lines, file_hls, file_count)
-	for _, mapping in ipairs(panel.help_mappings or {}) do
-		if mapping.action == "help" then
-			table.insert(lines, "")
-			table.insert(highlights, { #lines, 0, -1, "Comment" })
-			table.insert(lines, " " .. mapping.lhs .. " Help")
-			break
-		end
+		M.build_sidepanel_content(scope_lines, scope_hls, scope_count, file_lines, file_hls, file_count, message_section)
+	local help_lhs = effective_lhs(panel, "help")
+	if help_lhs then
+		table.insert(lines, "")
+		table.insert(highlights, { #lines, 0, -1, "Comment" })
+		table.insert(lines, " " .. help_lhs .. " Help")
 	end
 
 	-- Update buffer
@@ -943,6 +1102,15 @@ function M.setup_keymaps(panel)
 			require("fude.local.session").select_base()
 		end, "Change base branch")
 	end
+
+	map("toggle_commit_message", function()
+		if not panel.commit_message_foldable then
+			vim.notify("fude.nvim: No folded commit message to expand", vim.log.levels.INFO)
+			return
+		end
+		panel.commit_message_expanded = not panel.commit_message_expanded
+		M.refresh()
+	end, "Expand/collapse commit message")
 
 	map("help", function()
 		M.toggle_help(panel)

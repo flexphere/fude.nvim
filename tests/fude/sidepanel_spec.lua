@@ -848,3 +848,103 @@ describe("selectable line navigation", function()
 		end)
 	end)
 end)
+
+describe("find_pr_commit_message", function()
+	local commits = {
+		{ sha = "aaa", commit = { message = "first\n\nbody" } },
+		{ sha = "bbb", commit = { message = vim.NIL } },
+		{ sha = "ccc", commit = vim.NIL },
+	}
+
+	it("returns the full message of the matching commit", function()
+		assert.are.equal("first\n\nbody", sidepanel.find_pr_commit_message(commits, "aaa"))
+	end)
+
+	it("returns nil for an unknown sha, JSON null fields, or missing input", function()
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, "zzz"))
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, "bbb"))
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, "ccc"))
+		assert.is_nil(sidepanel.find_pr_commit_message(nil, "aaa"))
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, nil))
+	end)
+end)
+
+describe("format_commit_message_section", function()
+	local function message_of(count)
+		local rows = { "subject", "" }
+		for i = 1, count - 2 do
+			table.insert(rows, "body " .. i)
+		end
+		return table.concat(rows, "\n")
+	end
+
+	it("shows a short message whole, without a hint", function()
+		local lines, hls, foldable = sidepanel.format_commit_message_section("subject\r\n\r\nbody", 20, 8, false, "m")
+		assert.same({ " Commit Message", string.rep("─", 20), " subject", " ", " body" }, lines)
+		assert.same({ { 0, 0, -1, "Title" } }, hls)
+		assert.is_false(foldable)
+	end)
+
+	it("folds rows past max_lines into a hint naming the toggle key", function()
+		local lines, hls, foldable = sidepanel.format_commit_message_section(message_of(5), 20, 3, false, "m")
+		assert.same({ " subject", " ", " body 1" }, { lines[3], lines[4], lines[5] })
+		assert.are.equal(" … 2 more lines (m: expand)", lines[6])
+		assert.are.equal(6, #lines)
+		assert.same({ 5, 0, -1, "Comment" }, hls[2])
+		assert.is_true(foldable)
+		assert.are.equal(
+			" … 1 more line",
+			select(1, sidepanel.format_commit_message_section(message_of(4), 20, 3, false, nil))[6]
+		)
+	end)
+
+	it("shows every row when expanded, with a collapse hint only when a key is mapped", function()
+		local lines, _, foldable = sidepanel.format_commit_message_section(message_of(5), 20, 3, true, "m")
+		assert.are.equal(" body 3", lines[7])
+		assert.are.equal(" (m: collapse)", lines[8])
+		assert.is_true(foldable)
+		local unmapped = sidepanel.format_commit_message_section(message_of(5), 20, 3, true, nil)
+		assert.are.equal(7, #unmapped)
+	end)
+
+	it("wraps long lines at spaces and counts wrapped rows against max_lines", function()
+		local lines, _, foldable =
+			sidepanel.format_commit_message_section("aaa bbb ccc ddd\nxxxxxxxxxxxx", 9, 8, false, "m")
+		assert.same({ " aaa bbb", " ccc ddd", " xxxxxxxx", " xxxx" }, { lines[3], lines[4], lines[5], lines[6] })
+		for i = 3, #lines do
+			assert.is_true(vim.fn.strdisplaywidth(lines[i]) <= 9)
+		end
+		assert.is_false(foldable)
+		local _, _, folded = sidepanel.format_commit_message_section("aaa bbb ccc ddd", 9, 1, false, "m")
+		assert.is_true(folded)
+	end)
+
+	it("falls back to 8 rows for an invalid max_lines", function()
+		local lines = sidepanel.format_commit_message_section(message_of(10), 20, "x", false, "m")
+		assert.are.equal(" … 2 more lines (m: expand)", lines[11])
+		local one = sidepanel.format_commit_message_section(message_of(3), 20, 0, false, nil)
+		assert.are.equal(" … 2 more lines", one[4])
+	end)
+end)
+
+describe("build_sidepanel_content with a commit message section", function()
+	it("places the message between scope and files and shifts the files section", function()
+		local lines, hls, section_map = sidepanel.build_sidepanel_content(
+			{ "Header S", "---", "Entry S1" },
+			{ { 0, 0, -1, "Title" } },
+			1,
+			{ "Header F", "---", "Entry F1" },
+			{ { 0, 0, -1, "Title" } },
+			1,
+			{ lines = { "Header M", "---", "message" }, highlights = { { 0, 0, -1, "Title" } } }
+		)
+		assert.same(
+			{ "Header S", "---", "Entry S1", "", "Header M", "---", "message", "", "Header F", "---", "Entry F1" },
+			lines
+		)
+		assert.same({ 0, 4, 8 }, { hls[1][1], hls[2][1], hls[3][1] })
+		assert.are.equal(2, section_map.scope_start)
+		assert.are.equal(10, section_map.files_start)
+		assert.are.equal(10, section_map.files_end)
+	end)
+end)
