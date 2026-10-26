@@ -1398,3 +1398,122 @@ describe("sidepanel integration", function()
 		assert.is_false(config.opts.sidepanel.icons)
 	end)
 end)
+
+describe("sidepanel commit message section", function()
+	local function long_message(rows)
+		local parts = { "subject", "" }
+		for i = 1, rows - 2 do
+			table.insert(parts, "body " .. i)
+		end
+		return table.concat(parts, "\n")
+	end
+
+	before_each(function()
+		config.setup({ sidepanel = { commit_message = { max_lines = 3 } } })
+		config.opts = vim.deepcopy(config.opts)
+		config.state.active = true
+		config.state.pr_number = 1
+		config.state.base_ref = "main"
+		config.state.head_ref = "feat/test"
+		config.state.changed_files = {
+			{ path = "a.lua", status = "modified", additions = 1, deletions = 0 },
+		}
+		config.state.pr_commits = {
+			{ sha = "c1sha", commit = { message = long_message(6), author = { name = "a", date = "" } } },
+		}
+		config.state.viewed_files = {}
+		config.state.reviewed_commits = {}
+		config.state.comments = {}
+		config.state.pending_comments = {}
+		helpers.mock(require("fude.diff"), "get_repo_root", function()
+			return "/mock/repo"
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	local function panel_lines()
+		return vim.api.nvim_buf_get_lines(config.state.sidepanel.buf, 0, -1, false)
+	end
+
+	local function toggle_callback()
+		for _, m in ipairs(vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")) do
+			if m.lhs == "m" then
+				return m.callback
+			end
+		end
+	end
+
+	it("is absent outside a commit scope, and the toggle key says so", function()
+		config.state.scope = "full_pr"
+		local notified
+		helpers.mock(vim, "notify", function(msg)
+			notified = msg
+		end)
+		sidepanel.open()
+		assert.is_falsy(table.concat(panel_lines(), "\n"):find("Commit Message", 1, true))
+		toggle_callback()()
+		assert.are.equal("fude.nvim: No folded commit message to expand", notified)
+	end)
+
+	it("shows the GitHub commit's message folded, and the toggle key expands and collapses it", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "c1sha"
+		sidepanel.open()
+		local text = table.concat(panel_lines(), "\n")
+		assert.is_truthy(text:find(" Commit Message", 1, true))
+		assert.is_truthy(text:find(" … 3 more lines (m: expand)", 1, true))
+		assert.is_falsy(text:find(" body 4", 1, true))
+
+		toggle_callback()()
+		text = table.concat(panel_lines(), "\n")
+		assert.is_truthy(text:find(" body 4", 1, true))
+		assert.is_truthy(text:find(" (m: collapse)", 1, true))
+
+		toggle_callback()()
+		assert.is_falsy(table.concat(panel_lines(), "\n"):find(" body 4", 1, true))
+	end)
+
+	it("keeps file rows selectable below the message section", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "c1sha"
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		vim.api.nvim_win_set_cursor(panel.win, { panel.section_map.files_start + 1, 0 })
+		local info = sidepanel.get_current_entry(panel)
+		assert.are.equal("file", info.type)
+		assert.are.equal("a.lua", info.entry.path)
+	end)
+
+	it("reads a local commit's message from git once per sha", function()
+		config.state.review_mode = "local"
+		config.state.local_session = {
+			scope = "commit",
+			scope_commit_sha = "l1sha",
+			base_ref = "main",
+			branch = "feat/x",
+			worktree_root = "/mock/repo",
+			commits = { { sha = "l1sha", short_sha = "l1", subject = "local subject" } },
+		}
+		local session = require("fude.local.session")
+		helpers.mock(session, "in_commit_scope", function()
+			return true
+		end)
+		helpers.mock(session, "scope_specs", function()
+			return {}
+		end)
+		local calls = {}
+		helpers.mock(require("fude.diff"), "get_commit_message", function(sha, cwd)
+			table.insert(calls, { sha, cwd })
+			return "local subject\n\nlocal body"
+		end)
+
+		sidepanel.open()
+		sidepanel.refresh()
+
+		assert.is_truthy(table.concat(panel_lines(), "\n"):find(" local body", 1, true))
+		assert.same({ { "l1sha", "/mock/repo" } }, calls)
+	end)
+end)

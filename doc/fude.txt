@@ -787,7 +787,7 @@ File opening position                                 *fude-file-position*
     to the window the panel was opened or focused from. When the panel
     lives in another tabpage, this command reopens it in the current
     tabpage instead of jumping tabs.
-    The panel is a sidebar split window that shows two sections:
+    The panel is a sidebar split window that shows these sections:
 
     Review Scope:~
       In PR review, lists the PR's commit history with an "Entire PR"
@@ -798,6 +798,15 @@ File opening position                                 *fude-file-position*
       "Uncommitted" — see |:FudeReviewLocalScope|); here `<CR>` or `<Tab>`
       switches scope, and `b` changes the base branch
       (|:FudeReviewLocalBase|). The active scope is marked with `▶`.
+
+    Commit Message:~
+      Shown only while a single commit is the review scope. Lists the
+      commit's full message (subject, then body), wrapped to the panel
+      width. A message longer than `sidepanel.commit_message.max_lines`
+      rows shows only that many, followed by a "… N more lines" hint;
+      `m` expands it to the full message and collapses it again. The
+      expanded state lasts until the panel is closed. `j` / `k` stop on
+      the message rows too; `<CR>` and `<Tab>` do nothing there.
 
     Files:~
       Lists all changed files in the current scope with status icons,
@@ -838,11 +847,13 @@ File opening position                                 *fude-file-position*
       `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
                 (local). On a file: toggle viewed.
       `j` / `k`   Move to the next / previous selectable entry,
-                including directory rows. Skips headers, separators
-                and blank lines. Accepts a count; stops at the edges.
+                including directory rows and commit message rows.
+                Skips headers, separators and blank lines. Accepts a
+                count; stops at the edges.
       `t`       Toggle files between flat list and tree
       `R`       Reload review data
       `q`       Close panel
+      `m`       Expand / collapse a folded commit message
       `?`       Open a floating reference of configured panel keymaps
 
     The "? Help" hint appears below the file list. Both the hint and help
@@ -1025,6 +1036,9 @@ Default configuration: >lua
       position = "left", -- "left" or "right"
       file_tree = "flat", -- "flat" or "tree"
       icons = true, -- Use nvim-web-devicons when available
+      commit_message = {
+        max_lines = 8, -- Rows shown before the rest is folded
+      },
       keymaps = {
         select = "<CR>",
         toggle_reviewed = "<Tab>",
@@ -1034,6 +1048,7 @@ Default configuration: >lua
         next_entry = "j",
         prev_entry = "k",
         change_base = "b",
+        toggle_commit_message = "m",
         help = "?",
       },
     },
@@ -1262,6 +1277,14 @@ Options:
                   when installed (default: true). Set false to hide icons
                   and skip loading the icon provider. Requires a Nerd Font.
 
+`sidepanel.commit_message.max_lines`
+                  Rows of the side panel's Commit Message section shown
+                  before the rest is folded into a "… N more lines" hint
+                  (default: 8, minimum 1). Rows are counted after
+                  wrapping to the panel width. The
+                  `sidepanel.keymaps.toggle_commit_message` mapping
+                  (default: "m") shows the full message.
+
 `sidepanel.keymaps`
                   Buffer-local mappings used only inside the side panel.
                   Available actions and defaults:
@@ -1274,9 +1297,13 @@ Options:
                   - `close`: "q"
                   - `next_entry`: "j" / `prev_entry`: "k" (jump between
                     selectable entry lines, skipping headers, separators,
-                    and blank lines; includes tree-mode directory rows)
+                    and blank lines; includes tree-mode directory rows
+                    and commit message rows)
                   - `change_base`: "b" (local review only: pick a new base
                     branch, as |:FudeReviewLocalBase|)
+                  - `toggle_commit_message`: "m" (expand or collapse a
+                    commit message folded by
+                    `sidepanel.commit_message.max_lines`)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
                   Set an action to `false` or an empty string to disable its

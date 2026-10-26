@@ -800,6 +800,12 @@ describe("selectable line navigation", function()
 			assert.are.same({ 3, 4, 5, 9, 10 }, sidepanel.build_selectable_lines(section_map))
 		end)
 
+		it("includes the commit message rows between scope and files", function()
+			local map =
+				{ scope_start = 2, scope_end = 3, message_start = 7, message_end = 8, files_start = 12, files_end = 12 }
+			assert.are.same({ 3, 4, 8, 9, 13 }, sidepanel.build_selectable_lines(map))
+		end)
+
 		it("handles empty sections", function()
 			local empty_map = { scope_start = 2, scope_end = 1, files_start = 5, files_end = 4 }
 			assert.are.same({}, sidepanel.build_selectable_lines(empty_map))
@@ -846,5 +852,148 @@ describe("selectable line navigation", function()
 			assert.are.equal(10, sidepanel.find_adjacent_selectable_line(1, lines, 1, 9999))
 			assert.are.equal(3, sidepanel.find_adjacent_selectable_line(10, lines, -1, 9999))
 		end)
+	end)
+end)
+
+describe("find_pr_commit_message", function()
+	local commits = {
+		{ sha = "aaa", commit = { message = "first\n\nbody" } },
+		{ sha = "bbb", commit = { message = vim.NIL } },
+		{ sha = "ccc", commit = vim.NIL },
+	}
+
+	it("returns the full message of the matching commit", function()
+		assert.are.equal("first\n\nbody", sidepanel.find_pr_commit_message(commits, "aaa"))
+	end)
+
+	it("returns nil for an unknown sha, JSON null fields, or missing input", function()
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, "zzz"))
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, "bbb"))
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, "ccc"))
+		assert.is_nil(sidepanel.find_pr_commit_message(nil, "aaa"))
+		assert.is_nil(sidepanel.find_pr_commit_message(commits, nil))
+	end)
+end)
+
+describe("format_commit_message_section", function()
+	local function message_of(count)
+		local rows = { "subject", "" }
+		for i = 1, count - 2 do
+			table.insert(rows, "body " .. i)
+		end
+		return table.concat(rows, "\n")
+	end
+
+	it("shows a short message whole, without a hint", function()
+		local lines, hls, foldable = sidepanel.format_commit_message_section("subject\r\n\r\nbody", 20, 8, false, "m")
+		assert.same({ " Commit Message", string.rep("─", 20), " subject", " ", " body" }, lines)
+		assert.same({ { 0, 0, -1, "Title" } }, hls)
+		assert.is_false(foldable)
+	end)
+
+	it("folds rows past max_lines into a hint naming the toggle key", function()
+		local lines, hls, foldable = sidepanel.format_commit_message_section(message_of(5), 30, 3, false, "m")
+		assert.same({ " subject", " ", " body 1" }, { lines[3], lines[4], lines[5] })
+		assert.are.equal(" … 2 more lines (m: expand)", lines[6])
+		assert.are.equal(6, #lines)
+		assert.same({ 5, 0, -1, "Comment" }, hls[2])
+		assert.is_true(foldable)
+		assert.are.equal(
+			" … 1 more line",
+			select(1, sidepanel.format_commit_message_section(message_of(4), 20, 3, false, nil))[6]
+		)
+	end)
+
+	it("shows every row when expanded, with a collapse hint only when a key is mapped", function()
+		local lines, _, foldable = sidepanel.format_commit_message_section(message_of(5), 20, 3, true, "m")
+		assert.are.equal(" body 3", lines[7])
+		assert.are.equal(" (m: collapse)", lines[8])
+		assert.is_true(foldable)
+		local unmapped = sidepanel.format_commit_message_section(message_of(5), 20, 3, true, nil)
+		assert.are.equal(7, #unmapped)
+	end)
+
+	it("wraps long lines at spaces and counts wrapped rows against max_lines", function()
+		local lines, _, foldable =
+			sidepanel.format_commit_message_section("aaa bbb ccc ddd\nxxxxxxxxxxxx", 9, 8, false, "m")
+		assert.same({ " aaa bbb", " ccc ddd", " xxxxxxxx", " xxxx" }, { lines[3], lines[4], lines[5], lines[6] })
+		for i = 3, #lines do
+			assert.is_true(vim.fn.strdisplaywidth(lines[i]) <= 9)
+		end
+		assert.is_false(foldable)
+		local _, _, folded = sidepanel.format_commit_message_section("aaa bbb ccc ddd", 9, 1, false, "m")
+		assert.is_true(folded)
+	end)
+
+	it("does not start a row with the space a full row broke at", function()
+		local lines = sidepanel.format_commit_message_section("abcdefgh klm", 9, 8, false, "m")
+		assert.same({ " abcdefgh", " klm" }, { lines[3], lines[4] })
+	end)
+
+	it("keeps a row that ends exactly at a word boundary whole", function()
+		local lines = sidepanel.format_commit_message_section("aa bb cc", 6, 8, false, "m")
+		assert.same({ " aa bb", " cc" }, { lines[3], lines[4] })
+	end)
+
+	it("wraps the hint in a narrow panel so the toggle key stays visible", function()
+		local lines, hls = sidepanel.format_commit_message_section(message_of(5), 20, 3, false, "m")
+		assert.same({ " … 2 more lines (m:", " expand)" }, { lines[6], lines[7] })
+		assert.same({ { 5, 0, -1, "Comment" }, { 6, 0, -1, "Comment" } }, { hls[2], hls[3] })
+	end)
+
+	it("falls back to 8 rows for an invalid max_lines", function()
+		local lines = sidepanel.format_commit_message_section(message_of(10), 30, "x", false, "m")
+		assert.are.equal(" … 2 more lines (m: expand)", lines[11])
+		local one = sidepanel.format_commit_message_section(message_of(3), 20, 0, false, nil)
+		assert.are.equal(" … 2 more lines", one[4])
+	end)
+end)
+
+describe("calculate_restored_cursor_row", function()
+	local old_map = { files_entry_offset = 6 }
+	local new_map = { files_entry_offset = 18 }
+
+	it("moves a cursor in the Files section by the height change above it", function()
+		assert.are.equal(21, sidepanel.calculate_restored_cursor_row(9, old_map, new_map, 30))
+		assert.are.equal(9, sidepanel.calculate_restored_cursor_row(21, new_map, old_map, 30))
+	end)
+
+	it("keeps a cursor inside a collapsing message on the message's last row", function()
+		local expanded = { message_start = 6, message_end = 20, files_entry_offset = 24 }
+		local collapsed = { message_start = 6, message_end = 9, files_entry_offset = 13 }
+		assert.are.equal(10, sidepanel.calculate_restored_cursor_row(21, expanded, collapsed, 30))
+		assert.are.equal(8, sidepanel.calculate_restored_cursor_row(8, expanded, collapsed, 30))
+	end)
+
+	it("keeps a cursor above the Files section on its row", function()
+		assert.are.equal(3, sidepanel.calculate_restored_cursor_row(3, old_map, new_map, 30))
+	end)
+
+	it("clamps to the buffer and keeps the row without both section maps", function()
+		assert.are.equal(30, sidepanel.calculate_restored_cursor_row(40, nil, new_map, 30))
+		assert.are.equal(5, sidepanel.calculate_restored_cursor_row(5, old_map, nil, 30))
+	end)
+end)
+
+describe("build_sidepanel_content with a commit message section", function()
+	it("places the message between scope and files and shifts the files section", function()
+		local lines, hls, section_map = sidepanel.build_sidepanel_content(
+			{ "Header S", "---", "Entry S1" },
+			{ { 0, 0, -1, "Title" } },
+			1,
+			{ "Header F", "---", "Entry F1" },
+			{ { 0, 0, -1, "Title" } },
+			1,
+			{ lines = { "Header M", "---", "message" }, highlights = { { 0, 0, -1, "Title" } } }
+		)
+		assert.same(
+			{ "Header S", "---", "Entry S1", "", "Header M", "---", "message", "", "Header F", "---", "Entry F1" },
+			lines
+		)
+		assert.same({ 0, 4, 8 }, { hls[1][1], hls[2][1], hls[3][1] })
+		assert.are.equal(2, section_map.scope_start)
+		assert.same({ 6, 6 }, { section_map.message_start, section_map.message_end })
+		assert.are.equal(10, section_map.files_start)
+		assert.are.equal(10, section_map.files_end)
 	end)
 end)

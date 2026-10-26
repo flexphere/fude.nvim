@@ -120,15 +120,20 @@ M.defaults = {
 		position = "left", -- "left" or "right"
 		file_tree = "flat", -- "flat" or "tree"
 		icons = true, -- Use nvim-web-devicons when available
+		-- Commit Message section, shown while a single commit is the review scope
+		commit_message = {
+			max_lines = 8, -- Lines shown before the rest is folded (toggle_commit_message expands)
+		},
 		keymaps = {
 			select = "<CR>",
 			toggle_reviewed = "<Tab>",
 			toggle_file_tree = "t",
 			reload = "R",
 			close = "q",
-			next_entry = "j", -- Jump to the next selectable (<CR>-able) line
-			prev_entry = "k", -- Jump to the previous selectable (<CR>-able) line
+			next_entry = "j", -- Jump to the next entry or commit message row
+			prev_entry = "k", -- Jump to the previous entry or commit message row
 			change_base = "b", -- Local review only: pick a new base branch
+			toggle_commit_message = "m", -- Expand/collapse a commit message longer than max_lines
 			help = "?", -- Show the side panel's configured keymaps
 		},
 	},

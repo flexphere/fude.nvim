@@ -283,8 +283,19 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.equals(sha1_empty, diff.get_empty_tree(repo))
 	end)
 
+	it("get_commit_message returns the subject and body without trailing newlines", function()
+		git("commit", "-q", "--allow-empty", "-m", "subject line", "-m", "body one\nbody two")
+		local sha = git("rev-parse", "HEAD")
+		vim.cmd.cd(original_cwd)
+
+		assert.are.equal("subject line\n\nbody one\nbody two", diff.get_commit_message(sha, repo))
+		assert.is_nil(diff.get_commit_message("0000000000000000000000000000000000000000", repo))
+	end)
+
 	it("checkout counts a completed checkout whose post-checkout hook failed as done", function()
 		local hook = repo .. "/.git/hooks/post-checkout"
+		-- git init skips hooks/ when init.templateDir points at a missing directory
+		vim.fn.mkdir(repo .. "/.git/hooks", "p")
 		vim.fn.writefile({ "#!/bin/sh", "echo hook says no >&2", "exit 1" }, hook)
 		vim.uv.fs_chmod(hook, 493) -- 0755
 		local target = git("rev-parse", "main")
