@@ -350,6 +350,7 @@ While a single commit is the review scope, a Commit Message section between
 Review Scope and Files shows the commit's full message, wrapped to the panel
 width. Messages longer than `sidepanel.commit_message.max_lines` rows (default 8)
 are folded into a `… N more lines` hint; press `m` to expand or collapse them.
+`j` / `k` also stop on the message rows.
 
 ## Comment drafts
 

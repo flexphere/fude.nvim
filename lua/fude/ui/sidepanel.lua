@@ -378,7 +378,8 @@ end
 --- @param message_section table|nil { lines, highlights } placed between scope and files
 --- @return string[] lines combined lines
 --- @return table[] highlights combined highlights (line indices adjusted)
---- @return table section_map { scope_start, scope_end, files_start, files_end, scope_entry_offset, files_entry_offset }
+--- @return table section_map { scope_start, scope_end, files_start, files_end, message_start?, message_end?,
+---   scope_entry_offset, files_entry_offset }
 function M.build_sidepanel_content(
 	scope_lines,
 	scope_hls,
@@ -403,9 +404,13 @@ function M.build_sidepanel_content(
 	-- Blank line separator
 	table.insert(lines, "")
 
-	-- Commit message section (non-selectable)
+	-- Commit message section (j/k stop on its rows; <CR>/<Tab> do nothing there)
+	local message_start, message_end
 	if message_section then
 		local message_offset = #lines
+		-- header (1 line) + separator (1 line) before the message rows
+		message_start = message_offset + 2
+		message_end = message_offset + #message_section.lines - 1
 		for _, l in ipairs(message_section.lines) do
 			table.insert(lines, l)
 		end
@@ -433,6 +438,8 @@ function M.build_sidepanel_content(
 		scope_end = scope_entry_offset + scope_count - 1, -- 0-indexed last scope entry line
 		files_start = files_entry_offset, -- 0-indexed first file entry line
 		files_end = files_entry_offset + file_count - 1, -- 0-indexed last file entry line
+		message_start = message_start, -- 0-indexed first commit message row (nil without the section)
+		message_end = message_end, -- 0-indexed last commit message row, hint line included
 		scope_entry_offset = scope_entry_offset,
 		files_entry_offset = files_entry_offset,
 	}
@@ -1140,14 +1147,20 @@ function M.setup_keymaps(panel)
 	end, "Show panel keymaps")
 end
 
---- Build the sorted 1-based list of panel lines that accept `select`.
---- Includes directory rows; excludes headers, separators, and blank lines.
+--- Build the sorted 1-based list of panel lines `next_entry`/`prev_entry` stop on:
+--- scope and file entries (directory rows included) plus the commit message
+--- rows; excludes headers, separators, and blank lines.
 --- @param section_map table from build_sidepanel_content
 --- @return number[] lines ascending 1-based line numbers
 function M.build_selectable_lines(section_map)
 	local lines = {}
 	for line_0 = section_map.scope_start, section_map.scope_end do
 		table.insert(lines, line_0 + 1)
+	end
+	if section_map.message_start then
+		for line_0 = section_map.message_start, section_map.message_end do
+			table.insert(lines, line_0 + 1)
+		end
 	end
 	for line_0 = section_map.files_start, section_map.files_end do
 		table.insert(lines, line_0 + 1)

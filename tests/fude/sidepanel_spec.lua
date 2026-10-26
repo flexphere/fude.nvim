@@ -800,6 +800,12 @@ describe("selectable line navigation", function()
 			assert.are.same({ 3, 4, 5, 9, 10 }, sidepanel.build_selectable_lines(section_map))
 		end)
 
+		it("includes the commit message rows between scope and files", function()
+			local map =
+				{ scope_start = 2, scope_end = 3, message_start = 7, message_end = 8, files_start = 12, files_end = 12 }
+			assert.are.same({ 3, 4, 8, 9, 13 }, sidepanel.build_selectable_lines(map))
+		end)
+
 		it("handles empty sections", function()
 			local empty_map = { scope_start = 2, scope_end = 1, files_start = 5, files_end = 4 }
 			assert.are.same({}, sidepanel.build_selectable_lines(empty_map))
@@ -968,6 +974,7 @@ describe("build_sidepanel_content with a commit message section", function()
 		)
 		assert.same({ 0, 4, 8 }, { hls[1][1], hls[2][1], hls[3][1] })
 		assert.are.equal(2, section_map.scope_start)
+		assert.same({ 6, 6 }, { section_map.message_start, section_map.message_end })
 		assert.are.equal(10, section_map.files_start)
 		assert.are.equal(10, section_map.files_end)
 	end)

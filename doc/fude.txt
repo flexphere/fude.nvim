@@ -805,7 +805,8 @@ File opening position                                 *fude-file-position*
       width. A message longer than `sidepanel.commit_message.max_lines`
       rows shows only that many, followed by a "… N more lines" hint;
       `m` expands it to the full message and collapses it again. The
-      expanded state lasts until the panel is closed.
+      expanded state lasts until the panel is closed. `j` / `k` stop on
+      the message rows too; `<CR>` and `<Tab>` do nothing there.
 
     Files:~
       Lists all changed files in the current scope with status icons,
@@ -846,8 +847,9 @@ File opening position                                 *fude-file-position*
       `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
                 (local). On a file: toggle viewed.
       `j` / `k`   Move to the next / previous selectable entry,
-                including directory rows. Skips headers, separators
-                and blank lines. Accepts a count; stops at the edges.
+                including directory rows and commit message rows.
+                Skips headers, separators and blank lines. Accepts a
+                count; stops at the edges.
       `t`       Toggle files between flat list and tree
       `R`       Reload review data
       `q`       Close panel
@@ -1295,7 +1297,8 @@ Options:
                   - `close`: "q"
                   - `next_entry`: "j" / `prev_entry`: "k" (jump between
                     selectable entry lines, skipping headers, separators,
-                    and blank lines; includes tree-mode directory rows)
+                    and blank lines; includes tree-mode directory rows
+                    and commit message rows)
                   - `change_base`: "b" (local review only: pick a new base
                     branch, as |:FudeReviewLocalBase|)
                   - `toggle_commit_message`: "m" (expand or collapse a
