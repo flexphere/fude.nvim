@@ -286,7 +286,7 @@ require("fude").setup({
       toggle_file_tree = "t",
       reload = "R",
       close = "q",
-      next_entry = "j",          -- jump to next selectable entry (includes directories)
+      next_entry = "j",          -- jump to next entry (directories, commit message rows)
       prev_entry = "k",          -- jump to previous selectable entry
       change_base = "b",         -- local review only: pick a new base branch
       toggle_commit_message = "m", -- expand/collapse a folded commit message

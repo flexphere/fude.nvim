@@ -892,7 +892,7 @@ describe("format_commit_message_section", function()
 	end)
 
 	it("folds rows past max_lines into a hint naming the toggle key", function()
-		local lines, hls, foldable = sidepanel.format_commit_message_section(message_of(5), 20, 3, false, "m")
+		local lines, hls, foldable = sidepanel.format_commit_message_section(message_of(5), 30, 3, false, "m")
 		assert.same({ " subject", " ", " body 1" }, { lines[3], lines[4], lines[5] })
 		assert.are.equal(" … 2 more lines (m: expand)", lines[6])
 		assert.are.equal(6, #lines)
@@ -930,8 +930,19 @@ describe("format_commit_message_section", function()
 		assert.same({ " abcdefgh", " klm" }, { lines[3], lines[4] })
 	end)
 
+	it("keeps a row that ends exactly at a word boundary whole", function()
+		local lines = sidepanel.format_commit_message_section("aa bb cc", 6, 8, false, "m")
+		assert.same({ " aa bb", " cc" }, { lines[3], lines[4] })
+	end)
+
+	it("wraps the hint in a narrow panel so the toggle key stays visible", function()
+		local lines, hls = sidepanel.format_commit_message_section(message_of(5), 20, 3, false, "m")
+		assert.same({ " … 2 more lines (m:", " expand)" }, { lines[6], lines[7] })
+		assert.same({ { 5, 0, -1, "Comment" }, { 6, 0, -1, "Comment" } }, { hls[2], hls[3] })
+	end)
+
 	it("falls back to 8 rows for an invalid max_lines", function()
-		local lines = sidepanel.format_commit_message_section(message_of(10), 20, "x", false, "m")
+		local lines = sidepanel.format_commit_message_section(message_of(10), 30, "x", false, "m")
 		assert.are.equal(" … 2 more lines (m: expand)", lines[11])
 		local one = sidepanel.format_commit_message_section(message_of(3), 20, 0, false, nil)
 		assert.are.equal(" … 2 more lines", one[4])
@@ -945,6 +956,13 @@ describe("calculate_restored_cursor_row", function()
 	it("moves a cursor in the Files section by the height change above it", function()
 		assert.are.equal(21, sidepanel.calculate_restored_cursor_row(9, old_map, new_map, 30))
 		assert.are.equal(9, sidepanel.calculate_restored_cursor_row(21, new_map, old_map, 30))
+	end)
+
+	it("keeps a cursor inside a collapsing message on the message's last row", function()
+		local expanded = { message_start = 6, message_end = 20, files_entry_offset = 24 }
+		local collapsed = { message_start = 6, message_end = 9, files_entry_offset = 13 }
+		assert.are.equal(10, sidepanel.calculate_restored_cursor_row(21, expanded, collapsed, 30))
+		assert.are.equal(8, sidepanel.calculate_restored_cursor_row(8, expanded, collapsed, 30))
 	end)
 
 	it("keeps a cursor above the Files section on its row", function()

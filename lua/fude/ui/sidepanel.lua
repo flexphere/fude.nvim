@@ -89,7 +89,11 @@ local function wrap_display(text, width)
 		local char_width = vim.fn.strdisplaywidth(char)
 		if row_width + char_width > width and row ~= "" then
 			local cut = row:match(".*() ")
-			if cut and row:sub(1, cut - 1):find("%S") then
+			if char == " " then
+				-- The row ends exactly at a word boundary: keep it whole
+				table.insert(rows, row)
+				row = ""
+			elseif cut and row:sub(1, cut - 1):find("%S") then
 				table.insert(rows, row:sub(1, cut - 1))
 				row = row:sub(cut + 1)
 			else
@@ -140,16 +144,19 @@ function M.format_commit_message_section(message, width, max_lines, expanded, to
 	if hidden > 0 then
 		local hint
 		if not expanded then
-			hint = string.format(" … %d more line%s", hidden, hidden == 1 and "" or "s")
+			hint = string.format("… %d more line%s", hidden, hidden == 1 and "" or "s")
 			if toggle_lhs then
 				hint = hint .. " (" .. toggle_lhs .. ": expand)"
 			end
 		elseif toggle_lhs then
-			hint = " (" .. toggle_lhs .. ": collapse)"
+			hint = "(" .. toggle_lhs .. ": collapse)"
 		end
 		if hint then
-			table.insert(highlights, { #lines, 0, -1, "Comment" })
-			table.insert(lines, hint)
+			-- Wrapped rather than truncated, so a narrow panel still shows the key
+			for _, row in ipairs(wrap_display(hint, width - 1)) do
+				table.insert(highlights, { #lines, 0, -1, "Comment" })
+				table.insert(lines, " " .. row)
+			end
 		end
 	end
 	return lines, highlights, hidden > 0
@@ -449,7 +456,8 @@ end
 
 --- Cursor row to restore after a re-render. Rows from the Files section down
 --- follow the section when the rows above it (the Commit Message section)
---- change height, so the cursor stays on the same entry.
+--- change height, so the cursor stays on the same entry; a row inside the
+--- message is kept within the message's new last row.
 --- @param row number 1-based cursor row before the render
 --- @param old_map table|nil section_map before the render
 --- @param new_map table|nil section_map after the render
@@ -461,6 +469,9 @@ function M.calculate_restored_cursor_row(row, old_map, new_map, line_count)
 		local old_files_header = old_map.files_entry_offset - 2
 		if row - 1 >= old_files_header then
 			row = row + new_map.files_entry_offset - old_map.files_entry_offset
+		elseif old_map.message_start and new_map.message_end and row - 1 >= old_map.message_start then
+			-- A cursor in a collapsing message stays on its last row instead of falling into Files
+			row = math.min(row, new_map.message_end + 1)
 		end
 	end
 	return math.max(1, math.min(row, line_count))
@@ -640,10 +651,11 @@ local function current_commit_message(panel)
 		end
 		local sha = session.scope_commit_sha
 		panel.commit_messages = panel.commit_messages or {}
+		-- Only successes are cached, so a transient git failure is retried on the next render
 		if panel.commit_messages[sha] == nil then
-			panel.commit_messages[sha] = get_diff().get_commit_message(sha, session.worktree_root) or false
+			panel.commit_messages[sha] = get_diff().get_commit_message(sha, session.worktree_root)
 		end
-		return panel.commit_messages[sha] or nil
+		return panel.commit_messages[sha]
 	end
 	if state.scope == "commit" then
 		return M.find_pr_commit_message(state.pr_commits, state.scope_commit_sha)
@@ -868,12 +880,20 @@ function M.follow_current_file()
 		return
 	end
 
+	local cursor = vim.api.nvim_win_get_cursor(panel.win)
+	local old_map = panel.section_map
+
 	render(panel)
 
-	if panel.current_file_line and vim.api.nvim_win_is_valid(panel.win) and vim.api.nvim_buf_is_valid(panel.buf) then
+	if vim.api.nvim_win_is_valid(panel.win) and vim.api.nvim_buf_is_valid(panel.buf) then
 		local line_count = vim.api.nvim_buf_line_count(panel.buf)
-		local target = math.min(panel.current_file_line, line_count)
-		pcall(vim.api.nvim_win_set_cursor, panel.win, { target, 0 })
+		if panel.current_file_line then
+			pcall(vim.api.nvim_win_set_cursor, panel.win, { math.min(panel.current_file_line, line_count), 0 })
+		else
+			-- No current file to follow: keep the cursor on its entry as refresh() does
+			local row = M.calculate_restored_cursor_row(cursor[1], old_map, panel.section_map, line_count)
+			pcall(vim.api.nvim_win_set_cursor, panel.win, { row, cursor[2] })
+		end
 	end
 end
 

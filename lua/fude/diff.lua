@@ -192,7 +192,9 @@ end
 --- @param cwd string|nil repo root
 --- @return string|nil message trailing newlines removed; nil when git fails
 function M.get_commit_message(sha, cwd)
-	local result = vim.system({ "git", "log", "-1", "--format=%B", sha }, { text = true, cwd = cwd }):wait()
+	local result = vim
+		.system({ "git", "log", "-1", "--no-show-signature", "--format=%B", sha }, { text = true, cwd = cwd })
+		:wait()
 	if result.code ~= 0 then
 		return nil
 	end
