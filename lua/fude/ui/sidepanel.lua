@@ -98,8 +98,11 @@ local function wrap_display(text, width)
 			end
 			row_width = vim.fn.strdisplaywidth(row)
 		end
-		row = row .. char
-		row_width = row_width + char_width
+		-- The space a row broke at must not indent the next row
+		if not (row == "" and char == " " and #rows > 0) then
+			row = row .. char
+			row_width = row_width + char_width
+		end
 	end
 	table.insert(rows, row)
 	return rows
@@ -435,6 +438,25 @@ function M.build_sidepanel_content(
 	}
 
 	return lines, highlights, section_map
+end
+
+--- Cursor row to restore after a re-render. Rows from the Files section down
+--- follow the section when the rows above it (the Commit Message section)
+--- change height, so the cursor stays on the same entry.
+--- @param row number 1-based cursor row before the render
+--- @param old_map table|nil section_map before the render
+--- @param new_map table|nil section_map after the render
+--- @param line_count number line count after the render
+--- @return number row 1-based, clamped to the buffer
+function M.calculate_restored_cursor_row(row, old_map, new_map, line_count)
+	if old_map and new_map then
+		-- files_entry_offset - 2 is the 0-indexed Files header line
+		local old_files_header = old_map.files_entry_offset - 2
+		if row - 1 >= old_files_header then
+			row = row + new_map.files_entry_offset - old_map.files_entry_offset
+		end
+	end
+	return math.max(1, math.min(row, line_count))
 end
 
 --- Resolve which entry the cursor is on.
@@ -815,13 +837,14 @@ function M.refresh()
 
 	-- Save cursor position
 	local cursor = vim.api.nvim_win_get_cursor(panel.win)
+	local old_map = panel.section_map
 
 	render(panel)
 
-	-- Restore cursor position (clamped to new line count)
+	-- Restore cursor position, shifted with the Files section and clamped to the new line count
 	if vim.api.nvim_win_is_valid(panel.win) and vim.api.nvim_buf_is_valid(panel.buf) then
 		local line_count = vim.api.nvim_buf_line_count(panel.buf)
-		local new_row = math.min(cursor[1], line_count)
+		local new_row = M.calculate_restored_cursor_row(cursor[1], old_map, panel.section_map, line_count)
 		pcall(vim.api.nvim_win_set_cursor, panel.win, { new_row, cursor[2] })
 	end
 end

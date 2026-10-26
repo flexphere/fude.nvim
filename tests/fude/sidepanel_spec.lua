@@ -919,11 +919,35 @@ describe("format_commit_message_section", function()
 		assert.is_true(folded)
 	end)
 
+	it("does not start a row with the space a full row broke at", function()
+		local lines = sidepanel.format_commit_message_section("abcdefgh klm", 9, 8, false, "m")
+		assert.same({ " abcdefgh", " klm" }, { lines[3], lines[4] })
+	end)
+
 	it("falls back to 8 rows for an invalid max_lines", function()
 		local lines = sidepanel.format_commit_message_section(message_of(10), 20, "x", false, "m")
 		assert.are.equal(" … 2 more lines (m: expand)", lines[11])
 		local one = sidepanel.format_commit_message_section(message_of(3), 20, 0, false, nil)
 		assert.are.equal(" … 2 more lines", one[4])
+	end)
+end)
+
+describe("calculate_restored_cursor_row", function()
+	local old_map = { files_entry_offset = 6 }
+	local new_map = { files_entry_offset = 18 }
+
+	it("moves a cursor in the Files section by the height change above it", function()
+		assert.are.equal(21, sidepanel.calculate_restored_cursor_row(9, old_map, new_map, 30))
+		assert.are.equal(9, sidepanel.calculate_restored_cursor_row(21, new_map, old_map, 30))
+	end)
+
+	it("keeps a cursor above the Files section on its row", function()
+		assert.are.equal(3, sidepanel.calculate_restored_cursor_row(3, old_map, new_map, 30))
+	end)
+
+	it("clamps to the buffer and keeps the row without both section maps", function()
+		assert.are.equal(30, sidepanel.calculate_restored_cursor_row(40, nil, new_map, 30))
+		assert.are.equal(5, sidepanel.calculate_restored_cursor_row(5, old_map, nil, 30))
 	end)
 end)
 
