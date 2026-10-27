@@ -148,6 +148,12 @@ M.defaults = {
 		enabled = true, -- Set false to disable local draft save/restore entirely
 		retention_days = 30, -- Drafts older than this are pruned on load (<=0 disables)
 	},
+	pr = {
+		-- Push the current branch before :FudeCreatePR when the remote does not
+		-- have HEAD yet. Off by default: pushing is left to you, and an unpushed
+		-- branch fails in `gh pr create` with a float pointing to this option.
+		push_before_create = false,
+	},
 }
 
 M.state = {
