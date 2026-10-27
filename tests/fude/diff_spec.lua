@@ -862,3 +862,171 @@ describe("is_worktree_dirty", function()
 		assert.is_true(diff.is_worktree_dirty("/repo"))
 	end)
 end)
+
+describe("parse_upstream", function()
+	it("returns the upstream remote and merge ref", function()
+		local remote, merge_ref = diff.parse_upstream("origin\0refs/heads/feat/a\n")
+		assert.are.equal("origin", remote)
+		assert.are.equal("refs/heads/feat/a", merge_ref)
+	end)
+
+	it("returns nil for a branch without upstream or missing output", function()
+		assert.is_nil(diff.parse_upstream("\0\n"))
+		assert.is_nil(diff.parse_upstream(nil))
+	end)
+end)
+
+describe("resolve_push_remote", function()
+	local function cfg(over)
+		return vim.tbl_extend("force", { remotes = { "origin", "upstream" } }, over or {})
+	end
+
+	it("prefers branch.<name>.pushRemote, then remote.pushDefault", function()
+		assert.are.equal("mine", diff.resolve_push_remote("feat", cfg({ push_remote = "mine", push_default = "fork" })))
+		assert.are.equal("fork", diff.resolve_push_remote("feat", cfg({ push_default = "fork" })))
+	end)
+
+	it("uses the remote of a same-named upstream", function()
+		local c = cfg({ upstream_remote = "fork", upstream_ref = "refs/heads/feat" })
+		assert.are.equal("fork", diff.resolve_push_remote("feat", c))
+	end)
+
+	it("ignores the remote of a differently named upstream", function()
+		-- a fork clone: `git switch -c feat upstream/main` must not push to the canonical repo
+		local c = cfg({ upstream_remote = "upstream", upstream_ref = "refs/heads/main" })
+		assert.are.equal("origin", diff.resolve_push_remote("feat", c))
+	end)
+
+	it("falls back to the only remote when it is not origin", function()
+		assert.are.equal("github", diff.resolve_push_remote("feat", { remotes = { "github" } }))
+	end)
+
+	it("never pushes to the local pseudo-remote", function()
+		local c = cfg({ push_default = ".", upstream_remote = ".", upstream_ref = "refs/heads/feat" })
+		assert.are.equal("origin", diff.resolve_push_remote("feat", c))
+	end)
+end)
+
+describe("format_push_error", function()
+	it("drops hint lines and keeps the rejection", function()
+		local stderr = table.concat({
+			"To github.com:o/r.git",
+			" ! [rejected]        HEAD -> feat/a (non-fast-forward)",
+			"error: failed to push some refs to 'github.com:o/r.git'",
+			"hint: Updates were rejected because the tip of your current branch is behind",
+			"hint: its remote counterpart.",
+			"",
+		}, "\n")
+		assert.are.equal(
+			"To github.com:o/r.git\n ! [rejected]        HEAD -> feat/a (non-fast-forward)\n"
+				.. "error: failed to push some refs to 'github.com:o/r.git'",
+			diff.format_push_error(stderr)
+		)
+	end)
+
+	it("falls back to a generic message", function()
+		assert.are.equal("git push failed", diff.format_push_error(""))
+		assert.are.equal("git push failed", diff.format_push_error(nil))
+	end)
+end)
+
+describe("get_push_target / push_branch (real git repo)", function()
+	local repo
+	local remote
+
+	local function git(cwd, ...)
+		local res = vim.system({ "git", ... }, { cwd = cwd, text = true }):wait()
+		assert(res.code == 0, "git failed: " .. table.concat({ ... }, " ") .. " " .. (res.stderr or ""))
+		return vim.trim(res.stdout or "")
+	end
+
+	local function push(remote_name, branch)
+		local done, push_err = false, nil
+		diff.push_branch(remote_name, branch, function(err)
+			push_err = err
+			done = true
+		end, repo)
+		assert.is_true(vim.wait(10000, function()
+			return done
+		end))
+		return push_err
+	end
+
+	before_each(function()
+		remote = vim.fn.tempname()
+		vim.fn.mkdir(remote, "p")
+		git(remote, "init", "-q", "--bare", "-b", "main")
+		repo = vim.fn.tempname()
+		vim.fn.mkdir(repo, "p")
+		git(repo, "init", "-q", "-b", "main")
+		git(repo, "config", "user.name", "t")
+		git(repo, "config", "user.email", "t@t")
+		git(repo, "remote", "add", "origin", remote)
+		git(repo, "commit", "-q", "--allow-empty", "-m", "root")
+		git(repo, "push", "-q", "origin", "main")
+		-- tracks origin/main, like `git switch -c feat/a origin/main`
+		git(repo, "checkout", "-q", "-b", "feat/a", "--track", "origin/main")
+		git(repo, "commit", "-q", "--allow-empty", "-m", "a1")
+	end)
+
+	after_each(function()
+		vim.fn.delete(repo, "rf")
+		vim.fn.delete(remote, "rf")
+	end)
+
+	it("targets origin for a branch tracking origin/main", function()
+		assert.are.same({ branch = "feat/a", remote = "origin" }, diff.get_push_target(repo))
+	end)
+
+	it("follows remote.pushDefault and branch.<name>.pushRemote", function()
+		git(repo, "remote", "add", "fork", remote)
+		git(repo, "config", "remote.pushDefault", "fork")
+		assert.are.equal("fork", diff.get_push_target(repo).remote)
+		git(repo, "config", "branch.feat/a.pushRemote", "origin")
+		assert.are.equal("origin", diff.get_push_target(repo).remote)
+	end)
+
+	it("keeps the remote of a same-named upstream", function()
+		git(repo, "remote", "add", "fork", remote)
+		git(repo, "push", "-q", "-u", "fork", "feat/a")
+		assert.are.equal("fork", diff.get_push_target(repo).remote)
+	end)
+
+	it("pushes the branch under its own name and sets it as upstream", function()
+		assert.is_nil(push("origin", "feat/a"))
+		local head = git(repo, "rev-parse", "HEAD")
+		assert.are.equal(head, git(remote, "rev-parse", "refs/heads/feat/a"))
+		-- main on the remote is untouched although feat/a tracked origin/main
+		assert.are_not.equal(head, git(remote, "rev-parse", "refs/heads/main"))
+		assert.are.equal("origin/feat/a", git(repo, "rev-parse", "--abbrev-ref", "feat/a@{upstream}"))
+	end)
+
+	it("returns the error of a rejected push", function()
+		assert.is_nil(push("origin", "feat/a"))
+		git(repo, "reset", "-q", "--hard", "HEAD^")
+		git(repo, "commit", "-q", "--allow-empty", "-m", "diverged")
+		local err = push("origin", "feat/a")
+		assert.is_not_nil(err)
+		assert.is_not_nil(err:find("rejected", 1, true))
+		assert.is_nil(err:find("hint:", 1, true))
+	end)
+
+	it("kills the whole push, hook included, past the time limit", function()
+		-- the hook's sleep holds git's stderr open: killing only git would
+		-- leave the exit callback waiting for it, beyond push()'s 10 s wait
+		local hook = repo .. "/.git/hooks/pre-push"
+		vim.fn.writefile({ "#!/bin/sh", "sleep 30" }, hook)
+		vim.fn.setfperm(hook, "rwxr-xr-x")
+		local timeout = diff.PUSH_TIMEOUT_MS
+		diff.PUSH_TIMEOUT_MS = 300
+		local ok, err = pcall(push, "origin", "feat/a")
+		diff.PUSH_TIMEOUT_MS = timeout
+		assert(ok, err)
+		assert.are.equal("git push timed out after 0.3 seconds", err)
+	end)
+
+	it("returns nil on a detached HEAD", function()
+		git(repo, "checkout", "-q", "--detach")
+		assert.is_nil(diff.get_push_target(repo))
+	end)
+end)

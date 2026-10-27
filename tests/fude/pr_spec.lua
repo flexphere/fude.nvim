@@ -1206,6 +1206,7 @@ describe("create submit draft cleanup", function()
 
 	local draft_dir
 	local key = pr.build_create_draft_key("/repo/.git", "feat/me")
+	local push_calls
 
 	before_each(function()
 		pr.clear_draft()
@@ -1213,6 +1214,15 @@ describe("create submit draft cleanup", function()
 		draft_dir = vim.fn.tempname()
 		vim.fn.mkdir(draft_dir, "p")
 		drafts._dir = draft_dir
+		-- never run the real git push from the test repository
+		push_calls = {}
+		helpers.mock(diff, "get_push_target", function()
+			return { branch = "feat/a", remote = "origin" }
+		end)
+		helpers.mock(diff, "push_branch", function(remote, branch, callback)
+			table.insert(push_calls, { remote = remote, branch = branch })
+			callback(nil)
+		end)
 	end)
 
 	after_each(function()
@@ -1266,6 +1276,243 @@ describe("create submit draft cleanup", function()
 
 		finish_create(nil, { url = "https://github.com/o/r/pull/1" })
 		assert.are.equal("t\nb", drafts.get(key))
+	end)
+
+	describe("pushing an unpushed branch", function()
+		local UNPUSHED = "aborted: you must first push the current branch to a remote, or use the --head flag"
+		local events
+		local notifications
+
+		--- gh fails with `errors` in order, then succeeds
+		local function mock_create(errors)
+			local calls = 0
+			helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
+				calls = calls + 1
+				table.insert(events, "create")
+				if errors[calls] then
+					callback(errors[calls])
+				else
+					callback(nil, { url = "https://github.com/o/r/pull/1" })
+				end
+			end)
+		end
+
+		before_each(function()
+			events = {}
+			notifications = {}
+			helpers.mock(require("fude.config").opts, "pr", { push_before_create = true })
+			helpers.mock(diff, "push_branch", function(remote, branch, callback)
+				table.insert(events, "push " .. remote .. " " .. branch)
+				callback(nil)
+			end)
+			mock_create({})
+			helpers.mock(vim, "notify", function(msg, level)
+				table.insert(notifications, { msg = msg, level = level })
+			end)
+		end)
+
+		local function submit(opts)
+			pr.open_pr_float({ "t" }, { "b" }, opts or {})
+			get_cr_callback(vim.api.nvim_get_current_buf())()
+		end
+
+		local function float_text()
+			local buf = vim.api.nvim_get_current_buf()
+			local win = vim.api.nvim_get_current_win()
+			return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"),
+				vim.api.nvim_win_get_config(win).title[1][1]
+		end
+
+		local function press_c()
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(vim.api.nvim_get_current_buf(), "n")) do
+				if map.lhs == "c" then
+					map.callback()
+				end
+			end
+		end
+
+		local function find_notification(pattern)
+			for _, n in ipairs(notifications) do
+				if n.msg:find(pattern, 1, true) then
+					return n
+				end
+			end
+			return nil
+		end
+
+		it("pushes and retries once when gh reports the branch unpushed", function()
+			mock_create({ UNPUSHED })
+			submit()
+			assert.are.same({ "create", "push origin feat/a", "create" }, events)
+			assert.is_nil(pr.get_draft())
+			assert.is_not_nil(find_notification("Draft PR created"))
+		end)
+
+		it("pushes to the target get_push_target chose", function()
+			mock_create({ UNPUSHED })
+			helpers.mock(diff, "get_push_target", function()
+				return { branch = "feat/a", remote = "fork" }
+			end)
+			submit()
+			assert.are.same({ "create", "push fork feat/a", "create" }, events)
+		end)
+
+		it("neither pushes nor reads the push target when gh succeeds", function()
+			helpers.mock(diff, "get_push_target", function()
+				error("the push target must only be read after gh reports an unpushed branch")
+			end)
+			submit()
+			assert.are.same({ "create" }, events)
+		end)
+
+		it("does not push on other gh errors", function()
+			mock_create({ "HTTP 502" })
+			submit()
+			assert.are.same({ "create" }, events)
+			assert.are.equal(vim.log.levels.ERROR, notifications[#notifications].level)
+		end)
+
+		it("retries only once", function()
+			mock_create({ UNPUSHED, UNPUSHED })
+			submit()
+			assert.are.same({ "create", "push origin feat/a", "create" }, events)
+			local last = notifications[#notifications]
+			assert.are.equal(vim.log.levels.ERROR, last.level)
+			assert.is_not_nil(last.msg:find("must first push", 1, true))
+		end)
+
+		it("leaves a detached HEAD to gh's message", function()
+			mock_create({ UNPUSHED })
+			helpers.mock(diff, "get_push_target", function()
+				return nil
+			end)
+			submit()
+			assert.are.same({ "create" }, events)
+			assert.are.equal(vim.log.levels.ERROR, notifications[#notifications].level)
+		end)
+
+		it("shows the push error in a float, creates no PR and keeps the draft", function()
+			mock_create({ UNPUSHED })
+			helpers.mock(diff, "push_branch", function(_, _, callback)
+				table.insert(events, "push")
+				callback("! [rejected] feat/a -> feat/a (non-fast-forward)")
+			end)
+			submit()
+			assert.are.same({ "create", "push" }, events)
+			assert.are.same({ "t" }, pr.get_draft().title_lines)
+			local text, title = float_text()
+			assert.are.equal(" Push failed ", title)
+			assert.is_not_nil(text:find('Failed to push "feat/a" to origin', 1, true))
+			assert.is_not_nil(text:find("non-fast-forward", 1, true))
+			-- the error line is drawn in the error highlight
+			local marks =
+				vim.api.nvim_buf_get_extmarks(0, vim.api.nvim_get_namespaces().fude_error_float, 0, -1, { details = true })
+			local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+			assert.are.equal(1, #marks)
+			assert.are.equal(pr.ERROR_HL, marks[1][4].hl_group)
+			assert.are.equal("! [rejected] feat/a -> feat/a (non-fast-forward)", lines[marks[1][2] + 1])
+			assert.are.equal(#lines[marks[1][2] + 1], marks[1][4].end_col)
+		end)
+
+		it("copies the whole float with c", function()
+			mock_create({ UNPUSHED })
+			helpers.mock(diff, "push_branch", function(_, _, callback)
+				callback("! [rejected]")
+			end)
+			submit()
+			local expected = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+			vim.fn.setreg('"', "")
+			press_c()
+			assert.are.equal(expected, vim.fn.getreg('"'))
+			assert.is_not_nil(expected:find('Failed to push "feat/a"', 1, true))
+			assert.is_not_nil(expected:find("! [rejected]", 1, true))
+		end)
+
+		it("says only the unnamed register got the text without a clipboard", function()
+			mock_create({ UNPUSHED })
+			helpers.mock(diff, "push_branch", function(_, _, callback)
+				callback("! [rejected]")
+			end)
+			submit()
+			local has = vim.fn.has
+			helpers.mock(vim.fn, "has", function(feature)
+				if feature == "clipboard" then
+					return 0
+				end
+				return has(feature)
+			end)
+			press_c()
+			local last = notifications[#notifications]
+			assert.are.equal(vim.log.levels.WARN, last.level)
+			assert.is_not_nil(last.msg:find("unnamed register (clipboard unavailable)", 1, true))
+			assert.is_not_nil(vim.fn.getreg('"'):find("! [rejected]", 1, true))
+		end)
+
+		it("reports the copy when the clipboard accepts it", function()
+			mock_create({ UNPUSHED })
+			helpers.mock(diff, "push_branch", function(_, _, callback)
+				callback("! [rejected]")
+			end)
+			submit()
+			local has, setreg = vim.fn.has, vim.fn.setreg
+			local clipboard
+			helpers.mock(vim.fn, "has", function(feature)
+				if feature == "clipboard" then
+					return 1
+				end
+				return has(feature)
+			end)
+			helpers.mock(vim.fn, "setreg", function(reg, text, ...)
+				if reg == "+" then
+					clipboard = text
+					return 0
+				end
+				return setreg(reg, text, ...)
+			end)
+			press_c()
+			assert.are.equal(vim.log.levels.INFO, notifications[#notifications].level)
+			assert.is_not_nil(clipboard:find("! [rejected]", 1, true))
+		end)
+
+		describe("with pr.push_before_create = false", function()
+			before_each(function()
+				helpers.mock(require("fude.config").opts, "pr", { push_before_create = false })
+			end)
+
+			it("is the default", function()
+				local config = require("fude.config")
+				helpers.mock(config.opts, "pr", vim.deepcopy(config.defaults.pr))
+				mock_create({ UNPUSHED })
+				submit()
+				assert.are.same({ "create" }, events)
+				local _, title = float_text()
+				assert.are.equal(" Branch not pushed ", title)
+			end)
+
+			it("explains the unpushed branch and the option in a float without pushing", function()
+				mock_create({ UNPUSHED })
+				submit()
+				assert.are.same({ "create" }, events)
+				assert.are.same({ "t" }, pr.get_draft().title_lines)
+				local text, title = float_text()
+				assert.are.equal(" Branch not pushed ", title)
+				assert.is_not_nil(text:find('"feat/a" is not pushed', 1, true))
+				assert.is_not_nil(text:find("you must first push the current branch", 1, true))
+				assert.is_not_nil(text:find("pr.push_before_create = true", 1, true))
+			end)
+
+			it("keeps the plain notification for other gh errors", function()
+				-- an unrelated failure is not blamed on the push, and the
+				-- gh-upgrade hint for --attach still shows
+				local win = vim.api.nvim_get_current_win()
+				mock_create({ "unknown flag: --attach" })
+				submit()
+				assert.are.equal(win, vim.api.nvim_get_current_win())
+				local last = notifications[#notifications]
+				assert.are.equal(vim.log.levels.ERROR, last.level)
+				assert.is_not_nil(last.msg:find("require gh >= 2.99.0", 1, true))
+			end)
+		end)
 	end)
 
 	it("keeps a session draft saved while the create request is in flight", function()
@@ -1413,7 +1660,7 @@ describe("create submit draft cleanup", function()
 			assert.is_not_nil(lines:find(NEW_URL, 1, true))
 			assert.is_not_nil(lines:find('unknown command "stack" for "gh"', 1, true))
 			assert.is_not_nil(lines:find("NOT been closed or deleted", 1, true))
-			assert.are.equal(" q close | o open PR ", vim.api.nvim_win_get_config(win).footer[1][1])
+			assert.are.equal(" q close | c copy | o open PR ", vim.api.nvim_win_get_config(win).footer[1][1])
 			assert.is_false(vim.bo[buf].modifiable)
 			assert.are.equal(0, close_calls)
 			assert.is_nil(pr.get_draft())
@@ -1444,6 +1691,8 @@ describe("create submit draft cleanup", function()
 			end)
 			submit({ base = "feat/parent", stack = { parent_url = PARENT_URL, stack_number = 7 } })
 			assert.are.equal(0, creates)
+			-- a failed preflight leaves the remote untouched too
+			assert.are.same({}, push_calls)
 			assert.are.same({}, link_calls)
 			assert.are.same({ "t" }, pr.get_draft().title_lines)
 			local lines = table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
@@ -1528,7 +1777,7 @@ describe("create submit draft cleanup", function()
 				assert.is_not_nil(lines:find("NOT been closed or deleted", 1, true))
 				assert.is_nil(lines:find("before creating a PR", 1, true))
 				assert.is_nil(pr.get_draft())
-				assert.are.equal(" q close ", vim.api.nvim_win_get_config(0).footer[1][1])
+				assert.are.equal(" q close | c copy ", vim.api.nvim_win_get_config(0).footer[1][1])
 				for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
 					assert.is_not.equal("o", map.lhs)
 				end
@@ -1556,7 +1805,7 @@ describe("stack failure float layout", function()
 		local cfg = vim.api.nvim_win_get_config(0)
 		assert.are.equal(math.floor(vim.o.columns * 0.75), cfg.width)
 		assert.are.equal(math.floor(vim.o.lines * 0.60), cfg.height)
-		assert.are.equal(" q close ", cfg.footer[1][1])
+		assert.are.equal(" q close | c copy ", cfg.footer[1][1])
 		assert.is_not_nil(cfg.border)
 		for _, map in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
 			assert.is_not.equal("o", map.lhs)
@@ -1574,6 +1823,57 @@ describe("stack failure float layout", function()
 			assert.is_true(cfg.height >= 1 and cfg.height <= vim.o.lines - 4)
 			vim.api.nvim_win_close(0, true)
 		end
+	end)
+end)
+
+describe("is_unpushed_branch_error", function()
+	it("matches gh's unpushed-branch error", function()
+		assert.is_true(
+			pr.is_unpushed_branch_error("aborted: you must first push the current branch to a remote, or use the --head flag")
+		)
+	end)
+
+	it("does not match other errors", function()
+		assert.is_false(pr.is_unpushed_branch_error("HTTP 401: Bad credentials"))
+		assert.is_false(pr.is_unpushed_branch_error("unknown flag: --attach"))
+		assert.is_false(pr.is_unpushed_branch_error(nil))
+	end)
+end)
+
+describe("build_error_footer", function()
+	it("offers copy, and open PR only with a URL", function()
+		assert.are.equal(" q close | c copy | o open PR ", pr.build_error_footer(true))
+		assert.are.equal(" q close | c copy ", pr.build_error_footer(false))
+	end)
+end)
+
+describe("build_push_error_lines", function()
+	it("reports a failed push with its error", function()
+		local lines, highlights, title = pr.build_push_error_lines("! [rejected]\nerror: failed", "feat/a", "origin", true)
+		assert.are.equal(" Push failed ", title)
+		assert.are.same({
+			'Failed to push "feat/a" to origin, so no PR was created. The PR input has been kept as a draft.',
+			"",
+			"Original Error:",
+			"! [rejected]",
+			"error: failed",
+		}, lines)
+		-- only the error itself is red; there is no suggestion
+		assert.are.same({ [4] = pr.ERROR_HL, [5] = pr.ERROR_HL }, highlights)
+	end)
+
+	it("points to the option when pushing is off", function()
+		local lines, highlights, title = pr.build_push_error_lines("aborted", "feat/a", nil, false)
+		assert.are.equal(" Branch not pushed ", title)
+		assert.are.same({
+			'"feat/a" is not pushed to the remote, so `gh pr create` failed. The PR input has been kept as a draft.',
+			"Push the branch and run :FudeCreatePR again, or set `pr.push_before_create = true`"
+				.. " to push it automatically before creating a PR.",
+			"",
+			"Original Error:",
+			"aborted",
+		}, lines)
+		assert.are.same({ [2] = pr.SUGGESTION_HL, [5] = pr.ERROR_HL }, highlights)
 	end)
 end)
 
