@@ -642,11 +642,31 @@ File opening position                                 *fude-file-position*
     Press `q` to cancel. If the title or body has unsaved changes, a
     3-way prompt (Save draft & close / Discard & close / Keep editing)
     is shown. The saved draft is persisted to `drafts.json` (see
-    |fude-drafts|) keyed per repository + branch, and offered as a
-    `(draft)` entry the next time you run |:FudeCreatePR| from that
-    branch, also after restarting Neovim. Submitting saves the input
-    the same way first, so it survives a failed creation (e.g. the
-    branch is not pushed yet); it is removed once the PR is created.
+    |fude-drafts|) keyed per repository + branch, together with the
+    base branch and stack target. Submitting saves the input the same
+    way first, so it survives a failed creation (e.g. the branch is
+    not pushed yet); it is removed once the PR is created. When the
+    float was restored from a draft and nothing was edited, `q` shows
+    Keep draft & close / Discard draft & close / Keep editing instead,
+    so the draft can be discarded without editing it.
+
+    When the current branch has a draft, |:FudeCreatePR| (also after
+    restarting Neovim) first shows a picker (same UI as the base
+    branch picker) before anything else:
+    - `Resume draft: <title> → <base>` (preselected) opens the float
+      with the draft and its saved base branch and stack target
+      (`(stacked)` / `(new stack)` is appended as in the footer),
+      skipping the base branch, stack and template pickers. The stack
+      target is still rechecked on submit.
+    - `Resume draft with another base: <title>` runs the base branch
+      picker (and stack question) again and then opens the float with
+      the draft, skipping the template picker. Use it when the saved
+      base or stack no longer works. A draft saved without a base
+      (e.g. by an older version) offers only this entry, labelled
+      `Resume draft: <title>`.
+    - `Discard draft and start new` deletes the draft and continues
+      with the base branch picker as usual.
+    Cancelling the picker aborts the command and keeps the draft.
 
     Local images and videos referenced from inline markdown image/link
     destinations with the `file://` scheme are uploaded via `gh`'s
@@ -692,7 +712,10 @@ File opening position                                 *fude-file-position*
     |fude-drafts|) keyed per repo + PR, restored the next time
     you run |:FudeEditPR| (the footer shows "draft restored"), and
     removed after a successful update. When drafts are disabled a
-    plain Yes/No discard confirmation is shown instead.
+    plain Yes/No discard confirmation is shown instead. Pressing `q`
+    on a restored draft without editing it shows Keep draft & close /
+    Discard draft & close / Keep editing, the same as |:FudeCreatePR|
+    (with drafts disabled it just closes).
 
     Local images and videos referenced with the `file://` scheme in
     the body are uploaded via `gh`'s `--attach` flag, same as
@@ -1545,9 +1568,10 @@ branches or of GitHub reviews are never shown.
 offers the same 3-way choice, and the saved draft (keyed per repo + PR) is
 restored the next time you edit that PR. It is not shown in the comment
 browser. |:FudeCreatePR| drafts are stored there too, keyed per repository and
-branch since no PR number exists yet, and offered as a `(draft)` template
-entry. On a detached HEAD, or with `drafts.enabled = false`, they are kept in
-memory for the current Neovim session instead.
+branch since no PR number exists yet, together with the chosen base branch;
+the next |:FudeCreatePR| on that branch first asks whether to resume or discard
+the draft. On a detached HEAD, or with `drafts.enabled = false`, they are kept
+in memory for the current Neovim session instead.
 
 Lines that have a saved draft show a `draft` indicator in the diff (configurable
 via `signs.draft` / `signs.draft_hl`), similar to the `pending` indicator. Line

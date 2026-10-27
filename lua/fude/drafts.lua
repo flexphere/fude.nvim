@@ -314,10 +314,27 @@ function M.get(key)
 	return nil
 end
 
+--- Get the metadata saved with a draft by `set`'s `meta` argument.
+--- Returned as stored: it comes from an on-disk file, so callers validate
+--- every field they read.
+--- @param key string|nil
+--- @return table|nil meta or nil when none / disabled / not a table
+function M.get_meta(key)
+	if not M.enabled() or not key then
+		return nil
+	end
+	local entry = M.load()[key]
+	if type(entry) == "table" and type(entry.body) == "string" and type(entry.meta) == "table" then
+		return entry.meta
+	end
+	return nil
+end
+
 --- Save a draft body for `key`. An empty / whitespace-only body removes it.
 --- @param key string|nil
 --- @param body string|nil
-function M.set(key, body)
+--- @param meta table|nil extra JSON-encodable data restored by `get_meta` (e.g. the PR base branch)
+function M.set(key, body, meta)
 	if not M.enabled() or not key then
 		return
 	end
@@ -328,6 +345,7 @@ function M.set(key, body)
 		save_seq = save_seq + 1
 		drafts[key] = {
 			body = body,
+			meta = meta,
 			-- UTC ISO-8601, matching GitHub comment timestamps (see M.prune).
 			saved_at = os.date("!%Y-%m-%dT%H:%M:%SZ"),
 			-- Changes on every save, even of an identical body, so
