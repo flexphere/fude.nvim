@@ -166,6 +166,35 @@ describe("file row layout", function()
 	end)
 end)
 
+describe("parse_keymap_spec", function()
+	it("accepts a key string without nowait", function()
+		local lhs, nowait = sidepanel.parse_keymap_spec("<Space>")
+		assert.are.equal("<Space>", lhs)
+		assert.is_false(nowait)
+	end)
+
+	it("reads the key and nowait from the table form", function()
+		local lhs, nowait = sidepanel.parse_keymap_spec({ "<Space>", nowait = true })
+		assert.are.equal("<Space>", lhs)
+		assert.is_true(nowait)
+		lhs, nowait = sidepanel.parse_keymap_spec({ "x" })
+		assert.are.equal("x", lhs)
+		assert.is_false(nowait)
+	end)
+
+	it("treats only a literal true as nowait", function()
+		local _, nowait = sidepanel.parse_keymap_spec({ "x", nowait = "yes" })
+		assert.is_false(nowait)
+	end)
+
+	it("returns nil for disabled or invalid values", function()
+		for _, value in ipairs({ false, "", 42, {}, { "" }, { nowait = true }, { 1 } }) do
+			assert.is_nil((sidepanel.parse_keymap_spec(value)))
+		end
+		assert.is_nil((sidepanel.parse_keymap_spec(nil)))
+	end)
+end)
+
 describe("build_help_lines", function()
 	it("centers keys and aligns descriptions including the help close action", function()
 		local lines = sidepanel.build_help_lines({

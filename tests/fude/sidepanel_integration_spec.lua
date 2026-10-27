@@ -190,7 +190,6 @@ describe("sidepanel integration", function()
 			lhs_by_desc[mapping.desc] = mapping.lhs
 		end
 
-		assert.are.equal("<CR>", lhs_by_desc["Select scope, toggle directory, or open file"])
 		assert.are.equal("<Tab>", lhs_by_desc["Toggle reviewed/viewed"])
 		assert.are.equal("t", lhs_by_desc["Toggle tree/flat file list"])
 		assert.are.equal("R", lhs_by_desc["Reload review data"])
@@ -582,8 +581,12 @@ describe("sidepanel integration", function()
 	end)
 
 	local function buf_keymap(buf, lhs)
+		-- nvim_buf_get_keymap reports some keys raw (<Space> as " "), so compare termcodes
+		local function key(s)
+			return vim.api.nvim_replace_termcodes(s, true, true, true)
+		end
 		for _, m in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
-			if m.lhs == lhs then
+			if key(m.lhs) == key(lhs) then
 				return m
 			end
 		end
@@ -886,6 +889,53 @@ describe("sidepanel integration", function()
 		sidepanel.open()
 		local buf = config.state.sidepanel.buf
 		assert.are.equal("Select scope, toggle directory, or open file", buf_keymap_desc(buf, "q"))
+	end)
+
+	it("maps both <CR> and <Space> to select without nowait by default", function()
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		for _, lhs in ipairs({ "<CR>", "<Space>" }) do
+			local m = buf_keymap(buf, lhs)
+			assert.are.equal("Select scope, toggle directory, or open file", m.desc)
+			-- Waiting keeps a user's <Space>-prefixed mappings (e.g. <leader>ff) usable
+			assert.are.equal(0, m.nowait)
+		end
+		local help_lhs = {}
+		for _, mapping in ipairs(config.state.sidepanel.help_mappings) do
+			help_lhs[mapping.action] = mapping.lhs
+		end
+		assert.are.equal("<CR>", help_lhs.select)
+		assert.are.equal("<Space>", help_lhs.select_alt)
+	end)
+
+	it("<Space> selects the entry under the cursor like <CR>", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local opened
+		local orig_open_file = sidepanel.open_file
+		sidepanel.open_file = function(_, filename)
+			opened = filename
+		end
+		vim.api.nvim_win_set_cursor(panel.win, { panel.section_map.files_entry_offset + 1, 0 })
+		local ok, err = pcall(buf_keymap(panel.buf, "<Space>").callback)
+		sidepanel.open_file = orig_open_file
+		assert.is_true(ok, err)
+		assert.is_not_nil(opened)
+	end)
+
+	it("sets nowait only for keys given in the table form", function()
+		config.setup({ sidepanel = { keymaps = { select_alt = { "<Space>", nowait = true } } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal(1, buf_keymap(buf, "<Space>").nowait)
+		assert.are.equal(0, buf_keymap(buf, "<CR>").nowait)
+	end)
+
+	it("the select_alt default never takes a key assigned to another action", function()
+		config.setup({ sidepanel = { keymaps = { toggle_reviewed = "<Space>" } } })
+		sidepanel.open()
+		local buf = config.state.sidepanel.buf
+		assert.are.equal("Toggle reviewed/viewed", buf_keymap_desc(buf, "<Space>"))
 	end)
 
 	it("an explicitly remapped action keeps its key over a later default", function()
