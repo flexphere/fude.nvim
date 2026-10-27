@@ -1017,9 +1017,94 @@ describe("build_comment_browser_entries", function()
 		return s or ""
 	end
 
+	it("keeps independent threads ending on the same line visible", function()
+		local input = {
+			{ id = 1, path = "a.lua", line = 20, body = "single", created_at = "2026-01-01" },
+			{ id = 2, path = "a.lua", start_line = 15, line = 20, body = "range", created_at = "2026-01-02" },
+			{ id = 3, path = "a.lua", line = 20, in_reply_to_id = 2, body = "reply", created_at = "2026-01-03" },
+		}
+		local entries =
+			data.build_comment_browser_entries(data.build_comment_map(input), {}, "/repo", id_fn, nil, nil, input)
+		assert.are.equal(2, #entries)
+		assert.are.same({ input[2], input[3] }, entries[1].comments)
+		assert.are.equal(15, entries[1].start_line)
+		local format = require("fude.ui.format")
+		local rendered = format.format_comment_browser_thread(entries[1], input, {}, id_fn)
+		local body = table.concat(rendered.lines, "\n")
+		assert.is_truthy(body:find("range", 1, true))
+		assert.is_truthy(body:find("reply", 1, true))
+		assert.is_nil(body:find("single", 1, true))
+		assert.are.equal(20, entries[1].lnum)
+	end)
+
 	it("returns empty for no comments and no issue comments", function()
 		local entries = data.build_comment_browser_entries({}, {}, "/repo", id_fn, nil, nil)
 		assert.are.equal(0, #entries)
+	end)
+
+	it("groups surviving replies and displays them even without their deleted root", function()
+		local input = {
+			{ id = 2, in_reply_to_id = 1, path = "a.lua", line = 20, body = "first reply", created_at = "2026-01-01" },
+			{ id = 3, in_reply_to_id = 1, path = "a.lua", line = vim.NIL, body = "second reply", created_at = "2026-01-02" },
+		}
+		local entries =
+			data.build_comment_browser_entries(data.build_comment_map(input), {}, "/repo", id_fn, nil, nil, input)
+		assert.are.equal(1, #entries)
+		assert.are.same(input, entries[1].comments)
+		local result = require("fude.ui.format").format_comment_browser_thread(entries[1], input, {}, id_fn)
+		assert.is_truthy(table.concat(result.lines, "\n"):find("second reply", 1, true))
+		assert.are.equal(1, data.get_reply_target_id(entries[1].comments[1].id, data.build_comment_map(input)))
+	end)
+
+	it("keeps pending status and editable targets within the selected thread", function()
+		local input = {
+			{
+				id = 9,
+				path = "a.lua",
+				line = 20,
+				start_line = 15,
+				body = "submitted",
+				created_at = "2026-01-01",
+				user = { login = "me" },
+				is_resolved = true,
+			},
+			{
+				id = 10,
+				path = "a.lua",
+				line = 20,
+				start_line = 15,
+				body = "pending",
+				created_at = "2026-01-01",
+				user = { login = "me" },
+				pull_request_review_id = 42,
+				in_reply_to_id = vim.NIL,
+			},
+		}
+		local map = data.build_comment_map(input)
+		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, 42, "me", input)
+		assert.are.equal(2, #entries)
+		assert.are.equal(9, entries[1].comments[1].id)
+		assert.is_false(entries[1].is_pending)
+		assert.is_true(entries[1].is_resolved)
+		assert.is_true(entries[2].is_pending)
+		assert.is_false(entries[2].is_resolved)
+		for i, entry in ipairs(entries) do
+			assert.are.equal(input[i].id, data.find_editable_comment(entry.comments, "me").id)
+			assert.are.equal(input[i].id, data.get_reply_target_id(entry.comments[1].id, map))
+		end
+	end)
+
+	it("includes outdated roots and replies only once", function()
+		local input = {
+			{ id = 1, path = "a.lua", line = vim.NIL, original_line = 20, body = "root", is_outdated = true },
+			{ id = 2, in_reply_to_id = 1, path = "a.lua", line = vim.NIL, original_line = 20, body = "reply" },
+		}
+		local entries =
+			data.build_comment_browser_entries(data.build_comment_map(input), {}, "/repo", id_fn, nil, nil, input)
+		assert.are.equal(1, #entries)
+		assert.are.same(input, entries[1].comments)
+		assert.is_true(entries[1].is_outdated)
+		assert.are.equal(20, entries[1].line)
 	end)
 
 	it("builds review entries from comment_map", function()
@@ -1207,6 +1292,7 @@ describe("build_comment_browser_entries", function()
 					{
 						id = 2,
 						body = "second outdated",
+						in_reply_to_id = 1,
 						user = { login = "bob" },
 						created_at = "2024-01-02T00:00:00Z",
 						is_outdated = true,
@@ -1246,6 +1332,7 @@ describe("build_comment_browser_entries", function()
 						user = { login = "bob" },
 						created_at = "2024-01-02T00:00:00Z",
 						is_resolved = true,
+						in_reply_to_id = 1,
 					},
 				},
 			},
@@ -1255,7 +1342,7 @@ describe("build_comment_browser_entries", function()
 		assert.is_true(entries[1].is_resolved)
 	end)
 
-	it("does not mark is_resolved when any comment in the entry is unresolved", function()
+	it("keeps resolved state separate for independent threads on the same line", function()
 		local map = {
 			["src/a.lua"] = {
 				[1] = {
@@ -1276,8 +1363,9 @@ describe("build_comment_browser_entries", function()
 			},
 		}
 		local entries = data.build_comment_browser_entries(map, {}, "/repo", id_fn, nil, nil)
-		assert.are.equal(1, #entries)
+		assert.are.equal(2, #entries)
 		assert.is_false(entries[1].is_resolved)
+		assert.is_true(entries[2].is_resolved)
 	end)
 
 	it("marks is_resolved on outdated entries built from all_comments", function()
@@ -1686,6 +1774,37 @@ describe("merge_draft_entries", function()
 	local function fmt(s)
 		return s
 	end
+
+	it("matches range drafts exactly and keeps ambiguous ranges as separate drafts", function()
+		local entries = {
+			{ type = "review", path = "a.lua", start_line = 15, line = 20, comments = { { id = 1 } } },
+			{ type = "review", path = "a.lua", line = 20, comments = { { id = 2 } } },
+		}
+		data.merge_draft_entries(entries, {
+			{ kind = "line", path = "a.lua", start_line = 15, end_line = 20 },
+		}, "/repo", fmt)
+		local by_id = {}
+		for _, e in ipairs(entries) do
+			by_id[e.comments[1].id] = e
+		end
+		assert.is_true(by_id[1].has_draft)
+		assert.is_nil(by_id[2].has_draft)
+		local same_range = {
+			{ type = "review", path = "a.lua", start_line = 15, line = 20, comments = { { id = 1 } } },
+			{ type = "review", path = "a.lua", start_line = 15, line = 20, comments = { { id = 2 } } },
+		}
+		data.merge_draft_entries(same_range, {
+			{ kind = "suggest", path = "a.lua", start_line = 15, end_line = 20, saved_at = "2099-01-01" },
+			{ kind = "reply", comment_id = 2 },
+		}, "/repo", fmt)
+		assert.are.equal(3, #same_range)
+		assert.are.equal("draft", same_range[1].type)
+		for _, e in ipairs(same_range) do
+			if e.comments then
+				assert.are.equal(e.comments[1].id == 2, e.has_draft == true)
+			end
+		end
+	end)
 
 	it("marks an existing thread entry that has a reply draft (no new row)", function()
 		local entries = {

@@ -1698,6 +1698,24 @@ describe("calculate_comment_browser_layout", function()
 end)
 
 describe("format_comment_browser_list", function()
+	it("shows ranges for normal, pending and outdated review threads", function()
+		for _, flags in ipairs({ {}, { is_pending = true }, { is_outdated = true } }) do
+			local entry = vim.tbl_extend("force", {
+				type = "review",
+				path = "a.lua",
+				start_line = 15,
+				line = 20,
+				author = "me",
+				last_ts = "2026-01-01",
+			}, flags)
+			for _, show in ipairs({ true, false }) do
+				local result = format.format_comment_browser_list({ entry }, function(s)
+					return s
+				end, { show = show })
+				assert.is_truthy(result.lines[1]:find("a.lua:L15-L20", 1, true))
+			end
+		end
+	end)
 	local id_fn = function(s)
 		return s or ""
 	end
