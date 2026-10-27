@@ -613,9 +613,12 @@ File opening position                                 *fude-file-position*
     Press `<CR>` to create a draft PR.
     Press `q` to cancel. If the title or body has unsaved changes, a
     3-way prompt (Save draft & close / Discard & close / Keep editing)
-    is shown; the saved draft is kept in memory for the current Neovim
-    session and offered as a `(draft)` entry the next time you run
-    |:FudeCreatePR|.
+    is shown. The saved draft is persisted to `drafts.json` (see
+    |fude-drafts|) keyed per repository + branch, and offered as a
+    `(draft)` entry the next time you run |:FudeCreatePR| from that
+    branch, also after restarting Neovim. Submitting saves the input
+    the same way first, so it survives a failed creation (e.g. the
+    branch is not pushed yet); it is removed once the PR is created.
 
     Local images and videos referenced from inline markdown image/link
     destinations with the `file://` scheme are uploaded via `gh`'s
@@ -1411,7 +1414,8 @@ Options:
                   input (default: true). When false, closing a dirty
                   comment buffer falls back to a plain Yes/No discard
                   confirmation and no drafts are saved or restored.
-                  See |fude-drafts|.
+                  |:FudeCreatePR| still keeps its draft in memory for
+                  the current Neovim session. See |fude-drafts|.
 
 `drafts.retention_days`
                   Drafts older than this many days are pruned when the
@@ -1505,9 +1509,10 @@ branches or of GitHub reviews are never shown.
 |:FudeEditPR| uses the same store: cancelling with unsaved title/body changes
 offers the same 3-way choice, and the saved draft (keyed per repo + PR) is
 restored the next time you edit that PR. It is not shown in the comment
-browser. |:FudeCreatePR| drafts are session-local instead (no PR number exists
-yet) and are offered as a `(draft)` template entry within the same Neovim
-session.
+browser. |:FudeCreatePR| drafts are stored there too, keyed per repository and
+branch since no PR number exists yet, and offered as a `(draft)` template
+entry. On a detached HEAD, or with `drafts.enabled = false`, they are kept in
+memory for the current Neovim session instead.
 
 Lines that have a saved draft show a `draft` indicator in the diff (configurable
 via `signs.draft` / `signs.draft_hl`), similar to the `pending` indicator. Line
