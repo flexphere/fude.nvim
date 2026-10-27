@@ -19,8 +19,19 @@ describe("create passes default title to open_pr_float", function()
 	local lookup_result
 	local notifications
 	local draft_dir
+	local resume_prompts
+	local resume_answer
 
 	before_each(function()
+		-- Mock the draft prompt: record it and pick resume_answer, or the first
+		-- entry like a fresh <CR> in the picker would
+		resume_prompts = {}
+		resume_answer = nil
+		helpers.mock(pr, "confirm_draft_resume", function(d, callback)
+			local choices = pr.build_draft_resume_choices(d)
+			table.insert(resume_prompts, { draft = d, choices = choices })
+			callback(resume_answer or choices[1].value)
+		end)
 		captured_title_lines = nil
 		captured_body_lines = nil
 		captured_opts = nil
@@ -500,6 +511,244 @@ describe("create passes default title to open_pr_float", function()
 		assert.is_true(captured_opts.from_draft)
 		assert.are.same({ "Session title" }, captured_title_lines)
 	end)
+
+	describe("with a stored draft", function()
+		local base_picker_called
+		local template_picker_called
+		local stack = { parent_url = "https://github.com/o/r/pull/1", new_stack = false, stack_number = 3 }
+
+		before_each(function()
+			base_picker_called = false
+			template_picker_called = false
+			helpers.mock(pr, "select_base_branch", function(entries, callback)
+				base_picker_called = true
+				callback(entries[1].value)
+			end)
+			-- two templates, so the new-PR path stops at the template picker
+			helpers.mock(pr, "find_templates", function()
+				return { "/repo/.github/a.md", "/repo/.github/b.md" }
+			end)
+			helpers.mock(pr, "select_template", function(_, callback)
+				template_picker_called = true
+				callback(nil)
+			end)
+		end)
+
+		it("does not ask about a draft when none is stored", function()
+			pr.create()
+			assert.are.equal(0, #resume_prompts)
+			assert.is_true(base_picker_called)
+		end)
+
+		it("resumes the draft with its saved base and stack, skipping every picker", function()
+			local get_first_commit_called = false
+			helpers.mock(diff, "get_first_commit_subject", function(_)
+				get_first_commit_called = true
+			end)
+			pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY, { base = "feat/parent", stack = stack })
+			-- the target is read back from drafts.json, not the session
+			pr.clear_draft()
+
+			pr.create()
+
+			assert.are.equal(1, #resume_prompts)
+			assert.are.equal("resume", resume_prompts[1].choices[1].value)
+			assert.is_false(base_picker_called)
+			assert.are.equal(0, #stack_prompts)
+			assert.is_false(template_picker_called)
+			assert.is_false(get_first_commit_called)
+			assert.are.same({ "Draft title" }, captured_title_lines)
+			assert.are.same({ "Draft body" }, captured_body_lines)
+			assert.are.equal("feat/parent", captured_opts.base)
+			assert.are.same(stack, captured_opts.stack)
+			assert.are.equal(CREATE_DRAFT_KEY, captured_opts.draft_key)
+			assert.is_true(captured_opts.from_draft)
+			captured_opts.on_discard_draft()
+			assert.is_nil(pr.get_draft(CREATE_DRAFT_KEY))
+		end)
+
+		it("resumes the session-local draft with its saved base on a detached HEAD", function()
+			helpers.mock(diff, "get_current_branch", function()
+				return nil
+			end)
+			pr.save_draft({ "Session title" }, { "Session body" }, nil, { base = "feat/parent" })
+
+			pr.create()
+
+			assert.is_false(base_picker_called)
+			assert.are.equal("feat/parent", captured_opts.base)
+			assert.is_nil(captured_opts.draft_key)
+		end)
+
+		it("resumes the draft through the base picker with another base", function()
+			resume_answer = "rebase"
+			pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY, { base = "feat/parent", stack = stack })
+
+			pr.create()
+
+			assert.is_true(base_picker_called)
+			assert.is_false(template_picker_called)
+			assert.are.same({ "Draft title" }, captured_title_lines)
+			-- the base picker's pick (the default branch) replaces the saved base and stack
+			assert.are.equal("main", captured_opts.base)
+			assert.is_nil(captured_opts.stack)
+			assert.is_true(captured_opts.from_draft)
+			assert.is_not_nil(pr.get_draft(CREATE_DRAFT_KEY))
+		end)
+
+		it("discards the draft and continues with the normal flow", function()
+			resume_answer = "discard"
+			pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY, { base = "main" })
+
+			pr.create()
+
+			assert.is_nil(pr.get_draft(CREATE_DRAFT_KEY))
+			assert.is_true(base_picker_called)
+			assert.is_true(template_picker_called)
+			assert.is_nil(captured_opts)
+		end)
+
+		it("aborts and keeps the draft when the prompt is cancelled", function()
+			helpers.mock(pr, "confirm_draft_resume", function(_, callback)
+				callback(nil)
+			end)
+			pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY, { base = "main" })
+
+			pr.create()
+
+			assert.is_false(base_picker_called)
+			assert.is_nil(captured_opts)
+			assert.is_not_nil(pr.get_draft(CREATE_DRAFT_KEY))
+		end)
+
+		it("aborts when the draft was cleared while the prompt was open", function()
+			helpers.mock(pr, "confirm_draft_resume", function(_, callback)
+				-- an in-flight create succeeded and cleared the draft meanwhile
+				pr.clear_draft(CREATE_DRAFT_KEY)
+				callback("resume")
+			end)
+			pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY, { base = "main" })
+
+			pr.create()
+
+			assert.is_nil(captured_opts)
+			assert.is_false(base_picker_called)
+			assert.are.equal(vim.log.levels.WARN, notifications[#notifications].level)
+		end)
+
+		it("does not discard a draft re-saved while the prompt was open", function()
+			helpers.mock(pr, "confirm_draft_resume", function(_, callback)
+				-- same text, but a new save: a newer draft the prompt never showed
+				pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY, { base = "main" })
+				callback("discard")
+			end)
+			pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY, { base = "main" })
+
+			pr.create()
+
+			assert.is_not_nil(pr.get_draft(CREATE_DRAFT_KEY))
+			assert.is_false(base_picker_called)
+		end)
+	end)
+end)
+
+describe("build_draft_resume_choices", function()
+	local function draft(target, title)
+		return { title_lines = { title or "Fix bug" }, body_lines = {}, target = target }
+	end
+
+	it("puts resume with the saved base first, then another base, then discard", function()
+		assert.are.same({
+			{ display = "Resume draft: Fix bug → main", value = "resume" },
+			{ display = "Resume draft with another base: Fix bug", value = "rebase" },
+			{ display = "Discard draft and start new", value = "discard" },
+		}, pr.build_draft_resume_choices(draft({ base = "main" })))
+	end)
+
+	it("names the stack target like the float footer", function()
+		local stacked = pr.build_draft_resume_choices(draft({ base = "feat/p", stack = { new_stack = false } }))
+		assert.are.equal("Resume draft: Fix bug → feat/p (stacked)", stacked[1].display)
+		local new_stack = pr.build_draft_resume_choices(draft({ base = "feat/p", stack = { new_stack = true } }))
+		assert.are.equal("Resume draft: Fix bug → feat/p (new stack)", new_stack[1].display)
+	end)
+
+	it("omits the arrow for a target without a base and marks an empty title", function()
+		local choices = pr.build_draft_resume_choices(draft({}, "  "))
+		assert.are.equal("Resume draft: (no title)", choices[1].display)
+		assert.are.equal("resume", choices[1].value)
+	end)
+
+	it("resumes only through the base picker when no target was saved", function()
+		assert.are.same({
+			{ display = "Resume draft: Fix bug", value = "rebase" },
+			{ display = "Discard draft and start new", value = "discard" },
+		}, pr.build_draft_resume_choices(draft(nil)))
+	end)
+end)
+
+describe("parse_create_draft_target", function()
+	it("accepts a base alone, an empty target, and well-formed stacks", function()
+		assert.are.same({ base = "main" }, pr.parse_create_draft_target({ base = "main" }))
+		assert.are.same({}, pr.parse_create_draft_target({}))
+		local existing = { parent_url = "u", new_stack = false, stack_number = 3 }
+		assert.are.same({ base = "b", stack = existing }, pr.parse_create_draft_target({ base = "b", stack = existing }))
+		local new_stack = { parent_url = "u", new_stack = true, parent_base = "main" }
+		assert.are.same({ base = "b", stack = new_stack }, pr.parse_create_draft_target({ base = "b", stack = new_stack }))
+	end)
+
+	it("drops the whole target when any field is malformed", function()
+		assert.is_nil(pr.parse_create_draft_target(nil))
+		assert.is_nil(pr.parse_create_draft_target("main"))
+		assert.is_nil(pr.parse_create_draft_target({ base = 1 }))
+		assert.is_nil(pr.parse_create_draft_target({ base = "" }))
+		-- a stack needs a base
+		assert.is_nil(pr.parse_create_draft_target({ stack = { parent_url = "u", new_stack = false, stack_number = 3 } }))
+		assert.is_nil(pr.parse_create_draft_target({ base = "b", stack = vim.NIL }))
+		assert.is_nil(pr.parse_create_draft_target({ base = "b", stack = { new_stack = false, stack_number = 3 } }))
+		assert.is_nil(pr.parse_create_draft_target({ base = "b", stack = { parent_url = "u", stack_number = 3 } }))
+		assert.is_nil(pr.parse_create_draft_target({ base = "b", stack = { parent_url = "u", new_stack = false } }))
+		assert.is_nil(pr.parse_create_draft_target({ base = "b", stack = { parent_url = "u", new_stack = true } }))
+	end)
+end)
+
+describe("save_draft target", function()
+	local draft_dir
+
+	before_each(function()
+		pr.clear_draft()
+		draft_dir = vim.fn.tempname()
+		vim.fn.mkdir(draft_dir, "p")
+		drafts._dir = draft_dir
+	end)
+
+	after_each(function()
+		pr.clear_draft()
+		drafts._dir = nil
+		vim.fn.delete(draft_dir, "rf")
+	end)
+
+	it("round-trips the base and stack target through drafts.json", function()
+		local stack = { parent_url = "u", new_stack = true, parent_base = "main" }
+		pr.save_draft({ "t" }, { "b" }, CREATE_DRAFT_KEY, { base = "feat/x", stack = stack, draft_key = "ignored" })
+		local d = pr.get_draft(CREATE_DRAFT_KEY)
+		assert.are.same({ "t" }, d.title_lines)
+		assert.are.same({ base = "feat/x", stack = stack }, d.target)
+	end)
+
+	it("keeps the target with the session-local fallback", function()
+		pr.save_draft({ "t" }, { "b" }, nil, { base = "feat/x" })
+		assert.are.same({ base = "feat/x" }, pr.get_draft().target)
+	end)
+
+	it("leaves the target nil when none is given", function()
+		pr.save_draft({ "t" }, { "b" }, CREATE_DRAFT_KEY)
+		assert.is_nil(pr.get_draft(CREATE_DRAFT_KEY).target)
+	end)
+
+	it("drops a malformed target read from drafts.json", function()
+		drafts.set(CREATE_DRAFT_KEY, "t\nb", { base = "feat/x", stack = { parent_url = "u" } })
+		assert.is_nil(pr.get_draft(CREATE_DRAFT_KEY).target)
+	end)
 end)
 
 describe("build_create_draft_key", function()
@@ -547,45 +796,26 @@ describe("build_template_search_paths", function()
 end)
 
 describe("build_picker_entries", function()
-	it("returns only template entries when no draft", function()
-		local entries = pr.build_picker_entries({ "/repo/.github/template.md" }, false)
+	it("returns template entries named by file", function()
+		local entries = pr.build_picker_entries({ "/repo/.github/template.md" })
 		assert.are.equal(1, #entries)
 		assert.are.equal("template.md", entries[1].display)
 		assert.are.equal("/repo/.github/template.md", entries[1].value)
-		assert.is_false(entries[1].is_draft)
 	end)
 
-	it("prepends draft entry when draft exists", function()
-		local entries = pr.build_picker_entries({ "/repo/.github/template.md" }, true)
-		assert.are.equal(2, #entries)
-		assert.are.equal("(draft)", entries[1].display)
-		assert.are.equal("__draft__", entries[1].value)
-		assert.is_true(entries[1].is_draft)
-		assert.are.equal("template.md", entries[2].display)
-		assert.is_false(entries[2].is_draft)
-	end)
-
-	it("returns only draft entry when no templates", function()
-		local entries = pr.build_picker_entries({}, true)
-		assert.are.equal(1, #entries)
-		assert.are.equal("(draft)", entries[1].display)
-		assert.is_true(entries[1].is_draft)
-	end)
-
-	it("returns empty when no templates and no draft", function()
-		local entries = pr.build_picker_entries({}, false)
+	it("returns empty when no templates", function()
+		local entries = pr.build_picker_entries({})
 		assert.are.equal(0, #entries)
 	end)
 
-	it("preserves template order after draft", function()
+	it("preserves template order", function()
 		local entries = pr.build_picker_entries({
 			"/repo/.github/bug_report.md",
 			"/repo/.github/feature_request.md",
-		}, true)
-		assert.are.equal(3, #entries)
-		assert.are.equal("(draft)", entries[1].display)
-		assert.are.equal("bug_report.md", entries[2].display)
-		assert.are.equal("feature_request.md", entries[3].display)
+		})
+		assert.are.equal(2, #entries)
+		assert.are.equal("bug_report.md", entries[1].display)
+		assert.are.equal("feature_request.md", entries[2].display)
 	end)
 end)
 
@@ -1074,6 +1304,85 @@ describe("open_pr_float cancel confirmation", function()
 		assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
 	end)
 
+	it("saves the float's base and stack with a create draft", function()
+		select_choice = "Save draft & close"
+		local stack = { parent_url = "u", new_stack = true, parent_base = "main" }
+		local h = open_float({ "t" }, { "b" }, { base = "feat/x", stack = stack })
+		vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "edited body" })
+		get_q_callback(h.body_buf)()
+		assert.are.same({ base = "feat/x", stack = stack }, pr.get_draft().target)
+	end)
+
+	describe("on an unedited float restored from a draft", function()
+		local discarded
+		local function open_restored()
+			discarded = false
+			return open_float({ "t" }, { "b" }, {
+				from_draft = true,
+				on_discard_draft = function()
+					discarded = true
+				end,
+			})
+		end
+
+		it("asks whether to keep the draft", function()
+			select_choice = nil
+			local h = open_restored()
+			get_q_callback(h.title_buf)()
+			assert.are.equal(1, #select_calls)
+			assert.are.equal("Restored draft:", select_calls[1].prompt)
+			assert.are.same(pr.RESTORED_DRAFT_CLOSE_CHOICES, select_calls[1].items)
+		end)
+
+		it("closes and keeps the draft when 'Keep draft & close' chosen", function()
+			select_choice = "Keep draft & close"
+			local h = open_restored()
+			get_q_callback(h.title_buf)()
+			assert.is_false(discarded)
+			assert.is_false(vim.api.nvim_win_is_valid(h.title_win))
+			assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
+		end)
+
+		it("discards the draft and closes when 'Discard draft & close' chosen", function()
+			select_choice = "Discard draft & close"
+			local h = open_restored()
+			get_q_callback(h.body_buf)()
+			assert.is_true(discarded)
+			assert.is_false(vim.api.nvim_win_is_valid(h.title_win))
+			assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
+		end)
+
+		it("keeps the float open when 'Keep editing' chosen", function()
+			select_choice = nil
+			local h = open_restored()
+			get_q_callback(h.title_buf)()
+			assert.is_false(discarded)
+			assert.is_true(vim.api.nvim_win_is_valid(h.title_win))
+			assert.is_true(vim.api.nvim_win_is_valid(h.body_win))
+		end)
+
+		it("closes without asking when drafts are disabled", function()
+			local h = open_float({ "t" }, { "b" }, {
+				mode = "edit",
+				from_draft = true,
+				allow_draft = false,
+				on_discard_draft = function()
+					discarded = true
+				end,
+			})
+			get_q_callback(h.title_buf)()
+			assert.are.equal(0, #select_calls)
+			assert.is_false(vim.api.nvim_win_is_valid(h.title_win))
+		end)
+
+		it("closes without asking when there is no draft to discard", function()
+			local h = open_float({ "t" }, { "b" }, { mode = "edit", from_draft = true })
+			get_q_callback(h.title_buf)()
+			assert.are.equal(0, #select_calls)
+			assert.is_false(vim.api.nvim_win_is_valid(h.title_win))
+		end)
+	end)
+
 	it("closes without saving when 'Discard & close' chosen", function()
 		select_choice = "Discard & close"
 		local h = open_float({ "t" }, { "b" }, {})
@@ -1549,6 +1858,20 @@ describe("create submit draft cleanup", function()
 		assert.is_nil(pr.get_draft())
 	end)
 
+	it("keeps the base with the draft when creation fails", function()
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
+			callback("boom")
+		end)
+		helpers.mock(vim, "notify", function() end)
+
+		pr.open_pr_float({ "t" }, { "b" }, { base = "develop" })
+		get_cr_callback(vim.api.nvim_get_current_buf())()
+
+		local d = pr.get_draft()
+		assert.are.same({ "t" }, d.title_lines)
+		assert.are.same({ base = "develop" }, d.target)
+	end)
+
 	it("passes opts.base to gh.create_draft_pr on submit", function()
 		local captured_base = "unset"
 		helpers.mock(gh, "create_draft_pr", function(_, _, _, base, callback)
@@ -2009,6 +2332,52 @@ describe("confirm_stack (picker fallback)", function()
 
 	it("returns false for No", function()
 		assert.is_false((answer_with(2)))
+	end)
+
+	it("returns nil on cancel", function()
+		assert.is_nil((answer_with(nil)))
+	end)
+end)
+
+describe("confirm_draft_resume (picker fallback)", function()
+	local orig_select
+
+	before_each(function()
+		orig_select = vim.ui.select
+	end)
+
+	after_each(function()
+		vim.ui.select = orig_select
+	end)
+
+	local function answer_with(idx)
+		local captured = {}
+		vim.ui.select = function(items, sopts, on_choice)
+			captured.prompt = sopts.prompt
+			captured.labels = items
+			on_choice(idx and items[idx], idx)
+		end
+		local answer = "unset"
+		pr.confirm_draft_resume({ title_lines = { "Fix bug" }, body_lines = {}, target = { base = "main" } }, function(v)
+			answer = v
+		end)
+		return answer, captured
+	end
+
+	it("offers resume first", function()
+		local answer, captured = answer_with(1)
+		assert.are.equal("A PR draft exists:", captured.prompt)
+		assert.are.same({
+			"Resume draft: Fix bug → main",
+			"Resume draft with another base: Fix bug",
+			"Discard draft and start new",
+		}, captured.labels)
+		assert.are.equal("resume", answer)
+	end)
+
+	it("returns rebase and discard for the later entries", function()
+		assert.are.equal("rebase", (answer_with(2)))
+		assert.are.equal("discard", (answer_with(3)))
 	end)
 
 	it("returns nil on cancel", function()
