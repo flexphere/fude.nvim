@@ -1,6 +1,7 @@
 local M = {}
 local config = require("fude.config")
 local diff = require("fude.diff")
+local drafts = require("fude.drafts")
 local format = require("fude.ui.format")
 local gh = require("fude.gh")
 
@@ -21,26 +22,79 @@ local TEMPLATE_FILES = {
 	"docs/PULL_REQUEST_TEMPLATE.md",
 }
 
--- Session-local draft storage for PR creation.
--- Persists across open/close cycles within a single Neovim session.
-local draft = nil -- { title_lines: string[], body_lines: string[] } | nil
+-- Session-local fallback for PR creation drafts, used when no drafts.json key
+-- exists (detached HEAD, or drafts disabled). Lost when Neovim exits.
+local memory_draft = nil -- { title_lines: string[], body_lines: string[] } | nil
 
---- Save the current PR creation draft.
+--- Build the drafts.json key for a PR creation draft. No PR number exists yet,
+--- and a PR is opened from a head branch, so the draft is keyed by branch. The
+--- common git dir is shared by every worktree of the repository, so the draft
+--- is found again from a recreated worktree of the same branch. The `git:`
+--- prefix keeps the namespace apart from `owner/repo` slugs and the `local:`
+--- worktree namespace of local review.
+--- @param common_dir string|nil absolute path of the common git dir
+--- @param branch string|nil current branch (nil on a detached HEAD)
+--- @return string|nil key (nil when either part is missing)
+function M.build_create_draft_key(common_dir, branch)
+	if not common_dir or common_dir == "" or not branch or branch == "" then
+		return nil
+	end
+	return drafts.make_draft_key("git:" .. common_dir, branch, "pr_create")
+end
+
+--- Whether a creation draft for `key` goes to drafts.json (else the
+--- session-local fallback).
+--- @param key string|nil
+--- @return boolean
+local function stores_on_disk(key)
+	return key ~= nil and drafts.enabled()
+end
+
+--- Save the current PR creation draft. An empty title and body removes a
+--- drafts.json entry instead (see drafts.set).
 --- @param title_lines string[]
 --- @param body_lines string[]
-function M.save_draft(title_lines, body_lines)
-	draft = { title_lines = title_lines, body_lines = body_lines }
+--- @param key string|nil drafts.json key from build_create_draft_key
+function M.save_draft(title_lines, body_lines, key)
+	if stores_on_disk(key) then
+		drafts.set(key, M.serialize_edit_draft(title_lines, body_lines))
+	else
+		memory_draft = { title_lines = title_lines, body_lines = body_lines }
+	end
 end
 
 --- Get the current PR creation draft.
+--- @param key string|nil drafts.json key from build_create_draft_key
 --- @return table|nil { title_lines: string[], body_lines: string[] }
-function M.get_draft()
-	return draft
+function M.get_draft(key)
+	if stores_on_disk(key) then
+		local saved = drafts.get(key)
+		return saved and M.parse_edit_draft(format.normalize_newlines(saved)) or nil
+	end
+	return memory_draft
 end
 
 --- Clear the PR creation draft.
-function M.clear_draft()
-	draft = nil
+--- @param key string|nil drafts.json key from build_create_draft_key
+function M.clear_draft(key)
+	if stores_on_disk(key) then
+		drafts.remove(key)
+	else
+		memory_draft = nil
+	end
+end
+
+--- Identify the stored version of the PR creation draft, so the submit success
+--- path can tell whether a newer draft was saved while the request was in
+--- flight. drafts.json entries get a new revision on every save; the fallback
+--- stores a fresh table, so its reference serves the same purpose.
+--- @param key string|nil drafts.json key from build_create_draft_key
+--- @return any revision (nil when there is no draft)
+function M.draft_revision(key)
+	if stores_on_disk(key) then
+		return drafts.revision(key)
+	end
+	return memory_draft
 end
 
 --- Serialize PR edit content into a single string for drafts.json storage.
@@ -630,11 +684,14 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		close_all()
 
 		-- Default: create draft PR
-		-- Save draft before attempting to create PR
-		M.save_draft(t_lines, b_lines)
-		-- save_draft stores a fresh table, so a reference compare below tells
-		-- whether the draft was replaced while the request was in flight
-		local draft_at_submit = M.get_draft()
+		-- Save draft before attempting to create PR. The key is the one the
+		-- flow started with, so a branch switch mid-request cannot redirect
+		-- the cleanup below to another branch's draft.
+		local draft_key = opts.draft_key
+		M.save_draft(t_lines, b_lines, draft_key)
+		-- Compared after the request to tell whether the draft was replaced
+		-- while the request was in flight
+		local revision_at_submit = M.draft_revision(draft_key)
 
 		local extracted = M.parse_body_attachments(parsed.body, expand_home)
 		local function create_pr()
@@ -646,8 +703,8 @@ function M.open_pr_float(title_lines, body_lines, opts)
 				end
 				-- The PR exists even if linking fails. Do not offer its input as
 				-- a new PR draft, but preserve any newer draft saved in flight.
-				if M.get_draft() == draft_at_submit then
-					M.clear_draft()
+				if M.draft_revision(draft_key) == revision_at_submit then
+					M.clear_draft(draft_key)
 				end
 				local url = type(data) == "table" and type(data.url) == "string" and vim.trim(data.url) or ""
 				if opts.stack and url == "" then
@@ -675,8 +732,9 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	end
 
 	-- Draft-save wiring for the cancel confirmation. create mode always saves
-	-- to the session-local draft; edit mode saves only when the caller wires a
-	-- drafts.json handler, otherwise the plain Yes/No confirmation is shown.
+	-- (to drafts.json under opts.draft_key, else the session-local fallback);
+	-- edit mode saves only when the caller wires a drafts.json handler,
+	-- otherwise the plain Yes/No confirmation is shown.
 	local allow_draft = opts.allow_draft
 	if allow_draft == nil then
 		allow_draft = not is_edit
@@ -684,8 +742,14 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	local on_save_draft = opts.on_save_draft
 	if not on_save_draft and not is_edit then
 		on_save_draft = function(t_lines, b_lines)
-			M.save_draft(t_lines, b_lines)
-			vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			M.save_draft(t_lines, b_lines, opts.draft_key)
+			-- drafts.set removes the entry for empty input, so don't claim a
+			-- draft was saved in that case (the session-local fallback keeps it)
+			if not stores_on_disk(opts.draft_key) or vim.trim(M.serialize_edit_draft(t_lines, b_lines)) ~= "" then
+				vim.notify("fude.nvim: Draft saved", vim.log.levels.INFO)
+			else
+				vim.notify("fude.nvim: Empty input — draft cleared", vim.log.levels.INFO)
+			end
 		end
 	end
 	if not on_save_draft then
@@ -786,15 +850,22 @@ function M.open_pr_float(title_lines, body_lines, opts)
 end
 
 --- Open the float from a draft selection.
---- @param float_opts table|nil extra open_pr_float opts (e.g. { base = "main" })
+--- @param float_opts table|nil extra open_pr_float opts (e.g. { base = "main", draft_key = ... })
 --- @private
 local function open_from_draft(float_opts)
-	local d = M.get_draft()
+	float_opts = float_opts or {}
+	local draft_key = float_opts.draft_key
+	local d = M.get_draft(draft_key)
 	if d then
 		-- "Discard & close" deletes the stored draft too, matching the edit
 		-- mode and comment input semantics. Opening from a template instead
 		-- leaves an unrelated stored draft alone (no on_discard_draft there).
-		local opts = vim.tbl_extend("force", float_opts or {}, { from_draft = true, on_discard_draft = M.clear_draft })
+		local opts = vim.tbl_extend("force", float_opts, {
+			from_draft = true,
+			on_discard_draft = function()
+				M.clear_draft(draft_key)
+			end,
+		})
 		M.open_pr_float(d.title_lines, d.body_lines, opts)
 	end
 end
@@ -1130,12 +1201,13 @@ end
 --- When a draft exists, it is shown as a selectable option alongside templates.
 --- @param base string|nil base branch (nil: gh chooses)
 --- @param stack table|nil `resolve_stack` result when the PR is stacked on `base` (linked after creation)
+--- @param draft_key string|nil drafts.json key from build_create_draft_key
 --- @private
-local function create_with_base(base, stack)
+local function create_with_base(base, stack, draft_key)
 	local templates = M.find_templates()
-	local has_draft = M.get_draft() ~= nil
+	local has_draft = M.get_draft(draft_key) ~= nil
 	local total = #templates + (has_draft and 1 or 0)
-	local float_opts = { base = base, stack = stack }
+	local float_opts = { base = base, stack = stack, draft_key = draft_key }
 
 	if total == 0 then
 		-- No templates, no draft: open with empty body
@@ -1163,7 +1235,7 @@ local function create_with_base(base, stack)
 				local default_title = get_default_title(base)
 				open_from_template(selected, default_title, float_opts)
 			end
-		end)
+		end, draft_key)
 	end
 end
 
@@ -1182,13 +1254,16 @@ function M.create()
 
 	local default_branch = diff.get_default_branch()
 	local current_branch = diff.get_current_branch()
+	-- Resolved once here so every later step of the flow, including the
+	-- async submit cleanup, uses the branch the flow started on
+	local draft_key = M.build_create_draft_key(diff.get_git_common_dir(), current_branch)
 	local entries = M.build_base_branch_entries(diff.get_remote_branches(), default_branch, {
 		current_branch = current_branch,
 		stack_parent = diff.get_gh_stack_parent(current_branch),
 		ancestors = diff.get_ancestor_branches(default_branch),
 	})
 	if #entries == 0 then
-		create_with_base(nil)
+		create_with_base(nil, nil, draft_key)
 		return
 	end
 	M.select_base_branch(entries, function(base)
@@ -1196,7 +1271,7 @@ function M.create()
 			return
 		end
 		if base == default_branch then
-			create_with_base(base, nil)
+			create_with_base(base, nil, draft_key)
 			return
 		end
 		M.confirm_stack(base, function(want_stack)
@@ -1204,12 +1279,12 @@ function M.create()
 				return
 			end
 			if not want_stack then
-				create_with_base(base, nil)
+				create_with_base(base, nil, draft_key)
 				return
 			end
 			resolve_stack(base, function(result)
 				if result then
-					create_with_base(result.base, result.stack)
+					create_with_base(result.base, result.stack, draft_key)
 				end
 			end)
 		end)
@@ -1219,7 +1294,8 @@ end
 --- Show template/draft picker using Telescope or vim.ui.select.
 --- @param entries table[] entries from build_picker_entries
 --- @param callback fun(selected: string|nil) receives entry value or nil
-function M.select_template(entries, callback)
+--- @param draft_key string|nil drafts.json key of the creation draft shown by the `(draft)` entry
+function M.select_template(entries, callback, draft_key)
 	pick_entry(entries, {
 		prompt = "Select PR template:",
 		title = "PR Templates",
@@ -1235,7 +1311,7 @@ function M.select_template(entries, callback)
 
 					local lines
 					if entry.is_draft then
-						local d = M.get_draft()
+						local d = M.get_draft(draft_key)
 						if d then
 							lines = {}
 							table.insert(lines, "Title: " .. table.concat(d.title_lines, " "))
@@ -1273,7 +1349,6 @@ function M.edit()
 					return
 				end
 
-				local drafts = require("fude.drafts")
 				-- Derive the draft key from the PR url, not config.state:
 				-- FudeEditPR also works without an active review session. No
 				-- slug means no persistent draft (Yes/No fallback on cancel).

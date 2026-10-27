@@ -25,7 +25,8 @@ local save_seq = 0
 --- Build an opaque draft storage key.
 --- @param repo string "owner/repo"
 --- @param pr_number number|string PR number
---- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"review"|"pr_edit"
+--- @param kind string "line"|"suggest"|"issue"|"reply"|"edit"|"review"|"pr_edit"|"pr_create"
+---   (`pr_create` is keyed by the common git dir and branch instead, see pr.build_create_draft_key)
 --- @param ... string|number additional discriminators (path, line range, ids)
 --- @return string
 function M.make_draft_key(repo, pr_number, kind, ...)
@@ -198,9 +199,10 @@ local function saved_at_iso(saved_at)
 	return ""
 end
 
---- Draft kinds surfaced in the comment browser. `pr_edit` and `review` are
---- deliberately absent: they are restored by :FudeEditPR / :FudeReviewSubmit
---- themselves and have no comment thread / diff line to show.
+--- Draft kinds surfaced in the comment browser. `pr_edit`, `pr_create` and
+--- `review` are deliberately absent: they are restored by :FudeEditPR /
+--- :FudeCreatePR / :FudeReviewSubmit themselves and have no comment thread /
+--- diff line to show.
 local BROWSER_KINDS = { line = true, suggest = true, issue = true, reply = true, edit = true }
 
 --- List the active PR's drafts as structured descriptors for the comment
