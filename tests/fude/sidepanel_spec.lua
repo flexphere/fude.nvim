@@ -997,3 +997,40 @@ describe("build_sidepanel_content with a commit message section", function()
 		assert.are.equal(10, section_map.files_end)
 	end)
 end)
+
+describe("build_split_config", function()
+	it("sizes left/right panels by width and fixes the width", function()
+		for position, split in pairs({ left = "left", right = "right" }) do
+			local result = sidepanel.build_split_config(position, 50, 30)
+			assert.same({ split = split, win = -1, width = 50 }, result.win_config)
+			assert.are.equal("winfixwidth", result.fix_option)
+		end
+	end)
+
+	it("sizes top/bottom panels by height and fixes the height", function()
+		for position, split in pairs({ top = "above", bottom = "below" }) do
+			local result = sidepanel.build_split_config(position, 50, 30)
+			assert.same({ split = split, win = -1, height = 30 }, result.win_config)
+			assert.are.equal("winfixheight", result.fix_option)
+		end
+	end)
+
+	it("falls back to a left panel for nil or unknown positions", function()
+		assert.same({ split = "left", win = -1, width = 40 }, sidepanel.build_split_config(nil).win_config)
+		assert.same({ split = "left", win = -1, width = 40 }, sidepanel.build_split_config("center").win_config)
+	end)
+
+	it("applies defaults and minimum sizes", function()
+		assert.are.equal(15, sidepanel.build_split_config("bottom").win_config.height)
+		assert.are.equal(5, sidepanel.build_split_config("bottom", nil, 1).win_config.height)
+		assert.are.equal(20, sidepanel.build_split_config("left", 5).win_config.width)
+	end)
+
+	it("caps top/bottom heights at max_height, below the minimum too", function()
+		assert.are.equal(20, sidepanel.build_split_config("bottom", nil, 20, 24).win_config.height)
+		assert.are.equal(6, sidepanel.build_split_config("top", nil, 20, 6).win_config.height)
+		assert.are.equal(3, sidepanel.build_split_config("bottom", nil, 15, 3).win_config.height)
+		assert.are.equal(1, sidepanel.build_split_config("bottom", nil, 15, 0).win_config.height)
+		assert.are.equal(50, sidepanel.build_split_config("left", 50, 20, 3).win_config.width)
+	end)
+end)
