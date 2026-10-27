@@ -11,7 +11,7 @@ function M.run(args, callback, stdin, cwd)
 	if stdin then
 		opts.stdin = stdin
 	end
-	vim.system(vim.list_extend({ "gh" }, args), opts, function(result)
+	local ok, err = pcall(vim.system, vim.list_extend({ "gh" }, args), opts, function(result)
 		vim.schedule(function()
 			if result.code ~= 0 then
 				callback(result.stderr or "gh command failed", nil)
@@ -20,6 +20,13 @@ function M.run(args, callback, stdin, cwd)
 			end
 		end)
 	end)
+	-- A removed cwd or missing executable fails before an exit callback can
+	-- run. Report it through the same channel so callers release pending state.
+	if not ok then
+		vim.schedule(function()
+			callback(tostring(err), nil)
+		end)
+	end
 end
 
 --- Run a gh command and parse the JSON output.

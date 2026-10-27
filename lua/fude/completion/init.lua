@@ -221,7 +221,7 @@ local function fetch_local_commits(ctx, buf, callback)
 			vim.list_extend(args, { "-n", "100" })
 		end
 		vim.list_extend(args, { "--end-of-options", base and (base .. ".." .. ctx.tip) or ctx.tip, "--" })
-		vim.system(args, { text = true, cwd = ctx.cwd }, function(result)
+		local ok, err = pcall(vim.system, args, { text = true, cwd = ctx.cwd }, function(result)
 			vim.schedule(function()
 				if not context_alive(ctx, buf) then
 					return callback("PR body closed")
@@ -235,6 +235,9 @@ local function fetch_local_commits(ctx, buf, callback)
 				callback(nil, M.parse_git_commits(result.stdout or ""))
 			end)
 		end)
+		if not ok then
+			callback(tostring(err))
+		end
 	end
 	run(ctx.base, ctx.base ~= nil)
 end
