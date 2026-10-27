@@ -801,6 +801,150 @@ function M.get_upstream_ref(cwd, branch)
 	return nil
 end
 
+--- Parse `git for-each-ref --format=%(upstream:remotename)%00%(upstream:remoteref) refs/heads/<branch>`
+--- output. Both fields are empty when the branch has no upstream.
+--- @param output string|nil for-each-ref output
+--- @return string|nil remote upstream remote name (e.g. "origin")
+--- @return string|nil merge_ref upstream branch on the remote (e.g. "refs/heads/feat/a")
+function M.parse_upstream(output)
+	if type(output) ~= "string" then
+		return nil, nil
+	end
+	local fields = vim.split(vim.split(output, "\n", { plain = true })[1], "\0", { plain = true })
+	local remote = vim.trim(fields[1] or "")
+	local merge_ref = vim.trim(fields[2] or "")
+	return remote ~= "" and remote or nil, merge_ref ~= "" and merge_ref or nil
+end
+
+--- Decide which remote `:FudeCreatePR` pushes a branch to. In order:
+--- an explicit `branch.<name>.pushRemote`, `remote.pushDefault`, the remote
+--- of a same-named upstream (the branch was pushed there before), `origin`,
+--- then the only remote. The upstream remote of a differently named upstream
+--- is never used: in a fork clone a branch created from `upstream/main`
+--- tracks the canonical repository, and pushing there would put the branch
+--- on it instead of the user's fork. The local pseudo-remote `.` is skipped.
+--- @param branch string local branch name
+--- @param cfg table { push_remote: string|nil, push_default: string|nil, upstream_remote: string|nil,
+---   upstream_ref: string|nil, remotes: string[] }
+--- @return string remote
+function M.resolve_push_remote(branch, cfg)
+	local function usable(remote)
+		return remote ~= nil and remote ~= "" and remote ~= "."
+	end
+	if usable(cfg.push_remote) then
+		return cfg.push_remote
+	end
+	if usable(cfg.push_default) then
+		return cfg.push_default
+	end
+	if usable(cfg.upstream_remote) and cfg.upstream_ref == "refs/heads/" .. branch then
+		return cfg.upstream_remote
+	end
+	if #cfg.remotes == 1 and cfg.remotes[1] ~= "origin" then
+		return cfg.remotes[1]
+	end
+	return "origin"
+end
+
+--- The branch `:FudeCreatePR` pushes and the remote it goes to (see
+--- `resolve_push_remote`). Only read after gh reported the branch as not
+--- pushed, so the git calls cost nothing on an ordinary PR creation.
+--- @param cwd string|nil repo root (default: Neovim's cwd, where gh runs)
+--- @return table|nil target { branch: string, remote: string }; nil on a detached HEAD
+function M.get_push_target(cwd)
+	local branch = M.head_branch(cwd)
+	if not branch then
+		return nil
+	end
+	local function config(key)
+		local result = vim.system({ "git", "config", "--get", key }, { text = true, cwd = cwd }):wait()
+		local value = result.code == 0 and vim.trim(result.stdout or "") or ""
+		return value ~= "" and value or nil
+	end
+	local upstream = vim
+		.system(
+			{ "git", "for-each-ref", "--format=%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/" .. branch },
+			{ text = true, cwd = cwd }
+		)
+		:wait()
+	local upstream_remote, upstream_ref = M.parse_upstream(upstream.code == 0 and upstream.stdout or nil)
+	local remotes = vim.system({ "git", "remote" }, { text = true, cwd = cwd }):wait()
+	return {
+		branch = branch,
+		remote = M.resolve_push_remote(branch, {
+			push_remote = config("branch." .. branch .. ".pushRemote"),
+			push_default = config("remote.pushDefault"),
+			upstream_remote = upstream_remote,
+			upstream_ref = upstream_ref,
+			remotes = vim.split(remotes.code == 0 and remotes.stdout or "", "\n", { trimempty = true }),
+		}),
+	}
+end
+
+--- Drop git's `hint:` lines from push stderr, keeping the rejection itself.
+--- @param stderr string|nil
+--- @return string message ("git push failed" when nothing is left)
+function M.format_push_error(stderr)
+	local kept = {}
+	for _, line in ipairs(vim.split(stderr or "", "\n", { trimempty = true })) do
+		if not line:match("^hint:") then
+			table.insert(kept, line)
+		end
+	end
+	local msg = vim.trim(table.concat(kept, "\n"))
+	return msg ~= "" and msg or "git push failed"
+end
+
+--- Time limit of `push_branch`. A stalled connection or pre-push hook would
+--- otherwise leave PR creation waiting after "Pushing ..." with no outcome.
+M.PUSH_TIMEOUT_MS = 120000
+
+--- Push HEAD to `<remote>/<branch>` and make it the branch's upstream, the
+--- same command gh runs when it pushes interactively. Asynchronous, unlike
+--- the other helpers here, because it goes over the network (and may run a
+--- pre-push hook). Never forces: a rejected push is reported as an error.
+--- git must not prompt: a credential or ssh passphrase prompt would draw over
+--- the Neovim screen and wait forever. `GIT_TERMINAL_PROMPT=0` covers git's
+--- own prompts, and `detach` starts a new session without a controlling
+--- terminal, so ssh cannot open /dev/tty either and fails instead.
+--- After `M.PUSH_TIMEOUT_MS` the whole process group is killed and the push
+--- is reported as timed out. vim.system's own `timeout` signals only git, and
+--- a hook or transport helper still holding git's stderr would keep the
+--- exit callback from ever running.
+--- @param remote string
+--- @param branch string
+--- @param callback fun(err: string|nil)
+--- @param cwd string|nil repo root (default: Neovim's cwd)
+function M.push_branch(remote, branch, callback, cwd)
+	local timed_out = false
+	local timer = vim.uv.new_timer()
+	local proc = vim.system({ "git", "push", "--set-upstream", remote, "HEAD:refs/heads/" .. branch }, {
+		text = true,
+		cwd = cwd,
+		env = { GIT_TERMINAL_PROMPT = "0" },
+		detach = true,
+	}, function(result)
+		if not timer:is_closing() then
+			timer:stop()
+			timer:close()
+		end
+		vim.schedule(function()
+			if timed_out then
+				callback(("git push timed out after %g seconds"):format(M.PUSH_TIMEOUT_MS / 1000))
+			elseif result.code ~= 0 then
+				callback(M.format_push_error(result.stderr))
+			else
+				callback(nil)
+			end
+		end)
+	end)
+	timer:start(M.PUSH_TIMEOUT_MS, 0, function()
+		timed_out = true
+		-- `detach` made git a process-group leader: a negative pid signals the group
+		pcall(vim.uv.kill, -proc.pid, "sigterm")
+	end)
+end
+
 --- Get the configured git user name (fallback: $USER).
 --- @return string user name
 function M.get_git_user()
