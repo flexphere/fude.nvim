@@ -101,8 +101,8 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 |--------|--------|------|----------|
 | `check_state_deps` | #134-#135 | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性 | multi-LHS 代入 `state.a, state.b = ...` は最後の LHS のみ W 検出、動的フィールド `state[key]` は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の可能性（現コードベースに該当ケースなし） |
 | `check_purity` | #136 | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
-| `check_docs` | #137, (本 PR) | (1) `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 (PR #137)、(2) `config.lua` の `M.defaults` top-level キーが doc に backtick 形式で文書化されているか forward 検証 (本 PR) | config option は **forward のみ** (doc backtick は関数名等を含むため reverse 不適)。nested key (`signs.comment` 等) と default value の整合性は未対応。keymap 検証は §4.2 #4 で別 PR 化 |
-| `luacov` (`make coverage`) | (本 PR) | `lua/fude/` のテストカバレッジ計測（line-hit 率）。報告のみ、閾値強制なし。CI artifact から取得 | 初期は 45-50% 程度の見込み。閾値強制は段階 3（将来 PR）で検討。`/harness-audit` の sensor 発火率指標とは別の独立メトリクス |
+| `check_docs` | #137, #140, #206 | (1) `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 (PR #137。PR #206 から `lua/fude/commands.lua` のレジストリも抽出元に追加)、(2) `config.lua` の `M.defaults` top-level キーが doc に backtick 形式で文書化されているか forward 検証 (PR #140) | config option は **forward のみ** (doc backtick は関数名等を含むため reverse 不適)。nested key (`signs.comment` 等) と default value の整合性は未対応。keymap 検証は §4.2 #4 で別 PR 化 |
+| `luacov` (`make coverage`) | #138 | `lua/fude/` のテストカバレッジ計測（line-hit 率）。報告のみ、閾値強制なし。CI artifact から取得 | 初期は 45-50% 程度の見込み。閾値強制は段階 3（将来 PR）で検討。`/harness-audit` の sensor 発火率指標とは別の独立メトリクス |
 
 ### 4.2 次に着手する PR 候補
 
