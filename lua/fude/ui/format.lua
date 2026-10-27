@@ -776,11 +776,12 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 				raw = format_path_fn(entry.path)
 			end
 			local display_path = (entry.path and type(raw) == "string") and raw or entry.path
+			local range = M.format_line_range(entry.start_line, entry.line)
 			if entry.is_pending then
 				-- pending かつ outdated なエントリでは path/line が nil になり得るためガードする
 				local line_num = type(entry.line) == "number" and entry.line or nil
 				if line_num and display_path then
-					text = string.format("%s  [pending]  %s:%d", date, display_path, line_num)
+					text = string.format("%s  [pending]  %s:%s", date, display_path, range or line_num)
 				elseif display_path then
 					text = string.format("%s  [pending]  %s", date, display_path)
 				else
@@ -796,7 +797,7 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 				-- Outdated comments may have nil/vim.NIL line or path
 				local line_num = type(entry.line) == "number" and entry.line or nil
 				if line_num and display_path then
-					text = string.format("%s  %s  %s:%d", date, outdated_label, display_path, line_num)
+					text = string.format("%s  %s  %s:%s", date, outdated_label, display_path, range or line_num)
 				else
 					text = string.format("%s  %s  %s", date, outdated_label, display_path or "(unknown)")
 				end
@@ -810,7 +811,7 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 				-- outdated_show = false: show as normal entry without label
 				local line_num = type(entry.line) == "number" and entry.line or nil
 				if line_num and display_path then
-					text = string.format("%s  @%s  %s:%d", date, entry.author or "unknown", display_path, line_num)
+					text = string.format("%s  @%s  %s:%s", date, entry.author or "unknown", display_path, range or line_num)
 				else
 					text = string.format("%s  @%s  %s", date, entry.author or "unknown", display_path or "(unknown)")
 				end
@@ -818,7 +819,7 @@ function M.format_comment_browser_list(entries, format_date_fn, outdated_opts, f
 				local author_end = author_start + 1 + #(entry.author or "unknown")
 				table.insert(hl_ranges, { line = line_idx, col_start = author_start, col_end = author_end, hl = "Title" })
 			else
-				text = string.format("%s  @%s  %s:%d", date, entry.author, display_path, entry.line)
+				text = string.format("%s  @%s  %s:%s", date, entry.author, display_path, range or entry.line)
 				local author_start = #date + 2
 				local author_end = author_start + 1 + #entry.author -- "@" + name
 				table.insert(hl_ranges, { line = line_idx, col_start = author_start, col_end = author_end, hl = "Title" })
@@ -850,12 +851,12 @@ end
 --- For review comments: shows the full thread (root + replies).
 --- For issue comments: shows all issue comments.
 --- @param entry table a single entry from build_comment_browser_entries
---- @param all_comments table[] flat array of all review comments (for thread lookup)
+--- @param _all_comments table[] unused; kept for call compatibility
 --- @param all_issue_comments table[] all PR-level issue comments
 --- @param format_date_fn fun(s: string): string
 --- @param separator_width number|nil width of the separator between comments (see build_comment_separator)
 --- @return table { lines: string[], hl_ranges: table[] }
-function M.format_comment_browser_thread(entry, all_comments, all_issue_comments, format_date_fn, separator_width)
+function M.format_comment_browser_thread(entry, _all_comments, all_issue_comments, format_date_fn, separator_width)
 	if entry.type == "draft" then
 		-- Unsubmitted local draft: show its body as a preview.
 		local lines = { "Local draft (not yet submitted)", "" }
@@ -870,19 +871,15 @@ function M.format_comment_browser_thread(entry, all_comments, all_issue_comments
 		return M.format_reply_comments_for_display(all_issue_comments or {}, format_date_fn, separator_width)
 	end
 
-	-- Review comment: get the full thread
-	local data = require("fude.comments.data")
+	-- Review comment: entries contain the full selected thread.
 	local first_comment = entry.comments[1]
 	if not first_comment then
 		return { lines = { "(no comments)" }, hl_ranges = {} }
 	end
 
-	local thread = data.get_comment_thread(first_comment.id, all_comments or {})
-	if #thread == 0 then
-		thread = entry.comments
-	end
-
-	return M.format_reply_comments_for_display(thread, format_date_fn, separator_width)
+	-- Browser entries already contain exactly one complete thread, including
+	-- sibling replies whose root was deleted. Do not narrow it to the first reply.
+	return M.format_reply_comments_for_display(entry.comments, format_date_fn, separator_width)
 end
 
 --- Parse a single line for Markdown inline elements using tree-sitter.

@@ -468,14 +468,14 @@ function M.build_comment_entries(comment_map, repo_root, format_date_fn, pending
 	return entries
 end
 
---- Build unified entries for comment browser (review + issue comments).
+--- Build unified entries for comment browser (one per review thread + issue comments).
 --- @param comment_map table<string, table<number, table[]>> review comment map
 --- @param issue_comments table[] PR-level issue comments
 --- @param repo_root string
 --- @param format_date_fn fun(s: string): string
 --- @param pending_review_id number|nil pending review ID for labeling
 --- @param github_user string|nil authenticated user for ownership marking
---- @param all_comments table[]|nil all review comments (for including outdated comments not in comment_map)
+--- @param all_comments table[]|nil all review comments (outdated roots and unpositioned replies included)
 --- @return table[] entries sorted by last_ts descending (newest first)
 function M.build_comment_browser_entries(
 	comment_map,
@@ -488,95 +488,124 @@ function M.build_comment_browser_entries(
 )
 	local entries = {}
 
-	-- Review comment entries (grouped by path:line, same as build_comment_entries)
+	-- Keep the positional map for inline rendering, but index browser entries by
+	-- thread: independent roots may share both their path and ending line.
+	local candidates, by_id, locations, included = {}, {}, {}, {}
+	local function add(c, path, line)
+		local key = not is_null(c.id) and c.id or c
+		if not included[key] then
+			included[key] = true
+			table.insert(candidates, c)
+			locations[c] = { path = path, line = line }
+		end
+		by_id[key] = by_id[key] or c
+	end
 	for path, file_lines in pairs(comment_map or {}) do
 		for line_key, comments in pairs(file_lines) do
 			local line = math.floor(tonumber(line_key) or 1)
-			local first = comments[1]
-			local last = comments[#comments]
-			local is_pending = false
-			local is_outdated = false
-			if pending_review_id then
-				for _, c in ipairs(comments) do
-					if c.pull_request_review_id == pending_review_id then
-						is_pending = true
-						break
-					end
-				end
-			end
-			-- Check if any comment in thread is outdated
 			for _, c in ipairs(comments) do
-				if c.is_outdated then
-					is_outdated = true
+				add(c, path, line)
+			end
+		end
+	end
+	for _, c in ipairs(all_comments or {}) do
+		if not is_null(c.id) then
+			by_id[c.id] = by_id[c.id] or c
+		end
+		if c.is_outdated and not is_null(c.id) then
+			local line = type(c.line) == "number" and c.line or nil
+			local original_line = type(c.original_line) == "number" and c.original_line or nil
+			add(c, type(c.path) == "string" and c.path or nil, line or original_line)
+		end
+	end
+
+	-- Resolve to the missing parent's ID too, so surviving sibling replies stay
+	-- together after their root was deleted. Guard malformed reply cycles.
+	local function thread_key(c)
+		local visited = {}
+		while not is_null(c.in_reply_to_id) and not visited[c] do
+			visited[c] = true
+			local parent = by_id[c.in_reply_to_id]
+			if not parent then
+				return c.in_reply_to_id
+			end
+			c = parent
+		end
+		return not is_null(c.id) and c.id or c
+	end
+	local groups = {}
+	for _, c in ipairs(candidates) do
+		local key = thread_key(c)
+		groups[key] = groups[key] or {}
+		table.insert(groups[key], c)
+	end
+	-- Include replies without a usable position when their thread is visible.
+	for _, c in ipairs(all_comments or {}) do
+		if not is_null(c.id) and not included[c.id] then
+			local group = groups[thread_key(c)]
+			if group then
+				table.insert(group, c)
+				included[c.id] = true
+			end
+		end
+	end
+	local function older(a, b)
+		local at, bt = a.created_at or "", b.created_at or ""
+		if at ~= bt then
+			return at < bt
+		end
+		if type(a.id) == "number" and type(b.id) == "number" then
+			return a.id < b.id
+		end
+		return tostring(a.id) < tostring(b.id)
+	end
+	for key, comments in pairs(groups) do
+		table.sort(comments, function(a, b)
+			if a.id == key then
+				return b.id ~= key
+			elseif b.id == key then
+				return false
+			end
+			return older(a, b)
+		end)
+		local first = comments[1]
+		local location = locations[first]
+		if not location then
+			for _, c in ipairs(comments) do
+				if locations[c] then
+					location = locations[c]
 					break
 				end
 			end
-			-- Resolved only when every comment is resolved: an entry can group multiple
-			-- threads on the same path:line, and a partially resolved line is not resolved.
-			local is_resolved = util.all_comments_resolved(comments)
-			local author = first.user and first.user.login or "unknown"
-			local last_ts = last.created_at or ""
-			local last_date = format_date_fn(last_ts)
-			local is_own = github_user ~= nil and author == github_user
-			table.insert(entries, {
-				type = "review",
-				path = path,
-				line = line,
-				filename = repo_root .. "/" .. path,
-				lnum = line,
-				author = author,
-				last_ts = last_ts,
-				last_date = last_date,
-				comments = comments,
-				is_pending = is_pending,
-				is_own = is_own,
-				is_outdated = is_outdated,
-				is_resolved = is_resolved,
-			})
 		end
-	end
-
-	-- Outdated comment entries (not in comment_map because line is nil)
-	-- Build a set of comment IDs already in entries to avoid duplicates
-	local seen_ids = {}
-	for _, entry in ipairs(entries) do
-		for _, c in ipairs(entry.comments) do
-			if c.id then
-				seen_ids[c.id] = true
+		location = location or {}
+		local path, line = location.path, location.line
+		local start_line = type(first.start_line) == "number" and M.get_comment_line_range(first) or nil
+		local is_pending, is_outdated, last_ts = false, false, ""
+		for _, c in ipairs(comments) do
+			is_pending = is_pending or (pending_review_id ~= nil and c.pull_request_review_id == pending_review_id)
+			is_outdated = is_outdated or c.is_outdated == true
+			if (c.created_at or "") > last_ts then
+				last_ts = c.created_at
 			end
 		end
-	end
-
-	-- Add outdated comments not in comment_map
-	if all_comments then
-		for _, c in ipairs(all_comments) do
-			if c.is_outdated and c.id and not seen_ids[c.id] then
-				local author = c.user and c.user.login or "unknown"
-				local is_pending = pending_review_id and c.pull_request_review_id == pending_review_id
-				local is_own = github_user ~= nil and author == github_user
-				-- Use original_line for display (like GitHub Web UI)
-				-- Note: c.line may be vim.NIL (JSON null) which is truthy, so check type
-				local line = type(c.line) == "number" and c.line or nil
-				local original_line = type(c.original_line) == "number" and c.original_line or nil
-				local display_line = line or original_line
-				table.insert(entries, {
-					type = "review",
-					path = c.path,
-					line = display_line,
-					filename = c.path and (repo_root .. "/" .. c.path) or nil,
-					lnum = display_line, -- For jump functionality (may not work for outdated)
-					author = author,
-					last_ts = c.created_at or "",
-					last_date = format_date_fn(c.created_at or ""),
-					comments = { c },
-					is_pending = is_pending or false,
-					is_own = is_own,
-					is_outdated = true,
-					is_resolved = c.is_resolved or false,
-				})
-				seen_ids[c.id] = true
-			end
-		end
+		local author = type(first.user) == "table" and first.user.login or "unknown"
+		table.insert(entries, {
+			type = "review",
+			path = path,
+			line = line,
+			start_line = start_line,
+			filename = path and (repo_root .. "/" .. path) or nil,
+			lnum = line,
+			author = author,
+			last_ts = last_ts,
+			last_date = format_date_fn(last_ts),
+			comments = comments,
+			is_pending = is_pending,
+			is_own = github_user ~= nil and author == github_user,
+			is_outdated = is_outdated,
+			is_resolved = util.all_comments_resolved(comments),
+		})
 	end
 
 	-- Issue comment entry (PR-level comments as single entry)
@@ -604,7 +633,10 @@ function M.build_comment_browser_entries(
 	end
 
 	table.sort(entries, function(a, b)
-		return a.last_ts > b.last_ts
+		if a.last_ts ~= b.last_ts then
+			return a.last_ts > b.last_ts
+		end
+		return older(a.comments[1], b.comments[1])
 	end)
 	return entries
 end
@@ -680,7 +712,8 @@ end
 --- Merge local draft descriptors into comment browser entries. Pure.
 --- Drafts that target an existing entry (reply/edit by comment id; line/suggest
 --- by path:line; issue when a PR-comment entry exists) flag that entry with
---- `has_draft`. Drafts with no corresponding entry (new line/suggest/issue) are
+--- `has_draft`. Line/suggest drafts match the full range only when it identifies
+--- one entry; ambiguous ranges keep their own row. Drafts with no corresponding entry are
 --- appended as `type = "draft"` rows. reply/edit drafts whose target is not in
 --- the list are skipped (no thread to show). Entries are re-sorted by `last_ts`.
 --- @param entries table[] from build_comment_browser_entries
@@ -695,7 +728,10 @@ function M.merge_draft_entries(entries, drafts_list, repo_root, format_date_fn)
 	end
 
 	local by_comment_id = {}
-	local by_path_line = {}
+	local by_path_range = {}
+	local function range_key(path, first, last)
+		return path .. ":" .. first .. ":" .. last
+	end
 	local issue_entry = nil
 	for _, e in ipairs(entries) do
 		if e.type == "issue" then
@@ -709,7 +745,14 @@ function M.merge_draft_entries(entries, drafts_list, repo_root, format_date_fn)
 			end
 		end
 		if e.path and type(e.line) == "number" then
-			by_path_line[e.path .. ":" .. e.line] = e
+			local key = range_key(e.path, e.start_line or e.line, e.line)
+			-- A new-comment draft identifies a range, not a thread. Keep a separate
+			-- draft row when several threads share that range instead of picking one.
+			if by_path_range[key] == nil then
+				by_path_range[key] = e
+			else
+				by_path_range[key] = false
+			end
 		end
 	end
 
@@ -720,7 +763,7 @@ function M.merge_draft_entries(entries, drafts_list, repo_root, format_date_fn)
 		elseif d.kind == "issue" then
 			matched = issue_entry
 		elseif (d.kind == "line" or d.kind == "suggest") and d.path and d.start_line then
-			matched = by_path_line[d.path .. ":" .. d.start_line]
+			matched = by_path_range[range_key(d.path, d.start_line, d.end_line or d.start_line)]
 		end
 
 		if matched then
