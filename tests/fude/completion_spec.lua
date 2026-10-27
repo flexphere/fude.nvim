@@ -319,6 +319,23 @@ describe("PR creation commit completion", function()
 		git({ "commit", "--allow-empty", "-m", "root" })
 		assert.are.equal(1, #fetch(attach(nil)))
 	end)
+
+	it("retries after git could not start instead of leaving a pending request", function()
+		git({ "commit", "--allow-empty", "-m", "root" })
+		local buf = attach(nil)
+		local system = vim.system
+		local calls = 0
+		helpers.mock(vim, "system", function(...)
+			calls = calls + 1
+			if calls == 1 then
+				error("ENOENT: working directory unavailable")
+			end
+			return system(...)
+		end)
+		assert.are.same({}, fetch(buf))
+		assert.are.equal(1, #fetch(buf))
+		assert.are.equal(2, calls)
+	end)
 end)
 
 describe("completion.parse_git_commits", function()

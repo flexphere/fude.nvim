@@ -4,6 +4,23 @@ describe("completion request working directory", function()
 	local helpers = require("tests.helpers")
 	after_each(helpers.cleanup)
 
+	it("reports a process spawn error through the callback", function()
+		helpers.mock(vim, "system", function()
+			error("ENOENT: working directory unavailable")
+		end)
+		local response, calls = nil, 0
+		gh.get_pr_commits(253, function(err, data)
+			response = err
+			calls = calls + 1
+			assert.is_nil(data)
+		end, "/removed/repo")
+		assert.is_true(helpers.wait_for(function()
+			return response ~= nil
+		end))
+		assert.truthy(response:find("ENOENT", 1, true))
+		assert.are.equal(1, calls)
+	end)
+
 	for _, name in ipairs({ "get_collaborators", "get_repo_issues", "get_pr_commits" }) do
 		it("propagates cwd through run_json and run for " .. name, function()
 			local args, options, response
