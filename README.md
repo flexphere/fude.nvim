@@ -292,6 +292,8 @@ require("fude").setup({
       change_base = "b",         -- local review only: pick a new base branch
       toggle_commit_message = "m", -- expand/collapse a folded commit message
       help = "?",                -- show configured panel keymaps
+      select_alt = "<Space>",    -- same as select
+      -- Any action also accepts { "<Space>", nowait = true } (see below)
     },
   },
   -- Callback after review start completes (all data fetched)
@@ -318,6 +320,17 @@ disabled mappings and mappings shadowed by an earlier action are omitted.
 Set `sidepanel.keymaps.help` to change the help key, or `false` to hide the
 hint and disable the mapping. Inside the help, `q` always closes it,
 independently of the panel's close key.
+
+`<Space>` selects an entry like `<CR>` (`sidepanel.keymaps.select_alt`). When
+mappings starting with `<Space>` exist (e.g. `<leader>ff` with a Space leader),
+Neovim waits `timeoutlen` before treating `<Space>` as the panel key, so those
+mappings keep working inside the panel. To make a key fire immediately, give it
+as a table with `nowait`; longer mappings starting with it then cannot be typed
+inside the panel:
+
+```lua
+sidepanel = { keymaps = { select_alt = { "<Space>", nowait = true } } }
+```
 
 Files are ordered as in the GitHub PR file tree: by path in byte order
 (`CLAUDE.md` before `lua/`, `ui.lua` before `ui/`). Tree mode places each

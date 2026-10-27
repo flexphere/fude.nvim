@@ -895,7 +895,8 @@ File opening position                                 *fude-file-position*
       the viewed file count out of total (e.g., "Files (Reviewed: 3/10)").
 
     Keymaps (panel defaults):~
-      `<CR>`    On a scope: switch to it and open the first file
+      `<CR>` / `<Space>`
+                On a scope: switch to it and open the first file
                 listed in the new scope. On a file: open it.
                 On a directory: fold or expand its descendants.
       `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
@@ -1105,6 +1106,7 @@ Default configuration: >lua
         change_base = "b",
         toggle_commit_message = "m",
         help = "?",
+        select_alt = "<Space>",
       },
     },
     -- Outdated comment display options
@@ -1370,6 +1372,19 @@ Options:
                     `sidepanel.commit_message.max_lines`)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
+                  - `select_alt`: "<Space>" (same as `select`; listed last
+                    so it never takes a key assigned to another action)
+                  A value is a key string, or a table `{ key, nowait = true }`
+                  to run the mapping without waiting for longer mappings
+                  that start with the key (|:map-nowait|). Without it, a
+                  `<leader>ff` mapping with a Space leader makes `<Space>`
+                  wait 'timeoutlen' but stay usable inside the panel; with
+                  it, `<Space>` fires at once and such mappings cannot be
+                  typed inside the panel. Example: >lua
+                    sidepanel = {
+                      keymaps = { select_alt = { "<Space>", nowait = true } },
+                    }
+<
                   Set an action to `false` or an empty string to disable its
                   panel-local mapping and allow another mapping to apply
                   (set both `next_entry = false` and `prev_entry = false`
@@ -1379,8 +1394,9 @@ Options:
                   `select = "j"` takes the key; the `next_entry` default
                   is skipped).
                   Equivalent spellings such as "<Tab>" and "<C-i>" also
-                  count as the same key. The help action has lowest
-                  priority; when disabled or shadowed, its hint is hidden.
+                  count as the same key. Only `select_alt` has lower
+                  priority than the help action; when help is disabled or
+                  shadowed, its hint is hidden.
 
 `outdated.show`     Show outdated comments (default: true).
                   Outdated comments are those whose position in the code
