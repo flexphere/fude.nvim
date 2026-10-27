@@ -31,7 +31,7 @@ in the editor. It provides:
 - Browse changed files with Telescope or quickfix
 - View PR overview with title, description, labels, reviewers, CI status, and comments
 - Clickable GitHub references (#123) and URLs in floating windows
-- @user, #issue, and _commit completion in comment windows (blink.cmp / nvim-cmp)
+- @user, #issue, and _commit completion in comments and PR bodies (blink.cmp / nvim-cmp)
 - Mark files as viewed/unviewed (synced with GitHub)
 - Toggleable side panel showing review scope and changed files
 - Gitsigns integration for diff base switching
@@ -1508,8 +1508,11 @@ Example with lualine: >lua
 ==============================================================================
 8. COMPLETION                                          *fude-completion*
 
-Comment input windows (`FudeReviewComment`, `FudeReviewSuggest`) support GitHub
-completion for `@user` mentions, `#issue/PR` references, and `_commit` hashes.
+Comment input windows (`FudeReviewComment`, `FudeReviewSuggest`) and the body
+pane of `FudeCreatePR` / `FudeEditPR` support GitHub completion for `@user`
+mentions, `#issue/PR` references, and `_commit` hashes. PR body completion does
+not require an active review session. The PR title pane is not a completion
+target. Both completion plugins below support these input windows.
 
 blink.cmp: >lua
   sources = {
@@ -1534,11 +1537,24 @@ nvim-cmp: >lua
 Trigger characters:
   `@`  - GitHub collaborators (@user mentions)
   `#`  - Issues and PRs (#123 references)
-  `_`  - PR commit hashes (filtered by [n/m] index and message)
+  `_`  - Commit hashes (filtered by [n/m] index and message)
 
-Data for `@` and `#` is cached for 5 minutes per session and fetched from the
-GitHub API asynchronously. Data for `_` uses locally cached PR commits (no
-additional API call).
+Data for `@` and `#` is fetched asynchronously from GitHub and cached for 5
+minutes (per PR body editor, or shared by comment inputs).
+
+The `_` candidates depend on the input window:
+- Comment inputs use the review session's cached PR commits (no API call).
+- PR editing fetches the edited PR's commits asynchronously, independently
+  of the active review session.
+- PR creation reads local commits in the selected base..HEAD range, including
+  unpushed commits. HEAD is captured when the editor opens. A remote-only base
+  is retried as origin/<base>. Without a base, only the newest 100 commits are
+  offered. An empty or unavailable range yields no candidates.
+
+PR body commit candidates are loaded on the first `_` request and cached until
+the editor closes. Failed requests can be retried. All PR body completion
+requests use the working directory captured when the editor opened, even after
+`:cd`. Closing the body discards its completion cache.
 
 ==============================================================================
 9. DRAFTS                                                    *fude-drafts*
