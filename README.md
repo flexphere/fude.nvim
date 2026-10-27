@@ -21,7 +21,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
 - **PR overview** - Split-pane view with PR info, description, comments (left) and reviewers, assignees, labels, CI status (right). Sections are foldable with standard Neovim fold commands. Press `r` to re-request a review from a reviewer who has already reviewed
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
-- **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows (blink.cmp / nvim-cmp)
+- **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows and PR bodies (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
 - **Create PR** - Create draft PRs from templates with a two-pane float (title + body), picking the base branch from a fuzzy finder (default branch preselected)
 - **Open in browser** - Open the PR in your browser
@@ -538,15 +538,21 @@ comment: edits to existing comment bodies do not trigger the watcher.
 
 ## Completion
 
-Comment input windows support `@user`, `#issue/PR`, and `_commit` completion.
+Comment input windows and the body pane of `:FudeCreatePR` / `:FudeEditPR` support `@user`, `#issue/PR`, and `_commit` completion. PR body completion works without starting a review session; the title pane does not offer these candidates.
 
 | Trigger | Completes | Source |
 |---------|-----------|--------|
 | `@` | GitHub collaborators | GitHub API (cached 5 min) |
 | `#` | Issues and PRs | GitHub API (cached 5 min) |
-| `_` | PR commit hashes | Local cache (no API call) |
+| `_` | Commit hashes | Review cache, target PR, or local git (see below) |
 
 Commit completion shows entries in `[n/m] <sha> <message> (<author>)` format, matching the scope picker display. Selecting a commit inserts its short SHA.
+
+- Comment inputs use the review session's cached PR commits, with no additional API call.
+- PR editing fetches the edited PR's commits asynchronously, independently of the active review.
+- PR creation reads the selected base branch's `base..HEAD` range from local git, including unpushed commits. HEAD is captured when the editor opens. A remote-only base is retried as `origin/<base>`; without a base, the newest 100 commits are offered.
+
+PR body caches belong to that editor and are discarded when it closes. Commit candidates are fetched on the first `_` request and retained while the editor is open; failed requests can be retried. The captured working directory keeps all three completion types on the same repository after `:cd`.
 
 ### blink.cmp
 

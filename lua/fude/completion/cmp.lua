@@ -7,7 +7,7 @@ function source.new()
 end
 
 function source:is_available()
-	return vim.b.fude_comment == true
+	return require("fude.completion").is_enabled()
 end
 
 function source:get_trigger_characters()
@@ -22,19 +22,20 @@ function source:complete(params, callback)
 	local core = require("fude.completion")
 	local before = params.context.cursor_before_line
 	local context = core.get_context(before)
+	local buf = params.context.bufnr
 
 	if context == "mention" then
 		core.fetch_mentions(function(items)
 			callback(items)
-		end)
+		end, buf)
 	elseif context == "issue" then
 		core.fetch_issues(function(items)
 			callback(items)
-		end)
+		end, buf)
 	elseif context == "commit" then
 		core.fetch_commits(function(items)
 			callback(items)
-		end)
+		end, buf)
 	else
 		callback({})
 	end

@@ -2649,6 +2649,7 @@ describe("edit", function()
 		assert.are.same({ "Existing Title" }, captured_title_lines)
 		assert.are.same({ "Line 1", "Line 2" }, captured_body_lines)
 		assert.are.equal("edit", captured_opts.mode)
+		assert.are.equal(50, captured_opts.pr_number)
 		-- footer is no longer passed: open_pr_float derives it from mode/from_draft
 		assert.is_nil(captured_opts.footer)
 		assert.is_false(captured_opts.from_draft)
@@ -2734,6 +2735,73 @@ describe("edit", function()
 		assert.are.equal("intro\n![shot](./img.png)", edit_called_with.body)
 		assert.are.same({ "./img.png" }, edit_called_with.attachments)
 	end)
+end)
+
+describe("PR body completion adapters", function()
+	local completion = require("fude.completion")
+	local original_paste
+
+	before_each(function()
+		original_paste = vim.paste
+	end)
+
+	after_each(function()
+		vim.cmd("stopinsert")
+		helpers.cleanup()
+		vim.paste = original_paste
+	end)
+
+	for _, mode in ipairs({ "create", "edit" }) do
+		for _, adapter in ipairs({ "blink", "cmp" }) do
+			it("connects all three triggers in " .. mode .. " mode to " .. adapter, function()
+				pr.open_pr_float({ "title" }, { "body" }, { mode = mode, pr_number = mode == "edit" and 253 or nil })
+				local title_buf = vim.api.nvim_get_current_buf()
+				local title_win = vim.api.nvim_get_current_win()
+				local body_buf, body_win
+				for _, win in ipairs(vim.api.nvim_list_wins()) do
+					local buf = vim.api.nvim_win_get_buf(win)
+					if vim.bo[buf].filetype == "markdown" then
+						body_buf, body_win = buf, win
+					end
+				end
+				assert.is_not_nil(body_buf)
+				local source = require("fude.completion." .. adapter).new()
+				local available = adapter == "blink" and source.enabled or source.is_available
+				assert.is_false(available(source))
+				assert.is_false(completion.is_enabled(title_buf))
+				vim.api.nvim_set_current_win(body_win)
+				assert.is_true(available(source))
+				assert.is_nil(vim.b[body_buf].fude_comment)
+				for _, spec in ipairs({ { "@", "fetch_mentions" }, { "#", "fetch_issues" }, { "_", "fetch_commits" } }) do
+					local called = false
+					helpers.mock(completion, spec[2], function(cb, buf)
+						assert.are.equal(body_buf, buf)
+						called = true
+						cb({ { label = "candidate" } })
+					end)
+					local response
+					local function receive(value)
+						response = value
+					end
+					-- The request buffer, not later focus, determines the target.
+					vim.api.nvim_set_current_win(title_win)
+					if adapter == "blink" then
+						source:get_completions({ line = spec[1], cursor = { 1, 1 }, bufnr = body_buf }, receive)
+						assert.are.equal("candidate", response.items[1].label)
+					else
+						source:complete({ context = { cursor_before_line = spec[1], bufnr = body_buf } }, receive)
+						assert.are.equal("candidate", response[1].label)
+					end
+					assert.is_true(called)
+					vim.api.nvim_set_current_win(body_win)
+				end
+				assert.are.same({}, require("fude.ui").comment_input_buffers())
+				require("fude.ui").close_comment_ui()
+				assert.is_true(vim.api.nvim_win_is_valid(body_win))
+				assert.is_true(vim.api.nvim_buf_is_valid(body_buf))
+			end)
+		end
+	end
 end)
 
 describe("edit draft persistence", function()

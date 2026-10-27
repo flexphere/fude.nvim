@@ -710,6 +710,7 @@ end
 --- @param opts table|nil { mode: "create"|"edit", footer: string, from_draft: boolean, on_submit: fun(...),
 ---   allow_draft: boolean, on_save_draft: fun(t_lines: string[], b_lines: string[]), on_discard_draft: fun(),
 ---   base: string|nil (create mode: base branch passed to `gh pr create --base`; nil lets gh choose),
+---   pr_number: number|nil (edit mode: explicit PR number for commit completion),
 ---   stack: table|nil (create mode: the `resolve_stack` result when the user chose to stack the PR;
 ---   after creation it is linked on top of `parent_url` as a GitHub stacked PR) }
 function M.open_pr_float(title_lines, body_lines, opts)
@@ -730,6 +731,11 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	vim.api.nvim_buf_set_lines(body_buf, 0, -1, false, body_lines)
 	vim.bo[body_buf].buftype = "nofile"
 	vim.bo[body_buf].bufhidden = "wipe"
+	require("fude.completion").attach_pr(body_buf, {
+		cwd = vim.fn.getcwd(),
+		base = opts.base,
+		pr_number = opts.pr_number,
+	})
 	vim.bo[body_buf].filetype = "markdown"
 
 	-- Calculate dimensions
@@ -1636,6 +1642,7 @@ function M.edit()
 
 				M.open_pr_float(title_lines, body_lines, {
 					mode = "edit",
+					pr_number = num,
 					from_draft = from_draft,
 					allow_draft = draft_key ~= nil and drafts.enabled(),
 					on_save_draft = function(t_lines, b_lines)

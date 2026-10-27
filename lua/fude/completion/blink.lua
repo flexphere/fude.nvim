@@ -7,7 +7,7 @@ function source.new()
 end
 
 function source:enabled()
-	return vim.b.fude_comment == true
+	return require("fude.completion").is_enabled()
 end
 
 function source:get_trigger_characters()
@@ -22,18 +22,18 @@ function source:get_completions(ctx, callback)
 	if context == "mention" then
 		core.fetch_mentions(function(items)
 			callback({ items = items })
-		end)
+		end, ctx.bufnr)
 	elseif context == "issue" then
 		core.fetch_issues(function(items)
 			callback({ items = items })
-		end)
+		end, ctx.bufnr)
 	elseif context == "commit" then
 		core.fetch_commits(function(items)
 			for idx, item in ipairs(items) do
 				item.score_offset = 1000 - idx
 			end
 			callback({ items = items })
-		end)
+		end, ctx.bufnr)
 	else
 		callback({ items = {} })
 	end
