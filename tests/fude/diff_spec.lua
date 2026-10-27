@@ -452,6 +452,15 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 	it("returns nil when gh-stack metadata does not exist", function()
 		assert.is_nil(diff.get_gh_stack_parent("feature"))
 	end)
+
+	it("returns the main .git from a linked worktree as the common git dir", function()
+		local wt = vim.fn.tempname()
+		git("worktree", "add", "-q", "-b", "wt-branch", wt)
+		vim.cmd.cd(wt) -- after_each restores the original cwd
+		local common_dir = diff.get_git_common_dir()
+		vim.fn.delete(wt, "rf")
+		assert.are.equal(vim.fn.resolve(repo .. "/.git"), vim.fn.resolve(common_dir))
+	end)
 end)
 
 describe("make_relative", function()
