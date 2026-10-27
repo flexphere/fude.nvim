@@ -76,7 +76,9 @@ line. It retains the positional `comment_map` for inline rendering, adds outdate
 comments and unpositioned replies belonging to visible threads, and sorts each thread
 root-first with chronological replies (numeric IDs break timestamp ties). Each entry
 contains that thread's complete `comments`, so `ui/format.format_comment_browser_thread`
-renders the entry directly, including sibling replies after root deletion. Ownership,
+renders the entry directly, including sibling replies after root deletion. Browser
+reply submission reads the first comment's `in_reply_to_id` (or its own ID) directly,
+since an unpositioned reply need not exist in `comment_map`. Ownership,
 pending/resolved labels, reply/edit/delete targets and reply/edit draft markers are
 thread-specific. Multi-line entries carry `start_line` and display `path:L15-L20`;
 `line`/`lnum` remain the ending line for file jumps. `merge_draft_entries` matches

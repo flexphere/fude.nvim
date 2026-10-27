@@ -519,7 +519,10 @@ local function create_browser(entries, issue_comments)
 
 		if browser.mode == "reply" then
 			if entry.type == "review" then
-				local reply_target_id = data.get_reply_target_id(entry.comments[1].id, state.comment_map or {})
+				-- The first surviving reply may have no line and thus no entry in
+				-- comment_map. Resolve from the selected thread, not the inline map.
+				local first = entry.comments[1]
+				local reply_target_id = require("fude.util").null_to(first.in_reply_to_id, first.id)
 				get_sync().reply_to_comment(reply_target_id, body, function(err)
 					if err then
 						vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)

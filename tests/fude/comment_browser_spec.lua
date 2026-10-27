@@ -83,8 +83,19 @@ describe("comment browser independent threads", function()
 			assert.is_nil(body:find("range", 1, true))
 			press(browser.upper_buf, "d")
 			assert.are.equal(1, deleted)
+			-- The earliest surviving reply has no position and is absent from the
+			-- inline map. Reply routing must use the selected thread's data.
+			config.state.comments = {
+				{ id = 3, in_reply_to_id = 2, path = "a.lua", line = vim.NIL, body = "first reply", created_at = "2026-01-03" },
+				{ id = 4, in_reply_to_id = 2, path = "a.lua", line = 20, body = "second reply", created_at = "2026-01-04" },
+			}
+			config.state.comment_map = data.build_comment_map(config.state.comments)
 			press(browser.left_buf, "R")
-			assert.are.equal(2, #browser.entries)
+			assert.are.equal(1, #browser.entries)
+			assert.are.equal(3, browser.entries[1].comments[1].id)
+			replied = nil
+			press(browser.lower_buf, "<CR>")
+			assert.are.equal(2, replied)
 			local opened, jumped
 			helpers.mock(vim, "cmd", function(cmd)
 				opened = cmd
