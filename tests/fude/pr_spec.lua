@@ -1,7 +1,11 @@
 local pr = require("fude.pr")
 local diff = require("fude.diff")
 local gh = require("fude.gh")
+local drafts = require("fude.drafts")
 local helpers = require("tests.helpers")
+
+-- The creation draft key create() resolves from the mocked git state below
+local CREATE_DRAFT_KEY = pr.build_create_draft_key("/repo/.git", "feat/me")
 
 describe("create passes default title to open_pr_float", function()
 	local captured_title_lines
@@ -14,6 +18,7 @@ describe("create passes default title to open_pr_float", function()
 	local lookup_branches
 	local lookup_result
 	local notifications
+	local draft_dir
 
 	before_each(function()
 		captured_title_lines = nil
@@ -22,10 +27,16 @@ describe("create passes default title to open_pr_float", function()
 		base_entries = nil
 		base_callback = nil
 		pr.clear_draft()
+		draft_dir = vim.fn.tempname()
+		vim.fn.mkdir(draft_dir, "p")
+		drafts._dir = draft_dir
 
 		-- Mock diff functions
 		helpers.mock(diff, "get_repo_root", function()
 			return "/repo"
+		end)
+		helpers.mock(diff, "get_git_common_dir", function()
+			return "/repo/.git"
 		end)
 		helpers.mock(diff, "get_default_branch", function()
 			return "main"
@@ -91,6 +102,8 @@ describe("create passes default title to open_pr_float", function()
 
 	after_each(function()
 		helpers.cleanup()
+		drafts._dir = nil
+		vim.fn.delete(draft_dir, "rf")
 	end)
 
 	it("passes default title when no templates and no draft", function()
@@ -246,10 +259,10 @@ describe("create passes default title to open_pr_float", function()
 		end)
 		stack_answer = true
 		lookup_result = { nil, nil }
-		pr.save_draft({ "draft title" }, { "draft body" })
+		pr.save_draft({ "draft title" }, { "draft body" }, CREATE_DRAFT_KEY)
 		pr.create()
 		assert.is_nil(captured_opts)
-		assert.are.same({ "draft title" }, pr.get_draft().title_lines)
+		assert.are.same({ "draft title" }, pr.get_draft(CREATE_DRAFT_KEY).title_lines)
 		assert.are.equal(1, #notifications)
 		assert.is_not_nil(notifications[1].msg:find("feat/other has no open PR", 1, true))
 	end)
@@ -403,14 +416,14 @@ describe("create passes default title to open_pr_float", function()
 	end)
 
 	it("wires on_discard_draft to clear the session draft when opened from the draft", function()
-		pr.save_draft({ "Draft title" }, { "Draft body" })
+		pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY)
 
 		pr.create()
 
 		assert.is_true(captured_opts.from_draft)
 		assert.are.equal("main", captured_opts.base)
 		captured_opts.on_discard_draft()
-		assert.is_nil(pr.get_draft())
+		assert.is_nil(pr.get_draft(CREATE_DRAFT_KEY))
 	end)
 
 	it("does not fetch default title when only draft exists", function()
@@ -421,7 +434,7 @@ describe("create passes default title to open_pr_float", function()
 		end)
 
 		-- Save a draft
-		pr.save_draft({ "Draft title" }, { "Draft body" })
+		pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY)
 
 		-- Mock open_pr_float to track if draft is restored
 		local draft_title_lines
@@ -433,6 +446,72 @@ describe("create passes default title to open_pr_float", function()
 
 		assert.is_false(get_first_commit_called)
 		assert.are.same({ "Draft title" }, draft_title_lines)
+	end)
+
+	it("passes the branch draft key to the float", function()
+		pr.create()
+		assert.are.equal(CREATE_DRAFT_KEY, captured_opts.draft_key)
+	end)
+
+	it("restores a draft persisted to drafts.json, surviving a lost session", function()
+		pr.save_draft({ "Draft title" }, { "Draft body" }, CREATE_DRAFT_KEY)
+		-- a Neovim restart drops the session-local fallback, not drafts.json
+		pr.clear_draft()
+
+		pr.create()
+
+		assert.is_true(captured_opts.from_draft)
+		assert.are.same({ "Draft title" }, captured_title_lines)
+		assert.are.same({ "Draft body" }, captured_body_lines)
+	end)
+
+	it("does not offer another branch's draft", function()
+		pr.save_draft({ "Other" }, { "other body" }, pr.build_create_draft_key("/repo/.git", "feat/other"))
+
+		pr.create()
+
+		assert.is_nil(captured_opts.from_draft)
+		assert.are.same({ "Initial commit message" }, captured_title_lines)
+	end)
+
+	it("falls back to the session-local draft on a detached HEAD", function()
+		helpers.mock(diff, "get_current_branch", function()
+			return nil
+		end)
+		pr.save_draft({ "Session title" }, { "Session body" })
+
+		pr.create()
+
+		assert.is_nil(captured_opts.draft_key)
+		assert.is_true(captured_opts.from_draft)
+		assert.are.same({ "Session title" }, captured_title_lines)
+	end)
+
+	it("falls back to the session-local draft when drafts are disabled", function()
+		local config = require("fude.config")
+		local orig_drafts = config.opts.drafts
+		config.opts.drafts = { enabled = false }
+		pr.save_draft({ "Session title" }, { "Session body" }, CREATE_DRAFT_KEY)
+
+		pr.create()
+
+		config.opts.drafts = orig_drafts
+		assert.are.equal(0, vim.fn.filereadable(draft_dir .. "/drafts.json"))
+		assert.is_true(captured_opts.from_draft)
+		assert.are.same({ "Session title" }, captured_title_lines)
+	end)
+end)
+
+describe("build_create_draft_key", function()
+	it("keys the draft by common git dir and branch", function()
+		assert.are.equal("git:/repo/.git:#feat/x:pr_create", pr.build_create_draft_key("/repo/.git", "feat/x"))
+	end)
+
+	it("returns nil without a branch or common dir", function()
+		assert.is_nil(pr.build_create_draft_key("/repo/.git", nil))
+		assert.is_nil(pr.build_create_draft_key("/repo/.git", ""))
+		assert.is_nil(pr.build_create_draft_key(nil, "feat/x"))
+		assert.is_nil(pr.build_create_draft_key("", "feat/x"))
 	end)
 end)
 
@@ -1004,6 +1083,48 @@ describe("open_pr_float cancel confirmation", function()
 		assert.is_false(vim.api.nvim_win_is_valid(h.body_win))
 	end)
 
+	describe("with a drafts.json key", function()
+		local draft_dir
+		local key = pr.build_create_draft_key("/repo/.git", "feat/me")
+		local notified
+
+		before_each(function()
+			draft_dir = vim.fn.tempname()
+			vim.fn.mkdir(draft_dir, "p")
+			drafts._dir = draft_dir
+			notified = {}
+			helpers.mock(vim, "notify", function(msg)
+				table.insert(notified, msg)
+			end)
+		end)
+
+		after_each(function()
+			drafts._dir = nil
+			vim.fn.delete(draft_dir, "rf")
+		end)
+
+		it("saves the create draft to drafts.json", function()
+			select_choice = "Save draft & close"
+			local h = open_float({ "t" }, { "b" }, { draft_key = key })
+			vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "edited body" })
+			get_q_callback(h.body_buf)()
+			assert.are.equal("t\nedited body", drafts.get(key))
+			assert.is_nil(pr.get_draft())
+			assert.are.same({ "fude.nvim: Draft saved" }, notified)
+		end)
+
+		it("reports a cleared draft when saving empty input", function()
+			drafts.set(key, "old\nbody")
+			select_choice = "Save draft & close"
+			local h = open_float({ "old" }, { "body" }, { draft_key = key })
+			vim.api.nvim_buf_set_lines(h.title_buf, 0, -1, false, { "" })
+			vim.api.nvim_buf_set_lines(h.body_buf, 0, -1, false, { "" })
+			get_q_callback(h.body_buf)()
+			assert.is_nil(drafts.get(key))
+			assert.are.same({ "fude.nvim: Empty input — draft cleared" }, notified)
+		end)
+	end)
+
 	it("keeps the float open when 'Keep editing' chosen", function()
 		select_choice = nil
 		local h = open_float({ "t" }, { "b" }, {})
@@ -1083,9 +1204,15 @@ describe("create submit draft cleanup", function()
 		error("<CR> mapping not found for buffer " .. buf)
 	end
 
+	local draft_dir
+	local key = pr.build_create_draft_key("/repo/.git", "feat/me")
+
 	before_each(function()
 		pr.clear_draft()
 		orig_paste = vim.paste
+		draft_dir = vim.fn.tempname()
+		vim.fn.mkdir(draft_dir, "p")
+		drafts._dir = draft_dir
 	end)
 
 	after_each(function()
@@ -1093,6 +1220,52 @@ describe("create submit draft cleanup", function()
 		helpers.cleanup()
 		vim.paste = orig_paste
 		pr.clear_draft()
+		drafts._dir = nil
+		vim.fn.delete(draft_dir, "rf")
+	end)
+
+	it("persists the input to drafts.json and keeps it when creation fails", function()
+		local finish_create
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
+			finish_create = callback
+		end)
+		helpers.mock(vim, "notify", function() end)
+
+		pr.open_pr_float({ "t" }, { "b" }, { draft_key = key })
+		get_cr_callback(vim.api.nvim_get_current_buf())()
+		finish_create("must push the branch first", nil)
+
+		assert.are.equal("t\nb", drafts.get(key))
+		-- the session-local fallback is untouched
+		assert.is_nil(pr.get_draft())
+	end)
+
+	it("clears the drafts.json entry after success when nothing was saved in flight", function()
+		local finish_create
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
+			finish_create = callback
+		end)
+
+		pr.open_pr_float({ "t" }, { "b" }, { draft_key = key })
+		get_cr_callback(vim.api.nvim_get_current_buf())()
+		assert.is_not_nil(drafts.get(key))
+
+		finish_create(nil, { url = "https://github.com/o/r/pull/1" })
+		assert.is_nil(drafts.get(key))
+	end)
+
+	it("keeps a drafts.json entry re-saved with the same content while in flight", function()
+		local finish_create
+		helpers.mock(gh, "create_draft_pr", function(_, _, _, _, callback)
+			finish_create = callback
+		end)
+
+		pr.open_pr_float({ "t" }, { "b" }, { draft_key = key })
+		get_cr_callback(vim.api.nvim_get_current_buf())()
+		pr.save_draft({ "t" }, { "b" }, key)
+
+		finish_create(nil, { url = "https://github.com/o/r/pull/1" })
+		assert.are.equal("t\nb", drafts.get(key))
 	end)
 
 	it("keeps a session draft saved while the create request is in flight", function()
@@ -1896,7 +2069,6 @@ end)
 
 describe("edit draft persistence", function()
 	local config = require("fude.config")
-	local drafts = require("fude.drafts")
 	local captured_title_lines
 	local captured_body_lines
 	local captured_opts

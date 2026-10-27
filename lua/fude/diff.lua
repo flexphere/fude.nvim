@@ -581,6 +581,20 @@ function M.parse_gh_stack_parent(text, branch)
 	return nil
 end
 
+--- Get the absolute path of the common git dir, shared by every worktree of
+--- the repository (the main worktree's `.git`). Symlinks are resolved so the
+--- same repository reached through different paths yields the same value.
+--- @return string|nil path (nil outside a git repository)
+function M.get_git_common_dir()
+	local result = vim
+		.system({ "git", "rev-parse", "--path-format=absolute", "--git-common-dir" }, { text = true })
+		:wait()
+	if result.code ~= 0 or not result.stdout or vim.trim(result.stdout) == "" then
+		return nil
+	end
+	return vim.fn.resolve(vim.trim(result.stdout))
+end
+
 --- Get the parent branch of `branch` recorded by the gh-stack extension.
 --- Reads `.git/gh-stack` from the common git dir (shared by worktrees) directly,
 --- which avoids `gh stack view` (it refreshes PR state over the network).
@@ -590,13 +604,11 @@ function M.get_gh_stack_parent(branch)
 	if not branch then
 		return nil
 	end
-	local result = vim
-		.system({ "git", "rev-parse", "--path-format=absolute", "--git-common-dir" }, { text = true })
-		:wait()
-	if result.code ~= 0 or not result.stdout then
+	local common_dir = M.get_git_common_dir()
+	if not common_dir then
 		return nil
 	end
-	local path = vim.trim(result.stdout) .. "/gh-stack"
+	local path = common_dir .. "/gh-stack"
 	local ok, lines = pcall(vim.fn.readfile, path)
 	if not ok then
 		return nil

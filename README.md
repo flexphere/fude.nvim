@@ -375,9 +375,13 @@ drafts show as `[draft]` rows you can jump to. Disable with
 
 Cancelling `:FudeEditPR` with unsaved title/body changes offers the same 3-way
 choice; the draft is stored per repo + PR and restored the next time you edit
-that PR (removed after a successful update). `:FudeCreatePR` drafts are kept
-in memory for the current Neovim session and offered as a `(draft)` entry on
-the next `:FudeCreatePR`.
+that PR (removed after a successful update). `:FudeCreatePR` stores its draft in
+the same file, keyed per repository + branch, both when you cancel with *Save
+draft & close* and when creating the PR fails (e.g. the branch is not pushed
+yet). It is offered as a `(draft)` entry on the next `:FudeCreatePR` from that
+branch, also after restarting Neovim, and removed once the PR is created. On a
+detached HEAD or with `drafts.enabled = false` it is kept in memory for the
+current Neovim session instead.
 
 ## Local review mode (pre-PR)
 
