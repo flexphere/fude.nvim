@@ -5,8 +5,9 @@ local util = require("fude.util")
 --- @param args string[] arguments to pass to `gh`
 --- @param callback fun(err: string|nil, stdout: string|nil)
 --- @param stdin string|nil optional stdin data
-function M.run(args, callback, stdin)
-	local opts = { text = true }
+--- @param cwd string|nil working directory for repository resolution
+function M.run(args, callback, stdin, cwd)
+	local opts = { text = true, cwd = cwd }
 	if stdin then
 		opts.stdin = stdin
 	end
@@ -25,7 +26,8 @@ end
 --- @param args string[] arguments to pass to `gh`
 --- @param callback fun(err: string|nil, data: table|nil)
 --- @param stdin string|nil optional stdin data
-function M.run_json(args, callback, stdin)
+--- @param cwd string|nil working directory for repository resolution
+function M.run_json(args, callback, stdin, cwd)
 	M.run(args, function(err, stdout)
 		if err then
 			return callback(err, nil)
@@ -35,7 +37,7 @@ function M.run_json(args, callback, stdin)
 			return callback("JSON parse error: " .. tostring(parsed), nil)
 		end
 		callback(nil, parsed)
-	end, stdin)
+	end, stdin, cwd)
 end
 
 --- Parse commits API response into PR info format.
@@ -291,12 +293,13 @@ end
 
 --- Get repository collaborators (for @mention completion).
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.get_collaborators(callback)
+--- @param cwd string|nil working directory for repository resolution
+function M.get_collaborators(callback, cwd)
 	M.run_json({
 		"api",
 		"repos/{owner}/{repo}/collaborators",
 		"--paginate",
-	}, callback)
+	}, callback, nil, cwd)
 end
 
 --- Build the GraphQL query string for fetching PR viewed files.
@@ -434,22 +437,24 @@ end
 
 --- Get repository issues and PRs (for #reference completion).
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.get_repo_issues(callback)
+--- @param cwd string|nil working directory for repository resolution
+function M.get_repo_issues(callback, cwd)
 	M.run_json({
 		"api",
 		"repos/{owner}/{repo}/issues?state=all&per_page=100&sort=updated&direction=desc",
-	}, callback)
+	}, callback, nil, cwd)
 end
 
 --- Get the list of commits in a PR.
 --- @param pr_number number
 --- @param callback fun(err: string|nil, commits: table|nil)
-function M.get_pr_commits(pr_number, callback)
+--- @param cwd string|nil working directory for repository resolution
+function M.get_pr_commits(pr_number, callback, cwd)
 	M.run_json({
 		"api",
 		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/commits",
 		"--paginate",
-	}, callback)
+	}, callback, nil, cwd)
 end
 
 --- Get the files changed in a specific commit.

@@ -2,6 +2,36 @@ local M = {}
 local gh = require("fude.gh")
 
 local CACHE_TTL = 300 -- 5 minutes
+local pr_contexts = {}
+
+--- Register a PR body without marking it as a comment input (which would
+--- make ui.close_comment_ui close it). Each float owns its repository/cache.
+--- @param buf number
+--- @param opts table { cwd: string, base?: string, pr_number?: number }
+function M.attach_pr(buf, opts)
+	pr_contexts[buf] = {
+		cwd = opts.cwd,
+		base = opts.base,
+		pr_number = opts.pr_number,
+		tip = not opts.pr_number and require("fude.diff").get_head_sha(opts.cwd) or nil,
+		cache = {},
+	}
+	vim.api.nvim_create_autocmd("BufWipeout", {
+		buffer = buf,
+		once = true,
+		callback = function()
+			pr_contexts[buf] = nil
+		end,
+	})
+end
+
+--- Whether this buffer accepts fude completion (not ordinary Markdown).
+--- @param buf number|nil defaults to the current buffer
+--- @return boolean
+function M.is_enabled(buf)
+	buf = buf or vim.api.nvim_get_current_buf()
+	return vim.api.nvim_buf_is_valid(buf) and (vim.b[buf].fude_comment == true or pr_contexts[buf] ~= nil)
+end
 
 local cache = {
 	collaborators = nil,
@@ -13,21 +43,35 @@ local cache = {
 }
 
 --- Check if cached data is still valid.
+--- @param data_cache table shared comment cache or a PR body's cache
 --- @param key string cache key
 --- @return boolean
-local function cache_valid(key)
-	return cache[key] ~= nil and (os.time() - cache[key .. "_time"]) < CACHE_TTL
+local function cache_valid(data_cache, key)
+	return data_cache[key] ~= nil and (os.time() - data_cache[key .. "_time"]) < CACHE_TTL
+end
+
+local function context_for(buf)
+	buf = buf or vim.api.nvim_get_current_buf()
+	return pr_contexts[buf], buf
+end
+
+local function context_alive(ctx, buf)
+	return ctx == nil or (vim.api.nvim_buf_is_valid(buf) and pr_contexts[buf] == ctx)
 end
 
 --- Fetch collaborators and return completion items via callback.
 --- @param callback fun(items: table[])
-function M.fetch_mentions(callback)
-	if cache_valid("collaborators") then
-		return callback(cache.collaborators)
+--- @param buf number|nil completion request buffer
+function M.fetch_mentions(callback, buf)
+	local ctx
+	ctx, buf = context_for(buf)
+	local data_cache = ctx and ctx.cache or cache
+	if cache_valid(data_cache, "collaborators") then
+		return callback(data_cache.collaborators)
 	end
 
 	gh.get_collaborators(function(err, data)
-		if err or not data then
+		if not context_alive(ctx, buf) or err or not data then
 			return callback({})
 		end
 
@@ -48,21 +92,25 @@ function M.fetch_mentions(callback)
 			end
 		end
 
-		cache.collaborators = items
-		cache.collaborators_time = os.time()
+		data_cache.collaborators = items
+		data_cache.collaborators_time = os.time()
 		callback(items)
-	end)
+	end, ctx and ctx.cwd)
 end
 
 --- Fetch issues/PRs and return completion items via callback.
 --- @param callback fun(items: table[])
-function M.fetch_issues(callback)
-	if cache_valid("issues") then
-		return callback(cache.issues)
+--- @param buf number|nil completion request buffer
+function M.fetch_issues(callback, buf)
+	local ctx
+	ctx, buf = context_for(buf)
+	local data_cache = ctx and ctx.cache or cache
+	if cache_valid(data_cache, "issues") then
+		return callback(data_cache.issues)
 	end
 
 	gh.get_repo_issues(function(err, data)
-		if err or not data then
+		if not context_alive(ctx, buf) or err or not data then
 			return callback({})
 		end
 
@@ -89,10 +137,10 @@ function M.fetch_issues(callback)
 			end
 		end
 
-		cache.issues = items
-		cache.issues_time = os.time()
+		data_cache.issues = items
+		data_cache.issues_time = os.time()
 		callback(items)
-	end)
+	end, ctx and ctx.cwd)
 end
 
 --- Determine completion context from text before cursor.
@@ -140,10 +188,101 @@ function M.build_commit_items(commit_entries)
 	return items
 end
 
---- Fetch PR commit entries and return completion items via callback.
---- Results are cached and invalidated when state.pr_commits changes.
+--- Parse git log's unit-separated fields; the subject is the final field so
+--- tabs, pipes and separator characters in a subject remain intact.
+--- @param output string
+--- @return table[] entries compatible with build_commit_items
+function M.parse_git_commits(output)
+	local entries = {}
+	for line in output:gmatch("[^\r\n]+") do
+		local sha, short_sha, author, date, message = line:match("^([^\31]+)\31([^\31]+)\31([^\31]*)\31([^\31]*)\31(.*)$")
+		if sha then
+			table.insert(entries, { sha = sha, short_sha = short_sha, author_name = author, date = date, message = message })
+		end
+	end
+	return entries
+end
+
+-- PR creation has no GitHub PR yet. Read the selected base..tip locally so
+-- unpushed commits are available too, without blocking the editor on git log.
+local function fetch_local_commits(ctx, buf, callback)
+	if not ctx.tip then
+		return callback(nil, {})
+	end
+	local function run(base, retry)
+		local args = {
+			"git",
+			"log",
+			"--no-show-signature",
+			"--reverse",
+			"--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s",
+		}
+		if not base then
+			vim.list_extend(args, { "-n", "100" })
+		end
+		vim.list_extend(args, { "--end-of-options", base and (base .. ".." .. ctx.tip) or ctx.tip, "--" })
+		vim.system(args, { text = true, cwd = ctx.cwd }, function(result)
+			vim.schedule(function()
+				if not context_alive(ctx, buf) then
+					return callback("PR body closed")
+				end
+				if result.code ~= 0 and retry then
+					return run("origin/" .. base, false)
+				end
+				if result.code ~= 0 then
+					return callback(result.stderr or "git log failed")
+				end
+				callback(nil, M.parse_git_commits(result.stdout or ""))
+			end)
+		end)
+	end
+	run(ctx.base, ctx.base ~= nil)
+end
+
+local function fetch_pr_body_commits(ctx, buf, callback)
+	if ctx.cache.commits then
+		return callback(ctx.cache.commits)
+	end
+	if ctx.pending then
+		table.insert(ctx.pending, callback)
+		return
+	end
+	ctx.pending = { callback }
+	local function done(err, entries)
+		local items = {}
+		if context_alive(ctx, buf) and not err then
+			items = M.build_commit_items(entries or {})
+			ctx.cache.commits = items
+		end
+		local pending = ctx.pending
+		ctx.pending = nil
+		for _, cb in ipairs(pending) do
+			cb(items)
+		end
+	end
+	if ctx.pr_number then
+		gh.get_pr_commits(ctx.pr_number, function(err, raw)
+			if not context_alive(ctx, buf) then
+				return done("PR body closed")
+			end
+			done(err, not err and gh.parse_commit_entries(raw or {}) or nil)
+		end, ctx.cwd)
+	else
+		fetch_local_commits(ctx, buf, done)
+	end
+end
+
+--- Fetch commits from the PR body's own context, or the review session for
+--- comment inputs. PR body results live until that body is wiped; review
+--- results are invalidated when state.pr_commits changes.
 --- @param callback fun(items: table[])
-function M.fetch_commits(callback)
+--- @param buf number|nil completion request buffer
+function M.fetch_commits(callback, buf)
+	local ctx
+	ctx, buf = context_for(buf)
+	if ctx then
+		return fetch_pr_body_commits(ctx, buf, callback)
+	end
 	local config = require("fude.config")
 	local raw_commits = config.state.pr_commits
 	if not raw_commits or #raw_commits == 0 then
