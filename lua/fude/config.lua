@@ -136,6 +136,9 @@ M.defaults = {
 			change_base = "b", -- Local review only: pick a new base branch
 			toggle_commit_message = "m", -- Expand/collapse a commit message longer than max_lines
 			help = "?", -- Show the side panel's configured keymaps
+			select_alt = "<Space>", -- Same as select, registered last so it never takes another action's key
+			-- Any action also accepts `{ "<Space>", nowait = true }` to fire without
+			-- waiting for longer mappings such as `<leader>ff` (then unreachable in the panel).
 		},
 	},
 	-- Callback invoked after review start completes (all data fetched).

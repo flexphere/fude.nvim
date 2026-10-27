@@ -1066,6 +1066,22 @@ function M.toggle()
 	end
 end
 
+--- Parse a `sidepanel.keymaps` value: a key string, or `{ key, nowait = true }`
+--- to fire without waiting for longer mappings that start with the key.
+--- @param value any
+--- @return string|nil lhs nil when the action is disabled or the value is invalid
+--- @return boolean nowait
+function M.parse_keymap_spec(value)
+	local lhs, nowait = value, false
+	if type(value) == "table" then
+		lhs, nowait = value[1], value.nowait == true
+	end
+	if type(lhs) ~= "string" or lhs == "" then
+		return nil, false
+	end
+	return lhs, nowait
+end
+
 --- Setup keymaps for the sidepanel buffer.
 --- @param panel table sidepanel state
 function M.setup_keymaps(panel)
@@ -1084,8 +1100,8 @@ function M.setup_keymaps(panel)
 	local used_lhs = {}
 	panel.help_mappings = {}
 	local function map(action, callback, desc)
-		local lhs = keymaps[action]
-		if type(lhs) ~= "string" or lhs == "" then
+		local lhs, nowait = M.parse_keymap_spec(keymaps[action])
+		if not lhs then
 			return
 		end
 		local key = vim.api.nvim_replace_termcodes(lhs, true, true, true)
@@ -1093,12 +1109,12 @@ function M.setup_keymaps(panel)
 			return
 		end
 		used_lhs[key] = true
-		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
+		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc, nowait = nowait })
 		table.insert(panel.help_mappings, { action = action, lhs = lhs, desc = desc })
 	end
 
 	-- Select / Open
-	map("select", function()
+	local function select_entry()
 		local entry_info = M.get_current_entry(panel)
 		if not entry_info then
 			return
@@ -1122,7 +1138,8 @@ function M.setup_keymaps(panel)
 				M.open_file(panel, filename, entry_info.entry)
 			end
 		end
-	end, "Select scope, toggle directory, or open file")
+	end
+	map("select", select_entry, "Select scope, toggle directory, or open file")
 
 	-- Toggle reviewed/viewed
 	map("toggle_reviewed", function()
@@ -1186,6 +1203,10 @@ function M.setup_keymaps(panel)
 	map("help", function()
 		M.toggle_help(panel)
 	end, "Show panel keymaps")
+
+	-- Registered last: a newer default must not take a key the user already
+	-- assigned to another action (e.g. toggle_reviewed = "<Space>").
+	map("select_alt", select_entry, "Select scope, toggle directory, or open file")
 end
 
 --- Build the sorted 1-based list of panel lines `next_entry`/`prev_entry` stop on:
