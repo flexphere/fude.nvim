@@ -393,29 +393,55 @@ function M.find_templates()
 	return templates
 end
 
---- Show a persistent stack failure message. Never close or delete a GitHub PR.
+--- Highlight of the error text in error floats.
+M.ERROR_HL = "DiagnosticError"
+--- Highlight of fude's suggestions (what to do next) in error floats.
+M.SUGGESTION_HL = "DiagnosticWarn"
+
+--- Append an `Original Error:` section with the (possibly multi-line) error to `lines`,
+--- marking each error line with `M.ERROR_HL` in `highlights`.
+--- @param lines string[]
+--- @param highlights table<number, string> 1-based line → highlight group
 --- @param err string
---- @param pr_url string|nil URL when creation already succeeded; "" when not returned
-function M.show_stack_error(err, pr_url)
+--- @return string[] lines
+--- @return table<number, string> highlights
+local function append_error(lines, highlights, err)
+	vim.list_extend(lines, { "", "Original Error:" })
+	for _, line in ipairs(vim.split(vim.trim(format.normalize_newlines(err)), "\n", { plain = true })) do
+		table.insert(lines, line)
+		highlights[#lines] = M.ERROR_HL
+	end
+	return lines, highlights
+end
+
+local error_float_ns = vim.api.nvim_create_namespace("fude_error_float")
+
+--- Footer of the error float.
+--- @param can_open_pr boolean
+--- @return string
+function M.build_error_footer(can_open_pr)
+	return can_open_pr and " q close | c copy | o open PR " or " q close | c copy "
+end
+
+--- Open a persistent read-only error float. Asynchronous failures land here,
+--- so it stays until dismissed rather than flashing by as a notification.
+--- @param lines string[]
+--- @param highlights table<number, string> 1-based line → highlight group
+--- @param title string
+--- @param pr_url string|nil offers `o` to open it when non-empty
+local function open_error_float(lines, highlights, title, pr_url)
 	-- The asynchronous failure may arrive while the user is editing elsewhere.
 	-- Enter normal mode so the advertised q mapping works immediately.
 	vim.cmd("stopinsert")
-	local lines = pr_url
-			and {
-				"The draft PR was created, but stacking failed.",
-				"The PR has NOT been closed or deleted.",
-				pr_url ~= "" and ("PR: " .. pr_url) or "PR URL was not returned. Find the PR on GitHub.",
-				"Check its stack status on GitHub before retrying; do not create another PR.",
-			}
-		or {
-			"Stacked PR creation cancelled before creating a PR.",
-			"Any saved draft has been kept.",
-		}
-	vim.list_extend(lines, { "", "Error:" })
-	vim.list_extend(lines, vim.split(vim.trim(format.normalize_newlines(err)), "\n", { plain = true }))
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.bo[buf].bufhidden = "wipe"
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	for lnum, hl in pairs(highlights) do
+		vim.api.nvim_buf_set_extmark(buf, error_float_ns, lnum - 1, 0, {
+			end_col = #lines[lnum],
+			hl_group = hl,
+		})
+	end
 	vim.bo[buf].modifiable = false
 	local float = config.opts.float or {}
 	local dim = format.calculate_float_dimensions(vim.o.columns, vim.o.lines, float.width or 50, float.height or 50)
@@ -435,9 +461,9 @@ function M.show_stack_error(err, pr_url)
 		height = height,
 		style = "minimal",
 		border = border,
-		title = " Stacking failed ",
+		title = title,
 		title_pos = "center",
-		footer = can_open_pr and " q close | o open PR " or " q close ",
+		footer = M.build_error_footer(can_open_pr),
 		footer_pos = "center",
 	})
 	vim.wo[win].wrap = true
@@ -446,11 +472,105 @@ function M.show_stack_error(err, pr_url)
 			vim.api.nvim_win_close(win, true)
 		end
 	end, { buffer = buf, nowait = true, silent = true })
+	-- Copy the whole float (message, suggestion and original error) to the
+	-- clipboard and the unnamed register, e.g. to paste into an issue
+	vim.keymap.set("n", "c", function()
+		local text = table.concat(lines, "\n")
+		vim.fn.setreg('"', text)
+		-- Without a clipboard provider (ssh without OSC 52, headless) "+" is not
+		-- set. Reading "+" back to check is avoided: with the OSC 52 provider
+		-- that read is a terminal query that may block or fail spuriously
+		local copied = vim.fn.has("clipboard") == 1 and pcall(vim.fn.setreg, "+", text)
+		if copied then
+			vim.notify("fude.nvim: Error message copied", vim.log.levels.INFO)
+		else
+			vim.notify("fude.nvim: Error message copied to the unnamed register (clipboard unavailable)", vim.log.levels.WARN)
+		end
+	end, { buffer = buf, nowait = true, silent = true, desc = "Copy error message" })
 	if can_open_pr then
 		vim.keymap.set("n", "o", function()
 			vim.ui.open(pr_url)
 		end, { buffer = buf, nowait = true, silent = true, desc = "Open PR in browser" })
 	end
+end
+
+--- Show a persistent stack failure message. Never close or delete a GitHub PR.
+--- @param err string
+--- @param pr_url string|nil URL when creation already succeeded; "" when not returned
+function M.show_stack_error(err, pr_url)
+	local lines, highlights
+	if pr_url then
+		lines = {
+			"The draft PR was created, but stacking failed.",
+			"The PR has NOT been closed or deleted.",
+			pr_url ~= "" and ("PR: " .. pr_url) or "PR URL was not returned. Find the PR on GitHub.",
+			"Check its stack status on GitHub before retrying; do not create another PR.",
+		}
+		highlights = { [4] = M.SUGGESTION_HL }
+	else
+		lines = {
+			"Stacked PR creation cancelled before creating a PR.",
+			"Any saved draft has been kept.",
+		}
+		highlights = {}
+	end
+	lines, highlights = append_error(lines, highlights, err)
+	open_error_float(lines, highlights, " Stacking failed ", pr_url)
+end
+
+--- Build the lines of the push error float.
+--- @param err string git push error (enabled) or gh pr create error (disabled)
+--- @param branch string
+--- @param remote string|nil the push target (shown only when `push_enabled`)
+--- @param push_enabled boolean `pr.push_before_create`
+--- @return string[] lines
+--- @return table<number, string> highlights 1-based line → highlight group: the
+---   error in `M.ERROR_HL`, fude's suggestion in `M.SUGGESTION_HL`
+--- @return string title
+function M.build_push_error_lines(err, branch, remote, push_enabled)
+	local lines, highlights
+	if push_enabled then
+		lines = {
+			'Failed to push "'
+				.. branch
+				.. '" to '
+				.. tostring(remote)
+				.. ", so no PR was created. The PR input has been kept as a draft.",
+		}
+		highlights = {}
+	else
+		-- one sentence group per line: the float wraps long lines itself
+		lines = {
+			'"'
+				.. branch
+				.. '" is not pushed to the remote, so `gh pr create` failed. The PR input has been kept as a draft.',
+			"Push the branch and run :FudeCreatePR again, or set `pr.push_before_create = true`"
+				.. " to push it automatically before creating a PR.",
+		}
+		highlights = { [2] = M.SUGGESTION_HL }
+	end
+	lines, highlights = append_error(lines, highlights, err)
+	return lines, highlights, push_enabled and " Push failed " or " Branch not pushed "
+end
+
+--- Whether a `gh pr create` error says the branch is not on the remote.
+--- Matched on gh's own message rather than fude's push status, so an
+--- unrelated failure (auth, network, an old gh without --attach) is never
+--- reported as an unpushed branch.
+--- @param err string|nil
+--- @return boolean
+function M.is_unpushed_branch_error(err)
+	return type(err) == "string" and err:find("must first push the current branch", 1, true) ~= nil
+end
+
+--- Show why a PR was not created because of the branch push.
+--- @param err string
+--- @param branch string
+--- @param remote string|nil
+--- @param push_enabled boolean
+function M.show_push_error(err, branch, remote, push_enabled)
+	local lines, highlights, title = M.build_push_error_lines(err, branch, remote, push_enabled)
+	open_error_float(lines, highlights, title)
 end
 
 --- Recheck the selected parent immediately before creating the PR. A changed
@@ -694,11 +814,36 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		local revision_at_submit = M.draft_revision(draft_key)
 
 		local extracted = M.parse_body_attachments(parsed.body, expand_home)
-		local function create_pr()
+		local push_enabled = config.opts.pr ~= nil and config.opts.pr.push_before_create == true
+		-- gh decides whether the branch is pushed (it compares HEAD with the
+		-- remote-tracking refs and, run without a terminal, aborts with "must
+		-- first push the current branch"). Reacting to that error, rather than
+		-- predicting it, keeps fude from disagreeing with gh about it.
+		local create_pr
+		local function push_and_retry(target)
+			vim.notify('fude.nvim: Pushing "' .. target.branch .. '" to ' .. target.remote .. "...", vim.log.levels.INFO)
+			diff.push_branch(target.remote, target.branch, function(push_err)
+				if push_err then
+					M.show_push_error(push_err, target.branch, target.remote, true)
+					return
+				end
+				create_pr(true)
+			end)
+		end
+		create_pr = function(retried)
 			vim.notify("fude.nvim: Creating draft PR...", vim.log.levels.INFO)
 			gh.create_draft_pr(parsed.title, extracted.body, extracted.attachments, opts.base, function(err, data)
 				if err then
-					vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
+					-- a detached HEAD (no target) falls through to gh's own message
+					local target = not retried and M.is_unpushed_branch_error(err) and diff.get_push_target() or nil
+					if target and push_enabled then
+						push_and_retry(target)
+					elseif target then
+						-- fude did not push: say so, and how to turn pushing on
+						M.show_push_error(err, target.branch, nil, false)
+					else
+						vim.notify("fude.nvim: " .. M.format_attach_error(err) .. " (draft saved)", vim.log.levels.ERROR)
+					end
 					return
 				end
 				-- The PR exists even if linking fails. Do not offer its input as
@@ -724,10 +869,10 @@ function M.open_pr_float(title_lines, body_lines, opts)
 					M.show_stack_error(err)
 					return
 				end
-				create_pr()
+				create_pr(false)
 			end)
 		else
-			create_pr()
+			create_pr(false)
 		end
 	end
 

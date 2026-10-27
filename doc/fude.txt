@@ -580,10 +580,11 @@ File opening position                                 *fude-file-position*
     the created PR's URL and the failure details. The PR is never closed
     or deleted automatically. Check its stack status on GitHub before
     retrying; do not create a duplicate PR. Error floats stay open until
-    dismissed. The footer shows `q close | o open PR` when the PR URL is
-    available: `q` closes the float and `o` opens the PR in the browser
-    without closing the float. Before creation, or if the create command
-    returned no PR URL, only `q close` is offered. A missing URL after a
+    dismissed. The footer shows `q close | c copy | o open PR` when the PR
+    URL is available: `q` closes the float, `c` copies the whole float
+    text to the `+` and unnamed registers, and `o` opens the PR in the
+    browser without closing the float. Before creation, or if the create
+    command returned no PR URL, only `q close | c copy` is offered. A missing URL after a
     successful create is also reported as a stacking failure, not a
     successful stacked PR. Floats use `float.width`/`float.height`; a visible
     border is used even with `float.border = "none"` so the footer remains
@@ -611,6 +612,33 @@ File opening position                                 *fude-file-position*
 
     Press `<Tab>` to switch between title and body panes.
     Press `<CR>` to create a draft PR.
+    When `gh pr create` fails because the branch is not on the remote yet
+    (never pushed, or newer local commits), what happens depends on
+    `pr.push_before_create`. By default nothing is pushed: no PR is
+    created, the input is kept as a draft, and a float (`q` to close, `c`
+    to copy) shows gh's error and points to the option. Other gh errors
+    are reported as a notification, as before. With
+    `pr.push_before_create = true`, fude pushes the branch and runs
+    `gh pr create` once more:
+    `git push --set-upstream <remote> HEAD:<branch>`. The branch is always
+    pushed under its own name, so a branch created from `origin/main` is
+    not pushed to `main`; `--set-upstream` then makes it track
+    `<remote>/<branch>` instead of `origin/main`. `<remote>` is
+    `branch.<name>.pushRemote`, then `remote.pushDefault`, then the remote
+    of a same-named upstream, else `origin`, else the only remote (in a
+    fork clone, a branch created from `upstream/main` is pushed to
+    `origin`, not to `upstream`). git is run without
+    prompts: a push that needs a password or ssh passphrase fails instead
+    of waiting, so use a credential helper or ssh-agent. A push still
+    running after 120 seconds is stopped and reported as failed. The push
+    never forces; when it fails (e.g. rejected as non-fast-forward) no PR is
+    created, the input is kept as a draft, and a float (`q` to close,
+    `c` to copy its text) shows git's error. In these floats the
+    original error is drawn with `DiagnosticError` and fude's suggestion
+    with `DiagnosticWarn`. `c` copies to the `+` register (clipboard) and
+    the unnamed register; without a clipboard provider only the unnamed
+    register is set and the notification says so.
+    With a stacked PR the push runs after the stack checks pass.
     Press `q` to cancel. If the title or body has unsaved changes, a
     3-way prompt (Save draft & close / Discard & close / Keep editing)
     is shown. The saved draft is persisted to `drafts.json` (see
@@ -1421,6 +1449,13 @@ Options:
                   Drafts older than this many days are pruned when the
                   draft store is next loaded (default: 30). Set to 0 or a
                   negative number to keep drafts indefinitely.
+
+`pr.push_before_create`
+                  Push the current branch before |:FudeCreatePR| creates
+                  the PR when the remote does not have HEAD yet
+                  (default: false). When false, nothing is pushed; if the
+                  branch is not pushed, `gh pr create` fails and a float
+                  shows its error and points to this option.
 
 
 ==============================================================================

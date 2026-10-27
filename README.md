@@ -144,7 +144,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between the review base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel (focus it when open, close it when focused) |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
-| `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`, which joins the base PR's stack or starts a new one; failed preflight checks abort creation, and a later link failure shows an error float with the PR URL and `q close | o open PR` without closing the PR; body `file://` images/videos are uploaded via `gh --attach`) |
+| `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`, which joins the base PR's stack or starts a new one; failed preflight checks abort creation, and a later link failure shows an error float with the PR URL and `q close | c copy | o open PR` without closing the PR; body `file://` images/videos are uploaded via `gh --attach`; a branch whose HEAD is not on the remote yet is pushed with `git push --set-upstream` first when `pr.push_before_create = true`, and a failed push shows the error in a float and keeps the input as a draft) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeChangePRState` | Change the current PR's state from a picker that lists only the transitions available now (ready for review / convert to draft / close / reopen) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
@@ -301,6 +301,9 @@ require("fude").setup({
   drafts = {
     enabled = true,        -- Save/restore drafts when closing a dirty comment buffer
     retention_days = 30,   -- Prune drafts older than this on load (<=0 keeps forever)
+  },
+  pr = {
+    push_before_create = false, -- Push an unpushed branch before :FudeCreatePR creates the PR
   },
 })
 ```
