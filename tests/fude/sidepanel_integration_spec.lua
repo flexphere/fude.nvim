@@ -172,6 +172,16 @@ describe("sidepanel integration", function()
 		end)
 	end
 
+	it("open caps a bottom panel at half the editor rows on a short screen", function()
+		vim.o.lines = 12
+		config.setup({ sidepanel = { position = "bottom", height = 15 } })
+
+		sidepanel.open()
+
+		local expected = math.floor((vim.o.lines - vim.o.cmdheight) / 2)
+		assert.are.equal(expected, vim.api.nvim_win_get_height(config.state.sidepanel.win))
+	end)
+
 	it("open uses the default sidepanel keymaps", function()
 		sidepanel.open()
 		local mappings = vim.api.nvim_buf_get_keymap(config.state.sidepanel.buf, "n")

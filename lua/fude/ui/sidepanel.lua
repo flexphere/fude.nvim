@@ -931,14 +931,19 @@ local SPLIT_DIRECTIONS = { left = "left", right = "right", top = "above", bottom
 --- @param position string|nil "left" | "right" | "top" | "bottom" (unknown → "left")
 --- @param width number|nil panel width for left/right (min 20, default 40)
 --- @param height number|nil panel height for top/bottom (min 5, default 15)
+--- @param max_height number|nil upper bound for top/bottom; wins over the minimum (nil = no bound)
 --- @return table { win_config: table, fix_option: string }
-function M.build_split_config(position, width, height)
+function M.build_split_config(position, width, height, max_height)
 	local split = SPLIT_DIRECTIONS[position] or "left"
 	-- Top-level split: keep the panel at the tabpage edge regardless of
 	-- which window is focused (e.g. the right pane of a diff layout).
 	local win_config = { split = split, win = -1 }
 	if split == "above" or split == "below" then
-		win_config.height = math.max(5, height or 15)
+		local panel_height = math.max(5, height or 15)
+		if max_height then
+			panel_height = math.max(1, math.min(panel_height, max_height))
+		end
+		win_config.height = panel_height
 		return { win_config = win_config, fix_option = "winfixheight" }
 	end
 	win_config.width = math.max(20, width or 40)
@@ -958,7 +963,10 @@ function M.open()
 
 	local prev_win = vim.api.nvim_get_current_win()
 	local sp_opts = config.opts.sidepanel or {}
-	local split = M.build_split_config(sp_opts.position, sp_opts.width, sp_opts.height)
+	-- A top/bottom panel takes at most half the editor rows: winfixheight keeps
+	-- equalalways from giving the source/preview windows their space back.
+	local max_height = math.floor((vim.o.lines - vim.o.cmdheight) / 2)
+	local split = M.build_split_config(sp_opts.position, sp_opts.width, sp_opts.height, max_height)
 
 	-- Create buffer
 	local buf = vim.api.nvim_create_buf(false, true)

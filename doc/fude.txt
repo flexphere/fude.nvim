@@ -1265,8 +1265,11 @@ Options:
                   `sidepanel.position` is "left" or "right".
 
 `sidepanel.height`  Height of the side panel in lines (default: 15).
-                  Minimum effective height is 5 lines. Used when
-                  `sidepanel.position` is "top" or "bottom".
+                  Minimum effective height is 5 lines, and the panel
+                  never takes more than half the editor rows, so the
+                  source and preview windows keep room on a short
+                  screen. Used when `sidepanel.position` is "top" or
+                  "bottom".
 
 `sidepanel.position`
                   Edge of the editor to open the panel: "left", "right",
