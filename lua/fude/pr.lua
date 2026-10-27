@@ -24,7 +24,7 @@ local TEMPLATE_FILES = {
 
 -- Session-local fallback for PR creation drafts, used when no drafts.json key
 -- exists (detached HEAD, or drafts disabled). Lost when Neovim exits.
-local memory_draft = nil -- { title_lines: string[], body_lines: string[] } | nil
+local memory_draft = nil -- { title_lines: string[], body_lines: string[], target: table|nil } | nil
 
 --- Build the drafts.json key for a PR creation draft. No PR number exists yet,
 --- and a PR is opened from a head branch, so the draft is keyed by branch. The
@@ -50,26 +50,68 @@ local function stores_on_disk(key)
 	return key ~= nil and drafts.enabled()
 end
 
+--- Validate the base branch and stack target saved with a creation draft.
+--- The target comes from drafts.json, which may be hand-edited or written by
+--- an older version, so a malformed one is dropped as a whole: resuming with
+--- the base but without its stack would silently create an ordinary PR.
+--- A stack must carry what check_stack_target and link_to_stack read.
+--- @param meta any saved target ({ base: string|nil, stack: table|nil })
+--- @return table|nil { base: string|nil, stack: table|nil } or nil when absent / malformed
+function M.parse_create_draft_target(meta)
+	if type(meta) ~= "table" then
+		return nil
+	end
+	local base, stack = meta.base, meta.stack
+	if base ~= nil and (type(base) ~= "string" or base == "") then
+		return nil
+	end
+	if stack ~= nil then
+		if base == nil or type(stack) ~= "table" then
+			return nil
+		end
+		if type(stack.parent_url) ~= "string" or stack.parent_url == "" or type(stack.new_stack) ~= "boolean" then
+			return nil
+		end
+		if stack.new_stack and type(stack.parent_base) ~= "string" then
+			return nil
+		end
+		if not stack.new_stack and type(stack.stack_number) ~= "number" then
+			return nil
+		end
+	end
+	return { base = base, stack = stack }
+end
+
 --- Save the current PR creation draft. An empty title and body removes a
 --- drafts.json entry instead (see drafts.set).
+--- The base branch and stack target are saved with it so the draft can be
+--- resumed without picking them again.
 --- @param title_lines string[]
 --- @param body_lines string[]
 --- @param key string|nil drafts.json key from build_create_draft_key
-function M.save_draft(title_lines, body_lines, key)
+--- @param target table|nil { base: string|nil, stack: table|nil } (the float's create opts)
+function M.save_draft(title_lines, body_lines, key, target)
+	target = target and { base = target.base, stack = target.stack } or nil
 	if stores_on_disk(key) then
-		drafts.set(key, M.serialize_edit_draft(title_lines, body_lines))
+		drafts.set(key, M.serialize_edit_draft(title_lines, body_lines), target)
 	else
-		memory_draft = { title_lines = title_lines, body_lines = body_lines }
+		memory_draft = { title_lines = title_lines, body_lines = body_lines, target = target }
 	end
 end
 
 --- Get the current PR creation draft.
 --- @param key string|nil drafts.json key from build_create_draft_key
---- @return table|nil { title_lines: string[], body_lines: string[] }
+--- @return table|nil { title_lines: string[], body_lines: string[], target: table|nil }
+---   `target` is the saved { base, stack }, nil when none was saved (e.g. an older draft)
 function M.get_draft(key)
 	if stores_on_disk(key) then
 		local saved = drafts.get(key)
-		return saved and M.parse_edit_draft(format.normalize_newlines(saved)) or nil
+		if not saved then
+			return nil
+		end
+		local d = M.parse_edit_draft(format.normalize_newlines(saved))
+		d.target = M.parse_create_draft_target(drafts.get_meta(key))
+		return d
 	end
 	return memory_draft
 end
@@ -326,20 +368,52 @@ function M.build_template_search_paths(repo_root)
 	return { dirs = dirs, files = files }
 end
 
---- Build picker entries for template selection (including draft if available).
+--- Build picker entries for template selection.
 --- @param templates string[] list of template file paths
---- @param has_draft boolean whether a draft exists
---- @return table[] entries with display, value, and is_draft fields
-function M.build_picker_entries(templates, has_draft)
+--- @return table[] entries with display and value fields
+function M.build_picker_entries(templates)
 	local entries = {}
-	if has_draft then
-		table.insert(entries, { display = "(draft)", value = "__draft__", is_draft = true })
-	end
 	for _, t in ipairs(templates) do
-		table.insert(entries, { display = vim.fn.fnamemodify(t, ":t"), value = t, is_draft = false })
+		table.insert(entries, { display = vim.fn.fnamemodify(t, ":t"), value = t })
 	end
 	return entries
 end
+
+--- Build the picker entries shown at the start of PR creation when a draft exists.
+--- Resuming comes first so a bare <CR> keeps the user's work. Resuming with the
+--- saved base and stack target (named like the float footer) is offered only
+--- when the draft has a valid one; resuming through the base picker is always
+--- offered, and is the way out when the saved base or stack no longer works.
+--- @param d table draft from get_draft()
+--- @return table[] entries { display: string, value: "resume"|"rebase"|"discard" }
+function M.build_draft_resume_choices(d)
+	local title = vim.trim(table.concat(d.title_lines or {}, " "))
+	if title == "" then
+		title = "(no title)"
+	end
+	local entries = {}
+	local target = d.target
+	if target then
+		local suffix = ""
+		if target.base then
+			suffix = " → " .. target.base
+			if target.stack then
+				suffix = suffix .. (target.stack.new_stack and " (new stack)" or " (stacked)")
+			end
+		end
+		table.insert(entries, { display = "Resume draft: " .. title .. suffix, value = "resume" })
+		table.insert(entries, { display = "Resume draft with another base: " .. title, value = "rebase" })
+	else
+		table.insert(entries, { display = "Resume draft: " .. title, value = "rebase" })
+	end
+	table.insert(entries, { display = "Discard draft and start new", value = "discard" })
+	return entries
+end
+
+--- Choices for `q` on a float opened from a restored draft that has not been
+--- edited: nothing is unsaved, but the restored draft itself can be discarded.
+--- Keeping the draft comes first, so a bare <CR> never deletes it.
+M.RESTORED_DRAFT_CLOSE_CHOICES = { "Keep draft & close", "Discard draft & close", "Keep editing" }
 
 --- Parse title and body from PR buffer contents.
 --- @param title_lines string[] lines from title buffer
@@ -808,7 +882,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		-- flow started with, so a branch switch mid-request cannot redirect
 		-- the cleanup below to another branch's draft.
 		local draft_key = opts.draft_key
-		M.save_draft(t_lines, b_lines, draft_key)
+		M.save_draft(t_lines, b_lines, draft_key, opts)
 		-- Compared after the request to tell whether the draft was replaced
 		-- while the request was in flight
 		local revision_at_submit = M.draft_revision(draft_key)
@@ -887,7 +961,7 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	local on_save_draft = opts.on_save_draft
 	if not on_save_draft and not is_edit then
 		on_save_draft = function(t_lines, b_lines)
-			M.save_draft(t_lines, b_lines, opts.draft_key)
+			M.save_draft(t_lines, b_lines, opts.draft_key, opts)
 			-- drafts.set removes the entry for empty input, so don't claim a
 			-- draft was saved in that case (the session-local fallback keeps it)
 			if not stores_on_disk(opts.draft_key) or vim.trim(M.serialize_edit_draft(t_lines, b_lines)) ~= "" then
@@ -903,7 +977,9 @@ function M.open_pr_float(title_lines, body_lines, opts)
 
 	-- Cancel handler: confirm before discarding unsaved changes, mirroring the
 	-- comment input close flow. The baseline is the lines the float opened
-	-- with (a restored draft included), so an unedited buffer closes silently.
+	-- with (a restored draft included), so an unedited buffer closes silently
+	-- unless it was restored from a draft: then nothing is unsaved, but the
+	-- draft itself can be discarded, so ask whether to keep it.
 	-- Only the q keymap goes through here — closing a window directly (:q
 	-- etc.) fires WinClosed and still discards without confirmation.
 	local function cancel()
@@ -918,7 +994,21 @@ function M.open_pr_float(title_lines, body_lines, opts)
 		local b_cur = vim.api.nvim_buf_get_lines(body_buf, 0, -1, false)
 		local dirty = ui.should_confirm_discard(t_cur, title_lines) or ui.should_confirm_discard(b_cur, body_lines)
 		if not dirty then
-			close_all()
+			-- allow_draft: with drafts disabled (edit mode) there is no draft
+			-- feature to keep or discard, so q closes as before
+			if not (opts.from_draft and opts.on_discard_draft and allow_draft) then
+				close_all()
+				return
+			end
+			local choices = M.RESTORED_DRAFT_CLOSE_CHOICES
+			vim.ui.select(choices, { prompt = "Restored draft:" }, function(choice)
+				if choice == choices[1] then
+					close_all()
+				elseif choice == choices[2] then
+					opts.on_discard_draft()
+					close_all()
+				end
+			end)
 			return
 		end
 		ui.prompt_close_decision(allow_draft, function()
@@ -994,25 +1084,22 @@ function M.open_pr_float(title_lines, body_lines, opts)
 	vim.cmd("startinsert")
 end
 
---- Open the float from a draft selection.
---- @param float_opts table|nil extra open_pr_float opts (e.g. { base = "main", draft_key = ... })
+--- Open the float from the stored draft, skipping the template picker.
+--- @param d table draft from get_draft()
+--- @param float_opts table open_pr_float opts ({ base, stack, draft_key })
 --- @private
-local function open_from_draft(float_opts)
-	float_opts = float_opts or {}
+local function open_from_draft(d, float_opts)
 	local draft_key = float_opts.draft_key
-	local d = M.get_draft(draft_key)
-	if d then
-		-- "Discard & close" deletes the stored draft too, matching the edit
-		-- mode and comment input semantics. Opening from a template instead
-		-- leaves an unrelated stored draft alone (no on_discard_draft there).
-		local opts = vim.tbl_extend("force", float_opts, {
-			from_draft = true,
-			on_discard_draft = function()
-				M.clear_draft(draft_key)
-			end,
-		})
-		M.open_pr_float(d.title_lines, d.body_lines, opts)
-	end
+	-- "Discard & close" (and "Discard draft & close" on an unedited float)
+	-- deletes the stored draft too, matching the edit mode and comment input
+	-- semantics. The stack target is rechecked by check_stack_target on submit.
+	local opts = vim.tbl_extend("force", float_opts, {
+		from_draft = true,
+		on_discard_draft = function()
+			M.clear_draft(draft_key)
+		end,
+	})
+	M.open_pr_float(d.title_lines, d.body_lines, opts)
 end
 
 --- Open the float from a template file.
@@ -1184,7 +1271,6 @@ local function pick_entry(entries, opts, callback)
 						value = entry.value,
 						display = entry.display,
 						ordinal = entry.display,
-						is_draft = entry.is_draft,
 					}
 				end,
 			}),
@@ -1343,48 +1429,99 @@ end
 
 --- Continue the creation flow after the base branch is settled: find templates,
 --- select if multiple, open the float.
---- When a draft exists, it is shown as a selectable option alongside templates.
 --- @param base string|nil base branch (nil: gh chooses)
 --- @param stack table|nil `resolve_stack` result when the PR is stacked on `base` (linked after creation)
 --- @param draft_key string|nil drafts.json key from build_create_draft_key
+--- @param d table|nil draft being resumed with this base; opened instead of a template
 --- @private
-local function create_with_base(base, stack, draft_key)
-	local templates = M.find_templates()
-	local has_draft = M.get_draft(draft_key) ~= nil
-	local total = #templates + (has_draft and 1 or 0)
+local function create_with_base(base, stack, draft_key, d)
 	local float_opts = { base = base, stack = stack, draft_key = draft_key }
+	if d then
+		open_from_draft(d, float_opts)
+		return
+	end
+	local templates = M.find_templates()
 
-	if total == 0 then
-		-- No templates, no draft: open with empty body
+	if #templates == 0 then
+		-- No templates: open with empty body
 		local default_title = get_default_title(base)
 		local title_lines = default_title and { default_title } or nil
 		M.open_pr_float(title_lines, { "" }, float_opts)
-	elseif total == 1 and not has_draft then
-		-- Single template, no draft: read and open
+	elseif #templates == 1 then
+		-- Single template: read and open
 		local default_title = get_default_title(base)
 		open_from_template(templates[1], default_title, float_opts)
-	elseif total == 1 and has_draft then
-		-- Only draft, no templates: open from draft
-		open_from_draft(float_opts)
 	else
-		-- Multiple options: show picker with draft + templates
-		local entries = M.build_picker_entries(templates, has_draft)
+		-- Multiple templates: show picker
+		local entries = M.build_picker_entries(templates)
 		M.select_template(entries, function(selected)
 			if not selected then
 				return
 			end
-			if selected == "__draft__" then
-				open_from_draft(float_opts)
-			else
-				-- Lazy: only fetch default title when template is selected
-				local default_title = get_default_title(base)
-				open_from_template(selected, default_title, float_opts)
-			end
-		end, draft_key)
+			-- Lazy: only fetch default title when template is selected
+			local default_title = get_default_title(base)
+			open_from_template(selected, default_title, float_opts)
+		end)
 	end
 end
 
+--- Ask whether to resume the stored draft (with its saved base or another one)
+--- or discard it and start a new PR.
+--- @param d table draft from get_draft()
+--- @param callback fun(choice: "resume"|"rebase"|"discard"|nil) nil on cancel
+function M.confirm_draft_resume(d, callback)
+	pick_entry(M.build_draft_resume_choices(d), {
+		prompt = "A PR draft exists:",
+		title = "PR Draft",
+		compact = true,
+	}, callback)
+end
+
+--- Pick the base branch (and stack target), then continue with create_with_base.
+--- @param current_branch string|nil
+--- @param draft_key string|nil drafts.json key from build_create_draft_key
+--- @param d table|nil draft to open once the base is settled (nil: templates)
+--- @private
+local function create_from_base_picker(current_branch, draft_key, d)
+	local default_branch = diff.get_default_branch()
+	local entries = M.build_base_branch_entries(diff.get_remote_branches(), default_branch, {
+		current_branch = current_branch,
+		stack_parent = diff.get_gh_stack_parent(current_branch),
+		ancestors = diff.get_ancestor_branches(default_branch),
+	})
+	if #entries == 0 then
+		create_with_base(nil, nil, draft_key, d)
+		return
+	end
+	M.select_base_branch(entries, function(base)
+		if not base then
+			return
+		end
+		if base == default_branch then
+			create_with_base(base, nil, draft_key, d)
+			return
+		end
+		M.confirm_stack(base, function(want_stack)
+			if want_stack == nil then
+				return
+			end
+			if not want_stack then
+				create_with_base(base, nil, draft_key, d)
+				return
+			end
+			resolve_stack(base, function(result)
+				if result then
+					create_with_base(result.base, result.stack, draft_key, d)
+				end
+			end)
+		end)
+	end)
+end
+
 --- Show PR creation flow: pick the base branch, then templates, then open the float.
+--- When the current branch has a draft, first ask whether to resume it — straight
+--- into the float with its saved base, or through the base picker with another
+--- base — or to discard it and continue with the normal flow.
 --- The base picker lists remote branches with the default branch preselected and
 --- related branches (gh-stack parent, branches HEAD is built on) right after it
 --- (a default branch resolved from local refs is listed even without a remote,
@@ -1397,50 +1534,43 @@ function M.create()
 		return
 	end
 
-	local default_branch = diff.get_default_branch()
 	local current_branch = diff.get_current_branch()
 	-- Resolved once here so every later step of the flow, including the
 	-- async submit cleanup, uses the branch the flow started on
 	local draft_key = M.build_create_draft_key(diff.get_git_common_dir(), current_branch)
-	local entries = M.build_base_branch_entries(diff.get_remote_branches(), default_branch, {
-		current_branch = current_branch,
-		stack_parent = diff.get_gh_stack_parent(current_branch),
-		ancestors = diff.get_ancestor_branches(default_branch),
-	})
-	if #entries == 0 then
-		create_with_base(nil, nil, draft_key)
+	local d = M.get_draft(draft_key)
+	if not d then
+		create_from_base_picker(current_branch, draft_key, nil)
 		return
 	end
-	M.select_base_branch(entries, function(base)
-		if not base then
+	local revision = M.draft_revision(draft_key)
+	M.confirm_draft_resume(d, function(choice)
+		if choice == nil then
 			return
 		end
-		if base == default_branch then
-			create_with_base(base, nil, draft_key)
+		-- A create request still in flight may clear or replace the draft
+		-- while the picker is open; acting on the stale one could resubmit an
+		-- already created PR or discard a newer draft.
+		if M.draft_revision(draft_key) ~= revision then
+			vim.notify("fude.nvim: The PR draft changed; run :FudeCreatePR again", vim.log.levels.WARN)
 			return
 		end
-		M.confirm_stack(base, function(want_stack)
-			if want_stack == nil then
-				return
-			end
-			if not want_stack then
-				create_with_base(base, nil, draft_key)
-				return
-			end
-			resolve_stack(base, function(result)
-				if result then
-					create_with_base(result.base, result.stack, draft_key)
-				end
-			end)
-		end)
+		if choice == "resume" then
+			create_with_base(d.target.base, d.target.stack, draft_key, d)
+		elseif choice == "rebase" then
+			create_from_base_picker(current_branch, draft_key, d)
+		elseif choice == "discard" then
+			M.clear_draft(draft_key)
+			vim.notify("fude.nvim: Draft discarded", vim.log.levels.INFO)
+			create_from_base_picker(current_branch, draft_key, nil)
+		end
 	end)
 end
 
---- Show template/draft picker using Telescope or vim.ui.select.
+--- Show template picker using Telescope or vim.ui.select.
 --- @param entries table[] entries from build_picker_entries
 --- @param callback fun(selected: string|nil) receives entry value or nil
---- @param draft_key string|nil drafts.json key of the creation draft shown by the `(draft)` entry
-function M.select_template(entries, callback, draft_key)
+function M.select_template(entries, callback)
 	pick_entry(entries, {
 		prompt = "Select PR template:",
 		title = "PR Templates",
@@ -1454,22 +1584,7 @@ function M.select_template(entries, callback, draft_key)
 				define_preview = function(self, entry)
 					require("fude.ui").sync_preview_buffer(self)
 
-					local lines
-					if entry.is_draft then
-						local d = M.get_draft(draft_key)
-						if d then
-							lines = {}
-							table.insert(lines, "Title: " .. table.concat(d.title_lines, " "))
-							table.insert(lines, "")
-							for _, line in ipairs(d.body_lines) do
-								table.insert(lines, line)
-							end
-						else
-							lines = { "" }
-						end
-					else
-						lines = vim.fn.readfile(entry.value)
-					end
+					local lines = vim.fn.readfile(entry.value)
 					vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
 					vim.bo[self.state.bufnr].filetype = "markdown"
 				end,
