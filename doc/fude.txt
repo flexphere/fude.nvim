@@ -468,8 +468,11 @@ File opening position                                 *fude-file-position*
     review bodies, see |:FudeReviewOverview|). Does not require
     Telescope.
 
-    Left pane: comment list sorted by time (newest first).
+    Left pane: one entry per review thread, sorted by its latest comment
+    time (newest first). Separate threads remain separate even when
+    they end on the same line. Replies stay with their own thread.
       - Review comments: `date  @author  path:line`
+      - Multi-line threads use `path:L15-L20` instead of `path:line`.
       - PR-level comments: `date  PR Comment`
       - Pending comments: `date  [pending]  path:line`
       - Resolved threads additionally show a trailing `[resolved]`
@@ -1584,6 +1587,9 @@ that targets an existing comment/thread adds a `✎draft` marker to that entry; 
 new draft with no submitted counterpart shows as a `[draft]` row. On a draft row,
 `<CR>` jumps to the file (line/suggestion drafts) so you can resume editing
 there, or focuses the input pane (PR-level drafts).
+Line/suggestion drafts match the full range, not just its ending line. If
+multiple threads share that range, the draft gets its own row rather than
+marking an arbitrary thread. Reply/edit drafts match their target comment ID.
 
 Drafts are stored as JSON at: >
     stdpath("state")/fude/drafts.json
