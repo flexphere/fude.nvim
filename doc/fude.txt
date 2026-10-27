@@ -1372,8 +1372,10 @@ Options:
                     `sidepanel.commit_message.max_lines`)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
-                  - `select_alt`: "<Space>" (same as `select`; listed last
-                    so it never takes a key assigned to another action)
+                  - `select_alt`: "<Space>" (same as `select`; the default
+                    ranks last so it never takes a key assigned to another
+                    action, while an explicitly set value ranks right after
+                    `select`)
                   A value is a key string, or a table `{ key, nowait = true }`
                   to run the mapping without waiting for longer mappings
                   that start with the key (|:map-nowait|). Without it, a
@@ -1394,8 +1396,8 @@ Options:
                   `select = "j"` takes the key; the `next_entry` default
                   is skipped).
                   Equivalent spellings such as "<Tab>" and "<C-i>" also
-                  count as the same key. Only `select_alt` has lower
-                  priority than the help action; when help is disabled or
+                  count as the same key. Only a default `select_alt`
+                  has lower priority than the help action; when help is disabled or
                   shadowed, its hint is hidden.
 
 `outdated.show`     Show outdated comments (default: true).

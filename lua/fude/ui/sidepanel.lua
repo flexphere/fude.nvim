@@ -1140,6 +1140,13 @@ function M.setup_keymaps(panel)
 		end
 	end
 	map("select", select_entry, "Select scope, toggle directory, or open file")
+	-- Left at its default, select_alt is registered last so this newer default
+	-- never takes a key the user gave another action (e.g. toggle_reviewed =
+	-- "<Space>"); set explicitly, it ranks right after select like any remap.
+	local alt_is_default = keymaps.select_alt == config.defaults.sidepanel.keymaps.select_alt
+	if not alt_is_default then
+		map("select_alt", select_entry, "Select scope, toggle directory, or open file")
+	end
 
 	-- Toggle reviewed/viewed
 	map("toggle_reviewed", function()
@@ -1204,9 +1211,9 @@ function M.setup_keymaps(panel)
 		M.toggle_help(panel)
 	end, "Show panel keymaps")
 
-	-- Registered last: a newer default must not take a key the user already
-	-- assigned to another action (e.g. toggle_reviewed = "<Space>").
-	map("select_alt", select_entry, "Select scope, toggle directory, or open file")
+	if alt_is_default then
+		map("select_alt", select_entry, "Select scope, toggle directory, or open file")
+	end
 end
 
 --- Build the sorted 1-based list of panel lines `next_entry`/`prev_entry` stop on:

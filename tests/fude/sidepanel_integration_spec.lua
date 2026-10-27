@@ -938,6 +938,14 @@ describe("sidepanel integration", function()
 		assert.are.equal("Toggle reviewed/viewed", buf_keymap_desc(buf, "<Space>"))
 	end)
 
+	it("an explicit select_alt ranks right after select over later defaults", function()
+		config.setup({ sidepanel = { keymaps = { select_alt = "?" } } })
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		assert.are.equal("Select scope, toggle directory, or open file", buf_keymap_desc(panel.buf, "?"))
+		assert.are.equal("select_alt", panel.help_mappings[2].action)
+	end)
+
 	it("an explicitly remapped action keeps its key over a later default", function()
 		-- A user who mapped select to "j" before next_entry existed must not
 		-- have it silently overwritten by the new default
