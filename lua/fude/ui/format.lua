@@ -512,27 +512,43 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	local sections = {}
 	local comment_positions = {}
 
-	-- PR header
-	local title = string.format("# PR #%d: %s", pr_info.number or 0, pr_info.title or "")
-	table.insert(lines, title)
-
 	-- author can be JSON null, which decodes to truthy vim.NIL
-	local author = type(pr_info.author) == "table" and pr_info.author.login or "unknown"
+	local author = type(pr_info.author) == "table" and pr_info.author.login or nil
+	if type(author) ~= "string" then
+		author = "unknown"
+	end
 	-- state can be JSON null (truthy vim.NIL), which would break the concatenation
 	local state = type(pr_info.state) == "string" and pr_info.state or "UNKNOWN"
 	-- Same rule as pr.format_pr_state: a closed draft is reported as closed
 	if pr_info.isDraft == true and state == "OPEN" then
 		state = state .. " (draft)"
 	end
-	table.insert(lines, string.format("State: %s    Author: @%s", state, author))
-
-	table.insert(lines, string.format("Base: %s <- %s", pr_info.baseRefName or "", pr_info.headRefName or ""))
-	table.insert(lines, pr_info.url or "")
+	-- JSON-quoted strings are also valid YAML double-quoted scalars. Never
+	-- interpolate raw metadata: ':' / '#' / newlines could change its structure.
+	table.insert(lines, "---")
+	local function add_string(key, value)
+		table.insert(lines, key .. ": " .. vim.json.encode(type(value) == "string" and value or ""))
+	end
+	add_string("state", state)
+	add_string("author", "@" .. author)
+	add_string("base", pr_info.baseRefName)
+	add_string("head", pr_info.headRefName)
+	add_string("url", pr_info.url)
+	for _, entry in ipairs({ { "additions", "DiagnosticOk" }, { "deletions", "DiagnosticError" } }) do
+		local value = pr_info[entry[1]]
+		-- Missing counts mean unknown, not zero.
+		if type(value) == "number" and value >= 0 and value < math.huge and value == math.floor(value) then
+			table.insert(lines, entry[1] .. ": " .. string.format("%.0f", value))
+			table.insert(hl_ranges, { line = #lines - 1, hl = entry[2] })
+		end
+	end
+	table.insert(lines, "---")
+	table.insert(lines, "")
+	table.insert(lines, string.format("# #%d %s", pr_info.number or 0, pr_info.title or ""))
 
 	-- Description
 	table.insert(lines, "")
-	table.insert(lines, "## DESCRIPTION")
-	sections.description = #lines -- 1-indexed
+	sections.description = #lines + 1 -- 1-indexed first body line
 
 	local body = M.normalize_newlines(pr_info.body)
 	if body == "" then
