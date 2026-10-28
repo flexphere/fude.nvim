@@ -427,8 +427,16 @@ File opening position                                 *fude-file-position*
 
 :FudeReviewOverview                                *:FudeReviewOverview*
     Show PR overview in a split-pane floating window. The left pane
-    displays title, state (`OPEN (draft)` for a draft PR), author,
-    base/head branches, description,
+    starts with YAML frontmatter containing state (`OPEN (draft)` for
+    an open draft PR), author, base/head branches, URL, and PR-wide
+    file_changed (changed file count) and line_changed (additions/deletions).
+    For example: `file_changed: 10` and `line_changed: 70/6`.
+    Only the numbers are colored: files blue (DiagnosticInfo), additions
+    green (DiagnosticOk), deletions red (DiagnosticError). Counts are
+    PR-wide; file_changed is omitted if unavailable, and line_changed
+    is omitted if either line count is unavailable.
+    This is followed by a `# #<number> <title>` Markdown heading and
+    the PR body, without an extra DESCRIPTION heading,
     and PR-level comments: issue comments plus the body of every
     submitted review (Approve / Request changes / Comment summaries,
     bot review overviews), merged oldest first as GitHub's
@@ -438,12 +446,16 @@ File opening position                                 *fude-file-position*
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count.
     Requires an active review session.
-    Sections use Markdown headings (`##`) and are foldable with
+    The PR title, body headings, and comments use Markdown headings
+    and are foldable with
     standard Neovim fold commands (`za`, `zc`, `zo`, `zM`, `zR`).
     Individual comments use `###` headings and can be folded
     independently. All folds are open by default.
-    Section marks are set on the left pane: `'d` (description),
+    Section marks are set on the left pane: `'d` (first body line,
+    or the no-description placeholder),
     `'c` (comments). Customizable via `overview.marks`.
+    `]s`/`[s` navigate between the body start and comments heading.
+    Frontmatter rendering depends on the Markdown preview plugin.
     Press `C` to write a new comment, `r` to re-request a review
     from a reviewer who has already reviewed, `R` to refresh,
     `<Tab>` to switch between panes, `]c`/`[c` to navigate
