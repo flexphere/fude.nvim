@@ -33,7 +33,7 @@ describe("overview metadata", function()
 			'head: "feat/example"',
 			'url: "https://example.com/pull/42"',
 			"file_changed: 10",
-			"line_changed: 340/28",
+			'line_changed: "+340 -28"',
 			"---",
 			"",
 			"# #42 Fix bug",
@@ -47,9 +47,9 @@ describe("overview metadata", function()
 		}, vim.list_slice(result.lines, 1, 18))
 		assert.are.equal(13, result.sections.description)
 		assert.are.equal(18, result.sections.comments)
-		assert.are.same({ line = 6, col_start = 14, col_end = 16, hl = "DiagnosticInfo" }, result.hl_ranges[1])
-		assert.are.same({ line = 7, col_start = 14, col_end = 17, hl = "DiagnosticOk" }, result.hl_ranges[2])
-		assert.are.same({ line = 7, col_start = 18, col_end = 20, hl = "DiagnosticError" }, result.hl_ranges[3])
+		assert.are.same({ line = 6, col_start = 14, col_end = 16, hl = "ReviewFileCount" }, result.hl_ranges[1])
+		assert.are.same({ line = 7, col_start = 15, col_end = 19, hl = "DiagnosticOk" }, result.hl_ranges[2])
+		assert.are.same({ line = 7, col_start = 20, col_end = 23, hl = "DiagnosticError" }, result.hl_ranges[3])
 	end)
 
 	it("quotes YAML special characters and keeps metadata on one line", function()
@@ -87,7 +87,7 @@ describe("overview metadata", function()
 	it("retains zero counts", function()
 		local result = render({ additions = 0, deletions = 0, changedFiles = 0 })
 		assert.are.equal("file_changed: 0", result.lines[7])
-		assert.are.equal("line_changed: 0/0", result.lines[8])
+		assert.are.equal('line_changed: "+0 -0"', result.lines[8])
 	end)
 
 	it("omits unknown or invalid counts rather than displaying zero", function()
@@ -110,7 +110,7 @@ describe("overview metadata", function()
 			assert.are.equal("---", result.lines[8])
 		end
 		local result = render({ changedFiles = vim.NIL })
-		assert.are.equal("line_changed: 340/28", result.lines[7])
+		assert.are.equal('line_changed: "+340 -28"', result.lines[7])
 		assert.are.equal(6, result.hl_ranges[1].line)
 		assert.are.equal(6, result.hl_ranges[2].line)
 	end)
@@ -166,9 +166,10 @@ describe("overview metadata", function()
 		for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })) do
 			colors[mark[4].hl_group] = { mark[2], mark[3], mark[4].end_col }
 		end
-		assert.are.same({ 6, 14, 16 }, colors.DiagnosticInfo)
-		assert.are.same({ 7, 14, 16 }, colors.DiagnosticOk)
-		assert.are.same({ 7, 17, 18 }, colors.DiagnosticError)
+		assert.are.same({ 6, 14, 16 }, colors.ReviewFileCount)
+		assert.are.same({ 7, 15, 18 }, colors.DiagnosticOk)
+		assert.are.same({ 7, 19, 21 }, colors.DiagnosticError)
+		assert.are.same({ 7, 21, 22 }, colors.Normal)
 		maps.q()
 		assert.is_false(vim.api.nvim_win_is_valid(win))
 	end)
