@@ -657,45 +657,45 @@ describe("build_overview_left_lines", function()
 	it("includes PR title and number", function()
 		local pr = { number = 42, title = "Fix bug", state = "OPEN", url = "https://example.com" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		assert.truthy(result.lines[1]:find("PR #42: Fix bug"))
+		assert.are.equal("# #42 Fix bug", result.lines[result.sections.description - 2])
 	end)
 
 	it("marks a draft PR in the state line", function()
 		local pr = { number = 1, title = "T", state = "OPEN", isDraft = true, url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		assert.truthy(result.lines[2]:find("State: OPEN (draft)", 1, true))
+		assert.are.equal('state: "OPEN (draft)"', result.lines[2])
 	end)
 
 	it("marks only an open PR as draft, like :FudeChangePRState", function()
 		local pr = { number = 1, title = "T", state = "CLOSED", isDraft = true, url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		assert.truthy(result.lines[2]:find("State: CLOSED    ", 1, true))
+		assert.are.equal('state: "CLOSED"', result.lines[2])
 	end)
 
 	it("falls back to UNKNOWN for a JSON null state on a draft", function()
 		local pr = { number = 1, title = "T", state = vim.NIL, isDraft = true, url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		assert.truthy(result.lines[2]:find("State: UNKNOWN    ", 1, true))
+		assert.are.equal('state: "UNKNOWN"', result.lines[2])
 	end)
 
 	it("does not mark a ready PR, nor treat a JSON null isDraft as draft", function()
 		for _, is_draft in ipairs({ false, vim.NIL }) do
 			local pr = { number = 1, title = "T", state = "OPEN", isDraft = is_draft, url = "" }
 			local result = ui.build_overview_left_lines(pr, {}, identity)
-			assert.truthy(result.lines[2]:find("State: OPEN    ", 1, true))
+			assert.are.equal('state: "OPEN"', result.lines[2])
 		end
 	end)
 
 	it("includes author", function()
 		local pr = { number = 1, title = "T", state = "OPEN", author = { login = "alice" }, url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		assert.truthy(result.lines[2]:find("@alice"))
+		assert.are.equal('author: "@alice"', result.lines[3])
 	end)
 
 	it("uses 'unknown' for missing author", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		assert.truthy(result.lines[2]:find("unknown"))
+		assert.are.equal('author: "@unknown"', result.lines[3])
 	end)
 
 	it("does not include labels (moved to right pane)", function()
@@ -855,8 +855,7 @@ describe("build_overview_left_lines", function()
 		assert.is_table(result.sections)
 		assert.is_number(result.sections.description)
 		assert.is_number(result.sections.comments)
-		-- Each section line should contain the section header text
-		assert.truthy(result.lines[result.sections.description]:find("DESCRIPTION"))
+		assert.are.equal("(no description)", result.lines[result.sections.description])
 		assert.truthy(result.lines[result.sections.comments]:find("COMMENTS"))
 	end)
 
@@ -917,7 +916,7 @@ describe("build_overview_left_lines", function()
 	it("uses markdown # heading for PR title", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
 		local result = ui.build_overview_left_lines(pr, {}, identity)
-		assert.truthy(result.lines[1]:match("^# "))
+		assert.are.equal("# #1 T", result.lines[result.sections.description - 2])
 	end)
 
 	it("uses markdown ## headings for sections", function()
@@ -929,7 +928,7 @@ describe("build_overview_left_lines", function()
 				heading_count = heading_count + 1
 			end
 		end
-		assert.are.equal(2, heading_count) -- DESCRIPTION, COMMENTS
+		assert.are.equal(1, heading_count) -- COMMENTS; body has no synthetic heading
 	end)
 
 	it("uses markdown ### headings for individual comments", function()
