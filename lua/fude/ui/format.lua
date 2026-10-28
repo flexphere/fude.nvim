@@ -561,7 +561,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	if files then
 		local prefix = "file_changed: "
 		table.insert(lines, prefix .. files)
-		highlight_count(#prefix, files, "DiagnosticInfo")
+		highlight_count(#prefix, files, "ReviewFileCount")
 	end
 	local additions, deletions = count_text(pr_info.additions), count_text(pr_info.deletions)
 	if additions and deletions then
@@ -569,6 +569,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 		table.insert(lines, prefix .. additions .. "/" .. deletions)
 		highlight_count(#prefix, additions, "DiagnosticOk")
 		highlight_count(#prefix + #additions + 1, deletions, "DiagnosticError")
+		highlight_count(#prefix + #additions, "/", "Normal")
 	end
 	table.insert(lines, "---")
 	table.insert(lines, "")
