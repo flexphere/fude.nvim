@@ -527,7 +527,16 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	-- interpolate raw metadata: ':' / '#' / newlines could change its structure.
 	table.insert(lines, "---")
 	local function add_string(key, value)
-		table.insert(lines, key .. ": " .. vim.json.encode(type(value) == "string" and value or ""))
+		-- Neovim 0.10 escapes slashes; YAML does not need that escape.
+		local quoted = vim.json.encode(type(value) == "string" and value or ""):gsub("(\\+)/", function(escapes)
+			-- An even run encodes literal backslashes; only an odd run also
+			-- escapes the slash. Preserve the literal backslashes in either case.
+			if #escapes % 2 == 1 then
+				escapes = escapes:sub(2)
+			end
+			return escapes .. "/"
+		end)
+		table.insert(lines, key .. ": " .. quoted)
 	end
 	add_string("state", state)
 	add_string("author", "@" .. author)

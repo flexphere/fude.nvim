@@ -65,6 +65,23 @@ describe("overview metadata", function()
 		assert.are.equal('author: "@unknown"', render({ author = {} }).lines[3])
 	end)
 
+	it("normalizes legacy JSON slash escaping without losing literal backslashes", function()
+		assert.are.equal('head: "feat\\\\/example"', render({ headRefName = "feat\\/example" }).lines[5])
+		local encode = vim.json.encode
+		helpers.mock(vim.json, "encode", function(value)
+			if value == "feat\\/example" then
+				return [["feat\\\/example"]]
+			elseif value == "https://example.com/pull/42" then
+				return [["https:\/\/example.com\/pull\/42"]]
+			end
+			return encode(value)
+		end)
+		local result = render({ headRefName = "feat\\/example" })
+		assert.are.equal('head: "feat\\\\/example"', result.lines[5])
+		assert.are.equal('url: "https://example.com/pull/42"', result.lines[6])
+		assert.are.equal("feat\\/example", vim.json.decode(result.lines[5]:sub(7)))
+	end)
+
 	it("retains zero counts", function()
 		local result = render({ additions = 0, deletions = 0 })
 		assert.are.equal("additions: 0", result.lines[7])
