@@ -535,7 +535,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	-- Apply highlights
 	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
 	for _, hl in ipairs(left_result.hl_ranges) do
-		pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, hl.hl, hl.line, 0, -1)
+		pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, hl.hl, hl.line, hl.col_start or 0, hl.col_end or -1)
 	end
 	for _, hl in ipairs(right_result.hl_ranges) do
 		pcall(vim.api.nvim_buf_add_highlight, right_buf, ns, hl.hl, hl.line, 0, -1)

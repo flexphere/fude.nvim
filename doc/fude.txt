@@ -429,7 +429,12 @@ File opening position                                 *fude-file-position*
     Show PR overview in a split-pane floating window. The left pane
     starts with YAML frontmatter containing state (`OPEN (draft)` for
     an open draft PR), author, base/head branches, URL, and PR-wide
-    additions/deletions (green/red; omitted when unavailable).
+    file_changed (changed file count) and line_changed (additions/deletions).
+    For example: `file_changed: 10` and `line_changed: 70/6`.
+    Only the numbers are colored: files blue (DiagnosticInfo), additions
+    green (DiagnosticOk), deletions red (DiagnosticError). Counts are
+    PR-wide; file_changed is omitted if unavailable, and line_changed
+    is omitted if either line count is unavailable.
     This is followed by a `# #<number> <title>` Markdown heading and
     the PR body, without an extra DESCRIPTION heading,
     and PR-level comments: issue comments plus the body of every

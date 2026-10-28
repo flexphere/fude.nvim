@@ -15,6 +15,7 @@ describe("overview metadata", function()
 			url = "https://example.com/pull/42",
 			additions = 340,
 			deletions = 28,
+			changedFiles = 10,
 			body = "First paragraph\n\n## Details\nBody",
 		}, overrides or {})
 		return format.build_overview_left_lines(pr, {}, function(s)
@@ -31,8 +32,8 @@ describe("overview metadata", function()
 			'base: "main"',
 			'head: "feat/example"',
 			'url: "https://example.com/pull/42"',
-			"additions: 340",
-			"deletions: 28",
+			"file_changed: 10",
+			"line_changed: 340/28",
 			"---",
 			"",
 			"# #42 Fix bug",
@@ -46,8 +47,9 @@ describe("overview metadata", function()
 		}, vim.list_slice(result.lines, 1, 18))
 		assert.are.equal(13, result.sections.description)
 		assert.are.equal(18, result.sections.comments)
-		assert.are.same({ line = 6, hl = "DiagnosticOk" }, result.hl_ranges[1])
-		assert.are.same({ line = 7, hl = "DiagnosticError" }, result.hl_ranges[2])
+		assert.are.same({ line = 6, col_start = 14, col_end = 16, hl = "DiagnosticInfo" }, result.hl_ranges[1])
+		assert.are.same({ line = 7, col_start = 14, col_end = 17, hl = "DiagnosticOk" }, result.hl_ranges[2])
+		assert.are.same({ line = 7, col_start = 18, col_end = 20, hl = "DiagnosticError" }, result.hl_ranges[3])
 	end)
 
 	it("quotes YAML special characters and keeps metadata on one line", function()
@@ -83,14 +85,14 @@ describe("overview metadata", function()
 	end)
 
 	it("retains zero counts", function()
-		local result = render({ additions = 0, deletions = 0 })
-		assert.are.equal("additions: 0", result.lines[7])
-		assert.are.equal("deletions: 0", result.lines[8])
+		local result = render({ additions = 0, deletions = 0, changedFiles = 0 })
+		assert.are.equal("file_changed: 0", result.lines[7])
+		assert.are.equal("line_changed: 0/0", result.lines[8])
 	end)
 
 	it("omits unknown or invalid counts rather than displaying zero", function()
 		for _, value in ipairs({ vim.NIL, "12", -1, 1.5, math.huge, 0 / 0 }) do
-			local result = render({ additions = value, deletions = value })
+			local result = render({ additions = value, deletions = value, changedFiles = value })
 			assert.are.equal("---", result.lines[7])
 			assert.are.equal(11, result.sections.description)
 			assert.are.equal(1, #result.hl_ranges) -- footer only
@@ -101,12 +103,24 @@ describe("overview metadata", function()
 		assert.are.equal("---", result.lines[7])
 	end)
 
+	it("omits only the unavailable count or incomplete pair", function()
+		for _, key in ipairs({ "additions", "deletions" }) do
+			local result = render({ [key] = vim.NIL })
+			assert.are.equal("file_changed: 10", result.lines[7])
+			assert.are.equal("---", result.lines[8])
+		end
+		local result = render({ changedFiles = vim.NIL })
+		assert.are.equal("line_changed: 340/28", result.lines[7])
+		assert.are.equal(6, result.hl_ranges[1].line)
+		assert.are.equal(6, result.hl_ranges[2].line)
+	end)
+
 	it("requests PR-wide counts from GitHub", function()
 		local gh = require("fude.gh")
 		local captured
 		helpers.mock(gh, "run_json", function(args, cb)
 			captured = args
-			cb(nil, { additions = 340, deletions = 28 })
+			cb(nil, { additions = 340, deletions = 28, changedFiles = 10 })
 		end)
 		local response
 		gh.get_pr_overview(function(err, data)
@@ -117,13 +131,14 @@ describe("overview metadata", function()
 		local fields = vim.split(captured[4], ",")
 		assert.is_true(vim.tbl_contains(fields, "additions"))
 		assert.is_true(vim.tbl_contains(fields, "deletions"))
-		assert.are.same({ additions = 340, deletions = 28 }, response)
+		assert.is_true(vim.tbl_contains(fields, "changedFiles"))
+		assert.are.same({ additions = 340, deletions = 28, changedFiles = 10 }, response)
 	end)
 
 	it("connects generated positions to marks, navigation, and highlights in the float", function()
 		local config = require("fude.config")
 		config.setup({})
-		local pr = { number = 1, title = "Title", body = "Body", additions = 3, deletions = 1 }
+		local pr = { number = 1, title = "Title", body = "Body", additions = 70, deletions = 6, changedFiles = 10 }
 		local comments = { { user = { login = "alice" }, created_at = "2026-01-01", body = "Comment" } }
 		local expected = format.build_overview_left_lines(pr, comments, function(s)
 			return s
@@ -149,10 +164,11 @@ describe("overview metadata", function()
 		assert.are.equal(expected.comment_positions[1], vim.api.nvim_win_get_cursor(win)[1])
 		local colors = {}
 		for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, config.state.ns_id, 0, -1, { details = true })) do
-			colors[mark[4].hl_group] = mark[2]
+			colors[mark[4].hl_group] = { mark[2], mark[3], mark[4].end_col }
 		end
-		assert.are.equal(6, colors.DiagnosticOk)
-		assert.are.equal(7, colors.DiagnosticError)
+		assert.are.same({ 6, 14, 16 }, colors.DiagnosticInfo)
+		assert.are.same({ 7, 14, 16 }, colors.DiagnosticOk)
+		assert.are.same({ 7, 17, 18 }, colors.DiagnosticError)
 		maps.q()
 		assert.is_false(vim.api.nvim_win_is_valid(win))
 	end)

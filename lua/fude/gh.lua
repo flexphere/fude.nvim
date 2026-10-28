@@ -234,7 +234,7 @@ end
 --- @param callback fun(err: string|nil, data: table|nil)
 function M.get_pr_overview(callback)
 	local fields = "number,title,body,labels,assignees,state,isDraft,author,"
-		.. "baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews,additions,deletions"
+		.. "baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews,additions,deletions,changedFiles"
 	M.run_json({
 		"pr",
 		"view",

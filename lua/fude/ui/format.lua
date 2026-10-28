@@ -543,13 +543,32 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	add_string("base", pr_info.baseRefName)
 	add_string("head", pr_info.headRefName)
 	add_string("url", pr_info.url)
-	for _, entry in ipairs({ { "additions", "DiagnosticOk" }, { "deletions", "DiagnosticError" } }) do
-		local value = pr_info[entry[1]]
+	local function count_text(value)
 		-- Missing counts mean unknown, not zero.
 		if type(value) == "number" and value >= 0 and value < math.huge and value == math.floor(value) then
-			table.insert(lines, entry[1] .. ": " .. string.format("%.0f", value))
-			table.insert(hl_ranges, { line = #lines - 1, hl = entry[2] })
+			return string.format("%.0f", value)
 		end
+	end
+	local function highlight_count(start_col, text, group)
+		table.insert(hl_ranges, {
+			line = #lines - 1,
+			col_start = start_col,
+			col_end = start_col + #text,
+			hl = group,
+		})
+	end
+	local files = count_text(pr_info.changedFiles)
+	if files then
+		local prefix = "file_changed: "
+		table.insert(lines, prefix .. files)
+		highlight_count(#prefix, files, "DiagnosticInfo")
+	end
+	local additions, deletions = count_text(pr_info.additions), count_text(pr_info.deletions)
+	if additions and deletions then
+		local prefix = "line_changed: "
+		table.insert(lines, prefix .. additions .. "/" .. deletions)
+		highlight_count(#prefix, additions, "DiagnosticOk")
+		highlight_count(#prefix + #additions + 1, deletions, "DiagnosticError")
 	end
 	table.insert(lines, "---")
 	table.insert(lines, "")
