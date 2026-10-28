@@ -566,10 +566,13 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	local additions, deletions = count_text(pr_info.additions), count_text(pr_info.deletions)
 	if additions and deletions then
 		local prefix = "line_changed: "
-		table.insert(lines, prefix .. additions .. "/" .. deletions)
-		highlight_count(#prefix, additions, "DiagnosticOk")
-		highlight_count(#prefix + #additions + 1, deletions, "DiagnosticError")
-		highlight_count(#prefix + #additions, "/", "Normal")
+		local added, deleted = "+" .. additions, "-" .. deletions
+		table.insert(lines, prefix .. '"' .. added .. " " .. deleted .. '"')
+		highlight_count(#prefix + 1, added, "DiagnosticOk")
+		highlight_count(#prefix + #added + 2, deleted, "DiagnosticError")
+		highlight_count(#prefix, '"', "Normal")
+		highlight_count(#prefix + #added + 1, " ", "Normal")
+		highlight_count(#prefix + #added + #deleted + 2, '"', "Normal")
 	end
 	table.insert(lines, "---")
 	table.insert(lines, "")
