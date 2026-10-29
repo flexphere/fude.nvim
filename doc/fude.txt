@@ -864,8 +864,11 @@ File opening position                                 *fude-file-position*
       and `<Tab>` toggles a commit's reviewed state.
       In local review (|fude-local-review|), lists the local diff scopes
       available for the current git state ("Base branch", "Unpushed",
-      "Uncommitted" — see |:FudeReviewLocalScope|); here `<CR>` or `<Tab>`
-      switches scope, and `b` changes the base branch
+      "Uncommitted", and individual commits — see |:FudeReviewLocalScope|).
+      `<CR>` switches scope. `<Tab>` toggles a commit's reviewed state;
+      on non-commit local scopes it switches scope. Commit reviewed marks
+      are session-local in both modes (not persisted across review stops
+      or Neovim restarts). `b` changes the base branch
       (|:FudeReviewLocalBase|). The active scope is marked with `▶`.
 
     Commit Message:~
@@ -913,8 +916,9 @@ File opening position                                 *fude-file-position*
       `<CR>`    On a scope: switch to it and open the first file
                 listed in the new scope. On a file: open it.
                 On a directory: fold or expand its descendants.
-      `<Tab>`   On a scope: toggle reviewed (PR) or switch scope
-                (local). On a file: toggle viewed.
+      `<Tab>`   On a commit: toggle reviewed (PR and local review).
+                On other local scopes: switch scope.
+                On a file: toggle viewed.
       `j` / `k`   Move to the next / previous selectable entry,
                 including directory rows and commit message rows.
                 Skips headers, separators and blank lines. Accepts a
@@ -1369,8 +1373,8 @@ Options:
                   Available actions and defaults:
                   - `select`: "<CR>" (scope: switch; directory: fold or
                     expand; file: open)
-                  - `toggle_reviewed`: "<Tab>" (toggles scope reviewed or
-                    file viewed state; switches scope in local review)
+                  - `toggle_reviewed`: "<Tab>" (toggles commit reviewed or
+                    file viewed state; switches non-commit local scopes)
                   - `toggle_file_tree`: "t"
                   - `reload`: "R"
                   - `close`: "q"

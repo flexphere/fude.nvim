@@ -283,7 +283,7 @@ require("fude").setup({
     },
     keymaps = {
       select = "<CR>",           -- scope: switch / directory: fold / file: open
-      toggle_reviewed = "<Tab>", -- PR scope reviewed / local scope switch / file viewed
+      toggle_reviewed = "<Tab>", -- Commit reviewed / other local scope switch / file viewed
       toggle_file_tree = "t",
       reload = "R",
       close = "q",
