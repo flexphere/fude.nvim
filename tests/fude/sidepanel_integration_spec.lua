@@ -37,7 +37,7 @@ describe("sidepanel integration", function()
 		helpers.cleanup()
 	end)
 
-	it("select and toggle_reviewed pass the commit sha to set_scope for a local commit entry", function()
+	it("select switches local commits while Tab toggles their reviewed mark without switching", function()
 		config.state.review_mode = "local"
 		config.state.local_session = {
 			scope = "base",
@@ -89,12 +89,61 @@ describe("sidepanel integration", function()
 		vim.api.nvim_win_set_cursor(panel.win, { target_line, 0 })
 		select_cb()
 		toggle_cb()
-		-- Both wire the entry's sha through; dropping `opts` here would hand
-		-- set_scope a bare "commit" that it refuses.
+		assert.is_true(config.state.reviewed_commits.c2sha)
+		assert.is_nil(config.state.reviewed_commits.c1sha)
+		assert.is_true(sidepanel.get_current_entry(panel).entry.reviewed)
+		assert.equals(config.opts.signs.viewed, sidepanel.get_current_entry(panel).entry.reviewed_icon)
+		assert.is_truthy(
+			vim.api
+				.nvim_buf_get_lines(panel.buf, target_line - 1, target_line, false)[1]
+				:find(config.opts.signs.viewed, 1, true)
+		)
+		sidepanel.refresh()
+		assert.is_true(sidepanel.get_current_entry(panel).entry.reviewed)
+		toggle_cb()
+		assert.is_nil(config.state.reviewed_commits.c2sha)
+		assert.is_false(sidepanel.get_current_entry(panel).entry.reviewed)
+		assert.equals(" ", sidepanel.get_current_entry(panel).entry.reviewed_icon)
+		-- Only Enter switches the scope; neither Tab press checks out a commit.
 		assert.same({
 			{ scope = "commit", sha = "c2sha" },
-			{ scope = "commit", sha = "c2sha" },
 		}, calls)
+		assert.equals("base", config.state.local_session.scope)
+
+		vim.api.nvim_win_set_cursor(panel.win, { panel.section_map.scope_start + 1, 0 })
+		toggle_cb()
+		assert.same({ scope = "base" }, calls[2])
+	end)
+
+	it("Tab toggles a PR commit without switching and ignores the Entire PR row", function()
+		config.state.review_mode = "github"
+		config.state.scope = "full_pr"
+		config.state.pr_commits = {
+			{ sha = "c1sha", commit = { message = "first", author = { name = "a", date = "" } } },
+		}
+		helpers.mock(require("fude.scope"), "apply_scope", function()
+			error("Tab must not switch scope")
+		end)
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		local toggle_cb
+		for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(panel.buf, "n")) do
+			if mapping.desc == "Toggle reviewed/viewed" then
+				toggle_cb = mapping.callback
+			end
+		end
+		assert.is_function(toggle_cb)
+		vim.api.nvim_win_set_cursor(panel.win, { panel.section_map.scope_start + 2, 0 })
+		toggle_cb()
+		assert.is_true(config.state.reviewed_commits.c1sha)
+		assert.is_true(sidepanel.get_current_entry(panel).entry.reviewed)
+		toggle_cb()
+		assert.is_nil(config.state.reviewed_commits.c1sha)
+		assert.is_false(sidepanel.get_current_entry(panel).entry.reviewed)
+		vim.api.nvim_win_set_cursor(panel.win, { panel.section_map.scope_start + 1, 0 })
+		toggle_cb()
+		assert.same({}, config.state.reviewed_commits)
+		assert.equals("full_pr", config.state.scope)
 	end)
 
 	it("open creates window and sets state.sidepanel", function()
@@ -692,7 +741,9 @@ describe("sidepanel integration", function()
 		sidepanel.open()
 		local panel = config.state.sidepanel
 		buf_keymap(panel.buf, "?").callback()
-		assert.truthy(help_text(panel):find("<Tab>  Switch scope / toggle file viewed", 1, true))
+		assert.truthy(
+			help_text(panel):find("<Tab>  Toggle commit reviewed / switch other scopes / toggle file viewed", 1, true)
+		)
 	end)
 
 	it("maps b to the base branch picker only in local review", function()

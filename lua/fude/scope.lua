@@ -127,19 +127,23 @@ end
 --- `scope_specs`), so only the scopes valid for the current git state appear.
 --- Commit scopes carry the target SHA, since they all share the scope name.
 --- @param specs table[] { { scope = string, label = string, is_current = boolean, commit_sha = string|nil } }
+--- @param reviewed_commits table<string, boolean>|nil { [sha] = true } reviewed commit map
 --- @return table[] entries with a `local_scope` value field
-function M.build_local_scope_entries(specs)
+function M.build_local_scope_entries(specs, reviewed_commits)
+	reviewed_commits = reviewed_commits or {}
 	local entries = {}
 	for _, s in ipairs(specs or {}) do
+		local is_reviewed = s.commit_sha ~= nil and reviewed_commits[s.commit_sha] == true
+		local r_icon, r_hl = M.reviewed_icon(is_reviewed)
 		table.insert(entries, {
 			value = s.commit_sha or s.scope,
 			local_scope = s.scope,
 			display_text = s.label,
 			sha = s.commit_sha,
 			is_full_pr = false,
-			reviewed = false,
-			reviewed_icon = " ",
-			reviewed_hl = "Comment",
+			reviewed = is_reviewed,
+			reviewed_icon = r_icon,
+			reviewed_hl = r_hl,
 			index = nil,
 			total = #specs,
 			is_current = s.is_current == true,

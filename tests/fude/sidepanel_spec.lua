@@ -178,7 +178,7 @@ describe("build_help_lines", function()
 			"Side panel keymaps",
 			"",
 			"<CR>   Select scope, toggle directory, or open file",
-			"<Tab>  Switch scope / toggle file viewed",
+			"<Tab>  Toggle commit reviewed / switch other scopes / toggle file viewed",
 			"  t    Toggle tree/flat file list",
 			"  ?    Show panel keymaps",
 			"",

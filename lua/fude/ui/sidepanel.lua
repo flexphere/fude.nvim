@@ -527,7 +527,7 @@ function M.build_help_lines(mappings, review_mode)
 	for _, mapping in ipairs(mappings) do
 		local desc = mapping.desc
 		if mapping.action == "toggle_reviewed" and review_mode == "local" then
-			desc = "Switch scope / toggle file viewed"
+			desc = "Toggle commit reviewed / switch other scopes / toggle file viewed"
 		end
 		table.insert(lines, help_row(mapping.lhs, desc))
 	end
@@ -697,7 +697,7 @@ local function render(panel)
 	local scope_entries
 	if state.review_mode == "local" then
 		local specs = state.local_session and require("fude.local.session").scope_specs(state.local_session) or {}
-		scope_entries = scope_mod.build_local_scope_entries(specs)
+		scope_entries = scope_mod.build_local_scope_entries(specs, state.reviewed_commits)
 	else
 		local commit_entries = {}
 		if #state.pr_commits > 0 then
@@ -1132,8 +1132,8 @@ function M.setup_keymaps(panel)
 		end
 
 		if entry_info.type == "scope" then
-			-- Local review scopes have no "reviewed" state; switch scope instead.
-			if config.state.review_mode == "local" then
+			-- Non-commit local scopes have no reviewed state; keep switching them.
+			if config.state.review_mode == "local" and not entry_info.entry.sha then
 				require("fude.local.session").set_scope(entry_info.entry.local_scope, { commit_sha = entry_info.entry.sha })
 			else
 				M.toggle_scope_reviewed(panel, entry_info)
@@ -1422,13 +1422,7 @@ function M.toggle_scope_reviewed(_panel, entry_info)
 		return
 	end
 
-	local state = config.state
-	if state.reviewed_commits[sha] then
-		state.reviewed_commits[sha] = nil
-	else
-		state.reviewed_commits[sha] = true
-	end
-
+	get_scope().apply_reviewed_toggle(sha)
 	M.refresh()
 end
 
