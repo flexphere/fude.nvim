@@ -114,6 +114,27 @@ describe("toggle_picker.resolve_mark", function()
 		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { toggle_picker.resolve_mark(item) })
 	end)
 
+	it("pads the spinner to the width of the mark it replaces, so a 💬 row's name does not move", function()
+		local item = {
+			text = "@bob",
+			on = false,
+			mark = function()
+				return "💬", "Normal", "Comment"
+			end,
+		}
+		local opts = {
+			on_toggle = function() end,
+		}
+		local session = toggle_picker.new_session(opts)
+		toggle_picker.toggle_item(item, opts, session)
+		local mark = toggle_picker.resolve_mark(item, session)
+		assert.are.equal("⣾ ", mark)
+		assert.are.equal(vim.fn.strdisplaywidth("💬"), vim.fn.strdisplaywidth(mark))
+		-- A one-cell mark gets no padding
+		assert.are.equal("⣾", toggle_picker.format_loading_mark(1, 1))
+		assert.are.equal("⣾", toggle_picker.format_loading_mark(1))
+	end)
+
 	it("follows the session's frame through the one-cell braille spinner, looping", function()
 		assert.are.same({ "⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷", "⣾" }, {
 			toggle_picker.format_loading_mark(1),
