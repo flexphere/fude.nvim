@@ -1393,14 +1393,14 @@ describe("build_label_pill", function()
 			assert.are.same({ col_start = offset, col_end = offset + #left, hl = "C" }, lines[1].ranges[4])
 		end)
 
-		it("starts a new row, after an empty line, when the next pill would exceed the width", function()
+		it("starts a new row when the next pill would exceed the width", function()
 			local lines = format.pack_label_pills({ pill("a"), pill("b"), pill("c") }, 11)
-			assert.are.same({ pill("a").text .. " " .. pill("b").text, "", pill("c").text }, texts(lines))
+			assert.are.same({ pill("a").text .. " " .. pill("b").text, pill("c").text }, texts(lines))
 		end)
 
 		it("gives a pill wider than the width a row of its own", function()
 			local lines = format.pack_label_pills({ pill("abcdef"), pill("g") }, 3)
-			assert.are.same({ pill("abcdef").text, "", pill("g").text }, texts(lines))
+			assert.are.same({ pill("abcdef").text, pill("g").text }, texts(lines))
 		end)
 
 		it("returns no lines for no pills", function()
@@ -1562,7 +1562,7 @@ describe("build_overview_right_lines", function()
 		assert.are.same({ "d73a4a" }, result.label_colors)
 	end)
 
-	it("wraps the pills at labels_width with an empty line between rows", function()
+	it("wraps the pills at labels_width", function()
 		local pr = {
 			number = 1,
 			title = "T",
@@ -1581,7 +1581,7 @@ describe("build_overview_right_lines", function()
 			end
 		end
 		assert.is_not_nil(first)
-		assert.are.same({ "", pill("cc") }, { result.lines[first + 1], result.lines[first + 2] })
+		assert.are.equal(pill("cc"), result.lines[first + 1])
 	end)
 
 	it("returns no label colours when no label has one", function()
