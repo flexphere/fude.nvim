@@ -233,6 +233,53 @@ describe("build_copy_choices", function()
 	end)
 end)
 
+describe("build_commit_copy_choices", function()
+	it("returns the full hash, short hash, and title with values starting in one column", function()
+		local choices = sidepanel.build_commit_copy_choices("abc1234def", "abc1234", "feat: add copy")
+		assert.are.same(
+			{ "abc1234def", "abc1234", "feat: add copy" },
+			vim.tbl_map(function(choice)
+				return choice.text
+			end, choices)
+		)
+		assert.are.same(
+			{
+				"hash:       abc1234def",
+				"short_hash: abc1234",
+				"title:      feat: add copy",
+			},
+			vim.tbl_map(function(choice)
+				return choice.label
+			end, choices)
+		)
+	end)
+
+	it("adds the full message, shown as its first line and line count when it spans several lines", function()
+		local message = "feat: add copy\n\nbody line"
+		local choices = sidepanel.build_commit_copy_choices("abc1234def", "abc1234", "feat: add copy", message)
+		assert.are.equal(4, #choices)
+		assert.are.equal(message, choices[4].text)
+		assert.are.equal("full_message: feat: add copy … (3 lines)", choices[4].label)
+		assert.are.equal("hash:         abc1234def", choices[1].label)
+	end)
+
+	it("shows a single-line full message as is and omits a blank one", function()
+		local choices = sidepanel.build_commit_copy_choices("abc1234def", "abc1234", "fix: one", "fix: one")
+		assert.are.equal("full_message: fix: one", choices[4].label)
+		assert.are.equal(3, #sidepanel.build_commit_copy_choices("abc1234def", "abc1234", "fix: one", " \n"))
+	end)
+
+	it("derives the short hash from the SHA and omits the title when they are missing or empty", function()
+		local choices = sidepanel.build_commit_copy_choices("0123456789abcdef", nil, "")
+		assert.are.same(
+			{ "0123456789abcdef", "0123456" },
+			vim.tbl_map(function(choice)
+				return choice.text
+			end, choices)
+		)
+	end)
+end)
+
 describe("format_scope_section", function()
 	local scope_entries = {
 		{
