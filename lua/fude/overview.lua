@@ -163,8 +163,22 @@ function M.open_menu(pr_info, captured_state)
 	end)
 end
 
+--- Report a failed reviewer / label request: a WARN when GitHub refused the
+--- request as made (`gh.is_refused_error`: a change to the request — another
+--- user, a label that exists — can make it pass), an ERROR when GitHub could
+--- not be reached or answered with a server error.
+--- @param failure_msg string what was attempted
+--- @param err string gh's error
+local function notify_request_failure(failure_msg, err)
+	local gh = require("fude.gh")
+	local level = gh.is_refused_error(err) and vim.log.levels.WARN or vim.log.levels.ERROR
+	vim.notify("fude.nvim: " .. failure_msg .. ": " .. vim.trim(err), level)
+end
+
 --- Run one toggle request from a toggle picker, refusing when the session it
---- was opened in is gone (the picker can outlive a :FudeReviewStop).
+--- was opened in is gone (the picker can outlive a :FudeReviewStop). The
+--- result is notified: INFO on success, WARN / ERROR on failure (see
+--- notify_request_failure).
 --- @param captured_state table|nil see is_current
 --- @param request fun(cb: fun(err: string|nil)) sends the request
 --- @param success_msg string
@@ -178,7 +192,7 @@ local function run_toggle(captured_state, request, success_msg, failure_msg, don
 	end
 	request(function(err)
 		if err then
-			vim.notify("fude.nvim: " .. failure_msg .. ": " .. err, vim.log.levels.ERROR)
+			notify_request_failure(failure_msg, err)
 			done(false)
 			return
 		end
@@ -394,7 +408,7 @@ function M.re_request_review(pr_info, captured_state)
 		end
 		gh.re_request_review(pr_info.number, { choice.login }, function(err, _)
 			if err then
-				vim.notify("fude.nvim: Failed to re-request review: " .. err, vim.log.levels.ERROR)
+				notify_request_failure("Failed to re-request review from @" .. choice.login, err)
 				reopen()
 				return
 			end

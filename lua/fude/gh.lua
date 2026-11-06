@@ -1140,6 +1140,32 @@ function M.is_no_pr_error(err)
 	return err:find("no pull requests found", 1, true) ~= nil or err:find(NO_PR_FOR_COMMIT, 1, true) == 1
 end
 
+--- The HTTP status gh reported in an error (`gh: Not Found (HTTP 404)`,
+--- `HTTP 422: Validation Failed (...)`), or nil for errors without one
+--- (network, missing executable, git).
+--- @param err string|nil
+--- @return number|nil
+function M.parse_http_status(err)
+	if type(err) ~= "string" then
+		return nil
+	end
+	local status = err:match("HTTP (%d%d%d)")
+	return status and tonumber(status) or nil
+end
+
+--- Whether an error is GitHub refusing the request as made — 403 (no
+--- permission for it), 404 (the target is gone) or 422 (it is not allowed:
+--- requesting the PR author, a non-collaborator, Copilot where it is not
+--- enabled) — rather than a failure to reach GitHub at all (auth, network,
+--- 5xx). Callers report the former as a WARN, since changing the request
+--- can make it pass, and the latter as an ERROR.
+--- @param err string|nil
+--- @return boolean
+function M.is_refused_error(err)
+	local status = M.parse_http_status(err)
+	return status == 403 or status == 404 or status == 422
+end
+
 --- Build the gh arguments that move a PR to another state.
 --- @param action string "ready" | "draft" | "close" | "reopen"
 --- @param pr_number number
