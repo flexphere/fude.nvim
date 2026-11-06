@@ -61,6 +61,66 @@ describe("toggle_picker.toggle_item", function()
 	end)
 end)
 
+describe("toggle_picker.resolve_mark", function()
+	it("shows the loading mark while the item's request is in flight, then the item's own mark", function()
+		local item = { text = "bug", on = false }
+		local finish
+		local opts = {
+			on_toggle = function(_, done)
+				finish = done
+			end,
+		}
+		local session = toggle_picker.new_session(opts)
+		assert.are.same({ "○", "Comment" }, { toggle_picker.resolve_mark(item, session) })
+		toggle_picker.toggle_item(item, opts, session)
+		assert.are.same(
+			{ toggle_picker.LOADING_MARK, toggle_picker.LOADING_HL },
+			{ toggle_picker.resolve_mark(item, session) }
+		)
+		finish(true)
+		assert.are.same({ "●", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
+	end)
+
+	it("drops the loading mark after a failed request, keeping the old mark", function()
+		local item = { text = "bug", on = true }
+		local finish
+		local opts = {
+			on_toggle = function(_, done)
+				finish = done
+			end,
+		}
+		local session = toggle_picker.new_session(opts)
+		toggle_picker.toggle_item(item, opts, session)
+		assert.are.equal(toggle_picker.LOADING_MARK, (toggle_picker.resolve_mark(item, session)))
+		finish(false)
+		assert.are.same({ "●", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
+	end)
+
+	it("keeps the item's name highlight under the loading mark and ignores other items' requests", function()
+		local item = {
+			text = "@bob",
+			on = false,
+			mark = function()
+				return "✓", "DiagnosticOk", "DiagnosticOk"
+			end,
+		}
+		local other = { text = "@alice", on = false }
+		local opts = {
+			on_toggle = function() end,
+		}
+		local session = toggle_picker.new_session(opts)
+		toggle_picker.toggle_item(other, opts, session)
+		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
+		toggle_picker.toggle_item(item, opts, session)
+		assert.are.same(
+			{ toggle_picker.LOADING_MARK, toggle_picker.LOADING_HL, "DiagnosticOk" },
+			{ toggle_picker.resolve_mark(item, session) }
+		)
+		-- Without a session nothing is ever loading
+		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { toggle_picker.resolve_mark(item) })
+	end)
+end)
+
 describe("toggle_picker.new_session", function()
 	it("runs on_close only after the in-flight request settled", function()
 		local closed = 0
@@ -180,6 +240,164 @@ describe("toggle_picker.show_vim_select", function()
 		})
 		assert.is_false(toggled)
 		assert.is_true(closed)
+	end)
+end)
+
+--- Install fake picker plugins so the Telescope / snacks adapters can run
+--- without the real plugins, and return a function restoring package.loaded.
+--- @param fakes table<string, table> module name -> module
+--- @return fun()
+local function install_fakes(fakes)
+	local saved = {}
+	for name, mod in pairs(fakes) do
+		saved[name] = package.loaded[name]
+		package.loaded[name] = mod
+	end
+	return function()
+		for name, _ in pairs(fakes) do
+			package.loaded[name] = saved[name]
+		end
+	end
+end
+
+describe("toggle_picker loading re-render", function()
+	local config = require("fude.config")
+	local restore_fakes
+
+	after_each(function()
+		if restore_fakes then
+			restore_fakes()
+			restore_fakes = nil
+		end
+		helpers.cleanup()
+	end)
+
+	it("snacks: re-renders when the request starts and again once it settled, success or not", function()
+		config.setup({ file_list_mode = "snacks" })
+		local picked
+		restore_fakes = install_fakes({
+			["snacks.picker"] = {
+				pick = function(popts)
+					picked = popts
+				end,
+			},
+		})
+		local item = { text = "bug", on = false }
+		local finish
+		toggle_picker.open({
+			title = "Labels",
+			items = { item },
+			on_toggle = function(_, done)
+				finish = done
+			end,
+		})
+		local updates = 0
+		local picker = {
+			closed = false,
+			list = {
+				update = function()
+					updates = updates + 1
+				end,
+			},
+		}
+
+		picked.actions.fude_toggle(picker, item)
+		assert.are.equal(1, updates)
+		assert.are.equal(toggle_picker.LOADING_MARK, picked.format(item)[1][1]:sub(1, #toggle_picker.LOADING_MARK))
+		finish(false)
+		assert.are.equal(2, updates)
+		assert.are.equal("○ ", picked.format(item)[1][1])
+
+		-- A toggle ignored (nil item) re-renders nothing
+		picked.actions.fude_toggle(picker, nil)
+		assert.are.equal(2, updates)
+
+		picked.actions.fude_toggle(picker, item)
+		assert.are.equal(3, updates)
+		finish(true)
+		assert.are.equal(4, updates)
+		assert.are.equal("● ", picked.format(item)[1][1])
+	end)
+
+	it("telescope: refreshes when the request starts and again once it settled, success or not", function()
+		config.setup({ file_list_mode = "telescope" })
+		local prompt_buf = helpers.create_buf()
+		local item = { text = "bug", on = false }
+		local picker = { refreshes = 0, maps = {}, selected = { value = item } }
+		function picker.refresh(self)
+			self.refreshes = self.refreshes + 1
+		end
+		function picker.get_selection_row()
+			return 0
+		end
+		function picker._get_prompt()
+			return ""
+		end
+		function picker.register_completion_callback() end
+		function picker.find(self)
+			self.opts.attach_mappings(prompt_buf, function(mode, lhs, fn)
+				self.maps[mode .. lhs] = fn
+			end)
+		end
+		restore_fakes = install_fakes({
+			["telescope.pickers"] = {
+				new = function(_, popts)
+					picker.opts = popts
+					return picker
+				end,
+			},
+			["telescope.finders"] = {
+				new_table = function(o)
+					return o
+				end,
+			},
+			["telescope.config"] = { values = { generic_sorter = function() end } },
+			["telescope.actions"] = { select_default = { replace = function() end }, close = function() end },
+			["telescope.actions.state"] = {
+				get_selected_entry = function()
+					return picker.selected
+				end,
+				get_current_picker = function()
+					return picker
+				end,
+			},
+			["telescope.themes"] = {
+				get_dropdown = function(o)
+					return o
+				end,
+			},
+		})
+		local finish
+		toggle_picker.open({
+			title = "Labels",
+			items = { item },
+			on_toggle = function(_, done)
+				finish = done
+			end,
+		})
+		local function displayed()
+			local entry = picker.opts.finder.entry_maker(item)
+			return (entry.display(entry))
+		end
+
+		picker.maps["i<Tab>"]()
+		assert.are.equal(1, picker.refreshes)
+		assert.are.equal(toggle_picker.LOADING_MARK .. " bug", displayed())
+		finish(false)
+		assert.are.equal(2, picker.refreshes)
+		assert.are.equal("○ bug", displayed())
+
+		-- A toggle ignored (no selection) refreshes nothing
+		picker.selected = nil
+		picker.maps["n<Tab>"]()
+		assert.are.equal(2, picker.refreshes)
+		picker.selected = { value = item }
+
+		picker.maps["n<Tab>"]()
+		assert.are.equal(3, picker.refreshes)
+		finish(true)
+		assert.are.equal(4, picker.refreshes)
+		assert.are.equal("● bug", displayed())
 	end)
 end)
 
