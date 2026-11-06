@@ -1,6 +1,11 @@
 local M = {}
 local config = require("fude.config")
 
+--- The loading placeholder of the show() in flight, if any: a second show()
+--- while it is open would stack a second placeholder and later a second
+--- overview, so it is dropped instead (the first one will show the overview).
+local loading_in_flight
+
 --- Show PR overview. Requires active review session.
 function M.show()
 	local state = config.state
@@ -12,6 +17,9 @@ function M.show()
 		vim.notify("fude.nvim: PR overview is not available in local review mode", vim.log.levels.WARN)
 		return
 	end
+	if loading_in_flight and loading_in_flight.is_open() then
+		return
+	end
 
 	local gh = require("fude.gh")
 	local ui = require("fude.ui")
@@ -19,6 +27,7 @@ function M.show()
 	-- Two gh calls run before anything is shown; the placeholder says so.
 	-- Every terminal path below closes it.
 	local loading = ui.open_overview_loading()
+	loading_in_flight = loading
 
 	gh.get_pr_overview(function(err, pr_info)
 		-- The overview and every flow started from it act on this session's
