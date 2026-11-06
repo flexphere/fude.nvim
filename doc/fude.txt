@@ -467,8 +467,8 @@ File opening position                                 *fude-file-position*
     which `<Tab>` toggles the row under the cursor: it requests a
     review from the user or removes their pending request, and adds or
     removes the label. While the request is in flight the row shows a
-    `.` → `..` → `...` loop (DiagnosticInfo) in place of its mark
-    (Telescope and snacks); the mark changes only after
+    spinner (`⣾⣽⣻⢿⡿⣟⣯⣷`, as the gh CLI; DiagnosticInfo) in place of
+    its mark (Telescope and snacks); the mark changes only after
     GitHub accepted the change (after a failure the old mark comes
     back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it
     and reopen the overview once every pending request finished. With
