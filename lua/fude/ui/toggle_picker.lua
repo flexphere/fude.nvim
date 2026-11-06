@@ -46,28 +46,32 @@ function M.resolve_detail(item)
 end
 
 --- Frames of the mark shown in place of a row's own mark while its request is
---- in flight — the braille spinner of the gh CLI, every frame one cell wide
---- like the marks it replaces, so the name after it never moves — their
---- highlight, and the time each frame stays (gh's 120 ms). The row's `on` is
---- still the state before the request, which the mark would otherwise show as
---- if nothing were happening.
+--- in flight — the braille spinner of the gh CLI, every frame one cell wide —
+--- their highlight, and the time each frame stays (gh's 120 ms). The row's
+--- `on` is still the state before the request, which the mark would otherwise
+--- show as if nothing were happening.
 M.LOADING_FRAMES = { "⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷" }
 M.LOADING_HL = "DiagnosticInfo"
 M.LOADING_INTERVAL_MS = 120
 
---- The loading mark of a frame.
+--- The loading mark of a frame, padded with spaces to `width` display cells
+--- — the width of the mark it stands in for — so the name after it stays
+--- where it is (the reviewer picker's `💬` is two cells wide).
 --- @param frame number 1-based frame index (wrapped into the frame list)
+--- @param width number|nil display width to fill (default: the frame's own)
 --- @return string
-function M.format_loading_mark(frame)
+function M.format_loading_mark(frame, width)
 	local frames = M.LOADING_FRAMES
-	return frames[(frame - 1) % #frames + 1]
+	local text = frames[(frame - 1) % #frames + 1]
+	local pad = (width or 0) - vim.fn.strdisplaywidth(text)
+	return text .. string.rep(" ", math.max(0, pad))
 end
 
 --- Resolve an item's mark for the current render: `item.mark(item)` when
 --- given, else the plain applied / not-applied mark from `item.on`. While the
 --- item's request is in flight (`session.pending[item]`) the loading mark of
---- the session's current frame replaces it; the name highlight stays the
---- item's own.
+--- the session's current frame replaces it, padded to the mark's width; the
+--- name highlight stays the item's own.
 --- @param item fude.TogglePickerItem
 --- @param session table|nil from new_session; nil never shows the loading mark
 --- @return string mark, string mark_hl, string|nil text_hl
@@ -79,7 +83,7 @@ function M.resolve_mark(item, session)
 		mark, mark_hl = format.format_toggle_mark(item.on)
 	end
 	if session and session.pending[item] then
-		return M.format_loading_mark(session.frame), M.LOADING_HL, text_hl
+		return M.format_loading_mark(session.frame, vim.fn.strdisplaywidth(mark)), M.LOADING_HL, text_hl
 	end
 	return mark, mark_hl, text_hl
 end
