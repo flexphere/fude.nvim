@@ -478,6 +478,11 @@ File opening position                                 *fude-file-position*
     (Telescope and snacks); the mark changes only after
     GitHub accepted the change (after a failure the old mark comes
     back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it.
+    Every request is reported: a success as an info message, a
+    request GitHub refused (HTTP 403 / 404 / 422: the PR author, a
+    user without write access, a label that no longer exists) as a
+    warning, and a failure to reach GitHub (auth, network, server
+    error) as an error. `r` reports the same way.
     The overview is not reopened afterwards: run |:FudeReviewOverview|
     again to see the result. |:FudeEditReviewers| and |:FudeEditLabels|
     open the same pickers without the overview. With
