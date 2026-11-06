@@ -49,6 +49,9 @@ in the editor. It provides:
 
 Optional:
 - telescope.nvim for picker UI with diff preview (changed files and review scope)
+- snacks.nvim with image support (kitty graphics protocol: kitty, ghostty,
+  wezterm; tmux with passthrough), curl, and ImageMagick (`magick` or
+  `convert`) for author / reviewer avatars in the overview
 - gitsigns.nvim for automatic diff base switching
 - blink.cmp or nvim-cmp for @user / #issue / _commit completion
 
@@ -452,6 +455,9 @@ File opening position                                 *fude-file-position*
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count.
+    With snacks.nvim image support, the author's avatar is drawn on
+    the `author:` line and each reviewer's before their login, cut
+    into a circle like the GitHub web UI (see `overview.avatars`).
     Requires an active review session.
     The PR title, body headings, and comments use Markdown headings
     and are foldable with
@@ -1159,6 +1165,8 @@ Default configuration: >lua
       height = 80,
       -- Right pane width as percentage of total overview width
       right_width = 30,
+      -- Draw the author's and reviewers' avatars (snacks.nvim image support, curl, ImageMagick)
+      avatars = true,
       -- Section marks (jump with 'd, 'c in left pane)
       marks = { description = "d", comments = "c" },
     },
@@ -1327,6 +1335,18 @@ Options:
 `overview.right_width`
                   Right pane width as % of total overview width
                   (default: 30). Minimum effective width is 15 columns.
+
+`overview.avatars`  Draw the PR author's avatar (frontmatter `author:`
+                  line) and each reviewer's (right pane) inline with
+                  snacks.nvim's image module (default: true). Needs a
+                  terminal snacks supports (kitty graphics protocol:
+                  kitty, ghostty, wezterm; tmux with
+                  `allow-passthrough`) and `curl`; the images are cached
+                  in `stdpath("cache")/fude/avatars` and cut into
+                  circles with ImageMagick (`magick` or `convert`),
+                  square without it. Bots (Copilot included) have no
+                  avatar. A no-op when snacks.nvim is missing or the
+                  terminal is unsupported.
 
 `overview.marks`    Table mapping section names to mark characters
                   for the left pane.
