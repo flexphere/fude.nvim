@@ -470,8 +470,9 @@ File opening position                                 *fude-file-position*
     Reviewer and Label open a picker (routed by `file_list_mode`) in
     which `<Tab>` toggles the row under the cursor: it requests a
     review from the user or removes their pending request, and adds or
-    removes the label. While the request is in flight the row shows `…`
-    (DiagnosticInfo) in place of its mark; the mark changes only after
+    removes the label. While the request is in flight the row shows a
+    `.` → `..` → `...` loop (DiagnosticInfo) in place of its mark
+    (Telescope and snacks); the mark changes only after
     GitHub accepted the change (after a failure the old mark comes
     back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it.
     The overview is not reopened afterwards: run |:FudeReviewOverview|
