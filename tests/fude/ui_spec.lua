@@ -708,18 +708,24 @@ describe("open_overview_loading", function()
 		handle.close()
 	end)
 
-	it("advances the spinner in place until closed", function()
+	it("advances the spinner over the mark until closed, without changing the text", function()
 		local handle = ui.open_overview_loading()
 		local buf = vim.api.nvim_win_get_buf((placeholder_wins()))
-		local last = vim.api.nvim_buf_line_count(buf)
-		local first = vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1]
+		local ns = vim.api.nvim_create_namespace("fude_spinner")
+		local function frame()
+			local marks = vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })
+			return #marks == 1 and marks[1][4].virt_text[1][1] or nil
+		end
+		local text = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		local tick = vim.api.nvim_buf_get_changedtick(buf)
 		assert.is_true(handle.is_spinning())
+		assert.are.equal("⣾", frame())
 		assert.is_true(vim.wait(1000, function()
-			return vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1] ~= first
+			return frame() == "⣽"
 		end))
-		local now = vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1]
-		assert.are.equal(#first, #now)
-		assert.is_truthy(now:find("⣽ " .. ui.OVERVIEW_LOADING_TEXT, 1, true))
+		-- The buffer itself never changed
+		assert.are.same(text, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+		assert.are.equal(tick, vim.api.nvim_buf_get_changedtick(buf))
 		handle.close()
 		assert.is_false(handle.is_spinning())
 	end)
@@ -1193,15 +1199,24 @@ describe("show_overview_float CI STATUS", function()
 		local handle = ui.show_overview_float({ number = 1, title = "T", labels = { { name = "bug" } } }, {}, {})
 		local buf = right_buf()
 		assert.are.same({ "## CI STATUS", "⣾ Loading checks…" }, tail(buf, 2))
+		-- The frames are drawn over the row; the text is not rewritten
+		local tick = vim.api.nvim_buf_get_changedtick(buf)
+		local ns = vim.api.nvim_create_namespace("fude_spinner")
+		assert.is_true(vim.wait(1000, function()
+			local marks = vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })
+			return #marks == 1 and marks[1][4].virt_text[1][1] ~= "⣾"
+		end))
+		assert.are.equal(tick, vim.api.nvim_buf_get_changedtick(buf))
 		local before = vim.api.nvim_buf_get_lines(buf, 0, -3, false)
 
 		handle.set_checks({ { name = "lint", status = "COMPLETED", conclusion = "FAILURE" } }, false)
 		assert.are.same({ "## CI STATUS (0/1 passed)", "✗ lint  failure" }, tail(buf, 2))
 		-- Everything above the section is left as it was
 		assert.are.same(before, vim.api.nvim_buf_get_lines(buf, 0, -3, false))
-		-- The spinner stopped: the row stays as set
+		-- The spinner stopped: the row stays as set, and no frame is drawn over it
 		vim.wait(3 * require("fude.ui.toggle_picker").LOADING_INTERVAL_MS)
 		assert.are.same({ "## CI STATUS (0/1 passed)", "✗ lint  failure" }, tail(buf, 2))
+		assert.are.same({}, vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, {}))
 	end)
 
 	it("shows the failure row via set_checks, and at once for a pr_info already marked failed", function()

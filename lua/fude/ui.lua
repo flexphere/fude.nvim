@@ -560,28 +560,35 @@ local function start_spinner(on_frame)
 	end
 end
 
---- Write one line of a non-modifiable scratch buffer: `prefix` (blank
---- padding) then the spinner `mark` and `text`, the mark coloured like the
---- toggle picker's spinner and the text grey. Every spinner frame is one cell
---- wide, so the text never moves.
---- @param buf number
---- @param ns number
---- @param row number 0-indexed
---- @param prefix string
+--- Namespace of the spinner frames drawn over loading rows.
+local spinner_ns = vim.api.nvim_create_namespace("fude_spinner")
+
+--- Draw spinner frames over loading rows: `rows` is a list of
+--- `{ buf, row (0-indexed), col (byte) }` whose text already holds a mark of
+--- the same width at `col`. The frame is an overlay extmark, so the buffer
+--- text never changes: rewriting it every frame would fire buffer change
+--- events (`on_lines`) that other plugins react to, e.g. by scheduling a
+--- treesitter parse of a buffer that `q` wipes before it runs. The previous
+--- frames of `bufs` are dropped first.
+--- @param bufs number[]
+--- @param rows table[]
 --- @param mark string
---- @param text string
-local function write_spinner_line(buf, ns, row, prefix, mark, text)
-	if not vim.api.nvim_buf_is_valid(buf) then
-		return
-	end
+local function draw_spinner_frames(bufs, rows, mark)
 	local toggle_picker = require("fude.ui.toggle_picker")
-	vim.bo[buf].modifiable = true
-	vim.api.nvim_buf_set_lines(buf, row, row + 1, false, { prefix .. mark .. " " .. text })
-	vim.bo[buf].modifiable = false
-	vim.api.nvim_buf_clear_namespace(buf, ns, row, row + 1)
-	local mark_end = #prefix + #mark
-	pcall(vim.api.nvim_buf_add_highlight, buf, ns, toggle_picker.LOADING_HL, row, #prefix, mark_end)
-	pcall(vim.api.nvim_buf_add_highlight, buf, ns, "Comment", row, mark_end, -1)
+	for _, buf in ipairs(bufs) do
+		if vim.api.nvim_buf_is_valid(buf) then
+			vim.api.nvim_buf_clear_namespace(buf, spinner_ns, 0, -1)
+		end
+	end
+	for _, row in ipairs(rows) do
+		if vim.api.nvim_buf_is_valid(row[1]) then
+			pcall(vim.api.nvim_buf_set_extmark, row[1], spinner_ns, row[2], row[3], {
+				virt_text = { { mark, toggle_picker.LOADING_HL } },
+				virt_text_pos = "overlay",
+				invalidate = true,
+			})
+		end
+	end
 end
 
 --- Open the placeholder shown while the overview's PR data is being fetched
@@ -640,12 +647,19 @@ function M.open_overview_loading()
 		style = "minimal",
 		border = border,
 	})
+	-- The text is written once: the mark coloured like the toggle picker's
+	-- spinner and the text grey; the frames are drawn over the mark.
 	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
+	local first_mark = toggle_picker.format_loading_mark(1)
+	local spinner_rows = {}
+	for _, pane in ipairs(panes) do
+		local mark_end = #pane.prefix + #first_mark
+		pcall(vim.api.nvim_buf_add_highlight, pane.buf, ns, toggle_picker.LOADING_HL, pane.row, #pane.prefix, mark_end)
+		pcall(vim.api.nvim_buf_add_highlight, pane.buf, ns, "Comment", pane.row, mark_end, -1)
+		table.insert(spinner_rows, { pane.buf, pane.row, #pane.prefix })
+	end
 	local function render(frame)
-		local mark = toggle_picker.format_loading_mark(frame)
-		for _, pane in ipairs(panes) do
-			write_spinner_line(pane.buf, ns, pane.row, pane.prefix, mark, pane.text)
-		end
+		draw_spinner_frames({ left_buf, right_buf }, spinner_rows, toggle_picker.format_loading_mark(frame))
 	end
 	render(1)
 	local stop_spinner = start_spinner(render)
@@ -797,33 +811,38 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	highlight_right(right_result.hl_ranges)
 
 	-- One spinner for every section still loading (COMMENTS on the left,
-	-- REVIEWERS and CI STATUS on the right); it stops once none is left.
+	-- REVIEWERS and CI STATUS on the right); it stops once none is left. The
+	-- rows hold the first frame as text; later frames are drawn over it.
 	local function loading_rows()
 		local rows = {}
 		if left_result.loading_row then
-			table.insert(rows, { left_buf, left_result.loading_row, format.COMMENTS_LOADING_TEXT })
+			table.insert(rows, { left_buf, left_result.loading_row, 0 })
 		end
 		if right_result.reviewers_loading_row then
-			table.insert(rows, { right_buf, right_result.reviewers_loading_row, format.REVIEWERS_LOADING_TEXT })
+			table.insert(rows, { right_buf, right_result.reviewers_loading_row, 0 })
 		end
 		if right_result.loading_row then
-			table.insert(rows, { right_buf, right_result.loading_row, format.CHECKS_LOADING_TEXT })
+			table.insert(rows, { right_buf, right_result.loading_row, 0 })
 		end
 		return rows
 	end
+	local current_frame = 1
+	local function draw_frame(frame)
+		current_frame = frame
+		draw_spinner_frames({ left_buf, right_buf }, loading_rows(), toggle_picker.format_loading_mark(frame))
+	end
 	local stop_spinner = function() end
+	--- After a section was filled in: redraw the remaining frames where the
+	--- loading rows now are, or stop when none is left.
 	local function update_spinner()
+		draw_frame(current_frame)
 		if #loading_rows() == 0 then
 			stop_spinner()
 			stop_spinner = function() end
 		end
 	end
 	if #loading_rows() > 0 then
-		stop_spinner = start_spinner(function(frame)
-			for _, loading in ipairs(loading_rows()) do
-				write_spinner_line(loading[1], ns, loading[2], "", toggle_picker.format_loading_mark(frame), loading[3])
-			end
-		end)
+		stop_spinner = start_spinner(draw_frame)
 	end
 
 	-- Set section marks (left pane only)
