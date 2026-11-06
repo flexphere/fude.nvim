@@ -124,68 +124,47 @@ describe("overview re_request_review", function()
 		end))
 	end)
 
-	it("re-shows the overview after a successful re-request while active", function()
-		select_choice = { login = "alice", state = "APPROVED" }
-		local pr_view_called = false
-		helpers.mock_gh({
-			[POST_KEY] = function(_args, callback)
-				vim.schedule(function()
-					callback(nil, {})
-				end)
-			end,
-			["pr:view"] = function(_args, callback)
-				pr_view_called = true
-				-- Respond with an error so M.show() bails out without
-				-- actually opening the overview float in the test.
-				vim.schedule(function()
-					callback("mocked: stop after fetch", nil)
-				end)
-			end,
-		})
-		config.state.active = true
+	it("does not reopen the overview after a re-request, whatever its outcome", function()
+		local cases = {
+			{ name = "success", choice = { login = "alice", state = "APPROVED" }, post_err = nil },
+			{ name = "failure", choice = { login = "alice", state = "APPROVED" }, post_err = "gh: HTTP 422" },
+			{ name = "cancel", choice = nil },
+			{ name = "no candidates", choice = nil, no_candidates = true },
+		}
+		for _, case in ipairs(cases) do
+			select_choice = case.choice
+			local settled, pr_view_called = false, false
+			helpers.mock_gh({
+				[POST_KEY] = function(_args, callback)
+					vim.schedule(function()
+						callback(case.post_err, case.post_err == nil and {} or nil)
+						settled = true
+					end)
+				end,
+				["pr:view"] = function()
+					pr_view_called = true
+				end,
+			})
 
-		overview.re_request_review(make_pr_info())
+			local pr_info = make_pr_info()
+			if case.no_candidates then
+				pr_info.latestReviews = {}
+			end
+			overview.re_request_review(pr_info)
 
-		assert.is_true(helpers.wait_for(function()
-			return pr_view_called
-		end))
+			if case.choice then
+				assert.is_true(helpers.wait_for(function()
+					return settled
+				end))
+			end
+			vim.wait(100, function()
+				return pr_view_called
+			end)
+			assert.is_false(pr_view_called, case.name)
+		end
 	end)
 
-	it("does not re-show the overview when the session was reset while the request was in flight", function()
-		select_choice = { login = "alice", state = "APPROVED" }
-		local pr_view_called = false
-		helpers.mock_gh({
-			[POST_KEY] = function(_args, callback)
-				vim.schedule(function()
-					-- Simulate stop() + start() of another session between the
-					-- request and its response: the state table identity changes
-					-- and the new session is active.
-					config.reset_state()
-					config.state.active = true
-					callback(nil, {})
-				end)
-			end,
-			["pr:view"] = function(_args, callback)
-				pr_view_called = true
-				vim.schedule(function()
-					callback(nil, {})
-				end)
-			end,
-		})
-		config.state.active = true
-
-		overview.re_request_review(make_pr_info())
-
-		assert.is_true(helpers.wait_for(function()
-			return has_notification("Re-requested review from @alice", vim.log.levels.INFO)
-		end))
-		vim.wait(100, function()
-			return pr_view_called
-		end)
-		assert.is_false(pr_view_called)
-	end)
-
-	it("refuses without posting or re-showing the overview when the session is no longer active", function()
+	it("refuses without posting when the session is no longer active", function()
 		select_choice = { login = "alice", state = "APPROVED" }
 		local posted, pr_view_called = false, false
 		helpers.mock_gh({
@@ -327,7 +306,6 @@ describe("overview menu and toggle editors", function()
 					callback(nil, {})
 				end)
 			end,
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("Reviewer"))
 		table.insert(responders, pick("@carol"))
@@ -360,7 +338,6 @@ describe("overview menu and toggle editors", function()
 					callback(nil, {})
 				end)
 			end,
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("@bob"))
 
@@ -395,7 +372,6 @@ describe("overview menu and toggle editors", function()
 					callback(nil, {})
 				end)
 			end,
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("docs"))
 		table.insert(responders, pick("bug"))
@@ -412,6 +388,61 @@ describe("overview menu and toggle editors", function()
 			return shown[3] ~= nil
 		end))
 		assert.are.same({ "○ bug", "● docs" }, shown[3])
+	end)
+
+	it("does not reopen the overview when the label picker closes after an edit", function()
+		local pr_view_called = false
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/labels"] = { { name = "docs" } },
+			["api:repos/{owner}/{repo}/issues/42/labels"] = {},
+			["pr:view"] = function()
+				pr_view_called = true
+			end,
+		})
+		-- Toggle docs, then cancel the reopened select (closes the picker)
+		table.insert(responders, pick("docs"))
+
+		overview.edit_labels(make_pr_info())
+
+		assert.is_true(helpers.wait_for(function()
+			return shown[2] ~= nil
+		end))
+		assert.are.same({ "● bug", "● docs" }, shown[2])
+		vim.wait(100, function()
+			return pr_view_called
+		end)
+		assert.is_false(pr_view_called)
+	end)
+
+	it("does not reopen the overview when the reviewer picker closes, or when it has no rows", function()
+		local pr_view_called = false
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/collaborators"] = { { login = "alice" } },
+			["pr:view"] = function()
+				pr_view_called = true
+			end,
+		})
+		-- Cancel the picker without toggling
+		overview.edit_reviewers(make_pr_info())
+		assert.is_true(helpers.wait_for(function()
+			return shown[1] ~= nil
+		end))
+
+		-- No candidates at all: only the author
+		local pr_info = make_pr_info()
+		pr_info.reviewRequests = {}
+		pr_info.latestReviews = {}
+		pr_info.author = { login = "alice" }
+		overview.edit_reviewers(pr_info)
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("No reviewers to choose from", vim.log.levels.INFO)
+		end))
+
+		vim.wait(100, function()
+			return pr_view_called
+		end)
+		assert.is_false(pr_view_called)
+		assert.are.equal(1, #shown)
 	end)
 
 	it("refuses the menu of an overview opened in a session that was stopped and restarted", function()
@@ -520,7 +551,6 @@ describe("overview menu and toggle editors", function()
 		helpers.mock_gh({
 			["api:repos/{owner}/{repo}/labels"] = { { name = "docs" } },
 			["api:repos/{owner}/{repo}/issues/42/labels"] = "gh: Not Found (HTTP 404)",
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("docs"))
 

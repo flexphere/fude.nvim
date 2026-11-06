@@ -1,6 +1,6 @@
 --- A picker whose rows are toggled in place: `<Tab>` flips the row under the
---- cursor and the picker stays open. Used by the PR overview's reviewer and
---- label editors. Routed by `file_list_mode` like the other pickers; without
+--- cursor and the picker stays open; closing it ends the flow. Used by the PR
+--- overview's reviewer and label editors. Routed by `file_list_mode` like the other pickers; without
 --- Telescope / snacks it falls back to vim.ui.select, where choosing a row
 --- toggles it and the select reopens.
 local M = {}
@@ -91,7 +91,7 @@ end
 --- Per-picker state shared by every close path: the items whose request is
 --- in flight, whether the picker was asked to close, and the loading spinner.
 --- on_close runs once, and only after every in-flight request settled, so
---- the overview it reopens is fetched after GitHub applied the last toggle.
+--- whatever it does sees GitHub after the last toggle was applied.
 ---
 --- The spinner is a timer advancing `session.frame` every LOADING_INTERVAL_MS
 --- and calling `session.rerender` (set by the Telescope / snacks adapters;
