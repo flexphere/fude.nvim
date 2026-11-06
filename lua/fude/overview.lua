@@ -1,6 +1,16 @@
 local M = {}
 local config = require("fude.config")
 
+--- The loading placeholder of the show() in flight, if any, with the session
+--- it was opened for: a second show() of the same session while it is open
+--- would stack a second placeholder and later a second overview, so it is
+--- dropped instead (the first one will show the overview). A placeholder of
+--- another session (stop → start while the fetch was pending, which closes
+--- nothing) is closed and replaced, since its own callback will do nothing
+--- more than close it once the stale response arrives.
+--- @type { handle: table, state: table }|nil
+local loading_in_flight
+
 --- Show PR overview. Requires active review session.
 function M.show()
 	local state = config.state
@@ -12,17 +22,30 @@ function M.show()
 		vim.notify("fude.nvim: PR overview is not available in local review mode", vim.log.levels.WARN)
 		return
 	end
+	if loading_in_flight and loading_in_flight.handle.is_open() then
+		if loading_in_flight.state == state then
+			return
+		end
+		loading_in_flight.handle.close()
+	end
 
 	local gh = require("fude.gh")
 	local ui = require("fude.ui")
+
+	-- Two gh calls run before anything is shown; the placeholder says so.
+	-- Every terminal path below closes it.
+	local loading = ui.open_overview_loading()
+	loading_in_flight = { handle = loading, state = state }
 
 	gh.get_pr_overview(function(err, pr_info)
 		-- The overview and every flow started from it act on this session's
 		-- PR; a stop (or stop + start) in between must not let them through.
 		if config.state ~= state then
+			loading.close()
 			return
 		end
 		if err then
+			loading.close()
 			vim.notify("fude.nvim: No PR found: " .. (err or ""), vim.log.levels.ERROR)
 			return
 		end
@@ -31,8 +54,15 @@ function M.show()
 		-- as comments in the Conversation tab.
 		require("fude.comments.sync").fetch_pr_level_comments(pr_info.number, function(pr_comments)
 			if config.state ~= state then
+				loading.close()
 				return
 			end
+			-- The user closed the placeholder (`q`): they gave up waiting, so
+			-- the overview must not pop up over whatever they moved on to.
+			if not loading.is_open() then
+				return
+			end
+			loading.close()
 			ui.show_overview_float(pr_info, pr_comments, {
 				on_menu = function()
 					M.open_menu(pr_info, state)

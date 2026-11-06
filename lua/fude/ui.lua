@@ -21,6 +21,7 @@ M.sort_checks = format.sort_checks
 M.build_checks_summary = format.build_checks_summary
 M.format_review_status = format.format_review_status
 M.build_reviewers_list = format.build_reviewers_list
+M.build_centered_lines = format.build_centered_lines
 M.build_re_request_candidates = format.build_re_request_candidates
 M.build_reviewer_entries = format.build_reviewer_entries
 M.build_label_entries = format.build_label_entries
@@ -503,6 +504,143 @@ function M.show_comments_float(comments, opts)
 	setup_github_refs(buf, get_repo_base_url())
 end
 
+--- The overview's split-pane layout for the current screen and
+--- `config.opts.overview`, shared by the overview and its loading placeholder
+--- so the two are placed alike.
+--- @return table from format.calculate_overview_layout
+local function overview_layout()
+	local ov = config.opts.overview or {}
+	return format.calculate_overview_layout(
+		vim.o.columns,
+		vim.o.lines,
+		ov.width or 80,
+		ov.height or 80,
+		ov.right_width or 30
+	)
+end
+
+--- Text of the overview's loading placeholder.
+M.OVERVIEW_LOADING_TEXT = "Loading PR overview…"
+
+--- Open the placeholder shown while the overview's PR data is being fetched
+--- (two gh calls, which can take a while): the overview's two panes at the
+--- same position and size as the overview itself, the left one titled like
+--- it and holding the loading text in its middle, after the toggle picker's
+--- spinner, which a timer advances until the placeholder closes. `q` /
+--- `<Esc>` close both, which overview.show reads as "do not show the overview
+--- after all"; closing either pane by other means closes the other too.
+--- @return table handle { close: fun(), is_open: fun(): boolean }
+function M.open_overview_loading()
+	local toggle_picker = require("fude.ui.toggle_picker")
+	local layout = overview_layout()
+	local border = config.opts.float.border
+
+	local function scratch_buf(lines)
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+		vim.bo[buf].modifiable = false
+		vim.bo[buf].buftype = "nofile"
+		vim.bo[buf].bufhidden = "wipe"
+		return buf
+	end
+	-- Every spinner frame is one cell wide, so the centred text never moves
+	local function loading_text(frame)
+		return toggle_picker.format_loading_mark(frame) .. " " .. M.OVERVIEW_LOADING_TEXT
+	end
+	local text = loading_text(1)
+	local lines, text_row, text_col =
+		format.build_centered_lines(text, vim.fn.strdisplaywidth(text), layout.left.width, layout.left.height)
+	local left_buf = scratch_buf(lines)
+	local right_buf = scratch_buf({})
+
+	local left_win = vim.api.nvim_open_win(left_buf, true, {
+		relative = "editor",
+		row = layout.left.row,
+		col = layout.left.col,
+		width = layout.left.width,
+		height = layout.left.height,
+		style = "minimal",
+		border = border,
+		title = " PR Overview ",
+		title_pos = "center",
+	})
+	local right_win = vim.api.nvim_open_win(right_buf, false, {
+		relative = "editor",
+		row = layout.right.row,
+		col = layout.right.col,
+		width = layout.right.width,
+		height = layout.right.height,
+		style = "minimal",
+		border = border,
+	})
+	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
+	local frame = 1
+	-- Write the current frame and colour it like the toggle picker's spinner
+	local function render()
+		if not vim.api.nvim_buf_is_valid(left_buf) then
+			return
+		end
+		local line = string.rep(" ", text_col) .. loading_text(frame)
+		vim.bo[left_buf].modifiable = true
+		vim.api.nvim_buf_set_lines(left_buf, text_row, text_row + 1, false, { line })
+		vim.bo[left_buf].modifiable = false
+		vim.api.nvim_buf_clear_namespace(left_buf, ns, 0, -1)
+		local mark_end = text_col + #toggle_picker.format_loading_mark(frame)
+		pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, toggle_picker.LOADING_HL, text_row, text_col, mark_end)
+		pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, "Comment", text_row, mark_end, -1)
+	end
+	render()
+	local timer = vim.uv.new_timer()
+	if timer then
+		timer:start(
+			toggle_picker.LOADING_INTERVAL_MS,
+			toggle_picker.LOADING_INTERVAL_MS,
+			vim.schedule_wrap(function()
+				frame = frame % #toggle_picker.LOADING_FRAMES + 1
+				render()
+			end)
+		)
+	end
+
+	local handle = {}
+	function handle.is_open()
+		return vim.api.nvim_win_is_valid(left_win)
+	end
+	--- Whether the spinner timer is still running (false once closed).
+	function handle.is_spinning()
+		return timer ~= nil
+	end
+	local closing = false
+	function handle.close()
+		if closing then
+			return
+		end
+		closing = true
+		if timer then
+			timer:stop()
+			timer:close()
+			timer = nil
+		end
+		pcall(vim.api.nvim_win_close, left_win, true)
+		pcall(vim.api.nvim_win_close, right_win, true)
+	end
+	-- Closing one pane (q, :q, :only) closes the other
+	local augroup = vim.api.nvim_create_augroup("fude_overview_loading_" .. left_win, { clear = true })
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = augroup,
+		pattern = { tostring(left_win), tostring(right_win) },
+		callback = function()
+			handle.close()
+			vim.api.nvim_del_augroup_by_id(augroup)
+		end,
+	})
+	for _, buf in ipairs({ left_buf, right_buf }) do
+		vim.keymap.set("n", "q", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
+		vim.keymap.set("n", "<Esc>", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
+	end
+	return handle
+end
+
 --- Show PR overview in a split-pane floating window.
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
@@ -528,14 +666,12 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.bo[right_buf].bufhidden = "wipe"
 	vim.bo[right_buf].filetype = "markdown"
 
-	-- Calculate split-pane layout
+	-- Calculate split-pane layout. The panes always take the layout's full
+	-- height, not the content's: a short PR must not shrink the window that
+	-- replaces the loading placeholder of the same size.
 	local ov = config.opts.overview or {}
-	local layout =
-		format.calculate_overview_layout(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80, ov.right_width or 30)
-
-	-- Use the taller content, capped at max layout height
-	local content_height = math.min(math.max(#left_result.lines, #right_result.lines) + 2, layout.left.height)
-	local row = math.floor((vim.o.lines - content_height) / 2)
+	local layout = overview_layout()
+	local row = layout.left.row
 
 	-- Open left window (focused)
 	local left_win = vim.api.nvim_open_win(left_buf, true, {
@@ -543,7 +679,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		row = row,
 		col = layout.left.col,
 		width = layout.left.width,
-		height = content_height,
+		height = layout.left.height,
 		style = "minimal",
 		border = config.opts.float.border,
 		title = " PR Overview ",
@@ -561,7 +697,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		row = row,
 		col = layout.right.col,
 		width = layout.right.width,
-		height = content_height,
+		height = layout.right.height,
 		style = "minimal",
 		border = config.opts.float.border,
 	})
