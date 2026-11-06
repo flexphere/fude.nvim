@@ -428,11 +428,11 @@ File opening position                                 *fude-file-position*
 :FudeReviewOverview                                *:FudeReviewOverview*
     Show PR overview in a split-pane floating window. While the PR
     data is being fetched, the two panes are shown at the overview's
-    position and width and at its full height (`overview.height`;
-    the overview itself is shorter when its content is), the left one
-    titled `PR Overview` with `Loading PR overview…`; `q` or `<Esc>`
-    closes them, and the overview is then not shown when the data
-    arrives. The left pane
+    position and size, the left one titled `PR Overview` with
+    `Loading PR overview…`; `q` or `<Esc>` closes them, and the
+    overview is then not shown when the data arrives. The window
+    size follows `overview.width` / `overview.height` regardless of
+    the content: a short PR does not shrink it. The left pane
     starts with YAML frontmatter containing state (`OPEN (draft)` for
     an open draft PR), author, base/head branches, URL, and PR-wide
     file_changed (changed file count) and line_changed (additions/deletions).
