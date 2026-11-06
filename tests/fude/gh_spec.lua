@@ -1117,18 +1117,19 @@ describe("get_pr_edit_info", function()
 		assert.are.same({ "pr", "view", "12", "--json", FIELDS }, captured_args)
 	end)
 
-	it("passes a lookup failure through without running gh pr view", function()
+	it("passes a gh pr view failure through as the error", function()
 		local called_run = false
 		helpers.mock(gh, "run_json", function(_, callback)
 			called_run = true
 			callback("HTTP 401: Bad credentials", nil)
 		end)
-		local result_err
-		gh.get_pr_edit_info(3, function(err)
-			result_err = err
+		local result, result_err
+		gh.get_pr_edit_info(3, function(err, data)
+			result_err, result = err, data
 		end)
 		assert.is_true(called_run)
 		assert.are.equal("HTTP 401: Bad credentials", result_err)
+		assert.is_nil(result)
 	end)
 end)
 
