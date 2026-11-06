@@ -1533,15 +1533,34 @@ describe("build_re_request_candidates", function()
 	end)
 
 	it("excludes non-collaborator reviewers by authorAssociation", function()
-		-- Copilot reviews report authorAssociation "CONTRIBUTOR"; the API
-		-- rejects re-requests for non-collaborators (HTTP 422).
+		-- The API rejects re-requests for non-collaborators (HTTP 422).
 		local reviews = {
-			{ author = { login = "copilot" }, authorAssociation = "CONTRIBUTOR", state = "COMMENTED" },
+			{ author = { login = "outsider" }, authorAssociation = "CONTRIBUTOR", state = "COMMENTED" },
 			{ author = { login = "alice" }, authorAssociation = "COLLABORATOR", state = "APPROVED" },
 		}
 		local result = ui.build_re_request_candidates({}, reviews, nil)
 		assert.are.equal(1, #result)
 		assert.are.equal("alice", result[1].login)
+	end)
+
+	it("includes Copilot under its REST login although its review is a bot's CONTRIBUTOR one", function()
+		local reviews = {
+			{
+				author = { login = "copilot-pull-request-reviewer", is_bot = true },
+				authorAssociation = "CONTRIBUTOR",
+				state = "COMMENTED",
+			},
+			{ author = { login = "alice" }, authorAssociation = "COLLABORATOR", state = "APPROVED" },
+		}
+		local result = ui.build_re_request_candidates({}, reviews, nil)
+		assert.are.same({ "alice", "copilot-pull-request-reviewer[bot]" }, { result[1].login, result[2].login })
+		assert.are.equal("COMMENTED", result[2].state)
+		-- A pending Copilot request (either login form) excludes it like a user's
+		assert.are.equal(1, #ui.build_re_request_candidates({ { login = "copilot-pull-request-reviewer" } }, reviews, nil))
+		assert.are.equal(
+			1,
+			#ui.build_re_request_candidates({ { login = "copilot-pull-request-reviewer[bot]" } }, reviews, nil)
+		)
 	end)
 
 	it("includes OWNER and MEMBER associations", function()
@@ -1622,7 +1641,7 @@ describe("build_reviewer_entries", function()
 		local requests = { { login = "carol" } }
 		local reviews = { { author = { login = "bob" }, state = "APPROVED", authorAssociation = "MEMBER" } }
 		local result = ui.build_reviewer_entries(collaborators, requests, reviews, nil)
-		assert.are.same({ "bob", "carol", "alice", "zed" }, logins(result))
+		assert.are.same({ "bob", "carol", "alice", "copilot-pull-request-reviewer[bot]", "zed" }, logins(result))
 		assert.is_false(result[1].requested)
 		assert.are.equal("APPROVED", result[1].review_state)
 		assert.is_true(result[2].requested)
@@ -1633,7 +1652,7 @@ describe("build_reviewer_entries", function()
 		local requests = { { login = "alice" } }
 		local reviews = { { author = { login = "alice" }, state = "CHANGES_REQUESTED" } }
 		local result = ui.build_reviewer_entries({ { login = "alice" } }, requests, reviews, nil)
-		assert.are.equal(1, #result)
+		assert.are.equal(2, #result)
 		assert.is_true(result[1].requested)
 		assert.are.equal("CHANGES_REQUESTED", result[1].review_state)
 	end)
@@ -1646,7 +1665,33 @@ describe("build_reviewer_entries", function()
 			{ author = { login = "copilot", is_bot = true }, state = "COMMENTED" },
 		}
 		local result = ui.build_reviewer_entries(collaborators, requests, reviews, "author")
-		assert.are.same({ "alice" }, logins(result))
+		assert.are.same({ "alice", "copilot-pull-request-reviewer[bot]" }, logins(result))
+	end)
+
+	it("always lists Copilot, under its REST login, with its request and review state", function()
+		-- gh pr view names Copilot by its bare login in both lists
+		local requests = { { login = "copilot-pull-request-reviewer", __typename = "Bot" } }
+		local reviews = {
+			{
+				author = { login = "copilot-pull-request-reviewer", is_bot = true },
+				authorAssociation = "CONTRIBUTOR",
+				state = "COMMENTED",
+			},
+		}
+		local result = ui.build_reviewer_entries({ { login = "alice" } }, requests, reviews, nil)
+		assert.are.same({ "copilot-pull-request-reviewer[bot]", "alice" }, logins(result))
+		assert.is_true(result[1].requested)
+		assert.are.equal("COMMENTED", result[1].review_state)
+		-- Without any involvement it sits among the rest, by its shown name
+		assert.are.same(
+			{ "alice", "copilot-pull-request-reviewer[bot]", "zed" },
+			logins(ui.build_reviewer_entries({ { login = "zed" }, { login = "alice" } }, {}, {}, nil))
+		)
+		-- A REST-form request (e.g. from another source) maps to the same row
+		assert.are.same(
+			{ "copilot-pull-request-reviewer[bot]" },
+			logins(ui.build_reviewer_entries({}, { { login = "copilot-pull-request-reviewer[bot]" } }, {}, nil))
+		)
 	end)
 
 	it("excludes collaborators without write access", function()
@@ -1655,7 +1700,10 @@ describe("build_reviewer_entries", function()
 			{ login = "writer", permissions = { pull = true, push = true } },
 			{ login = "unknown" },
 		}
-		assert.are.same({ "unknown", "writer" }, logins(ui.build_reviewer_entries(collaborators, {}, {}, nil)))
+		assert.are.same(
+			{ "copilot-pull-request-reviewer[bot]", "unknown", "writer" },
+			logins(ui.build_reviewer_entries(collaborators, {}, {}, nil))
+		)
 	end)
 
 	it("orders rows approved, changes requested, commented, dismissed, requested, then the rest", function()
@@ -1668,7 +1716,7 @@ describe("build_reviewer_entries", function()
 			{ author = { login = "amy" }, state = "APPROVED" },
 		}
 		assert.are.same(
-			{ "amy", "bea", "cat", "dan", "yuki", "zoe" },
+			{ "amy", "bea", "cat", "dan", "yuki", "copilot-pull-request-reviewer[bot]", "zoe" },
 			logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil))
 		)
 	end)
@@ -1680,24 +1728,30 @@ describe("build_reviewer_entries", function()
 		}
 		local requests = { { login = "asked" } }
 		local reviews = { { author = { login = "reader" }, state = "APPROVED", authorAssociation = "MEMBER" } }
-		assert.are.same({ "asked" }, logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil)))
+		assert.are.same(
+			{ "asked", "copilot-pull-request-reviewer[bot]" },
+			logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil))
+		)
 	end)
 
 	it("ignores an unsubmitted (PENDING) review", function()
 		local reviews = { { author = { login = "alice" }, state = "PENDING" } }
-		assert.are.same({}, ui.build_reviewer_entries({}, {}, reviews, nil))
+		assert.are.same({ "copilot-pull-request-reviewer[bot]" }, logins(ui.build_reviewer_entries({}, {}, reviews, nil)))
 	end)
 
 	it("keeps requested and reviewed users when the collaborator list is empty", function()
 		local requests = { { login = "carol" } }
 		local reviews = { { author = { login = "bob" }, state = "APPROVED" } }
-		assert.are.same({ "bob", "carol" }, logins(ui.build_reviewer_entries({}, requests, reviews, nil)))
+		assert.are.same(
+			{ "bob", "carol", "copilot-pull-request-reviewer[bot]" },
+			logins(ui.build_reviewer_entries({}, requests, reviews, nil))
+		)
 	end)
 
 	it("skips JSON null entries and authors", function()
 		local reviews = { vim.NIL, { author = vim.NIL, state = "APPROVED" } }
 		local result = ui.build_reviewer_entries({ vim.NIL, { login = vim.NIL } }, { vim.NIL }, reviews, nil)
-		assert.are.same({}, result)
+		assert.are.same({ "copilot-pull-request-reviewer[bot]" }, logins(result))
 	end)
 end)
 

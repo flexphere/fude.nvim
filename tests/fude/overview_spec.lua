@@ -345,7 +345,10 @@ describe("overview menu and toggle editors", function()
 		assert.is_true(helpers.wait_for(function()
 			return captured ~= nil
 		end))
-		assert.are.same({ "✓ @bob  (last review: approved)", "● @carol  (review requested)", "○ @alice" }, shown[2])
+		assert.are.same(
+			{ "✓ @bob  (last review: approved)", "● @carol  (review requested)", "○ @alice", "○ @copilot" },
+			shown[2]
+		)
 		assert.is_truthy(table.concat(captured.args, " "):find("--method DELETE", 1, true))
 		assert.are.same({ reviewers = { "carol" } }, vim.json.decode(captured.stdin))
 		assert.is_true(helpers.wait_for(function()
@@ -381,7 +384,7 @@ describe("overview menu and toggle editors", function()
 		assert.is_true(helpers.wait_for(function()
 			return has_notification("Re-requested review from @bob", vim.log.levels.INFO)
 		end))
-		assert.are.same({ "✓ @bob  (last review: approved)", "● @carol  (review requested)" }, shown[1])
+		assert.are.same({ "✓ @bob  (last review: approved)", "● @carol  (review requested)", "○ @copilot" }, shown[1])
 		assert.is_truthy(table.concat(captured.args, " "):find("--method POST", 1, true))
 		assert.are.same({ reviewers = { "bob" } }, vim.json.decode(captured.stdin))
 	end)
@@ -444,7 +447,7 @@ describe("overview menu and toggle editors", function()
 		assert.is_false(pr_view_called)
 	end)
 
-	it("does not reopen the overview when the reviewer picker closes, or when it has no rows", function()
+	it("does not reopen the overview when the reviewer picker closes, and lists Copilot alone for a solo repo", function()
 		local pr_view_called = false
 		helpers.mock_gh({
 			["api:repos/{owner}/{repo}/collaborators"] = { { login = "alice" } },
@@ -458,21 +461,23 @@ describe("overview menu and toggle editors", function()
 			return shown[1] ~= nil
 		end))
 
-		-- No candidates at all: only the author
+		-- Nobody but the author: Copilot is still offered
 		local pr_info = make_pr_info()
 		pr_info.reviewRequests = {}
 		pr_info.latestReviews = {}
 		pr_info.author = { login = "alice" }
 		overview.edit_reviewers(pr_info)
 		assert.is_true(helpers.wait_for(function()
-			return has_notification("No reviewers to choose from", vim.log.levels.INFO)
+			return shown[2] ~= nil
 		end))
+		assert.are.same({ "○ @copilot" }, shown[2])
+		assert.is_false(has_notification("No reviewers to choose from"))
 
 		vim.wait(100, function()
 			return pr_view_called
 		end)
 		assert.is_false(pr_view_called)
-		assert.are.equal(1, #shown)
+		assert.are.equal(2, #shown)
 	end)
 
 	it("refuses the menu of an overview opened in a session that was stopped and restarted", function()
@@ -575,6 +580,38 @@ describe("overview menu and toggle editors", function()
 		assert.is_truthy(table.concat(posted.args, " "):find("--method POST", 1, true))
 		assert.are.same({ reviewers = { "bob" } }, vim.json.decode(posted.stdin))
 		assert.is_true(has_notification("Re-requested review from @bob", vim.log.levels.INFO))
+	end)
+
+	it("requests Copilot under its REST login and names it @copilot", function()
+		local captured
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/collaborators"] = {},
+			[REVIEWERS_KEY] = function(args, callback, stdin)
+				captured = { args = args, stdin = stdin }
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end,
+		})
+		table.insert(responders, pick("@copilot"))
+		local pr_info = make_pr_info()
+		-- gh pr view names Copilot by its bare login
+		pr_info.latestReviews = {
+			{ author = { login = "copilot-pull-request-reviewer" }, state = "COMMENTED", authorAssociation = "CONTRIBUTOR" },
+		}
+
+		overview.edit_reviewers(pr_info)
+
+		assert.is_true(helpers.wait_for(function()
+			return captured ~= nil
+		end))
+		-- Reviewed (commented) ranks before requested
+		assert.are.same({ "💬 @copilot  (last review: commented)", "● @carol  (review requested)" }, shown[1])
+		assert.is_truthy(table.concat(captured.args, " "):find("--method POST", 1, true))
+		assert.are.same({ reviewers = { "copilot-pull-request-reviewer[bot]" } }, vim.json.decode(captured.stdin))
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("Re-requested review from @copilot", vim.log.levels.INFO)
+		end))
 	end)
 
 	it("keeps the mark and notifies a WARN when GitHub refuses a label request", function()
@@ -941,7 +978,10 @@ describe("overview edit commands (:FudeEditReviewers / :FudeEditLabels)", functi
 		assert.are.equal("https://github.com/octo/fude/pull/42", seen.num)
 		assert.are.same({ "repos/octo/fude/collaborators" }, paths)
 		assert.are.equal("Reviewers", opened.title)
-		assert.are.same({ "@carol", "@alice" }, { opened.items[1].text, opened.items[2].text })
+		assert.are.same(
+			{ "@carol", "@alice", "@copilot" },
+			{ opened.items[1].text, opened.items[2].text, opened.items[3].text }
+		)
 	end)
 
 	it("ties the editor to no session: a toggle still runs after the session was stopped", function()
