@@ -542,32 +542,47 @@ end)
 describe("toggle_picker row images", function()
 	local config = require("fude.config")
 	local restore_fakes
-	local placed, cleaned, closed
+	local placed, closed, grids
+	local ns = vim.api.nvim_create_namespace("fude_test_snacks_image")
+	local SLOT = string.rep(" ", toggle_picker.IMAGE_CELLS)
 
-	--- A fake snacks image module recording placements (each a table whose
-	--- close() records its index in `closed`).
+	--- A fake snacks image module recording placements. A placement draws
+	--- itself (render_grid) as a real extmark, so the extmark checks work;
+	--- `draw(p)` stands in for snacks' first deferred update.
 	local function fake_snacks_image()
-		placed, cleaned, closed = {}, {}, {}
+		placed, closed, grids = {}, {}, {}
+		local placement_mod = { ns = ns }
+		function placement_mod.new(buf, file, opts)
+			local placement = { buf = buf, file = file, opts = opts, id = #placed + 1, eids = {} }
+			function placement.close(self)
+				table.insert(closed, self.id)
+				for _, eid in ipairs(self.eids) do
+					pcall(vim.api.nvim_buf_del_extmark, self.buf, ns, eid)
+				end
+			end
+			function placement.render_grid(self, loc)
+				table.insert(grids, { id = self.id, row = loc[1], col = loc[2] })
+				self.eids[1] = vim.api.nvim_buf_set_extmark(self.buf, ns, loc[1] - 1, loc[2], {
+					id = self.eids[1],
+					end_col = self.opts.range[4],
+					invalidate = true,
+				})
+			end
+			table.insert(placed, placement)
+			return placement
+		end
 		return {
 			image = {
 				supports_terminal = function()
 					return true
 				end,
-				placement = {
-					new = function(buf, file, opts)
-						local placement = { buf = buf, file = file, opts = opts, id = #placed + 1 }
-						function placement.close(self)
-							table.insert(closed, self.id)
-						end
-						table.insert(placed, placement)
-						return placement
-					end,
-					clean = function(buf)
-						table.insert(cleaned, buf)
-					end,
-				},
+				placement = placement_mod,
 			},
 		}
+	end
+	local function draw(placement, width)
+		placement._state = { loc = { placement.opts.pos[1], placement.opts.pos[2], width = width or 4, height = 1 } }
+		placement:render_grid(placement._state.loc)
 	end
 
 	after_each(function()
@@ -578,40 +593,75 @@ describe("toggle_picker row images", function()
 		helpers.cleanup()
 	end)
 
-	it("place_row_images drops the buffer's placements and places one per row with a known file", function()
+	it("find_image_slot returns the slot's byte range before the name", function()
+		local line = "  ● " .. SLOT .. "@alice  (detail @alice)"
+		local start = #"  ● "
+		assert.are.same({ start, start + toggle_picker.IMAGE_CELLS }, { toggle_picker.find_image_slot(line, "@alice") })
+		assert.are.same({}, { toggle_picker.find_image_slot("● @alice", "@alice") })
+		assert.are.equal(SLOT, toggle_picker.image_slot({ images = function() end }))
+		assert.are.equal("", toggle_picker.image_slot({}))
+	end)
+
+	it("place_row_image draws into the slot and keeps the placement across rewrites and moves", function()
 		restore_fakes = install_fakes({ ["snacks"] = fake_snacks_image() })
-		local buf = helpers.create_buf({ "a", "b", "c" })
-		local a, b, c = { text = "a" }, { text = "b" }, { text = "c" }
+		local a, b = { text = "a" }, { text = "b" }
+		local buf = helpers.create_buf({ "● " .. SLOT .. "a", "○ " .. SLOT .. "b", "" })
 		local session = toggle_picker.new_session({})
 		session.images[a] = "/cache/a.png"
 		session.images[b] = false
-		toggle_picker.place_row_images(
-			buf,
-			{ { row = 1, item = a }, { row = 2, item = b }, { row = 3, item = c } },
-			session
-		)
-		assert.are.same({ buf }, cleaned)
+		toggle_picker.place_row_image(buf, 1, a, session)
+		toggle_picker.place_row_image(buf, 2, b, session)
 		assert.are.equal(1, #placed)
-		assert.are.same(
-			{ buf = buf, file = "/cache/a.png", opts = { pos = { 1, 0 }, inline = true, height = 1, width = 2 } },
-			{ buf = placed[1].buf, file = placed[1].file, opts = placed[1].opts }
-		)
-		assert.are.equal(placed[1], session.placed[buf][1])
+		local col = #"● "
+		assert.are.equal("/cache/a.png", placed[1].file)
+		assert.are.same({ 1, col }, placed[1].opts.pos)
+		assert.are.same({ 1, col, 1, col + toggle_picker.IMAGE_CELLS }, placed[1].opts.range)
+		assert.is_true(placed[1].opts.conceal)
+		assert.is_true(placed[1].opts.inline)
+		-- Not drawn yet: nothing to redraw, its first update draws it
+		toggle_picker.place_row_image(buf, 1, a, session)
+		assert.are.equal(0, #grids)
+		draw(placed[1])
+		assert.are.equal(1, #grids)
 
-		-- `only`: the given rows' placements are closed and made again, the
-		-- buffer's other placements and the buffer itself are left alone
-		session.images[c] = "/cache/c.png"
-		toggle_picker.place_row_images(buf, { { row = 1, item = a }, { row = 3, item = c } }, session, { only = true })
-		assert.are.same({ buf }, cleaned)
+		-- Same row, extmark still shown: nothing to do
+		toggle_picker.place_row_image(buf, 1, a, session)
+		assert.are.equal(1, #grids)
+		-- The row rewritten (extmark hidden): drawn again at once, same placement
+		vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "⣾ " .. SLOT .. "a" })
+		toggle_picker.place_row_image(buf, 1, a, session)
+		assert.are.equal(2, #grids)
+		assert.are.equal(1, #placed)
+		-- The item moved to another row: moved, not made anew
+		vim.api.nvim_buf_set_lines(buf, 2, 3, false, { "● " .. SLOT .. "a" })
+		toggle_picker.place_row_image(buf, 3, a, session)
+		assert.are.same({ id = 1, row = 3, col = col }, grids[3])
+		assert.are.same({ 3, col }, placed[1].opts.pos)
+		assert.are.same({}, closed)
+
+		-- A narrower image conceals only the cells it takes
+		placed[1]._state.loc.width = 3
+		vim.api.nvim_buf_set_lines(buf, 2, 3, false, { "● " .. SLOT .. "a" })
+		toggle_picker.place_row_image(buf, 3, a, session)
+		assert.are.same({ 3, col, 3, col + 3 }, placed[1].opts.range)
+
+		-- Another file: the old placement is closed and a new one made
+		session.images[a] = "/cache/a2.png"
+		toggle_picker.place_row_image(buf, 3, a, session)
 		assert.are.same({ 1 }, closed)
-		assert.are.equal(3, #placed)
-		assert.are.same({ { 1, 0 }, { 3, 0 } }, { placed[2].opts.pos, placed[3].opts.pos })
-		assert.are.same({ placed[2], placed[3] }, { session.placed[buf][1], session.placed[buf][3] })
+		assert.are.equal(2, #placed)
+		assert.are.equal("/cache/a2.png", placed[2].file)
+
+		-- prune closes the placements of the items not kept
+		toggle_picker.prune_row_images(buf, { [b] = true }, session)
+		assert.are.same({ 1, 2 }, closed)
+		assert.are.same({}, session.placed[buf])
+
 		-- Without snacks nothing happens
 		restore_fakes()
 		restore_fakes = install_fakes({ ["snacks"] = nil })
-		toggle_picker.place_row_images(buf, { { row = 1, item = a } }, session)
-		assert.are.equal(3, #placed)
+		toggle_picker.place_row_image(buf, 1, a, session)
+		assert.are.equal(2, #placed)
 	end)
 
 	it("load_images asks once per item and re-renders once per batch of answers", function()
@@ -685,31 +735,38 @@ describe("toggle_picker row images", function()
 		assert.are.equal(#expected + 1, #asked)
 	end)
 
-	it("snacks: places the rows' images after each dirty render", function()
+	it("snacks: draws each row's image as the row is written and prunes the rest", function()
 		config.setup({ file_list_mode = "snacks" })
 		local snacks = fake_snacks_image()
 		local list_buf = helpers.create_buf({ "", "" })
 		local items = { { text = "a" }, { text = "b" } }
-		local list = { dirty = true, win = { buf = list_buf }, renders = 0 }
+		local picked
+		local list = { dirty = true, win = { buf = list_buf }, shown = items }
+		-- Like snacks: a dirty render blanks the buffer, then writes each row
+		function list._render(_, item, row)
+			local text = ""
+			for _, chunk in ipairs(picked.format(item, {})) do
+				text = text .. chunk[1]
+			end
+			vim.api.nvim_buf_set_lines(list_buf, row - 1, row, false, { text })
+		end
 		function list.render(self)
-			self.renders = self.renders + 1
+			if not self.dirty then
+				return
+			end
 			self.dirty = false
-		end
-		function list.height()
-			return 2
-		end
-		function list.row2idx(_, row)
-			return row
-		end
-		function list.get(_, idx)
-			return items[idx]
+			vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, { "", "" })
+			self.visible = {}
+			for row, item in ipairs(self.shown) do
+				self.visible[row] = item
+				self:_render(item, row)
+			end
 		end
 		function list.update(self)
 			self.dirty = true
 			self:render()
 		end
 		local picker = { list = list, closed = false }
-		local picked
 		snacks.picker = {
 			pick = function(popts)
 				picked = popts
@@ -727,10 +784,13 @@ describe("toggle_picker row images", function()
 			end,
 		})
 		assert.is_not_nil(picked)
-		-- The wrapped render places nothing until a file is known
+		-- Rows hold the slot between the mark and the name
 		list:render()
+		assert.are.same(
+			{ "○ " .. SLOT .. "a", "○ " .. SLOT .. "b" },
+			vim.api.nvim_buf_get_lines(list_buf, 0, -1, false)
+		)
 		assert.are.equal(0, #placed)
-		-- Asked once the picker is on screen
 		assert.is_true(helpers.wait_for(function()
 			return answers.a ~= nil
 		end))
@@ -738,20 +798,26 @@ describe("toggle_picker row images", function()
 		assert.is_true(helpers.wait_for(function()
 			return #placed == 1
 		end))
-		assert.are.same({ list_buf, list_buf }, cleaned)
-		assert.are.same({ 1, 0 }, placed[1].opts.pos)
-		-- A render that is not dirty leaves the placements alone
-		list:render()
+		assert.are.same({ 1, #"○ " }, placed[1].opts.pos)
+		draw(placed[1])
+		-- A dirty render redraws the same placement in the same pass
+		local before = #grids
+		list:update()
+		assert.are.equal(before + 1, #grids)
 		assert.are.equal(1, #placed)
+		-- An item no longer shown loses its placement
+		list.shown = { items[2] }
+		list:update()
+		assert.are.same({ 1 }, closed)
 	end)
 
-	it("telescope: places the rows' images once a refresh completed", function()
+	it("telescope: draws each row's image as the row is written and prunes on completion", function()
 		config.setup({ file_list_mode = "telescope" })
 		local prompt_buf = helpers.create_buf()
-		local results_buf = helpers.create_buf({ "x", "y" })
+		local results_buf = helpers.create_buf({ "", "" })
 		local items = { { text = "a" }, { text = "b" } }
-		local entries = { { value = items[1] }, { value = items[2] } }
-		local picker = { results_bufnr = results_buf, refreshes = 0, maps = {}, completion = nil }
+		local entries = {}
+		local picker = { results_bufnr = results_buf, refreshes = 0, maps = {}, completion = nil, shown = 2 }
 		picker.manager = {
 			get_entry = function(_, index)
 				return entries[index]
@@ -760,19 +826,30 @@ describe("toggle_picker row images", function()
 		function picker.get_index(_, row)
 			return row + 1
 		end
+		function picker.get_row(_, index)
+			return index - 1
+		end
 		picker.selection_row = 0
 		function picker.get_selection_row(self)
 			return self.selection_row
 		end
 		function picker.set_selection(self, row)
-			-- Telescope rewrites the old and the new row to move the caret
 			self.selection_row = row
+		end
+		-- Like Telescope: write the entry's display after the entry prefix
+		function picker.entry_adder(self, index, entry)
+			local display = self.opts.finder.entry_maker(entry.value).display({ value = entry.value })
+			vim.api.nvim_buf_set_lines(self.results_bufnr, index - 1, index, false, { "  " .. display })
 		end
 		function picker.refresh(self)
 			self.refreshes = self.refreshes + 1
-			if self.completion then
-				self.completion(self)
+			entries = {}
+			vim.api.nvim_buf_set_lines(results_buf, 0, -1, false, { "", "" })
+			for i = 1, self.shown do
+				entries[i] = { value = items[i] }
+				self:entry_adder(i, entries[i])
 			end
+			self.completion(self)
 		end
 		function picker.register_completion_callback(self, cb)
 			self.completion = cb
@@ -781,7 +858,7 @@ describe("toggle_picker row images", function()
 			self.opts.attach_mappings(prompt_buf, function(mode, lhs, fn)
 				self.maps[mode .. lhs] = fn
 			end)
-			self.completion(self)
+			self:refresh()
 		end
 		local snacks = fake_snacks_image()
 		restore_fakes = install_fakes({
@@ -822,10 +899,11 @@ describe("toggle_picker row images", function()
 				answers[item.text] = cb
 			end,
 		})
-		-- The first render placed nothing (no file known yet) but cleaned
+		assert.are.same(
+			{ "  ○ " .. SLOT .. "a", "  ○ " .. SLOT .. "b" },
+			vim.api.nvim_buf_get_lines(results_buf, 0, -1, false)
+		)
 		assert.are.equal(0, #placed)
-		assert.are.same({ results_buf }, cleaned)
-		-- Asked once the picker is on screen
 		assert.is_true(helpers.wait_for(function()
 			return answers.b ~= nil
 		end))
@@ -833,23 +911,22 @@ describe("toggle_picker row images", function()
 		assert.is_true(helpers.wait_for(function()
 			return #placed == 1
 		end))
-		assert.are.equal(1, picker.refreshes)
-		assert.are.same({ buf = results_buf, file = "/cache/b.png" }, { buf = placed[1].buf, file = placed[1].file })
-		assert.are.same({ 2, 0 }, placed[1].opts.pos)
+		assert.are.equal("/cache/b.png", placed[1].file)
+		assert.are.same({ 2, #"  ○ " }, placed[1].opts.pos)
+		draw(placed[1])
 
-		-- Moving the selection onto row 2 (b) and back redraws b's image each
-		-- time without cleaning the buffer; a has no file, so nothing for it
-		local cleans = #cleaned
+		-- A refresh redraws the same placement as its row is written
+		local before = #grids
+		picker:refresh()
+		assert.are.equal(before + 1, #grids)
+		assert.are.equal(1, #placed)
+		-- Moving the selection leaves a still-shown image alone
 		picker:set_selection(1)
-		assert.are.equal(1, picker.selection_row)
+		assert.are.equal(before + 1, #grids)
+		-- The completion prunes items no longer shown
+		picker.shown = 1
+		picker:refresh()
 		assert.are.same({ 1 }, closed)
-		assert.are.equal(2, #placed)
-		assert.are.same({ 2, 0 }, placed[2].opts.pos)
-		picker:set_selection(0)
-		assert.are.same({ 1, 2 }, closed)
-		assert.are.equal(3, #placed)
-		assert.are.same({ 2, 0 }, placed[3].opts.pos)
-		assert.are.equal(cleans, #cleaned)
 	end)
 end)
 
