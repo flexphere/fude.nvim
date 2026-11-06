@@ -3,13 +3,15 @@ local scope = require("fude.scope")
 describe("build_local_scope_entries", function()
 	it("maps scope specs to sidepanel entries preserving order and current flag", function()
 		local entries = scope.build_local_scope_entries({
-			{ scope = "base", label = "Base branch (main)", is_current = false },
+			{ scope = "base", label = "Base branch (main)", is_current = false, branch = "main" },
 			{ scope = "unpushed", label = "Unpushed (origin/feat/a)", is_current = true },
 			{ scope = "uncommitted", label = "Uncommitted (staged + unstaged)", is_current = false },
 		})
 		assert.equals(3, #entries)
 		assert.equals("base", entries[1].local_scope)
 		assert.equals("Base branch (main)", entries[1].display_text)
+		assert.equals("main", entries[1].branch)
+		assert.is_nil(entries[2].branch)
 		assert.is_false(entries[1].is_current)
 		assert.equals("unpushed", entries[2].local_scope)
 		assert.is_true(entries[2].is_current)
