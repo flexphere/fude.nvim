@@ -499,6 +499,9 @@ describe("overview menu and toggle editors", function()
 		assert.is_false(action.available(by_text["@carol"]))
 		assert.is_true(action.available(by_text["@bob"]))
 		assert.is_false(action.available(by_text["@alice"]))
+		-- bob approved, so his hint is grey
+		assert.are.equal("Comment", action.hint_hl(by_text["@bob"]))
+		assert.is_nil(action.hint_hl({ text = "@dan", on = false, review_state = "DISMISSED" }))
 
 		local ok_seen
 		action.run(by_text["@bob"], function(ok)

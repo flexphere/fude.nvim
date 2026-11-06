@@ -217,9 +217,29 @@ describe("toggle_picker extra action", function()
 		local opts = make_opts(function(item)
 			return not item.on
 		end)
-		assert.are.equal("<C-e>: re-request", toggle_picker.resolve_action_hint({ text = "@bob", on = false }, opts))
+		assert.are.same(
+			{ "<C-e>: re-request", "Special" },
+			{ toggle_picker.resolve_action_hint({ text = "@bob", on = false }, opts) }
+		)
 		assert.is_nil(toggle_picker.resolve_action_hint({ text = "@bob", on = true }, opts))
 		assert.is_nil(toggle_picker.resolve_action_hint({ text = "@bob", on = false }, {}))
+	end)
+
+	it("uses hint_hl for the hint's highlight when given", function()
+		local opts = make_opts(function()
+			return true
+		end)
+		opts.extra_action.hint_hl = function(item)
+			return item.grey and "Comment" or nil
+		end
+		assert.are.same(
+			{ "<C-e>: re-request", "Comment" },
+			{ toggle_picker.resolve_action_hint({ text = "@bob", on = false, grey = true }, opts) }
+		)
+		assert.are.same(
+			{ "<C-e>: re-request", "Special" },
+			{ toggle_picker.resolve_action_hint({ text = "@bob", on = false }, opts) }
+		)
 	end)
 
 	it("sets item.on to result_on only after the request succeeded", function()

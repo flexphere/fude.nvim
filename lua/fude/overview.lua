@@ -230,6 +230,10 @@ function M.edit_reviewers(pr_info, captured_state)
 					end, "Re-requested review from @" .. login, "Failed to re-request review from @" .. login, done)
 				end,
 				result_on = true,
+				-- An approver is rarely asked again, so their hint stays quiet
+				hint_hl = function(item)
+					return item.review_state == "APPROVED" and "Comment" or nil
+				end,
 			},
 			on_close = reopen,
 			is_alive = function()

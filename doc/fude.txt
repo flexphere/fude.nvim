@@ -491,7 +491,8 @@ File opening position                                 *fude-file-position*
     states both the request and the latest review, e.g.
     `● @alice  (review requested, last review: dismissed)`.
     `<C-e>` re-requests a review from a user who already reviewed and
-    has no pending request; such rows end with `<C-e>: re-request`, and
+    has no pending request; such rows end with `<C-e>: re-request`
+    (grey for an approver, who is rarely asked again), and
     `<C-e>` on any other row only tells why it does not apply (`<Tab>`
     on a reviewed user re-requests too). Telescope and snacks only. When
     collaborators cannot be listed (it needs push access), only

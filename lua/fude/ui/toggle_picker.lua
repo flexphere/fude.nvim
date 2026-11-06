@@ -32,6 +32,8 @@ local format = require("fude.ui.format")
 --- @field unavailable_reason fun(item: fude.TogglePickerItem): string notified when it does not
 --- @field run fun(item: fude.TogglePickerItem, done: fun(ok: boolean)) sends the request
 --- @field result_on boolean `item.on` after a successful run
+--- @field hint_hl (fun(item: fude.TogglePickerItem): string|nil)|nil highlight of the row-end hint
+---   (default `Special`), e.g. grey where the action is rarely wanted
 
 --- Resolve an item's detail text for the current render.
 --- @param item fude.TogglePickerItem
@@ -153,13 +155,15 @@ end
 --- Text shown at the end of a row the extra action applies to.
 --- @param item fude.TogglePickerItem
 --- @param opts fude.TogglePickerOpts
---- @return string|nil `<C-e>: re-request`
+--- @return string|nil hint `<C-e>: re-request`
+--- @return string|nil hl highlight group of the hint
 function M.resolve_action_hint(item, opts)
 	local action = opts.extra_action
 	if action and action.available(item) then
-		return action.key .. ": " .. action.label
+		local hl = action.hint_hl and action.hint_hl(item) or "Special"
+		return action.key .. ": " .. action.label, hl
 	end
-	return nil
+	return nil, nil
 end
 
 --- Show the picker with vim.ui.select. Choosing a row toggles it and reopens
@@ -233,11 +237,11 @@ function M.show_telescope(opts)
 						if #line > name_end then
 							table.insert(hls, { { name_end, #line }, "Comment" })
 						end
-						local hint = M.resolve_action_hint(value, opts)
+						local hint, hint_hl = M.resolve_action_hint(value, opts)
 						if hint then
 							local hint_start = #line + 2
 							line = line .. "  " .. hint
-							table.insert(hls, { { hint_start, #line }, "Special" })
+							table.insert(hls, { { hint_start, #line }, hint_hl })
 						end
 						return line, hls
 					end,
@@ -334,9 +338,9 @@ function M.show_snacks(opts)
 			if detail and detail ~= "" then
 				table.insert(chunks, { "  (" .. detail .. ")", "Comment" })
 			end
-			local hint = M.resolve_action_hint(item, opts)
+			local hint, hint_hl = M.resolve_action_hint(item, opts)
 			if hint then
-				table.insert(chunks, { "  " .. hint, "Special" })
+				table.insert(chunks, { "  " .. hint, hint_hl })
 			end
 			return chunks
 		end,
