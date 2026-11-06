@@ -991,6 +991,24 @@ function M.ensure_editor_window(panel)
 	panel.prev_win = new_win
 end
 
+--- Quit the panel window when a :quit left it alone in its tabpage, so the quit
+--- reaches Neovim (or closes the tab) as it would without the panel. When the
+--- quit is refused (e.g. hidden modified buffers), reopen an editor window instead.
+--- @param panel table state.sidepanel
+function M.quit_if_alone(panel)
+	if not (panel.win and vim.api.nvim_win_is_valid(panel.win)) or not M.is_last_normal_window(panel.win) then
+		return
+	end
+	local ok, err = pcall(function()
+		vim.api.nvim_set_current_win(panel.win)
+		vim.cmd("quit")
+	end)
+	if not ok then
+		vim.notify("fude.nvim: " .. tostring(err), vim.log.levels.ERROR)
+		M.ensure_editor_window(panel)
+	end
+end
+
 --- Build the nvim_open_win config for the panel split.
 --- Left/right panels are sized by width, top/bottom panels by height; the
 --- matching winfix option keeps that size when other windows are opened.
@@ -1080,14 +1098,41 @@ function M.open()
 			elseif closed_win == panel.help_win then
 				panel.help_win = nil
 			else
+				-- Read the flag now: the reset QuitPre scheduled runs before the callback below.
+				local quitting = closed_win == panel.quitting_win
 				-- WinClosed fires before the window is removed, so check after it is gone.
 				-- e.g. :bdelete closes every window showing the buffer and can leave only the panel.
 				vim.schedule(function()
-					if config.state.sidepanel == panel then
+					if config.state.sidepanel ~= panel then
+						return
+					end
+					if quitting then
+						M.quit_if_alone(panel)
+					else
 						M.ensure_editor_window(panel)
 					end
 				end)
 			end
+		end,
+	})
+
+	-- :quit/:wq/:x/ZZ fire QuitPre; :bdelete and :close do not. When the quit closes the
+	-- last editor window, the panel follows it instead of reopening one, so Neovim can exit.
+	vim.api.nvim_create_autocmd("QuitPre", {
+		group = augroup,
+		callback = function()
+			local cur = vim.api.nvim_get_current_win()
+			if cur == win then
+				return
+			end
+			panel.quitting_win = cur
+			-- A refused quit (e.g. unsaved changes) closes nothing, so drop the flag
+			-- before a later :bdelete could be mistaken for it.
+			vim.schedule(function()
+				if panel.quitting_win == cur then
+					panel.quitting_win = nil
+				end
+			end)
 		end,
 	})
 
