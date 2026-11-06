@@ -23,6 +23,15 @@ local format = require("fude.ui.format")
 ---   sends the request that flips `item.on`; calls done(true) on success
 --- @field on_close fun()|nil called once when the picker is closed and no request is in flight
 --- @field is_alive fun(): boolean|nil vim.ui.select only: reopen after a toggle while this returns true
+--- @field extra_action fude.TogglePickerAction|nil a second key (Telescope / snacks only)
+
+--- @class fude.TogglePickerAction
+--- @field key string lhs, e.g. "<C-e>"; shown at the end of each row it applies to
+--- @field label string what the key does, e.g. "re-request"
+--- @field available fun(item: fude.TogglePickerItem): boolean whether the key applies to the row
+--- @field unavailable_reason fun(item: fude.TogglePickerItem): string notified when it does not
+--- @field run fun(item: fude.TogglePickerItem, done: fun(ok: boolean)) sends the request
+--- @field result_on boolean `item.on` after a successful run
 
 --- Resolve an item's detail text for the current render.
 --- @param item fude.TogglePickerItem
@@ -69,30 +78,31 @@ function M.new_session(opts)
 	return session
 end
 
---- Start the toggle of an item. The flip is applied only after on_toggle
---- reports success, so a failed request never leaves the row showing a state
---- GitHub does not have. A toggle of an item whose request is still in flight
---- is ignored, so a repeated `<Tab>` cannot send the opposite request before
---- the first one lands.
+--- Run one request for an item. `apply` changes the item only after the
+--- request reports success, so a failed request never leaves the row showing
+--- a state GitHub does not have. A request for an item whose previous request
+--- is still in flight is ignored, so a repeated key cannot send the opposite
+--- request before the first one lands.
 --- @param item fude.TogglePickerItem|nil
---- @param opts fude.TogglePickerOpts
 --- @param session table from new_session
+--- @param request fun(done: fun(ok: boolean))
+--- @param apply fun()
 --- @param on_done fun(ok: boolean)|nil called after the item settled
 --- @return boolean started
-function M.toggle_item(item, opts, session, on_done)
+local function run_item(item, session, request, apply, on_done)
 	if not item or session.pending[item] then
 		return false
 	end
 	session.pending[item] = true
 	local settled = false
-	opts.on_toggle(item, function(ok)
+	request(function(ok)
 		if settled then
 			return
 		end
 		settled = true
 		session.pending[item] = nil
 		if ok then
-			item.on = not item.on
+			apply()
 		end
 		if on_done then
 			on_done(ok)
@@ -101,6 +111,55 @@ function M.toggle_item(item, opts, session, on_done)
 		session.finish()
 	end)
 	return true
+end
+
+--- Toggle an item (`<Tab>`): on success `item.on` flips.
+--- @param item fude.TogglePickerItem|nil
+--- @param opts fude.TogglePickerOpts
+--- @param session table from new_session
+--- @param on_done fun(ok: boolean)|nil called after the item settled
+--- @return boolean started
+function M.toggle_item(item, opts, session, on_done)
+	return run_item(item, session, function(done)
+		opts.on_toggle(item, done)
+	end, function()
+		item.on = not item.on
+	end, on_done)
+end
+
+--- Run the extra action (e.g. `<C-e>` re-request) on an item. A row it does
+--- not apply to is refused with an INFO naming the reason, sending nothing.
+--- @param item fude.TogglePickerItem|nil
+--- @param opts fude.TogglePickerOpts
+--- @param session table from new_session
+--- @param on_done fun(ok: boolean)|nil called after the item settled
+--- @return boolean started
+function M.run_extra_action(item, opts, session, on_done)
+	local action = opts.extra_action
+	if not item or not action then
+		return false
+	end
+	if not action.available(item) then
+		vim.notify("fude.nvim: " .. action.unavailable_reason(item), vim.log.levels.INFO)
+		return false
+	end
+	return run_item(item, session, function(done)
+		action.run(item, done)
+	end, function()
+		item.on = action.result_on
+	end, on_done)
+end
+
+--- Text shown at the end of a row the extra action applies to.
+--- @param item fude.TogglePickerItem
+--- @param opts fude.TogglePickerOpts
+--- @return string|nil `<C-e>: re-request`
+function M.resolve_action_hint(item, opts)
+	local action = opts.extra_action
+	if action and action.available(item) then
+		return action.key .. ": " .. action.label
+	end
+	return nil
 end
 
 --- Show the picker with vim.ui.select. Choosing a row toggles it and reopens
@@ -174,6 +233,12 @@ function M.show_telescope(opts)
 						if #line > name_end then
 							table.insert(hls, { { name_end, #line }, "Comment" })
 						end
+						local hint = M.resolve_action_hint(value, opts)
+						if hint then
+							local hint_start = #line + 2
+							line = line .. "  " .. hint
+							table.insert(hls, { { hint_start, #line }, "Special" })
+						end
 						return line, hls
 					end,
 				}
@@ -192,22 +257,30 @@ function M.show_telescope(opts)
 			actions.select_default:replace(function()
 				actions.close(prompt_bufnr)
 			end)
-			local function toggle()
-				local selection = action_state.get_selected_entry()
-				local current = action_state.get_current_picker(prompt_bufnr)
-				M.toggle_item(selection and selection.value, opts, session, function(ok)
-					if not ok or not vim.api.nvim_buf_is_valid(prompt_bufnr) or not current then
-						return
-					end
-					-- The row the cursor is on now, not when <Tab> was pressed:
-					-- the user may have moved on while the request was in
-					-- flight, and the refresh must leave them there.
-					restore_row = current:get_selection_row()
-					current:refresh(nil, { reset_prompt = false })
-				end)
+			-- Run `fn(item, opts, session, on_done)` on the selected row and
+			-- re-render once it succeeded.
+			local function on_selected(fn)
+				return function()
+					local selection = action_state.get_selected_entry()
+					local current = action_state.get_current_picker(prompt_bufnr)
+					fn(selection and selection.value, opts, session, function(ok)
+						if not ok or not vim.api.nvim_buf_is_valid(prompt_bufnr) or not current then
+							return
+						end
+						-- The row the cursor is on now, not when the key was
+						-- pressed: the user may have moved on while the request
+						-- was in flight, and the refresh must leave them there.
+						restore_row = current:get_selection_row()
+						current:refresh(nil, { reset_prompt = false })
+					end)
+				end
 			end
-			map("i", "<Tab>", toggle)
-			map("n", "<Tab>", toggle)
+			map("i", "<Tab>", on_selected(M.toggle_item))
+			map("n", "<Tab>", on_selected(M.toggle_item))
+			if opts.extra_action then
+				map("i", opts.extra_action.key, on_selected(M.run_extra_action))
+				map("n", opts.extra_action.key, on_selected(M.run_extra_action))
+			end
 			return true
 		end,
 	})
@@ -233,6 +306,21 @@ function M.show_snacks(opts)
 
 	local session = M.new_session(opts)
 
+	-- Re-render with the new mark once a request succeeded; the cursor stays put.
+	local function rerender(picker)
+		return function(ok)
+			if ok and not picker.closed and picker.list then
+				pcall(picker.list.update, picker.list, { force = true })
+			end
+		end
+	end
+	local input_keys = { ["<Tab>"] = { "fude_toggle", mode = { "i", "n" } } }
+	local list_keys = { ["<Tab>"] = "fude_toggle" }
+	if opts.extra_action then
+		input_keys[opts.extra_action.key] = { "fude_extra", mode = { "i", "n" } }
+		list_keys[opts.extra_action.key] = "fude_extra"
+	end
+
 	-- snacks matches on item.text, which the items already carry
 	snacks_picker.pick({
 		source = "fude_toggle",
@@ -246,6 +334,10 @@ function M.show_snacks(opts)
 			if detail and detail ~= "" then
 				table.insert(chunks, { "  (" .. detail .. ")", "Comment" })
 			end
+			local hint = M.resolve_action_hint(item, opts)
+			if hint then
+				table.insert(chunks, { "  " .. hint, "Special" })
+			end
 			return chunks
 		end,
 		confirm = function(picker)
@@ -256,18 +348,13 @@ function M.show_snacks(opts)
 		end,
 		actions = {
 			fude_toggle = function(picker, item)
-				M.toggle_item(item, opts, session, function(ok)
-					if ok and not picker.closed and picker.list then
-						-- Re-render with the new mark; the cursor stays put.
-						pcall(picker.list.update, picker.list, { force = true })
-					end
-				end)
+				M.toggle_item(item, opts, session, rerender(picker))
+			end,
+			fude_extra = function(picker, item)
+				M.run_extra_action(item, opts, session, rerender(picker))
 			end,
 		},
-		win = {
-			input = { keys = { ["<Tab>"] = { "fude_toggle", mode = { "i", "n" } } } },
-			list = { keys = { ["<Tab>"] = "fude_toggle" } },
-		},
+		win = { input = { keys = input_keys }, list = { keys = list_keys } },
 	})
 end
 

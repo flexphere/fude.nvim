@@ -208,6 +208,29 @@ function M.edit_reviewers(pr_info, captured_state)
 		require("fude.ui.toggle_picker").open({
 			title = "Reviewers",
 			items = items,
+			-- A dedicated key, shown at the end of each row it applies to, so
+			-- re-requesting does not depend on knowing that <Tab> on a
+			-- reviewed user also re-requests.
+			extra_action = {
+				key = "<C-e>",
+				label = "re-request",
+				available = function(item)
+					return not item.on and item.review_state ~= nil
+				end,
+				unavailable_reason = function(item)
+					if item.on then
+						return item.text .. " already has a pending review request"
+					end
+					return item.text .. " has not reviewed yet; <Tab> requests a review"
+				end,
+				run = function(item, done)
+					local login = item.value
+					run_toggle(captured_state, function(cb)
+						gh.re_request_review(pr_info.number, { login }, cb, repo)
+					end, "Re-requested review from @" .. login, "Failed to re-request review from @" .. login, done)
+				end,
+				result_on = true,
+			},
 			on_close = reopen,
 			is_alive = function()
 				return is_current(captured_state)
