@@ -747,6 +747,17 @@ describe("sidepanel integration", function()
 			assert.are.equal("lua/fude", vim.fn.getreg('"'))
 		end)
 
+		it("y copies the absolute path under the root the panel opened with after a :cd elsewhere", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to(panel, "file")
+			helpers.mock(require("fude.diff"), "get_repo_root", function()
+				return nil
+			end)
+			press_and_choose(panel, 3)
+			assert.are.equal("/mock/repo/lua/fude/a.lua", vim.fn.getreg('"'))
+		end)
+
 		it("cancelling the picker leaves the register unchanged", function()
 			sidepanel.open()
 			local panel = config.state.sidepanel

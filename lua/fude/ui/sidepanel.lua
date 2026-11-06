@@ -1445,7 +1445,9 @@ function M.pick_path_to_copy(panel)
 		vim.notify("fude.nvim: No file under cursor", vim.log.levels.INFO)
 		return
 	end
-	local root = get_diff().get_repo_root()
+	-- The root the panel rendered and opens files with, so a `:cd` elsewhere
+	-- after opening the panel does not change the copied absolute path
+	local root = panel.repo_root or get_diff().get_repo_root()
 	if not root then
 		vim.notify("fude.nvim: Could not resolve the repository root", vim.log.levels.WARN)
 		return
