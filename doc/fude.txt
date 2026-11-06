@@ -487,8 +487,11 @@ File opening position                                 *fude-file-position*
     approval (green) and a dismissed review (normal colour), and the
     text in parentheses is always grey. It
     states both the request and the latest review, e.g.
-    `● @alice  (review requested, last review: dismissed)`. `<Tab>` on
-    a user who already reviewed re-requests their review. When
+    `● @alice  (review requested, last review: dismissed)`.
+    `<C-e>` re-requests a review from a user who already reviewed and
+    has no pending request; such rows end with `<C-e>: re-request`, and
+    `<C-e>` on any other row only tells why it does not apply (`<Tab>`
+    on a reviewed user re-requests too). Telescope and snacks only. When
     collaborators cannot be listed (it needs push access), only
     requested and reviewed users are shown. The label picker lists
     every repository label, applied (`●`) first.
@@ -1070,6 +1073,7 @@ command). Suggested mappings:
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
                 Toggle commit reviewed state (in |:FudeReviewScope| picker)
                 Toggle reviewer / label (in the overview's `C` pickers)
+  `<C-e>`       Re-request review (in the overview's reviewer picker)
                 Switch between left/right panes (in |:FudeReviewOverview|)
   `'d`/`'c`    Jump to description/comments (overview left pane)
   `za`/`zc`/`zo` Toggle/close/open fold (overview sections and comments)
