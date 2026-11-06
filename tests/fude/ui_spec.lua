@@ -1511,6 +1511,200 @@ describe("build_re_request_candidates", function()
 	end)
 end)
 
+describe("build_reviewer_entries", function()
+	local function logins(entries)
+		local result = {}
+		for _, e in ipairs(entries) do
+			table.insert(result, e.login)
+		end
+		return result
+	end
+
+	it("puts reviewers before requested users and other collaborators last, each by login", function()
+		local collaborators = { { login = "zed" }, { login = "bob" }, { login = "carol" }, { login = "alice" } }
+		local requests = { { login = "carol" } }
+		local reviews = { { author = { login = "bob" }, state = "APPROVED", authorAssociation = "MEMBER" } }
+		local result = ui.build_reviewer_entries(collaborators, requests, reviews, nil)
+		assert.are.same({ "bob", "carol", "alice", "zed" }, logins(result))
+		assert.is_false(result[1].requested)
+		assert.are.equal("APPROVED", result[1].review_state)
+		assert.is_true(result[2].requested)
+		assert.is_nil(result[3].review_state)
+	end)
+
+	it("lists a user once with both the request and the review state", function()
+		local requests = { { login = "alice" } }
+		local reviews = { { author = { login = "alice" }, state = "CHANGES_REQUESTED" } }
+		local result = ui.build_reviewer_entries({ { login = "alice" } }, requests, reviews, nil)
+		assert.are.equal(1, #result)
+		assert.is_true(result[1].requested)
+		assert.are.equal("CHANGES_REQUESTED", result[1].review_state)
+	end)
+
+	it("excludes the PR author, bots, teams, and non-collaborator reviewers", function()
+		local collaborators = { { login = "author" }, { login = "ci", type = "Bot" }, { login = "alice" } }
+		local requests = { { name = "core", slug = "core" } }
+		local reviews = {
+			{ author = { login = "outsider" }, state = "COMMENTED", authorAssociation = "CONTRIBUTOR" },
+			{ author = { login = "copilot", is_bot = true }, state = "COMMENTED" },
+		}
+		local result = ui.build_reviewer_entries(collaborators, requests, reviews, "author")
+		assert.are.same({ "alice" }, logins(result))
+	end)
+
+	it("excludes collaborators without write access", function()
+		local collaborators = {
+			{ login = "reader", permissions = { pull = true, push = false } },
+			{ login = "writer", permissions = { pull = true, push = true } },
+			{ login = "unknown" },
+		}
+		assert.are.same({ "unknown", "writer" }, logins(ui.build_reviewer_entries(collaborators, {}, {}, nil)))
+	end)
+
+	it("orders rows approved, changes requested, commented, dismissed, requested, then the rest", function()
+		local collaborators = { { login = "zoe" } }
+		local requests = { { login = "yuki" } }
+		local reviews = {
+			{ author = { login = "dan" }, state = "DISMISSED" },
+			{ author = { login = "cat" }, state = "COMMENTED" },
+			{ author = { login = "bea" }, state = "CHANGES_REQUESTED" },
+			{ author = { login = "amy" }, state = "APPROVED" },
+		}
+		assert.are.same(
+			{ "amy", "bea", "cat", "dan", "yuki", "zoe" },
+			logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil))
+		)
+	end)
+
+	it("excludes a read-only collaborator who reviewed, but keeps one with a pending request", function()
+		local collaborators = {
+			{ login = "reader", permissions = { push = false } },
+			{ login = "asked", permissions = { push = false } },
+		}
+		local requests = { { login = "asked" } }
+		local reviews = { { author = { login = "reader" }, state = "APPROVED", authorAssociation = "MEMBER" } }
+		assert.are.same({ "asked" }, logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil)))
+	end)
+
+	it("ignores an unsubmitted (PENDING) review", function()
+		local reviews = { { author = { login = "alice" }, state = "PENDING" } }
+		assert.are.same({}, ui.build_reviewer_entries({}, {}, reviews, nil))
+	end)
+
+	it("keeps requested and reviewed users when the collaborator list is empty", function()
+		local requests = { { login = "carol" } }
+		local reviews = { { author = { login = "bob" }, state = "APPROVED" } }
+		assert.are.same({ "bob", "carol" }, logins(ui.build_reviewer_entries({}, requests, reviews, nil)))
+	end)
+
+	it("skips JSON null entries and authors", function()
+		local reviews = { vim.NIL, { author = vim.NIL, state = "APPROVED" } }
+		local result = ui.build_reviewer_entries({ vim.NIL, { login = vim.NIL } }, { vim.NIL }, reviews, nil)
+		assert.are.same({}, result)
+	end)
+end)
+
+describe("build_label_entries", function()
+	it("puts applied labels first and sorts each group by name case-insensitively", function()
+		local repo_labels = {
+			{ name = "enhancement" },
+			{ name = "Bug", description = "Something is broken" },
+			{ name = "docs" },
+			{ name = "area/ui" },
+		}
+		local result = ui.build_label_entries(repo_labels, { { name = "enhancement" }, { name = "Bug" } })
+		local names = {}
+		for _, e in ipairs(result) do
+			table.insert(names, e.name .. (e.applied and "*" or ""))
+		end
+		assert.are.same({ "Bug*", "enhancement*", "area/ui", "docs" }, names)
+		assert.are.equal("Something is broken", result[1].description)
+	end)
+
+	it("keeps a PR label missing from the repository listing so it can be removed", function()
+		local result = ui.build_label_entries({}, { { name = "legacy" } })
+		assert.are.same({ { name = "legacy", applied = true } }, result)
+	end)
+
+	it("drops empty or null descriptions and entries without a name", function()
+		local result = ui.build_label_entries(
+			{ { name = "a", description = "" }, { name = "b", description = vim.NIL }, {} },
+			{}
+		)
+		assert.are.same({ { name = "a", applied = false }, { name = "b", applied = false } }, result)
+	end)
+end)
+
+describe("format_review_state_label", function()
+	it("lowercases the state and replaces underscores with spaces", function()
+		assert.are.equal("changes requested", format.format_review_state_label("CHANGES_REQUESTED"))
+		assert.are.equal("approved", format.format_review_state_label("APPROVED"))
+	end)
+end)
+
+describe("format_reviewer_detail", function()
+	it("states the request and the latest review separately", function()
+		assert.are.equal("review requested, last review: dismissed", format.format_reviewer_detail(true, "DISMISSED"))
+		assert.are.equal("last review: changes requested", format.format_reviewer_detail(false, "CHANGES_REQUESTED"))
+		assert.are.equal("review requested", format.format_reviewer_detail(true, nil))
+	end)
+
+	it("returns nil for a user neither requested nor reviewed", function()
+		assert.is_nil(format.format_reviewer_detail(false, nil))
+	end)
+end)
+
+describe("format_toggle_entry", function()
+	it("puts the mark before the name", function()
+		assert.are.equal("● bug", ui.format_toggle_entry("bug", "●"))
+		assert.are.equal("○ bug", ui.format_toggle_entry("bug", "○"))
+	end)
+
+	it("appends the detail in parentheses when present", function()
+		assert.are.equal(
+			"✓ @alice  (last review: approved)",
+			ui.format_toggle_entry("@alice", "✓", "last review: approved")
+		)
+		assert.are.equal("○ docs", ui.format_toggle_entry("docs", "○", ""))
+	end)
+end)
+
+describe("format_reviewer_mark", function()
+	it("shows a pending request as a yellow dot with a normal name regardless of the previous review", function()
+		assert.are.same({ "●", "DiagnosticWarn" }, { format.format_reviewer_mark(true, "APPROVED") })
+		assert.are.same({ "●", "DiagnosticWarn" }, { format.format_reviewer_mark(true, nil) })
+	end)
+
+	it("shows an approval as a green check with a green name", function()
+		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { format.format_reviewer_mark(false, "APPROVED") })
+	end)
+
+	it("shows the other review states with their own marks and, except dismissed, a grey name", function()
+		-- A dismissed review keeps the normal name colour
+		assert.are.same({ "↻", "Comment" }, { format.format_reviewer_mark(false, "DISMISSED") })
+		assert.are.same(
+			{ "✗", "DiagnosticError", "Comment" },
+			{ format.format_reviewer_mark(false, "CHANGES_REQUESTED") }
+		)
+		assert.are.same({ "💬", "DiagnosticInfo", "Comment" }, { format.format_reviewer_mark(false, "COMMENTED") })
+	end)
+
+	it("shows a grey open circle and name for a user neither requested nor reviewed", function()
+		assert.are.same({ "○", "Comment", "Comment" }, { format.format_reviewer_mark(false, nil) })
+	end)
+end)
+
+describe("build_overview_left_lines footer", function()
+	it("names what the C menu offers", function()
+		local result = ui.build_overview_left_lines({ number = 1, title = "T", body = "B" }, {}, function(s)
+			return s
+		end)
+		local footer = result.lines[#result.lines]
+		assert.is_truthy(footer:find("C: comment/reviewer/label", 1, true))
+		assert.is_truthy(footer:find("q: close", 1, true))
+	end)
+end)
+
 describe("build_reviewers_summary", function()
 	it("returns correct count for all approved", function()
 		local reviewers = {

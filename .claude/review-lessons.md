@@ -67,5 +67,15 @@
 
 ### エッジケース: 開いたままのUIのキー操作が、押下時点のstateで判定していた (PR #281, 2026-11-06)
 - **問題**: コメントビューアの`o`は「pending reviewのコメントは開かない」を押下時点の`config.state.pending_review_id`で判定していた。ビューアやコメントブラウザは`:FudeReviewStop`後も開いたままなので、`reset_state()`でIDが消えると、未投稿コメントの`html_url`を開いた
-- **対策**: セッション終了で閉じないUI（float、ブラウザ）のキー操作が、表示中データの意味を`config.state`から判定するなら、表示した時点のstateを保持して使う。UIを再描画（refresh）するときは、データと一緒に取り直す
-- **該当箇所**: lua/fude/ui.lua, lua/fude/ui/comment_browser.lua
+- **対策**: セッション終了で閉じないUI（float、ブラウザ）のキー操作が、表示中データの意味を`config.state`から判定するなら、表示した時点のstateを保持して使う。UIを再描画（refresh）するときは、データと一緒に取り直す。キー操作から始まる非同期フロー（メニュー → picker → API）も、開始時の`config.state`ではなく表示時のstateで同一性を確認する（PR #282: Overviewの`C`メニューが、stop → startをまたいで古い`pr_info`のPRを新しいセッションで変更できた）
+- **該当箇所**: lua/fude/ui.lua, lua/fude/ui/comment_browser.lua, lua/fude/overview.lua
+
+### エッジケース: ghの`{owner}/{repo}`がリクエスト時点のcwdで解決される (PR #282, 2026-11-06)
+- **問題**: Overviewから開いたpickerのreviewer・label変更APIが`repos/{owner}/{repo}/...`を使っていた。pickerを開いたまま`:cd`で別リポジトリに移ると、同じPR番号が移動先リポジトリのPRとして解釈され、別PRを変更し得た
+- **対策**: 表示中の対象（PR）に対して後から書き込むAPIは、`pr_info.url`などから取った`owner/repo`をパスに明示する（`gh.build_repo_api_path`）か、開始時のcwdを`gh.run`に渡す。読み取りだけでなく、一覧取得と変更の両方を同じリポジトリに固定する
+- **該当箇所**: lua/fude/gh.lua, lua/fude/overview.lua
+
+### エッジケース: 非同期完了時のUI復元に、リクエスト送信時の位置を使った (PR #282, 2026-11-06)
+- **問題**: toggle pickerは`<Tab>`を押した時点の選択行を保存し、成功応答のrefresh後にその行へ戻していた。通信中にユーザーが別の行へ移ると、応答でカーソルが元の行に引き戻され、次の`<Tab>`が意図しない行に作用した
+- **対策**: 非同期完了時にカーソル・選択・スクロールを復元するなら、復元先は完了callbackの中で再描画の直前に読み取る。送信時の値は「何を送ったか」の判定だけに使う。再描画自体も非同期（Telescopeの`refresh()`→completion callback）なら、その間に変わり得る前提（検索文字列）も一緒に保存し、復元の直前に再確認する
+- **該当箇所**: lua/fude/ui/toggle_picker.lua

@@ -377,6 +377,242 @@ function M.build_re_request_candidates(review_requests, latest_reviews, author_l
 	return candidates
 end
 
+--- Sort entries in place by a string field, case-insensitively, with the
+--- original string as the tie-break so the order is total.
+--- @param entries table[]
+--- @param field string
+local function sort_by_name(entries, field)
+	table.sort(entries, function(a, b)
+		local la, lb = a[field]:lower(), b[field]:lower()
+		if la ~= lb then
+			return la < lb
+		end
+		return a[field] < b[field]
+	end)
+end
+
+--- Sort rank of a reviewer picker row: approved, changes requested,
+--- commented, dismissed, requested (review in progress), then everyone else.
+local REVIEWER_RANK = { APPROVED = 1, CHANGES_REQUESTED = 2, COMMENTED = 3, DISMISSED = 4 }
+local REQUESTED_RANK = 5
+local OTHER_RANK = 6
+
+--- @param entry table { requested, review_state }
+--- @return number
+local function reviewer_rank(entry)
+	if entry.requested then
+		return REQUESTED_RANK
+	end
+	return REVIEWER_RANK[entry.review_state] or OTHER_RANK
+end
+
+--- Build the entries of the overview's reviewer picker: repository
+--- collaborators with write access, users with a pending review request, and
+--- collaborators who already reviewed. The PR author (GitHub rejects
+--- requesting the author), bots, teams (no login) and collaborators without
+--- write access are left out; a user with a pending request is always kept,
+--- so the request can be removed. Rows are ordered approved, changes
+--- requested, commented, dismissed, requested, then the rest, each group
+--- sorted by login.
+--- @param collaborators table[] `repos/{owner}/{repo}/collaborators` items ({ login, type, permissions });
+---   empty when listing failed
+--- @param review_requests table[] reviewRequests from gh pr view (users have login, teams do not)
+--- @param latest_reviews table[] latestReviews from gh pr view (author.login, authorAssociation, state)
+--- @param author_login string|nil PR author login
+--- @return table[] list of { login: string, requested: boolean, review_state: string|nil }
+function M.build_reviewer_entries(collaborators, review_requests, latest_reviews, author_login)
+	-- GitHub accepts review requests only from users with write access.
+	-- Indexed first so a read-only member is excluded whichever list names
+	-- them; `permissions` absent is kept, so an unexpected response shape
+	-- degrades to the API's own 422 instead of an empty list.
+	local read_only = {}
+	for _, user in ipairs(collaborators or {}) do
+		local permissions = type(user) == "table" and type(user.permissions) == "table" and user.permissions or nil
+		if permissions and permissions.push == false and type(user.login) == "string" then
+			read_only[user.login] = true
+		end
+	end
+
+	local by_login = {}
+	local entries = {}
+	local function add(login, requested)
+		if type(login) ~= "string" or login == "" or login == author_login then
+			return nil
+		end
+		if read_only[login] and not requested and not by_login[login] then
+			return nil
+		end
+		if not by_login[login] then
+			by_login[login] = { login = login, requested = false }
+			table.insert(entries, by_login[login])
+		end
+		return by_login[login]
+	end
+
+	for _, req in ipairs(review_requests or {}) do
+		local entry = type(req) == "table" and add(req.login, true) or nil
+		if entry then
+			entry.requested = true
+		end
+	end
+
+	for _, review in ipairs(latest_reviews or {}) do
+		-- review and author can be JSON null, which decodes to truthy vim.NIL
+		local author = type(review) == "table" and type(review.author) == "table" and review.author or nil
+		if author then
+			-- Same rule as build_re_request_candidates: requesting a
+			-- non-collaborator is rejected by the API.
+			local association = review.authorAssociation
+			local non_collaborator = type(association) == "string"
+				and association ~= "OWNER"
+				and association ~= "MEMBER"
+				and association ~= "COLLABORATOR"
+			local state = type(review.state) == "string" and review.state or "COMMENTED"
+			if not author.is_bot and not non_collaborator and state ~= "PENDING" then
+				local entry = add(author.login)
+				if entry then
+					entry.review_state = state
+				end
+			end
+		end
+	end
+
+	for _, user in ipairs(collaborators or {}) do
+		if type(user) == "table" and user.type ~= "Bot" then
+			add(user.login)
+		end
+	end
+
+	table.sort(entries, function(a, b)
+		local ra, rb = reviewer_rank(a), reviewer_rank(b)
+		if ra ~= rb then
+			return ra < rb
+		end
+		local la, lb = a.login:lower(), b.login:lower()
+		if la ~= lb then
+			return la < lb
+		end
+		return a.login < b.login
+	end)
+	return entries
+end
+
+--- Format a review state enum for display (`CHANGES_REQUESTED` →
+--- `changes requested`).
+--- @param state string
+--- @return string
+function M.format_review_state_label(state)
+	return (state:lower():gsub("_", " "))
+end
+
+--- Describe a reviewer picker row: whether a review is requested now and
+--- the state of the user's latest review, kept apart so a requested user
+--- whose last review was dismissed does not read as "dismissed" only.
+--- @param requested boolean
+--- @param review_state string|nil latest review state (APPROVED, DISMISSED, ...)
+--- @return string|nil nil when there is nothing to say
+function M.format_reviewer_detail(requested, review_state)
+	local parts = {}
+	if requested then
+		table.insert(parts, "review requested")
+	end
+	if type(review_state) == "string" and review_state ~= "" then
+		table.insert(parts, "last review: " .. M.format_review_state_label(review_state))
+	end
+	if #parts == 0 then
+		return nil
+	end
+	return table.concat(parts, ", ")
+end
+
+--- Build the entries of the overview's label picker: every repository label,
+--- applied ones first, each group sorted by name. A label on the PR that the
+--- repository listing lacks is still shown, so it can be removed.
+--- @param repo_labels table[] `repos/{owner}/{repo}/labels` items ({ name, description })
+--- @param pr_labels table[] labels from gh pr view ({ name, description })
+--- @return table[] list of { name: string, description: string|nil, applied: boolean }
+function M.build_label_entries(repo_labels, pr_labels)
+	local by_name = {}
+	local entries = {}
+	local function add(label)
+		if type(label) ~= "table" or type(label.name) ~= "string" or label.name == "" then
+			return nil
+		end
+		if not by_name[label.name] then
+			local description = type(label.description) == "string" and label.description ~= "" and label.description or nil
+			by_name[label.name] = { name = label.name, description = description, applied = false }
+			table.insert(entries, by_name[label.name])
+		end
+		return by_name[label.name]
+	end
+
+	for _, label in ipairs(repo_labels or {}) do
+		add(label)
+	end
+	for _, label in ipairs(pr_labels or {}) do
+		local entry = add(label)
+		if entry then
+			entry.applied = true
+		end
+	end
+
+	local applied, others = {}, {}
+	for _, entry in ipairs(entries) do
+		table.insert(entry.applied and applied or others, entry)
+	end
+	sort_by_name(applied, "name")
+	sort_by_name(others, "name")
+	return vim.list_extend(applied, others)
+end
+
+--- Mark and highlight group for a toggle picker row.
+--- @param on boolean whether the item is applied (label) / requested (reviewer)
+--- @return string mark, string hl_group
+function M.format_toggle_mark(on)
+	if on then
+		return "●", "DiagnosticOk"
+	end
+	return "○", "Comment"
+end
+
+--- Mark and highlight groups for a reviewer picker row, following the
+--- GitHub web UI: a pending request (review in progress) wins over the
+--- user's previous review, since it is what the reviewer owes now. The
+--- name is grey for a user with no pending request, so the requested users
+--- stand out, except an approval (green name) and a dismissed review
+--- (normal name).
+--- @param requested boolean
+--- @param review_state string|nil latest review state (APPROVED, DISMISSED, ...)
+--- @return string mark, string mark_hl, string|nil text_hl highlight for the name
+function M.format_reviewer_mark(requested, review_state)
+	if requested then
+		return "●", "DiagnosticWarn", nil
+	elseif review_state == "APPROVED" then
+		return "✓", "DiagnosticOk", "DiagnosticOk"
+	elseif review_state == "CHANGES_REQUESTED" then
+		return "✗", "DiagnosticError", "Comment"
+	elseif review_state == "COMMENTED" then
+		return "💬", "DiagnosticInfo", "Comment"
+	elseif review_state == "DISMISSED" then
+		return "↻", "Comment", nil
+	end
+	return "○", "Comment", "Comment"
+end
+
+--- Format one toggle picker row as plain text (`● name  (detail)`), used by
+--- vim.ui.select and as the display text of Telescope.
+--- @param text string item name
+--- @param mark string row mark (from format_toggle_mark / format_reviewer_mark)
+--- @param detail string|nil extra information shown in parentheses
+--- @return string
+function M.format_toggle_entry(text, mark, detail)
+	local line = mark .. " " .. text
+	if detail and detail ~= "" then
+		line = line .. "  (" .. detail .. ")"
+	end
+	return line
+end
+
 --- Build summary string for reviewers (e.g. "1/2 approved").
 --- @param reviewers table[] list of { login: string, state: string }
 --- @return string
@@ -641,7 +877,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(lines, "")
 	table.insert(
 		lines,
-		" ]s/[s: sections  ]c/[c: comments  o: open  C: comment  r: re-request  za: fold  R: refresh  <Tab>: switch  q: close"
+		" ]s/[s: sections  ]c/[c: comments  o: open  C: comment/reviewer/label  r: re-request  za: fold"
+			.. "  R: refresh  <Tab>: switch  q: close"
 	)
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
