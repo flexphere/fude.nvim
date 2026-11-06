@@ -98,9 +98,12 @@ end
 --- `state.overview_cache` before the waiters run. Every waiter is called once,
 --- also when the session changed meanwhile: each one checks `config.state`
 --- itself (show() must still close its placeholder then).
+--- With `body` (the PR body already fetched, e.g. by the review start's PR
+--- lookup) no body request is sent: the parts go out and the waiters run at once.
 --- @param state table config.state the fetch is for
 --- @param on_done fude.OverviewWaiter
-local function fetch_overview(state, on_done)
+--- @param body table|nil
+local function fetch_overview(state, on_done, body)
 	if fetch_in_flight and fetch_in_flight.state == state then
 		table.insert(fetch_in_flight.waiters, on_done)
 		return
@@ -157,6 +160,11 @@ local function fetch_overview(state, on_done)
 		end)
 	end
 
+	if body then
+		fetch_parts(body.number)
+		finish(nil, body)
+		return
+	end
 	local pr_number = state.pr_number
 	if pr_number then
 		fetch_parts(pr_number)
@@ -195,12 +203,22 @@ end
 --- at once. Called by init.start() and init.reload(). Silent: a failure only
 --- leaves the cache as it was, and show() then fetches (and reports errors)
 --- itself. No-op outside a GitHub review session.
-function M.prefetch()
+--- `opts.pr_info` is the PR body when the caller already has it (the review
+--- start's PR lookup asks for the body fields too): then no body request is
+--- sent. `opts.on_ready()` runs once the body is cached, only on success and
+--- only while the session is still the active one.
+--- @param opts { pr_info: table|nil, on_ready: fun()|nil }|nil
+function M.prefetch(opts)
+	opts = opts or {}
 	local state = config.state
 	if not state.active or state.review_mode ~= "github" then
 		return
 	end
-	fetch_overview(state, function() end)
+	fetch_overview(state, function(err, bundle)
+		if not err and bundle and opts.on_ready and config.state == state and state.active then
+			opts.on_ready()
+		end
+	end, opts.pr_info)
 end
 
 --- Open the overview float with the given data; the parts still loading

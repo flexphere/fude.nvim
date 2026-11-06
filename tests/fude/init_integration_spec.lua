@@ -209,6 +209,33 @@ describe("init integration", function()
 			assert.are.equal(before + 1, refreshed)
 		end)
 
+		it("calls on_overview_ready with the overview body taken from the PR lookup", function()
+			local info
+			config.setup({
+				on_overview_ready = function(i)
+					info = i
+				end,
+			})
+			setup_gh_mocks()
+			local overview = require("fude.overview")
+			local prefetch_opts
+			local real_prefetch = overview.prefetch
+			helpers.mock(overview, "prefetch", function(opts)
+				prefetch_opts = opts
+				return real_prefetch(opts)
+			end)
+
+			init.start()
+
+			assert.is_true(helpers.wait_for(function()
+				return info ~= nil
+			end))
+			assert.are.same({ pr_number = 42, pr_url = "https://github.com/owner/repo/pull/42" }, info)
+			-- The PR lookup's own result was handed over as the body
+			assert.are.equal(42, prefetch_opts.pr_info.number)
+			assert.is_not_nil(config.state.overview_cache)
+		end)
+
 		it("does not error when on_review_start is nil", function()
 			config.setup({ on_review_start = nil })
 			setup_gh_mocks()

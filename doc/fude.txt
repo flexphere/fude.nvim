@@ -1659,6 +1659,27 @@ Options:
                     })
 <
 
+`on_overview_ready` Callback function invoked once the
+                  |:FudeReviewOverview| data of a review started with
+                  |:FudeReviewStart| is ready, so
+                  `require("fude.overview").show()` opens the overview
+                  at once (the reviewers, comments and CI checks fill
+                  in as they arrive). On a branch the overview's PR
+                  body comes with the PR lookup itself, so this usually
+                  runs before `on_review_start` (after the rest of the
+                  start setup); on a detached HEAD it runs when the
+                  overview's own request returns. Called at most once
+                  per start, only on success and while the review is
+                  active; when the overview data cannot be fetched it
+                  is not called. Receives `{ pr_number, pr_url }`
+                  (default: nil). >lua
+                    require("fude").setup({
+                      on_overview_ready = function()
+                        require("fude.overview").show()
+                      end,
+                    })
+<
+
 `drafts.enabled`    Enable local on-disk drafts for in-progress comment
                   input (default: true). When false, closing a dirty
                   comment buffer falls back to a plain Yes/No discard

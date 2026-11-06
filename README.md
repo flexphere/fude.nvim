@@ -306,6 +306,10 @@ require("fude").setup({
   -- Callback after review start completes (all data fetched)
   -- Receives: { pr_number, base_ref, head_ref, pr_url }
   on_review_start = nil,
+  -- Callback once the PR overview data is ready (usually before on_review_start),
+  -- e.g. to open the overview first: require("fude.overview").show()
+  -- Receives: { pr_number, pr_url }
+  on_overview_ready = nil,
   -- Local on-disk drafts for in-progress (unsubmitted) comment input
   drafts = {
     enabled = true,        -- Save/restore drafts when closing a dirty comment buffer

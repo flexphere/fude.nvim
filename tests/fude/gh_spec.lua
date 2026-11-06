@@ -548,6 +548,72 @@ describe("get_pr_info", function()
 	end)
 end)
 
+describe("get_pr_info with the overview fields", function()
+	local helpers = require("tests.helpers")
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	local function on_branch(code)
+		local original_system = vim.system
+		helpers.mock(vim, "system", function(cmd, ...)
+			if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
+				return {
+					wait = function()
+						return { code = code, stdout = code == 0 and "refs/heads/feature\n" or "", stderr = "" }
+					end,
+				}
+			end
+			return original_system(cmd, ...)
+		end)
+	end
+
+	it("merge_json_fields joins two field lists without duplicates, in order", function()
+		assert.are.equal("a,b,c,d", gh.merge_json_fields("a,b,c", "b,d,a"))
+		assert.are.equal("a", gh.merge_json_fields("a", ""))
+	end)
+
+	it("asks for the PR info and the overview body in one gh pr view on a branch", function()
+		on_branch(0)
+		local seen
+		helpers.mock(gh, "run_json", function(args, callback)
+			seen = args
+			callback(nil, { number = 7, title = "T" })
+		end)
+		local got
+		gh.get_pr_info(function(err, data, has_overview)
+			got = { err, data, has_overview }
+		end, { with_overview = true })
+		local fields = vim.split(seen[4], ",")
+		for _, field in ipairs(vim.split(gh.PR_INFO_FIELDS .. "," .. gh.PR_OVERVIEW_FIELDS, ",")) do
+			assert.is_true(vim.tbl_contains(fields, field), field)
+		end
+		assert.are.same({ nil, { number = 7, title = "T" }, true }, got)
+
+		-- Without the option: only the PR info fields, no overview body
+		gh.get_pr_info(function(err, data, has_overview)
+			got = { err, data, has_overview }
+		end)
+		assert.are.equal(gh.PR_INFO_FIELDS, seen[4])
+		assert.is_false(got[3])
+	end)
+
+	it("never claims the overview body on a detached HEAD", function()
+		on_branch(1)
+		helpers.mock(gh, "get_head_sha", function()
+			return "abc"
+		end)
+		helpers.mock(gh, "get_pr_by_commit", function(_, callback)
+			callback(nil, { number = 7 })
+		end)
+		local got
+		gh.get_pr_info(function(err, data, has_overview)
+			got = { err, data, has_overview }
+		end, { with_overview = true })
+		assert.are.same({ nil, { number = 7 }, false }, got)
+	end)
+end)
+
 describe("parse_review_threads_response", function()
 	it("parses valid response with outdated and resolved threads", function()
 		local data = {

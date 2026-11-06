@@ -1225,6 +1225,41 @@ describe("overview prefetch and cache", function()
 		assert.are.equal(1, #config.state.overview_cache.pr_comments)
 	end)
 
+	it("prefetch with the body already known sends no body request and reports ready", function()
+		local ready = 0
+		overview.prefetch({
+			pr_info = { number = 7, title = "from lookup" },
+			on_ready = function()
+				ready = ready + 1
+			end,
+		})
+		assert.are.equal(0, #pr_views)
+		assert.are.equal(1, #reviewer_views)
+		assert.are.equal(1, #check_views)
+		assert.are.equal(1, ready)
+		assert.are.equal("from lookup", config.state.overview_cache.pr_info.title)
+		overview.show()
+		assert.are.equal(1, #shown)
+		assert.are.equal("from lookup", shown[1].pr_info.title)
+	end)
+
+	it("prefetch reports ready only on success and only for the active session", function()
+		local ready = 0
+		local function on_ready()
+			ready = ready + 1
+		end
+		overview.prefetch({ on_ready = on_ready })
+		respond(1, "gh: boom", nil)
+		vim.wait(50)
+		assert.are.equal(0, ready)
+
+		overview.prefetch({ on_ready = on_ready })
+		config.reset_state()
+		respond(2, nil, { number = 7, title = "T" })
+		vim.wait(50)
+		assert.are.equal(0, ready)
+	end)
+
 	it("refuses the reviewer flows while the reviewers are loading or failed to load", function()
 		local pr_info = { number = 7, url = "https://github.com/o/r/pull/7", reviewers_loading = true }
 		overview.re_request_review(pr_info, config.state)

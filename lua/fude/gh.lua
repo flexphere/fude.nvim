@@ -96,21 +96,59 @@ function M.get_pr_by_commit(sha, callback)
 	end)
 end
 
+--- Fields of the PR lookup that starts a review (`get_pr_info`).
+M.PR_INFO_FIELDS = "number,baseRefName,baseRefOid,headRefName,url,state"
+--- Fields of the PR overview's body request (`get_pr_overview`). The
+--- reviewers and the CI checks are fetched on their own (get_pr_reviewers,
+--- get_pr_checks), so the body arrives as soon as possible.
+M.PR_OVERVIEW_FIELDS = "number,title,body,labels,assignees,state,isDraft,author,"
+	.. "baseRefName,headRefName,url,additions,deletions,changedFiles"
+
+--- Union of two comma-separated `--json` field lists, in order, without
+--- duplicates. Pure.
+--- @param a string
+--- @param b string
+--- @return string
+function M.merge_json_fields(a, b)
+	local seen, fields = {}, {}
+	for _, list in ipairs({ a, b }) do
+		for _, field in ipairs(vim.split(list, ",", { trimempty = true })) do
+			if not seen[field] then
+				seen[field] = true
+				table.insert(fields, field)
+			end
+		end
+	end
+	return table.concat(fields, ",")
+end
+
 --- Get PR info for the current branch.
 --- Detects detached HEAD synchronously and uses commit-based lookup directly,
 --- avoiding `gh pr view` which may hang without a branch.
---- @param callback fun(err: string|nil, data: table|nil)
-function M.get_pr_info(callback)
+--- With `opts.with_overview` the `gh pr view` of a branch also asks for the
+--- overview's body fields (`PR_OVERVIEW_FIELDS`), so a review start gets the
+--- overview body from the same request; the third callback argument says
+--- whether `data` carries them (never on a detached HEAD, whose commit-based
+--- lookup returns only the PR info).
+--- @param callback fun(err: string|nil, data: table|nil, has_overview: boolean)
+--- @param opts { with_overview: boolean|nil }|nil
+function M.get_pr_info(callback, opts)
 	-- Detect detached HEAD: use commit-based lookup directly
 	local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "HEAD" }, { text = true }):wait()
 	if ref_result.code ~= 0 then
 		local sha, sha_err = M.get_head_sha()
 		if not sha then
-			return callback(sha_err or "Not in a git repository", nil)
+			return callback(sha_err or "Not in a git repository", nil, false)
 		end
-		return M.get_pr_by_commit(sha, callback)
+		return M.get_pr_by_commit(sha, function(err, data)
+			callback(err, data, false)
+		end)
 	end
-	M.run_json({ "pr", "view", "--json", "number,baseRefName,baseRefOid,headRefName,url,state" }, callback)
+	local with_overview = opts ~= nil and opts.with_overview == true
+	local fields = with_overview and M.merge_json_fields(M.PR_INFO_FIELDS, M.PR_OVERVIEW_FIELDS) or M.PR_INFO_FIELDS
+	M.run_json({ "pr", "view", "--json", fields }, function(err, data)
+		callback(err, data, with_overview and not err)
+	end)
 end
 
 --- Get the list of files changed in a PR.
@@ -238,8 +276,7 @@ function M.get_pr_overview(callback, pr_number)
 	-- statusCheckRollup and the reviewers are left out, so the overview opens
 	-- with the body as soon as possible: get_pr_checks and get_pr_reviewers
 	-- fill CI STATUS and REVIEWERS in later.
-	local fields = "number,title,body,labels,assignees,state,isDraft,author,"
-		.. "baseRefName,headRefName,url,additions,deletions,changedFiles"
+	local fields = M.PR_OVERVIEW_FIELDS
 	local args = { "pr", "view" }
 	if pr_number then
 		table.insert(args, tostring(pr_number))
