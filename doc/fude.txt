@@ -472,7 +472,8 @@ File opening position                                 *fude-file-position*
     review from the user or removes their pending request, and adds or
     removes the label. While the request is in flight the row shows a
     spinner (`⣾⣽⣻⢿⡿⣟⣯⣷`, as the gh CLI; DiagnosticInfo) in place of
-    its mark (Telescope and snacks); the mark changes only after
+    its mark, padded to the mark's width so the name stays put
+    (Telescope and snacks); the mark changes only after
     GitHub accepted the change (after a failure the old mark comes
     back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it.
     The overview is not reopened afterwards: run |:FudeReviewOverview|
