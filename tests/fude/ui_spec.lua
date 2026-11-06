@@ -1124,7 +1124,7 @@ describe("overview avatar positions", function()
 
 	it("left pane: the author line, after `author: `; none for an unknown author", function()
 		local result = ui.build_overview_left_lines({ number = 1, title = "T", author = { login = "kyu08" } }, {}, identity)
-		assert.are.same({ { line = 2, col = 8, login = "kyu08" } }, result.avatar_positions)
+		assert.are.same({ { line = 2, col = 8, login = "kyu08", kind = "author" } }, result.avatar_positions)
 		assert.are.equal('author: "@kyu08"', result.lines[3])
 		assert.are.same({}, ui.build_overview_left_lines({ number = 1, title = "T" }, {}, identity).avatar_positions)
 	end)
@@ -1141,6 +1141,53 @@ describe("overview avatar positions", function()
 			assert.are.equal("@" .. p.login, result.lines[p.line + 1]:sub(p.col + 1, p.col + #p.login + 1))
 		end
 		assert.are.same({ "✓ @alice  approved", "● @carol  pending" }, lines)
+	end)
+
+	it("left pane: each comment header, after `### `, with kind comments", function()
+		local result = ui.build_overview_left_lines({ number = 1, title = "T", author = { login = "kyu08" } }, {
+			{ user = { login = "alice" }, body = "hi", created_at = "2026-01-01T00:00:00Z" },
+			{ user = { login = "bot[bot]" }, body = "x", created_at = "2026-01-02T00:00:00Z" },
+			{ body = "no user", created_at = "2026-01-03T00:00:00Z" },
+		}, identity)
+		local comment_positions = {}
+		for _, p in ipairs(result.avatar_positions) do
+			if p.kind == "comments" then
+				table.insert(comment_positions, p)
+				assert.are.equal(4, p.col)
+				assert.are.equal("### @" .. p.login, result.lines[p.line + 1]:sub(1, 5 + #p.login))
+			end
+		end
+		assert.are.same(
+			{ "alice", "bot[bot]" },
+			vim.tbl_map(function(p)
+				return p.login
+			end, comment_positions)
+		)
+		-- Still loading: no comment positions, only the author's
+		local loading =
+			ui.build_overview_left_lines({ number = 1, title = "T", author = { login = "kyu08" } }, nil, identity)
+		assert.are.same(
+			{ "author" },
+			vim.tbl_map(function(p)
+				return p.kind
+			end, loading.avatar_positions)
+		)
+	end)
+
+	it("right pane: each assignee line, at its start, with kind assignees", function()
+		local result = ui.build_overview_right_lines({
+			reviewRequests = { { login = "carol" } },
+			assignees = { { login = "dave" }, "erin" },
+		})
+		local kinds = {}
+		for _, p in ipairs(result.avatar_positions) do
+			kinds[p.login] = p.kind
+			if p.kind == "assignees" then
+				assert.are.equal(0, p.col)
+				assert.are.equal("@" .. p.login, result.lines[p.line + 1])
+			end
+		end
+		assert.are.same({ carol = "reviewers", dave = "assignees", erin = "assignees" }, kinds)
 	end)
 end)
 

@@ -38,9 +38,15 @@ M.defaults = {
 		height = 80,
 		-- Right pane width as percentage of total overview width (1-100)
 		right_width = 30,
-		-- Draw the author's and reviewers' avatars (off by default; needs
-		-- snacks.nvim with image support, curl, and ImageMagick for the round cut)
-		avatars = false,
+		-- Avatars to draw, per kind (all off by default; `true` turns on every
+		-- kind). Needs snacks.nvim with image support, curl, and ImageMagick
+		-- for the round cut.
+		avatars = {
+			author = false, -- PR author (frontmatter `author:`)
+			reviewers = false, -- reviewers (right pane and reviewer picker)
+			assignees = false, -- assignees (right pane)
+			comments = false, -- authors of the PR-level comments
+		},
 	},
 	-- Flash highlight when navigating to a comment line
 	flash = {

@@ -51,7 +51,8 @@ Optional:
 - telescope.nvim for picker UI with diff preview (changed files and review scope)
 - snacks.nvim with image support (kitty graphics protocol: kitty, ghostty,
   wezterm; tmux with passthrough), curl, and ImageMagick (`magick` or
-  `convert`) for author / reviewer avatars in the overview
+  `convert`) for author / reviewer / assignee / comment author
+  avatars in the overview
 - gitsigns.nvim for automatic diff base switching
 - blink.cmp or nvim-cmp for @user / #issue / _commit completion
 
@@ -483,10 +484,11 @@ File opening position                                 *fude-file-position*
     mixed toward white; with a light one the fill is the label colour
     and the text black or white, as in the GitHub web UI. The colours
     need 'termguicolors'.
-    With `overview.avatars = true` (off by default) and snacks.nvim
-    image support, the author's avatar is drawn on
-    the `author:` line and each reviewer's before their login, cut
-    into a circle like the GitHub web UI (see `overview.avatars`);
+    With `overview.avatars` (each kind off by default) and snacks.nvim
+    image support, the author's avatar is drawn on the `author:`
+    line, each reviewer's and assignee's before their login, and each
+    PR comment author's in the comment heading, cut into a circle like
+    the GitHub web UI (see `overview.avatars`);
     the reviewer picker (Telescope and snacks) draws the same avatar
     between each row's mark and name, loading them once the picker is
     shown: the first rows at once, the rest a few at a time. Space is
@@ -1198,8 +1200,14 @@ Default configuration: >lua
       height = 80,
       -- Right pane width as percentage of total overview width
       right_width = 30,
-      -- Draw the author's and reviewers' avatars (snacks.nvim image support, curl, ImageMagick)
-      avatars = false,
+      -- Avatars to draw, per kind (snacks.nvim image support, curl, ImageMagick).
+      -- `avatars = true` turns on every kind.
+      avatars = {
+        author = false, -- PR author (frontmatter `author:`)
+        reviewers = false, -- reviewers (right pane and reviewer picker)
+        assignees = false, -- assignees (right pane)
+        comments = false, -- authors of the PR-level comments
+      },
       -- Section marks (jump with 'd, 'c in left pane)
       marks = { description = "d", comments = "c" },
     },
@@ -1369,10 +1377,15 @@ Options:
                   Right pane width as % of total overview width
                   (default: 30). Minimum effective width is 15 columns.
 
-`overview.avatars`  Draw the PR author's avatar (frontmatter `author:`
-                  line) and each reviewer's (right pane, and before
-                  each row of the Telescope / snacks reviewer picker)
-                  inline with snacks.nvim's image module (default: false). Needs a
+`overview.avatars`  Which avatars to draw inline with snacks.nvim's
+                  image module, per kind (each `false` by default):
+                    `author`     the PR author (frontmatter `author:`)
+                    `reviewers`  each reviewer (right pane, and before
+                                 each row of the Telescope / snacks
+                                 reviewer picker)
+                    `assignees`  each assignee (right pane)
+                    `comments`   each PR comment author (`###` heading)
+                  `true` turns on every kind, `false` none. Needs a
                   terminal snacks supports (kitty graphics protocol:
                   kitty, ghostty, wezterm; tmux with
                   `allow-passthrough`) and `curl`; the images are cached

@@ -784,8 +784,9 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.bo[right_buf].bufhidden = "wipe"
 	vim.bo[right_buf].filetype = "markdown"
 
-	-- Author and reviewer avatars, drawn as their downloads finish (a no-op
-	-- without snacks.nvim image support or with overview.avatars = false)
+	-- Author, reviewer, assignee and comment author avatars, drawn as their
+	-- downloads finish (each kind a no-op unless overview.avatars turns it
+	-- on, and all without snacks.nvim image support)
 	local avatars = require("fude.ui.avatars")
 	avatars.place(left_buf, left_result.avatar_positions)
 	avatars.place(right_buf, right_result.avatar_positions)
@@ -1082,8 +1083,8 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	end
 
 	--- Fill in the PR-level comments. COMMENTS is the end of the left pane
-	--- (with the footer), so the frontmatter and the body above it — and the
-	--- author's avatar — stay as they are.
+	--- (with the footer), so the frontmatter and the body above it stay as
+	--- they are; the avatars are drawn again with the comment authors'.
 	--- @param comments table[]
 	function handle.set_comments(comments)
 		issue_comments = comments
@@ -1100,6 +1101,8 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			collect_sections()
 			vim.api.nvim_buf_clear_namespace(left_buf, ref_ns, 0, -1)
 			setup_github_refs(left_buf, get_repo_base_url(pr_info.url))
+			avatars.clear(left_buf)
+			avatars.place(left_buf, left_result.avatar_positions)
 		end
 		update_spinner()
 	end

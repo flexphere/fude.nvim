@@ -539,7 +539,9 @@ describe("overview menu and toggle editors", function()
 		helpers.mock_gh({
 			["api:repos/{owner}/{repo}/collaborators"] = { { login = "alice" } },
 		})
-		helpers.mock(avatars, "is_enabled", function()
+		local asked_kind
+		helpers.mock(avatars, "is_enabled", function(kind)
+			asked_kind = kind
 			return true
 		end)
 		local fetched = {}
@@ -553,6 +555,7 @@ describe("overview menu and toggle editors", function()
 			return captured_opts ~= nil
 		end))
 		assert.are.equal("function", type(captured_opts.images))
+		assert.are.equal("reviewers", asked_kind)
 		local got
 		captured_opts.images(captured_opts.items[1], function(path)
 			got = path

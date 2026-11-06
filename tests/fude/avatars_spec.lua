@@ -80,6 +80,30 @@ describe("avatars.cache_path", function()
 	end)
 end)
 
+describe("avatars.should_draw", function()
+	it("true turns on every kind; false and nil none", function()
+		for _, kind in ipairs(avatars.KINDS) do
+			assert.is_true(avatars.should_draw(true, kind))
+			assert.is_false(avatars.should_draw(false, kind))
+			assert.is_false(avatars.should_draw(nil, kind))
+		end
+		assert.is_true(avatars.should_draw(true))
+		assert.is_false(avatars.should_draw(false))
+	end)
+
+	it("a table turns on each kind whose key is true", function()
+		local setting = { author = true, reviewers = false, comments = "yes" }
+		assert.is_true(avatars.should_draw(setting, "author"))
+		assert.is_false(avatars.should_draw(setting, "reviewers"))
+		assert.is_false(avatars.should_draw(setting, "assignees"))
+		assert.is_false(avatars.should_draw(setting, "comments"))
+		-- Without a kind: whether any kind is on
+		assert.is_true(avatars.should_draw(setting))
+		assert.is_false(avatars.should_draw({ author = false }))
+		assert.is_false(avatars.should_draw({}))
+	end)
+end)
+
 describe("avatars.is_enabled", function()
 	local config = require("fude.config")
 	local saved_snacks
@@ -119,6 +143,15 @@ describe("avatars.is_enabled", function()
 		-- Off by default
 		config.setup({})
 		assert.is_false(avatars.is_enabled())
+		for _, kind in ipairs(avatars.KINDS) do
+			assert.is_false(avatars.is_enabled(kind))
+		end
+		-- Per kind: the other kinds stay off
+		config.setup({ overview = { avatars = { assignees = true } } })
+		assert.is_true(avatars.is_enabled("assignees"))
+		assert.is_true(avatars.is_enabled())
+		assert.is_false(avatars.is_enabled("author"))
+		assert.is_false(avatars.is_enabled("comments"))
 		assert.are.equal(real_require, _G.require)
 	end)
 end)
@@ -425,6 +458,23 @@ describe("avatars.place", function()
 			placed[1].opts
 		)
 		assert.are.same({ 3, 4 }, placed[2].opts.pos)
+	end)
+
+	it("places only the positions whose kind is turned on", function()
+		config.setup({ overview = { avatars = { assignees = true, comments = true } } })
+		local buf = helpers.create_buf({ "a", "b", "c", "d" })
+		avatars.place(buf, {
+			{ line = 0, col = 0, login = "author1", kind = "author" },
+			{ line = 1, col = 0, login = "rev", kind = "reviewers" },
+			{ line = 2, col = 0, login = "asg", kind = "assignees" },
+			{ line = 3, col = 4, login = "com", kind = "comments" },
+		})
+		assert.are.same(
+			{ "/cache/asg.round80.png", "/cache/com.round80.png" },
+			vim.tbl_map(function(p)
+				return p.file
+			end, placed)
+		)
 	end)
 
 	it("does nothing when disabled, and skips a buffer gone before the file arrived", function()

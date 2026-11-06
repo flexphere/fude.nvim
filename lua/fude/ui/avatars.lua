@@ -1,11 +1,12 @@
---- Avatars of the PR author and reviewers in the overview, drawn inline with
+--- Avatars of the PR author, reviewers, assignees and comment authors in the
+--- overview, drawn inline with
 --- snacks.nvim's image module (kitty graphics protocol: kitty, ghostty,
 --- wezterm; tmux with passthrough). The images are downloaded with curl into
 --- `stdpath("cache")/fude/avatars` and cut into a circle with ImageMagick
 --- (`magick`, or `convert` of ImageMagick 6), as the GitHub web UI shows
---- them; without ImageMagick the square image is shown. Everything is a no-op
---- unless `overview.avatars = true` (off by default), and without snacks.nvim
---- or terminal support.
+--- them; without ImageMagick the square image is shown. Each kind is a no-op
+--- unless `overview.avatars` turns it on (off by default), and everything is
+--- a no-op without snacks.nvim or terminal support.
 local M = {}
 local config = require("fude.config")
 
@@ -177,12 +178,44 @@ function M.find_magick()
 	return nil
 end
 
---- Whether avatars are drawn: `overview.avatars` is true, snacks.nvim is
---- installed, and its image module reports terminal support.
+--- The kinds of avatars `overview.avatars` turns on one by one: the PR
+--- author (frontmatter), the reviewers (right pane and reviewer picker), the
+--- assignees (right pane) and the authors of the PR-level comments.
+M.KINDS = { "author", "reviewers", "assignees", "comments" }
+
+--- Whether the `overview.avatars` setting turns on the avatars of `kind`:
+--- `true` turns on every kind, a table each kind whose key is `true`;
+--- anything else (the default `false`, nil) none. Without `kind`, whether
+--- any kind is on. Pure.
+--- @param setting any
+--- @param kind string|nil one of M.KINDS
 --- @return boolean
-function M.is_enabled()
+function M.should_draw(setting, kind)
+	if setting == true then
+		return true
+	end
+	if type(setting) ~= "table" then
+		return false
+	end
+	if kind == nil then
+		for _, k in ipairs(M.KINDS) do
+			if setting[k] == true then
+				return true
+			end
+		end
+		return false
+	end
+	return setting[kind] == true
+end
+
+--- Whether avatars (of `kind`, or of any kind without it) are drawn:
+--- `overview.avatars` turns them on (`should_draw`), snacks.nvim is
+--- installed, and its image module reports terminal support.
+--- @param kind string|nil one of M.KINDS
+--- @return boolean
+function M.is_enabled(kind)
 	local ov = config.opts.overview or {}
-	if ov.avatars ~= true then
+	if not M.should_draw(ov.avatars, kind) then
 		return false
 	end
 	local ok, snacks = pcall(require, "snacks")
@@ -340,30 +373,33 @@ function M.clear(buf)
 	end
 end
 
---- Draw the avatars of `positions` (`{ line (0-indexed), col, login }`, from
---- the overview line builders) into `buf`, each once its file is available.
---- Nothing happens when avatars are disabled or unsupported, and a buffer
---- gone by the time a download finished is left alone.
+--- Draw the avatars of `positions` (`{ line (0-indexed), col, login, kind }`,
+--- from the overview line builders) into `buf`, each once its file is
+--- available. A position whose `kind` is disabled (`is_enabled(kind)`) is
+--- skipped, and a buffer gone by the time a download finished is left alone.
 --- @param buf number
 --- @param positions table[]|nil
 function M.place(buf, positions)
 	if not positions or #positions == 0 or not M.is_enabled() then
 		return
 	end
+	local setting = (config.opts.overview or {}).avatars
 	for _, position in ipairs(positions) do
-		M.fetch(position.login, function(path)
-			if not path or not vim.api.nvim_buf_is_valid(buf) then
-				return
-			end
-			pcall(function()
-				require("snacks").image.placement.new(buf, path, {
-					pos = { position.line + 1, position.col },
-					inline = true,
-					height = M.CELL_HEIGHT,
-					width = M.CELL_WIDTH,
-				})
+		if M.should_draw(setting, position.kind) then
+			M.fetch(position.login, function(path)
+				if not path or not vim.api.nvim_buf_is_valid(buf) then
+					return
+				end
+				pcall(function()
+					require("snacks").image.placement.new(buf, path, {
+						pos = { position.line + 1, position.col },
+						inline = true,
+						height = M.CELL_HEIGHT,
+						width = M.CELL_WIDTH,
+					})
+				end)
 			end)
-		end)
+		end
 	end
 end
 
