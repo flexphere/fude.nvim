@@ -1237,6 +1237,32 @@ describe("reviewer and label requests", function()
 		assert.truthy(got_err)
 	end)
 
+	it("build_repo_api_path uses the given repository or gh's template", function()
+		assert.are.equal("repos/octo/fude", gh.build_repo_api_path("octo/fude"))
+		assert.are.equal("repos/{owner}/{repo}", gh.build_repo_api_path(nil))
+	end)
+
+	it("sends every editor request to the given repository", function()
+		local paths = {}
+		local function record()
+			table.insert(paths, captured.args[2])
+		end
+		gh.get_collaborators(record, nil, "octo/fude")
+		gh.get_repo_labels(record, "octo/fude")
+		gh.re_request_review(42, { "alice" }, record, "octo/fude")
+		gh.remove_review_request(42, { "alice" }, record, "octo/fude")
+		gh.add_labels(42, { "bug" }, record, "octo/fude")
+		gh.remove_label(42, "bug", record, "octo/fude")
+		assert.are.same({
+			"repos/octo/fude/collaborators",
+			"repos/octo/fude/labels",
+			"repos/octo/fude/pulls/42/requested_reviewers",
+			"repos/octo/fude/pulls/42/requested_reviewers",
+			"repos/octo/fude/issues/42/labels",
+			"repos/octo/fude/issues/42/labels/bug",
+		}, paths)
+	end)
+
 	it("remove_label sends DELETE to the encoded label path", function()
 		gh.remove_label(42, "good first issue", function() end)
 		assert.are.same({

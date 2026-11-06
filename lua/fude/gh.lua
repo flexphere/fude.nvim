@@ -298,13 +298,25 @@ function M.delete_issue_comment(comment_id, callback)
 	end)
 end
 
---- Get repository collaborators (for @mention completion).
+--- Path prefix of a repository REST endpoint: the given `owner/repo`, or
+--- gh's `{owner}/{repo}` template resolved from the working directory. The
+--- overview editors pass the PR's own repository so a `:cd` into another
+--- repository while a picker is open cannot retarget the request.
+--- @param repo string|nil `owner/repo`
+--- @return string
+function M.build_repo_api_path(repo)
+	return "repos/" .. (repo or "{owner}/{repo}")
+end
+
+--- Get repository collaborators (for @mention completion and the overview's
+--- reviewer picker).
 --- @param callback fun(err: string|nil, data: table|nil)
 --- @param cwd string|nil working directory for repository resolution
-function M.get_collaborators(callback, cwd)
+--- @param repo string|nil `owner/repo`; overrides the cwd-based resolution
+function M.get_collaborators(callback, cwd, repo)
 	M.run_json({
 		"api",
-		"repos/{owner}/{repo}/collaborators",
+		M.build_repo_api_path(repo) .. "/collaborators",
 		"--paginate",
 	}, callback, nil, cwd)
 end
@@ -580,7 +592,8 @@ end
 --- @param pr_number number
 --- @param reviewers string[] logins to re-request; an empty list yields an error callback
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.re_request_review(pr_number, reviewers, callback)
+--- @param repo string|nil `owner/repo` (see build_repo_api_path)
+function M.re_request_review(pr_number, reviewers, callback, repo)
 	-- An empty Lua table encodes as a JSON object, not an array; reject it
 	-- instead of sending a malformed payload.
 	if #reviewers == 0 then
@@ -592,7 +605,7 @@ function M.re_request_review(pr_number, reviewers, callback)
 
 	M.run_json({
 		"api",
-		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/requested_reviewers",
+		M.build_repo_api_path(repo) .. "/pulls/" .. pr_number .. "/requested_reviewers",
 		"--method",
 		"POST",
 		"--input",
@@ -604,7 +617,8 @@ end
 --- @param pr_number number
 --- @param reviewers string[] logins to remove; an empty list yields an error callback
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.remove_review_request(pr_number, reviewers, callback)
+--- @param repo string|nil `owner/repo` (see build_repo_api_path)
+function M.remove_review_request(pr_number, reviewers, callback, repo)
 	-- Same guard as re_request_review: an empty table encodes as `{}`.
 	if #reviewers == 0 then
 		callback("reviewers must be non-empty", nil)
@@ -613,7 +627,7 @@ function M.remove_review_request(pr_number, reviewers, callback)
 
 	M.run_json({
 		"api",
-		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/requested_reviewers",
+		M.build_repo_api_path(repo) .. "/pulls/" .. pr_number .. "/requested_reviewers",
 		"--method",
 		"DELETE",
 		"--input",
@@ -635,10 +649,11 @@ end
 
 --- Get every label defined in the repository.
 --- @param callback fun(err: string|nil, labels: table[]|nil)
-function M.get_repo_labels(callback)
+--- @param repo string|nil `owner/repo` (see build_repo_api_path)
+function M.get_repo_labels(callback, repo)
 	M.run_json({
 		"api",
-		"repos/{owner}/{repo}/labels",
+		M.build_repo_api_path(repo) .. "/labels",
 		"--paginate",
 	}, callback)
 end
@@ -647,7 +662,8 @@ end
 --- @param pr_number number
 --- @param names string[] label names; an empty list yields an error callback
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.add_labels(pr_number, names, callback)
+--- @param repo string|nil `owner/repo` (see build_repo_api_path)
+function M.add_labels(pr_number, names, callback, repo)
 	if #names == 0 then
 		callback("labels must be non-empty", nil)
 		return
@@ -655,7 +671,7 @@ function M.add_labels(pr_number, names, callback)
 
 	M.run_json({
 		"api",
-		"repos/{owner}/{repo}/issues/" .. pr_number .. "/labels",
+		M.build_repo_api_path(repo) .. "/issues/" .. pr_number .. "/labels",
 		"--method",
 		"POST",
 		"--input",
@@ -667,10 +683,11 @@ end
 --- @param pr_number number
 --- @param name string label name
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.remove_label(pr_number, name, callback)
+--- @param repo string|nil `owner/repo` (see build_repo_api_path)
+function M.remove_label(pr_number, name, callback, repo)
 	M.run_json({
 		"api",
-		"repos/{owner}/{repo}/issues/" .. pr_number .. "/labels/" .. M.build_path_segment(name),
+		M.build_repo_api_path(repo) .. "/issues/" .. pr_number .. "/labels/" .. M.build_path_segment(name),
 		"--method",
 		"DELETE",
 	}, callback)

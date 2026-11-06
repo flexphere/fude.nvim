@@ -31,6 +31,8 @@ describe("overview re_request_review", function()
 
 	before_each(function()
 		config.setup({})
+		-- re_request_review refuses outside an active session
+		config.state.active = true
 		notifications = {}
 		helpers.mock(vim, "notify", function(msg, level)
 			table.insert(notifications, { msg = msg, level = level })
@@ -183,32 +185,26 @@ describe("overview re_request_review", function()
 		assert.is_false(pr_view_called)
 	end)
 
-	it("does not re-show the overview when the session is no longer active", function()
+	it("refuses without posting or re-showing the overview when the session is no longer active", function()
 		select_choice = { login = "alice", state = "APPROVED" }
-		local pr_view_called = false
+		local posted, pr_view_called = false, false
 		helpers.mock_gh({
-			[POST_KEY] = function(_args, callback)
-				vim.schedule(function()
-					callback(nil, {})
-				end)
+			[POST_KEY] = function()
+				posted = true
 			end,
-			["pr:view"] = function(_args, callback)
+			["pr:view"] = function()
 				pr_view_called = true
-				vim.schedule(function()
-					callback(nil, {})
-				end)
 			end,
 		})
 		config.state.active = false
 
 		overview.re_request_review(make_pr_info())
 
-		assert.is_true(helpers.wait_for(function()
-			return has_notification("Re-requested review from @alice", vim.log.levels.INFO)
-		end))
+		assert.is_true(has_notification("Not active", vim.log.levels.WARN))
 		vim.wait(100, function()
-			return pr_view_called
+			return posted or pr_view_called
 		end)
+		assert.is_false(posted)
 		assert.is_false(pr_view_called)
 	end)
 end)
@@ -374,6 +370,10 @@ describe("overview menu and toggle editors", function()
 			return captured ~= nil
 		end))
 		assert.is_true(has_notification("Could not list collaborators", vim.log.levels.WARN))
+		-- bob already reviewed, so the request is a re-request
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("Re-requested review from @bob", vim.log.levels.INFO)
+		end))
 		assert.are.same({ "● @carol  (review requested)", "✓ @bob  (last review: approved)" }, shown[1])
 		assert.is_truthy(table.concat(captured.args, " "):find("--method POST", 1, true))
 		assert.are.same({ reviewers = { "bob" } }, vim.json.decode(captured.stdin))
@@ -412,6 +412,60 @@ describe("overview menu and toggle editors", function()
 			return shown[3] ~= nil
 		end))
 		assert.are.same({ "○ bug", "● docs" }, shown[3])
+	end)
+
+	it("refuses the menu of an overview opened in a session that was stopped and restarted", function()
+		local old_state = config.state
+		config.reset_state()
+		config.state.active = true
+		overview.open_menu(make_pr_info(), old_state)
+		assert.are.equal(0, #shown)
+		assert.is_true(has_notification("Not active", vim.log.levels.WARN))
+	end)
+
+	it("refuses a menu choice made after the session was stopped and restarted", function()
+		local requested = false
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/labels"] = function()
+				requested = true
+			end,
+		})
+		table.insert(responders, function(items, opts)
+			config.reset_state()
+			config.state.active = true
+			return pick("Label")(items, opts)
+		end)
+		overview.open_menu(make_pr_info())
+		assert.is_true(has_notification("Not active", vim.log.levels.WARN))
+		assert.is_false(requested)
+	end)
+
+	it("sends the label requests to the PR's repository, not the cwd's", function()
+		local paths = {}
+		helpers.mock_gh({
+			["api:repos/octo/fude/labels"] = function(args, callback)
+				table.insert(paths, args[2])
+				vim.schedule(function()
+					callback(nil, { { name = "docs" } })
+				end)
+			end,
+			["api:repos/octo/fude/issues/42/labels"] = function(args, callback)
+				table.insert(paths, args[2])
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end,
+		})
+		table.insert(responders, pick("docs"))
+		local pr_info = make_pr_info()
+		pr_info.url = "https://github.com/octo/fude/pull/42"
+
+		overview.edit_labels(pr_info)
+
+		assert.is_true(helpers.wait_for(function()
+			return #paths == 2
+		end))
+		assert.are.same({ "repos/octo/fude/labels", "repos/octo/fude/issues/42/labels" }, paths)
 	end)
 
 	it("keeps the mark and notifies when a label request fails", function()
