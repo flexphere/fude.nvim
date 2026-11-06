@@ -571,7 +571,7 @@ Comment input windows and the body pane of `:FudeCreatePR` / `:FudeEditPR` suppo
 | Trigger | Completes | Source |
 |---------|-----------|--------|
 | `@` | GitHub collaborators | GitHub API (cached 5 min) |
-| `#` | Issues and PRs | GitHub API (cached 5 min) |
+| `#` | Issues and PRs (the 100 most recently updated, listed by number, newest first) | GitHub API (cached 5 min) |
 | `_` | Commit hashes | Review cache, target PR, or local git (see below) |
 
 Commit completion shows entries in `[n/m] <sha> <message> (<author>)` format, matching the scope picker display. Selecting a commit inserts its short SHA.

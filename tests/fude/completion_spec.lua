@@ -402,3 +402,40 @@ describe("completion.build_commit_items", function()
 		assert.truthy(items[1].documentation.value:find("Test"))
 	end)
 end)
+
+describe("completion.build_issue_items", function()
+	it("lists issues and PRs by number, descending, with sortText in that order", function()
+		local items = completion.build_issue_items({
+			{ number = 12, title = "b", state = "open", user = { login = "u" } },
+			{ number = 305, title = "c", state = "open", pull_request = {}, user = { login = "v" } },
+			{ number = 7, title = "a", state = "closed", user = { login = "w" } },
+		})
+		assert.are.same(
+			{ "#305", "#12", "#7" },
+			vim.tbl_map(function(i)
+				return i.insertText
+			end, items)
+		)
+		assert.are.same(
+			{ "00001", "00002", "00003" },
+			vim.tbl_map(function(i)
+				return i.sortText
+			end, items)
+		)
+		assert.are.equal("#305 c", items[1].label)
+		assert.truthy(items[1].documentation.value:find("^%*%*PR #305%*%*"))
+		assert.truthy(items[2].documentation.value:find("^%*%*Issue #12%*%*"))
+	end)
+
+	it("skips entries without a number and tolerates JSON nulls", function()
+		local items = completion.build_issue_items({
+			{ title = "no number" },
+			{ number = vim.NIL },
+			{ number = 3, title = vim.NIL, state = vim.NIL, user = vim.NIL },
+		})
+		assert.are.equal(1, #items)
+		assert.are.equal("#3 ", items[1].label)
+		assert.truthy(items[1].documentation.value:find("State: unknown | Author: @unknown", 1, true))
+		assert.are.same({}, completion.build_issue_items(nil))
+	end)
+end)

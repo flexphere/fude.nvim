@@ -98,6 +98,47 @@ function M.fetch_mentions(callback, buf)
 	end, ctx and ctx.cwd)
 end
 
+--- Build `#` completion items from a `repos/{owner}/{repo}/issues` listing,
+--- newest number first: `sortText` follows that order, so an empty or
+--- equally matching query lists the issues/PRs by number, descending,
+--- whatever order the API returned them in. Entries without a numeric
+--- `number` are skipped; JSON nulls fall back to defaults. Pure.
+--- @param issues table[]
+--- @return table[] items completion items
+function M.build_issue_items(issues)
+	local valid = {}
+	for _, issue in ipairs(type(issues) == "table" and issues or {}) do
+		if type(issue) == "table" and type(issue.number) == "number" then
+			table.insert(valid, issue)
+		end
+	end
+	table.sort(valid, function(a, b)
+		return a.number > b.number
+	end)
+
+	local items = {}
+	for i, issue in ipairs(valid) do
+		local number = issue.number
+		local title = type(issue.title) == "string" and issue.title or ""
+		local state = type(issue.state) == "string" and issue.state or "unknown"
+		local author = type(issue.user) == "table" and type(issue.user.login) == "string" and issue.user.login or "unknown"
+		local is_pr = type(issue.pull_request) == "table"
+		local kind_label = is_pr and "PR" or "Issue"
+		table.insert(items, {
+			label = string.format("#%d %s", number, title),
+			insertText = "#" .. number,
+			filterText = string.format("#%d %s", number, title),
+			sortText = string.format("%05d", i),
+			kind = 15, -- Reference
+			documentation = {
+				kind = "markdown",
+				value = string.format("**%s #%d**: %s\nState: %s | Author: @%s", kind_label, number, title, state, author),
+			},
+		})
+	end
+	return items
+end
+
 --- Fetch issues/PRs and return completion items via callback.
 --- @param callback fun(items: table[])
 --- @param buf number|nil completion request buffer
@@ -114,28 +155,7 @@ function M.fetch_issues(callback, buf)
 			return callback({})
 		end
 
-		local items = {}
-		for _, issue in ipairs(data) do
-			local number = issue.number
-			local title = issue.title or ""
-			local state = issue.state or "unknown"
-			local author = issue.user and issue.user.login or "unknown"
-			local is_pr = issue.pull_request ~= nil
-			local kind_label = is_pr and "PR" or "Issue"
-
-			if number then
-				table.insert(items, {
-					label = string.format("#%d %s", number, title),
-					insertText = "#" .. number,
-					filterText = string.format("#%d %s", number, title),
-					kind = 15, -- Reference
-					documentation = {
-						kind = "markdown",
-						value = string.format("**%s #%d**: %s\nState: %s | Author: @%s", kind_label, number, title, state, author),
-					},
-				})
-			end
-		end
+		local items = M.build_issue_items(data)
 
 		data_cache.issues = items
 		data_cache.issues_time = os.time()
