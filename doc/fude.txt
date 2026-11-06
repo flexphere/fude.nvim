@@ -426,7 +426,11 @@ File opening position                                 *fude-file-position*
     review mode).
 
 :FudeReviewOverview                                *:FudeReviewOverview*
-    Show PR overview in a split-pane floating window. The left pane
+    Show PR overview in a split-pane floating window. While the PR
+    data is being fetched, a one-line float titled `PR Overview` shows
+    `Loading PR overview…` where the overview will open; `q` or
+    `<Esc>` closes it, and the overview is then not shown when the
+    data arrives. The left pane
     starts with YAML frontmatter containing state (`OPEN (draft)` for
     an open draft PR), author, base/head branches, URL, and PR-wide
     file_changed (changed file count) and line_changed (additions/deletions).
