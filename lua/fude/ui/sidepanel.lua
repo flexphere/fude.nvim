@@ -1082,6 +1082,7 @@ function M.setup_keymaps(panel)
 	-- the priority order documented in doc/fude.txt (`sidepanel.keymaps`), so
 	-- keep the two in sync.
 	local used_lhs = {}
+	local nowait = not (config.opts.sidepanel and config.opts.sidepanel.nowait == false)
 	panel.help_mappings = {}
 	local function map(action, callback, desc)
 		local lhs = keymaps[action]
@@ -1093,7 +1094,7 @@ function M.setup_keymaps(panel)
 			return
 		end
 		used_lhs[key] = true
-		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
+		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc, nowait = nowait })
 		table.insert(panel.help_mappings, { action = action, lhs = lhs, desc = desc })
 	end
 

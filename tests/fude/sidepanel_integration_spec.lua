@@ -688,6 +688,22 @@ describe("sidepanel integration", function()
 		assert.is_nil(config.state.sidepanel)
 	end)
 
+	it("panel mappings use nowait by default and sidepanel.nowait = false turns it off", function()
+		sidepanel.open()
+		local panel = config.state.sidepanel
+		for _, mapping in ipairs(panel.help_mappings) do
+			assert.are.equal(1, buf_keymap(panel.buf, mapping.lhs).nowait, mapping.action)
+		end
+		sidepanel.close()
+
+		config.opts.sidepanel.nowait = false
+		sidepanel.open()
+		panel = config.state.sidepanel
+		for _, mapping in ipairs(panel.help_mappings) do
+			assert.are.equal(0, buf_keymap(panel.buf, mapping.lhs).nowait, mapping.action)
+		end
+	end)
+
 	describe("copy_path", function()
 		local picked
 		before_each(function()

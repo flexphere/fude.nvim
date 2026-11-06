@@ -278,6 +278,7 @@ require("fude").setup({
     position = "left",   -- "left", "right", "top", or "bottom"
     file_tree = "flat",  -- "flat" or "tree"
     icons = true,       -- Use nvim-web-devicons when available; false hides icons
+    nowait = true,      -- Panel keys run without waiting for longer mappings; false keeps those usable
     commit_message = {
       max_lines = 8,    -- Commit Message section rows before the rest is folded
     },

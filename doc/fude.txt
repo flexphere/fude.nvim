@@ -1114,6 +1114,7 @@ Default configuration: >lua
       position = "left", -- "left", "right", "top", or "bottom"
       file_tree = "flat", -- "flat" or "tree"
       icons = true, -- Use nvim-web-devicons when available
+      nowait = true, -- Panel keys do not wait for longer mappings
       commit_message = {
         max_lines = 8, -- Rows shown before the rest is folded
       },
@@ -1364,6 +1365,14 @@ Options:
 `sidepanel.icons`   Show file-type and folder icons using nvim-web-devicons
                   when installed (default: true). Set false to hide icons
                   and skip loading the icon provider. Requires a Nerd Font.
+
+`sidepanel.nowait`  Register the `sidepanel.keymaps` mappings with |:map-nowait|
+                  (default: true), so a panel key runs at once even when
+                  another mapping starts with the same key (e.g. a global
+                  `cs` would otherwise delay a panel `c` by 'timeoutlen').
+                  Such longer mappings cannot be used in the panel while it
+                  is true; set false to keep them, e.g. `<leader>` mappings
+                  when a panel key is your leader.
 
 `sidepanel.commit_message.max_lines`
                   Rows of the side panel's Commit Message section shown

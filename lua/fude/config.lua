@@ -121,6 +121,10 @@ M.defaults = {
 		position = "left", -- "left", "right", "top", or "bottom"
 		file_tree = "flat", -- "flat" or "tree"
 		icons = true, -- Use nvim-web-devicons when available
+		-- Run panel mappings without waiting for longer mappings that start with the
+		-- same key (e.g. a global `cs` delaying a panel `c` by timeoutlen). Set false to
+		-- keep such mappings (e.g. <leader> ones when a panel key is your leader) usable in the panel
+		nowait = true,
 		-- Commit Message section, shown while a single commit is the review scope
 		commit_message = {
 			max_lines = 8, -- Lines shown before the rest is folded (toggle_commit_message expands)
