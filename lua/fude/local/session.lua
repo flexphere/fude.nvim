@@ -277,6 +277,14 @@ function M.resolve_scope_base(scope, base_ref, cwd, commit_sha)
 	return merge_base, merge_base
 end
 
+--- Drop the remote name from a remote-tracking ref (pure): `origin/feat/x` →
+--- `feat/x`. Remote names are taken to contain no `/`, as git's default ones do.
+--- @param ref string
+--- @return string
+function M.strip_remote(ref)
+	return ref:match("^[^/]+/(.+)$") or ref
+end
+
 --- Build the commit-scope specs from a commit list (pure).
 --- @param commits table[] { sha, short_sha, subject } oldest first
 --- @return table[] specs { { scope = "commit", commit_sha, short_sha, subject, commit_index, label } }
@@ -362,14 +370,22 @@ function M.scope_specs(session)
 	local root = session.worktree_root
 	local specs = {}
 	if session.base_ref and session.branch ~= session.base_ref then
-		table.insert(specs, { scope = "base", label = string.format("Base branch (%s)", session.base_ref) })
+		table.insert(specs, {
+			scope = "base",
+			label = string.format("Base branch (%s)", session.base_ref),
+			branch = session.base_ref,
+		})
 	end
 	-- While a commit is checked out HEAD is detached and a bare `@{upstream}`
 	-- resolves to nothing, so ask for the branch's upstream explicitly — the
 	-- unpushed entry must stay available as a way back.
 	local upstream = diff_mod.get_upstream_ref(root, session.original_branch)
 	if upstream then
-		table.insert(specs, { scope = "unpushed", label = string.format("Unpushed (%s)", upstream) })
+		table.insert(specs, {
+			scope = "unpushed",
+			label = string.format("Unpushed (%s)", upstream),
+			branch = M.strip_remote(upstream),
+		})
 	end
 	table.insert(specs, { scope = "uncommitted", label = "Uncommitted (staged + unstaged)" })
 	for _, s in ipairs(M.build_commit_specs(session.commits)) do

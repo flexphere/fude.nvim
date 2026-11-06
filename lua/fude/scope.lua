@@ -129,7 +129,9 @@ end
 --- `scope_specs`), so only the scopes valid for the current git state appear.
 --- Commit scopes carry the target SHA, since they all share the scope name.
 --- @param specs table[] { { scope = string, label = string, is_current = boolean, commit_sha = string|nil,
----   short_sha = string|nil, subject = string|nil } }
+---   short_sha = string|nil, subject = string|nil, branch = string|nil } }
+--- `branch` is the ref a non-commit scope compares against (base branch, upstream),
+--- copied by the side panel's `copy_path` key.
 --- @param reviewed_commits table<string, boolean>|nil { [sha] = true } reviewed commit map
 --- @return table[] entries with a `local_scope` value field
 function M.build_local_scope_entries(specs, reviewed_commits)
@@ -145,6 +147,7 @@ function M.build_local_scope_entries(specs, reviewed_commits)
 			sha = s.commit_sha,
 			short_sha = s.short_sha,
 			subject = s.subject,
+			branch = s.branch,
 			is_full_pr = false,
 			reviewed = is_reviewed,
 			reviewed_icon = r_icon,
