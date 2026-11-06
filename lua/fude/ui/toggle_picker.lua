@@ -46,25 +46,21 @@ function M.resolve_detail(item)
 end
 
 --- Frames of the mark shown in place of a row's own mark while its request is
---- in flight (`.` → `..` → `...`, looping), their highlight, and the time each
---- frame stays. The row's `on` is still the state before the request, which
---- the mark would otherwise show as if nothing were happening.
-M.LOADING_FRAMES = { ".", "..", "..." }
+--- in flight — the braille spinner of the gh CLI, every frame one cell wide
+--- like the marks it replaces, so the name after it never moves — their
+--- highlight, and the time each frame stays (gh's 120 ms). The row's `on` is
+--- still the state before the request, which the mark would otherwise show as
+--- if nothing were happening.
+M.LOADING_FRAMES = { "⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷" }
 M.LOADING_HL = "DiagnosticInfo"
-M.LOADING_INTERVAL_MS = 300
+M.LOADING_INTERVAL_MS = 120
 
---- The loading mark of a frame, padded to the widest frame so the name after
---- it does not move from frame to frame.
+--- The loading mark of a frame.
 --- @param frame number 1-based frame index (wrapped into the frame list)
 --- @return string
 function M.format_loading_mark(frame)
 	local frames = M.LOADING_FRAMES
-	local text = frames[(frame - 1) % #frames + 1]
-	local width = 0
-	for _, f in ipairs(frames) do
-		width = math.max(width, #f)
-	end
-	return text .. string.rep(" ", width - #text)
+	return frames[(frame - 1) % #frames + 1]
 end
 
 --- Resolve an item's mark for the current render: `item.mark(item)` when

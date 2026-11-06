@@ -73,7 +73,7 @@ describe("toggle_picker.resolve_mark", function()
 		local session = toggle_picker.new_session(opts)
 		assert.are.same({ "○", "Comment" }, { toggle_picker.resolve_mark(item, session) })
 		toggle_picker.toggle_item(item, opts, session)
-		assert.are.same({ ".  ", toggle_picker.LOADING_HL }, { toggle_picker.resolve_mark(item, session) })
+		assert.are.same({ "⣾", toggle_picker.LOADING_HL }, { toggle_picker.resolve_mark(item, session) })
 		finish(true)
 		assert.are.same({ "●", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 	end)
@@ -88,7 +88,7 @@ describe("toggle_picker.resolve_mark", function()
 		}
 		local session = toggle_picker.new_session(opts)
 		toggle_picker.toggle_item(item, opts, session)
-		assert.are.equal(".  ", (toggle_picker.resolve_mark(item, session)))
+		assert.are.equal("⣾", (toggle_picker.resolve_mark(item, session)))
 		finish(false)
 		assert.are.same({ "●", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 	end)
@@ -109,31 +109,40 @@ describe("toggle_picker.resolve_mark", function()
 		toggle_picker.toggle_item(other, opts, session)
 		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 		toggle_picker.toggle_item(item, opts, session)
-		assert.are.same({ ".  ", toggle_picker.LOADING_HL, "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
+		assert.are.same({ "⣾", toggle_picker.LOADING_HL, "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 		-- Without a session nothing is ever loading
 		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { toggle_picker.resolve_mark(item) })
 	end)
 
-	it("follows the session's frame: . → .. → ... padded to the same width, looping", function()
-		assert.are.same({ ".  ", ".. ", "...", ".  " }, {
+	it("follows the session's frame through the one-cell braille spinner, looping", function()
+		assert.are.same({ "⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷", "⣾" }, {
 			toggle_picker.format_loading_mark(1),
 			toggle_picker.format_loading_mark(2),
 			toggle_picker.format_loading_mark(3),
 			toggle_picker.format_loading_mark(4),
+			toggle_picker.format_loading_mark(5),
+			toggle_picker.format_loading_mark(6),
+			toggle_picker.format_loading_mark(7),
+			toggle_picker.format_loading_mark(8),
+			toggle_picker.format_loading_mark(9),
 		})
+		-- Every frame is one cell wide, like the marks it replaces
+		for _, frame in ipairs(toggle_picker.LOADING_FRAMES) do
+			assert.are.equal(1, vim.fn.strdisplaywidth(frame), frame)
+		end
 		local item = { text = "bug", on = false }
 		local opts = {
 			on_toggle = function() end,
 		}
 		local session = toggle_picker.new_session(opts)
 		toggle_picker.toggle_item(item, opts, session)
-		assert.are.equal(".  ", (toggle_picker.resolve_mark(item, session)))
+		assert.are.equal("⣾", (toggle_picker.resolve_mark(item, session)))
 		session.tick()
-		assert.are.equal(".. ", (toggle_picker.resolve_mark(item, session)))
-		session.tick()
-		assert.are.equal("...", (toggle_picker.resolve_mark(item, session)))
-		session.tick()
-		assert.are.equal(".  ", (toggle_picker.resolve_mark(item, session)))
+		assert.are.equal("⣽", (toggle_picker.resolve_mark(item, session)))
+		for _ = 1, 7 do
+			session.tick()
+		end
+		assert.are.equal("⣾", (toggle_picker.resolve_mark(item, session)))
 	end)
 end)
 
@@ -409,7 +418,7 @@ describe("toggle_picker loading re-render", function()
 
 		picked.actions.fude_toggle(picker, item)
 		assert.are.equal(1, updates)
-		assert.are.equal(".   ", picked.format(item)[1][1])
+		assert.are.equal("⣾ ", picked.format(item)[1][1])
 		finish(false)
 		assert.are.equal(2, updates)
 		assert.are.equal("○ ", picked.format(item)[1][1])
@@ -488,7 +497,7 @@ describe("toggle_picker loading re-render", function()
 
 		picker.maps["i<Tab>"]()
 		assert.are.equal(1, picker.refreshes)
-		assert.are.equal(".   bug", displayed())
+		assert.are.equal("⣾ bug", displayed())
 		finish(false)
 		assert.are.equal(2, picker.refreshes)
 		assert.are.equal("○ bug", displayed())
