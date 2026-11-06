@@ -11,6 +11,10 @@ local config = require("fude.config")
 
 --- Avatar size in pixels requested from GitHub and used for the circle.
 M.SIZE = 64
+--- Canvas the circle sits on, centered with transparent margins: the
+--- placement fills its cell(s) with the whole canvas, so the visible circle
+--- takes SIZE / CANVAS (80%) of the cell height and does not crowd the text.
+M.CANVAS = 80
 --- Size of the inline placement in cells: one row, and the two columns that
 --- make a square at the usual cell aspect ratio.
 M.CELL_HEIGHT = 1
@@ -39,28 +43,41 @@ function M.cache_dir()
 	return M._dir or (vim.fn.stdpath("cache") .. "/fude/avatars")
 end
 
---- Cached file of a login's avatar: the square download, or its round cut.
+--- Cached file of a login's avatar: the square download, or its round cut
+--- (named with the canvas size, so a changed CANVAS is cut afresh).
 --- @param login string
 --- @param round boolean
 --- @return string
 function M.cache_path(login, round)
-	return M.cache_dir() .. "/" .. login .. (round and ".round" or "") .. ".png"
+	local suffix = round and (".round" .. M.CANVAS) or ""
+	return M.cache_dir() .. "/" .. login .. suffix .. ".png"
 end
 
---- The ImageMagick command that resizes `src` to `size` px and keeps only a
---- centered circle of it (the rest transparent) as `dst`.
+--- The ImageMagick command that resizes `src` to `size` px, centers it on a
+--- transparent `canvas` px square, and keeps only the centered circle of
+--- `size` px (the rest transparent) as `dst`. The canvas is extended before
+--- the mask is applied: ImageMagick 6 drops the colour when the mask
+--- composite is followed by `-extent` in the same command.
 --- @param exe string "magick" or "convert"
 --- @param src string
 --- @param dst string
---- @param size number px
+--- @param size number px, the circle's diameter
+--- @param canvas number px, the square the circle is centered on (>= size)
 --- @return string[]
-function M.build_round_cmd(exe, src, dst, size)
-	local half = math.floor(size / 2)
+function M.build_round_cmd(exe, src, dst, size, canvas)
+	local center = math.floor(canvas / 2)
+	local radius = math.floor(size / 2)
 	return {
 		exe,
 		src,
 		"-resize",
 		size .. "x" .. size .. "!",
+		"-gravity",
+		"center",
+		"-background",
+		"none",
+		"-extent",
+		canvas .. "x" .. canvas,
 		"(",
 		"+clone",
 		"-alpha",
@@ -68,7 +85,7 @@ function M.build_round_cmd(exe, src, dst, size)
 		"-fill",
 		"white",
 		"-draw",
-		string.format("circle %d,%d %d,0", half, half, half),
+		string.format("circle %d,%d %d,%d", center, center, center, center - radius),
 		")",
 		"-alpha",
 		"off",
@@ -167,7 +184,7 @@ function M.fetch(login, cb)
 		if not exe then
 			return finish(square)
 		end
-		M.run(M.build_round_cmd(exe, square, round, M.SIZE), function(ok)
+		M.run(M.build_round_cmd(exe, square, round, M.SIZE, M.CANVAS), function(ok)
 			-- Without a circle the square one is still an avatar
 			finish(ok and round or square)
 		end)
