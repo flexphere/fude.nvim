@@ -230,10 +230,8 @@ function M.edit_reviewers(pr_info, captured_state)
 				text = "@" .. format.reviewer_display_name(entry.login),
 				on = entry.requested,
 				-- Both rendered from item.on, so they follow a toggle in place
-				-- Padded to one width, so `💬` does not push its name right
 				mark = function(item)
-					local mark, mark_hl, text_hl = format.format_reviewer_mark(item.on, entry.review_state)
-					return format.pad_status_mark(mark), mark_hl, text_hl
+					return format.format_reviewer_mark(item.on, entry.review_state)
 				end,
 				detail = function(item)
 					return format.format_reviewer_detail(item.on, entry.review_state)

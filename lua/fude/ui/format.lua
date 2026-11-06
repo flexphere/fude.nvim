@@ -263,6 +263,11 @@ function M.build_checks_summary(checks)
 	return string.format("%d/%d passed", passed, #checks)
 end
 
+--- Mark of a review that commented: the Nerd Font octicon comment glyph
+--- (`nf-oct-comment`), one cell wide like the other status marks, unlike the
+--- two-cell 💬 emoji, which pushed its name out of line.
+M.COMMENTED_MARK = ""
+
 --- Map review state to display symbol and highlight group.
 --- @param state string review state ("APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED", "PENDING")
 --- @return string symbol, string hl_group
@@ -272,29 +277,13 @@ function M.format_review_status(state)
 	elseif state == "CHANGES_REQUESTED" then
 		return "✗", "DiagnosticError"
 	elseif state == "COMMENTED" then
-		return "💬", "DiagnosticInfo"
+		return M.COMMENTED_MARK, "DiagnosticInfo"
 	elseif state == "DISMISSED" then
 		return "-", "Comment"
 	elseif state == "PENDING" then
 		return "●", "DiagnosticWarn"
 	end
 	return "?", "Comment"
-end
-
---- Display width (cells) every reviewer status mark is padded to, so the
---- names after the marks line up: `💬` takes two cells, the others one.
-M.STATUS_MARK_WIDTH = 2
-local WIDE_STATUS_MARKS = { ["💬"] = true }
-
---- Pad a reviewer status mark (`format_review_status`, `format_reviewer_mark`)
---- with spaces to STATUS_MARK_WIDTH cells. Pure.
---- @param mark string
---- @return string
-function M.pad_status_mark(mark)
-	if WIDE_STATUS_MARKS[mark] then
-		return mark
-	end
-	return mark .. string.rep(" ", M.STATUS_MARK_WIDTH - 1)
 end
 
 --- Build a unified list of reviewers from review requests and latest reviews.
@@ -662,7 +651,7 @@ function M.format_reviewer_mark(requested, review_state)
 	elseif review_state == "CHANGES_REQUESTED" then
 		return "✗", "DiagnosticError", "Comment"
 	elseif review_state == "COMMENTED" then
-		return "💬", "DiagnosticInfo", "Comment"
+		return M.COMMENTED_MARK, "DiagnosticInfo", "Comment"
 	elseif review_state == "DISMISSED" then
 		return "↻", "Comment", nil
 	end
@@ -1015,7 +1004,6 @@ function M.build_overview_right_lines(pr_info)
 	else
 		for _, reviewer in ipairs(reviewers) do
 			local symbol, hl = M.format_review_status(reviewer.state)
-			symbol = M.pad_status_mark(symbol)
 			table.insert(lines, string.format("%s @%s  %s", symbol, reviewer.login, reviewer.state:lower()))
 			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
 			table.insert(avatar_positions, { line = #lines - 1, col = #symbol + 1, login = reviewer.login })

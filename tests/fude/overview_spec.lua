@@ -316,7 +316,7 @@ describe("overview menu and toggle editors", function()
 			return captured ~= nil
 		end))
 		assert.are.same(
-			{ "✓  @bob  (last review: approved)", "●  @carol  (review requested)", "○  @alice", "○  @copilot" },
+			{ "✓ @bob  (last review: approved)", "● @carol  (review requested)", "○ @alice", "○ @copilot" },
 			shown[2]
 		)
 		assert.is_truthy(table.concat(captured.args, " "):find("--method DELETE", 1, true))
@@ -328,7 +328,7 @@ describe("overview menu and toggle editors", function()
 			return shown[3] ~= nil
 		end))
 		-- The select reopens with the flipped mark and detail
-		assert.are.equal("○  @carol", shown[3][2])
+		assert.are.equal("○ @carol", shown[3][2])
 	end)
 
 	it("Reviewer falls back to requested and reviewed users when collaborators cannot be listed", function()
@@ -354,10 +354,7 @@ describe("overview menu and toggle editors", function()
 		assert.is_true(helpers.wait_for(function()
 			return has_notification("Re-requested review from @bob", vim.log.levels.INFO)
 		end))
-		assert.are.same(
-			{ "✓  @bob  (last review: approved)", "●  @carol  (review requested)", "○  @copilot" },
-			shown[1]
-		)
+		assert.are.same({ "✓ @bob  (last review: approved)", "● @carol  (review requested)", "○ @copilot" }, shown[1])
 		assert.is_truthy(table.concat(captured.args, " "):find("--method POST", 1, true))
 		assert.are.same({ reviewers = { "bob" } }, vim.json.decode(captured.stdin))
 	end)
@@ -443,7 +440,7 @@ describe("overview menu and toggle editors", function()
 		assert.is_true(helpers.wait_for(function()
 			return shown[2] ~= nil
 		end))
-		assert.are.same({ "○  @copilot" }, shown[2])
+		assert.are.same({ "○ @copilot" }, shown[2])
 		assert.is_false(has_notification("No reviewers to choose from"))
 
 		vim.wait(100, function()
@@ -579,7 +576,7 @@ describe("overview menu and toggle editors", function()
 			return captured ~= nil
 		end))
 		-- Reviewed (commented) ranks before requested
-		assert.are.same({ "💬 @copilot  (last review: commented)", "●  @carol  (review requested)" }, shown[1])
+		assert.are.same({ " @copilot  (last review: commented)", "● @carol  (review requested)" }, shown[1])
 		assert.is_truthy(table.concat(captured.args, " "):find("--method POST", 1, true))
 		assert.are.same({ reviewers = { "copilot-pull-request-reviewer[bot]" } }, vim.json.decode(captured.stdin))
 		assert.is_true(helpers.wait_for(function()

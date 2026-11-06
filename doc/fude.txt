@@ -506,7 +506,7 @@ File opening position                                 *fude-file-position*
                     previous review was
       `✓` (green)   approved; the name is green too
       `✗` (red)     changes requested
-      `💬`          commented
+      ``           commented (Nerd Font `nf-oct-comment`)
       `↻`           review dismissed
       `○`           neither requested nor reviewed
     The name of a user without a pending request is grey, except an

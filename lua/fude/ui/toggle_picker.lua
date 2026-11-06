@@ -56,7 +56,7 @@ M.LOADING_INTERVAL_MS = 120
 
 --- The loading mark of a frame, padded with spaces to `width` display cells
 --- — the width of the mark it stands in for — so the name after it stays
---- where it is (the reviewer picker's `💬` is two cells wide).
+--- where it is, whatever the mark's width.
 --- @param frame number 1-based frame index (wrapped into the frame list)
 --- @param width number|nil display width to fill (default: the frame's own)
 --- @return string
