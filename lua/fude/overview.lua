@@ -58,8 +58,8 @@ end
 --- Build a function that reopens the overview, guarded like re_request_review:
 --- the overview float is closed before the flows below run, and a stop()
 --- (or stop + start of another session) while they wait must not reopen it.
---- Used by the menu's cancel and by `r`; the reviewer / label editors do not
---- reopen it (closing their picker ends the flow).
+--- Used by the menu's cancel only; the reviewer / label editors and `r` do
+--- not reopen it (closing their picker or select ends the flow).
 --- @param captured_state table
 --- @return fun()
 local function make_reopen(captured_state)
@@ -330,9 +330,9 @@ function M.re_request_review(pr_info, captured_state)
 	if not ensure_current(captured_state) then
 		return
 	end
-	-- The overview float is closed before this function runs, so every
-	-- terminal path reopens it (see make_reopen for the guard).
-	local reopen = make_reopen(captured_state)
+	-- The overview float is closed before this function runs and is not
+	-- reopened: like the reviewer / label editors, the flow ends here, and
+	-- :FudeReviewOverview shows the result.
 
 	local candidates = ui.build_re_request_candidates(
 		pr_info.reviewRequests or {},
@@ -342,7 +342,6 @@ function M.re_request_review(pr_info, captured_state)
 	)
 	if #candidates == 0 then
 		vim.notify("fude.nvim: No reviewers to re-request", vim.log.levels.INFO)
-		reopen()
 		return
 	end
 
@@ -353,7 +352,6 @@ function M.re_request_review(pr_info, captured_state)
 		end,
 	}, function(choice)
 		if not choice then
-			reopen()
 			return
 		end
 
@@ -363,11 +361,9 @@ function M.re_request_review(pr_info, captured_state)
 		gh.re_request_review(pr_info.number, { choice.login }, function(err, _)
 			if err then
 				vim.notify("fude.nvim: Failed to re-request review: " .. err, vim.log.levels.ERROR)
-				reopen()
 				return
 			end
 			vim.notify("fude.nvim: Re-requested review from @" .. choice.login, vim.log.levels.INFO)
-			reopen()
 		end, pr_repo(pr_info))
 	end)
 end

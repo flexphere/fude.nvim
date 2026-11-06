@@ -459,7 +459,8 @@ File opening position                                 *fude-file-position*
     Press `C` (left pane) to choose what to do with the PR: write a
     new comment (Comment), request or remove a reviewer (Reviewer),
     or add or remove a label (Label). `r` re-requests a review from a
-    reviewer who has already reviewed, `o` opens the comment under the
+    reviewer who has already reviewed (the overview is not reopened
+    afterwards, as with Reviewer and Label), `o` opens the comment under the
     cursor on GitHub (the PR elsewhere, and in the right pane), `R`
     refreshes, `<Tab>` switches between panes, `]c`/`[c` navigate
     review comments, and `q` closes.
