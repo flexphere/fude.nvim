@@ -4,8 +4,8 @@
 --- `stdpath("cache")/fude/avatars` and cut into a circle with ImageMagick
 --- (`magick`, or `convert` of ImageMagick 6), as the GitHub web UI shows
 --- them; without ImageMagick the square image is shown. Everything is a no-op
---- without snacks.nvim, without terminal support, or with
---- `overview.avatars = false`.
+--- unless `overview.avatars = true` (off by default), and without snacks.nvim
+--- or terminal support.
 local M = {}
 local config = require("fude.config")
 
@@ -108,12 +108,12 @@ function M.find_magick()
 	return nil
 end
 
---- Whether avatars are drawn: `overview.avatars` is not false, snacks.nvim is
+--- Whether avatars are drawn: `overview.avatars` is true, snacks.nvim is
 --- installed, and its image module reports terminal support.
 --- @return boolean
 function M.is_enabled()
 	local ov = config.opts.overview or {}
-	if ov.avatars == false then
+	if ov.avatars ~= true then
 		return false
 	end
 	local ok, snacks = pcall(require, "snacks")

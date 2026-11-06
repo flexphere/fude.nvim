@@ -455,7 +455,8 @@ File opening position                                 *fude-file-position*
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count.
-    With snacks.nvim image support, the author's avatar is drawn on
+    With `overview.avatars = true` (off by default) and snacks.nvim
+    image support, the author's avatar is drawn on
     the `author:` line and each reviewer's before their login, cut
     into a circle like the GitHub web UI (see `overview.avatars`).
     Requires an active review session.
@@ -1166,7 +1167,7 @@ Default configuration: >lua
       -- Right pane width as percentage of total overview width
       right_width = 30,
       -- Draw the author's and reviewers' avatars (snacks.nvim image support, curl, ImageMagick)
-      avatars = true,
+      avatars = false,
       -- Section marks (jump with 'd, 'c in left pane)
       marks = { description = "d", comments = "c" },
     },
@@ -1338,7 +1339,7 @@ Options:
 
 `overview.avatars`  Draw the PR author's avatar (frontmatter `author:`
                   line) and each reviewer's (right pane) inline with
-                  snacks.nvim's image module (default: true). Needs a
+                  snacks.nvim's image module (default: false). Needs a
                   terminal snacks supports (kitty graphics protocol:
                   kitty, ghostty, wezterm; tmux with
                   `allow-passthrough`) and `curl`; the images are cached

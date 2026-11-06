@@ -56,7 +56,7 @@ describe("avatars.is_enabled", function()
 	local saved_snacks
 
 	before_each(function()
-		config.setup({})
+		config.setup({ overview = { avatars = true } })
 		saved_snacks = package.loaded["snacks"]
 	end)
 
@@ -65,7 +65,7 @@ describe("avatars.is_enabled", function()
 		helpers.cleanup()
 	end)
 
-	it("needs snacks.nvim with image support, and overview.avatars not false", function()
+	it("needs overview.avatars = true and snacks.nvim with image support", function()
 		package.loaded["snacks"] = nil
 		local real_require = _G.require
 		-- Without snacks on the runtime path, require fails
@@ -86,6 +86,9 @@ describe("avatars.is_enabled", function()
 			return true
 		end
 		config.setup({ overview = { avatars = false } })
+		assert.is_false(avatars.is_enabled())
+		-- Off by default
+		config.setup({})
 		assert.is_false(avatars.is_enabled())
 		assert.are.equal(real_require, _G.require)
 	end)
@@ -270,7 +273,7 @@ describe("avatars.place", function()
 	local placed
 
 	before_each(function()
-		config.setup({})
+		config.setup({ overview = { avatars = true } })
 		saved_snacks = package.loaded["snacks"]
 		placed = {}
 		package.loaded["snacks"] = {
@@ -321,7 +324,7 @@ describe("avatars.place", function()
 		avatars.place(buf, { { line = 0, col = 0, login = "kyu08" } })
 		assert.are.equal(0, #placed)
 
-		config.setup({})
+		config.setup({ overview = { avatars = true } })
 		local pending
 		helpers.mock(avatars, "fetch", function(_, cb)
 			pending = cb
