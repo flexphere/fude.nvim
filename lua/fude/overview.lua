@@ -21,9 +21,43 @@ local loading_in_flight
 --- @type { state: table, waiters: fude.OverviewWaiter[], stale: boolean }|nil
 local fetch_in_flight
 
---- Fetch the overview data (PR info, then the PR-level comments) for `state`,
---- joining the fetch in flight for the same session if there is one. On
---- success, when `state` is still the active session, the result is stored in
+--- Open overview floats still waiting for their CI checks: `{ pr_info, handle }`
+--- with the pr_info table the float was built from. The checks request of the
+--- fetch that produced that pr_info finds its floats by that identity.
+local waiting_for_checks = {}
+
+--- Record the CI checks of `pr_info` (shared with the cache, so a later
+--- show() from the cache has them) and fill in the CI STATUS of every open
+--- float built from it.
+--- @param pr_info table
+--- @param checks table[]|nil nil when `failed`
+--- @param failed boolean
+local function deliver_checks(pr_info, checks, failed)
+	if failed then
+		pr_info.checks_failed = true
+	else
+		pr_info.statusCheckRollup = checks
+	end
+	for i = #waiting_for_checks, 1, -1 do
+		local waiting = waiting_for_checks[i]
+		if not waiting.handle.is_open() then
+			table.remove(waiting_for_checks, i)
+		elseif waiting.pr_info == pr_info then
+			table.remove(waiting_for_checks, i)
+			waiting.handle.set_checks(checks, failed)
+		end
+	end
+end
+
+--- Fetch the overview data for `state`, joining the fetch in flight for the
+--- same session if there is one. With the session's PR number known, the PR
+--- info and the PR-level comments are requested in parallel (otherwise the
+--- comments wait for the number the PR info brings). The CI checks
+--- (`statusCheckRollup`, the slow part) are a third, separate request: the
+--- waiters run as soon as the PR info and the comments are in, and the checks
+--- are added to that pr_info (and to the open floats built from it) whenever
+--- they arrive — before the waiters run, if they came first. On success, when
+--- `state` is still the active session, the result is stored in
 --- `state.overview_cache` before the waiters run. Every waiter is called once,
 --- also when the session changed meanwhile: each one checks `config.state`
 --- itself (show() must still close its placeholder then).
@@ -36,36 +70,98 @@ local function fetch_overview(state, on_done)
 	end
 	local entry = { state = state, waiters = { on_done }, stale = false }
 	fetch_in_flight = entry
+	local gh = require("fude.gh")
+	local sync = require("fude.comments.sync")
 
 	local function finish(err, pr_info, pr_comments)
 		if fetch_in_flight == entry then
 			fetch_in_flight = nil
 		end
-		if not err and config.state == state and not entry.stale then
-			state.overview_cache = { pr_info = pr_info, pr_comments = pr_comments }
+		if not err and pr_info then
+			entry.pr_info = pr_info
+			-- The checks came first: hand them over before anything is shown
+			if entry.checks then
+				deliver_checks(pr_info, entry.checks.checks, entry.checks.failed)
+			end
+			if config.state == state and not entry.stale then
+				state.overview_cache = { pr_info = pr_info, pr_comments = pr_comments }
+			end
 		end
 		for _, waiter in ipairs(entry.waiters) do
 			waiter(err, pr_info, pr_comments)
 		end
 	end
 
-	require("fude.gh").get_pr_overview(function(err, pr_info)
-		-- A stop (or stop + start) in between: the comments of the old PR are
-		-- not worth fetching, and nothing may be cached for the new session.
+	-- The checks of the PR, kept on the entry until its pr_info exists. They
+	-- belong to that PR whichever session is active when they land, so an open
+	-- float of a stopped session still stops its spinner.
+	local function fetch_checks(pr_number)
+		gh.get_pr_checks(pr_number, function(err, checks)
+			local result = { checks = checks, failed = err ~= nil }
+			entry.checks = result
+			if entry.pr_info then
+				deliver_checks(entry.pr_info, result.checks, result.failed)
+			end
+		end)
+	end
+
+	local pr_number = state.pr_number
+	if not pr_number then
+		-- No number to start from: the comments wait for the PR info's
+		gh.get_pr_overview(function(err, pr_info)
+			-- A stop (or stop + start) in between: the comments of the old PR
+			-- are not worth fetching, and nothing may be cached for the new
+			-- session.
+			if config.state ~= state then
+				finish("session changed")
+				return
+			end
+			if err then
+				finish(err)
+				return
+			end
+			fetch_checks(pr_info.number)
+			sync.fetch_pr_level_comments(pr_info.number, function(pr_comments)
+				finish(nil, pr_info, pr_comments)
+			end)
+		end)
+		return
+	end
+
+	-- PR info and comments in parallel; finish once both are in
+	local results = {}
+	local requests = {
+		function(done)
+			gh.get_pr_overview(function(err, pr_info)
+				results.err, results.pr_info = err, pr_info
+				done()
+			end, pr_number)
+		end,
+		function(done)
+			sync.fetch_pr_level_comments(pr_number, function(pr_comments)
+				results.pr_comments = pr_comments
+				done()
+			end)
+		end,
+	}
+	local remaining = #requests
+	local function done()
+		remaining = remaining - 1
+		if remaining > 0 then
+			return
+		end
 		if config.state ~= state then
 			finish("session changed")
-			return
+		elseif results.err then
+			finish(results.err)
+		else
+			finish(nil, results.pr_info, results.pr_comments)
 		end
-		if err then
-			finish(err)
-			return
-		end
-		-- Issue comments plus submitted review bodies, which GitHub also shows
-		-- as comments in the Conversation tab.
-		require("fude.comments.sync").fetch_pr_level_comments(pr_info.number, function(pr_comments)
-			finish(nil, pr_info, pr_comments)
-		end)
-	end, state.pr_number)
+	end
+	fetch_checks(pr_number)
+	for _, request in ipairs(requests) do
+		request(done)
+	end
 end
 
 --- Drop the cached overview data of the current session (and keep a fetch in
@@ -97,7 +193,7 @@ end
 --- @param pr_info table
 --- @param pr_comments table
 local function open_overview(state, pr_info, pr_comments)
-	require("fude.ui").show_overview_float(pr_info, pr_comments, {
+	local handle = require("fude.ui").show_overview_float(pr_info, pr_comments, {
 		on_menu = function()
 			M.open_menu(pr_info, state)
 		end,
@@ -108,6 +204,10 @@ local function open_overview(state, pr_info, pr_comments)
 			M.re_request_review(pr_info, state)
 		end,
 	})
+	-- CI STATUS is filled in when the checks of this pr_info arrive
+	if type(handle) == "table" and pr_info.statusCheckRollup == nil and not pr_info.checks_failed then
+		table.insert(waiting_for_checks, { pr_info = pr_info, handle = handle })
+	end
 end
 
 --- Show PR overview. Requires active review session.

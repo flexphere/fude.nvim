@@ -235,14 +235,35 @@ end
 --- @param pr_number number|nil the PR to view; nil lets gh infer it from the current branch
 ---   (pass it whenever it is known: `gh pr view` without a number may hang on a detached HEAD)
 function M.get_pr_overview(callback, pr_number)
+	-- statusCheckRollup is left out: it is the slow part of the query, so the
+	-- overview opens without it and get_pr_checks fills CI STATUS in later.
 	local fields = "number,title,body,labels,assignees,state,isDraft,author,"
-		.. "baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews,additions,deletions,changedFiles"
+		.. "baseRefName,headRefName,url,reviewRequests,latestReviews,additions,deletions,changedFiles"
 	local args = { "pr", "view" }
 	if pr_number then
 		table.insert(args, tostring(pr_number))
 	end
 	vim.list_extend(args, { "--json", fields })
 	M.run_json(args, callback)
+end
+
+--- Get the PR's CI checks (`statusCheckRollup`) on their own, so the overview
+--- does not wait for them. JSON null is normalized to an empty list.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param callback fun(err: string|nil, checks: table[]|nil)
+function M.get_pr_checks(pr_number, callback)
+	local args = { "pr", "view" }
+	if pr_number then
+		table.insert(args, tostring(pr_number))
+	end
+	vim.list_extend(args, { "--json", "statusCheckRollup" })
+	M.run_json(args, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		local checks = type(data) == "table" and data.statusCheckRollup or nil
+		callback(nil, type(checks) == "table" and checks or {})
+	end)
 end
 
 --- Get issue-level comments on a PR (non-code-bound comments).

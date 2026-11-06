@@ -980,9 +980,14 @@ end
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
 --- `avatar_positions` (`{ line, col, login }`, 0-indexed line, byte column) is
 --- where ui/avatars draws each reviewer's avatar: after the status symbol.
+--- The CI STATUS section comes last and starts at `ci_start` (0-indexed, its
+--- blank separator line); `pr_info.statusCheckRollup` nil means the checks are
+--- still being fetched (see build_overview_ci_lines for `opts`).
 --- @param pr_info table PR data from gh pr view
---- @return table { lines: string[], hl_ranges: table[], check_urls: table, avatar_positions: table[] }
-function M.build_overview_right_lines(pr_info)
+--- @param opts table|nil passed to build_overview_ci_lines
+--- @return table { lines: string[], hl_ranges: table[], check_urls: table, avatar_positions: table[],
+---   ci_start: number, loading_row: number|nil }
+function M.build_overview_right_lines(pr_info, opts)
 	local lines = {}
 	local hl_ranges = {}
 	local avatar_positions = {}
@@ -1038,36 +1043,91 @@ function M.build_overview_right_lines(pr_info)
 		end
 	end
 
-	-- CI Status
-	local raw_checks = pr_info.statusCheckRollup or {}
-	local checks = M.sort_checks(M.deduplicate_checks(raw_checks))
+	-- CI Status: the section runs to the end of the pane, so it can be
+	-- rebuilt in place (from ci_start) once the checks arrive.
+	local ci_start = #lines
+	local ci = M.build_overview_ci_lines(pr_info.statusCheckRollup, ci_start, opts)
+	vim.list_extend(lines, ci.lines)
+	vim.list_extend(hl_ranges, ci.hl_ranges)
+
+	return {
+		lines = lines,
+		hl_ranges = hl_ranges,
+		check_urls = ci.check_urls,
+		avatar_positions = avatar_positions,
+		ci_start = ci_start,
+		loading_row = ci.loading_row,
+	}
+end
+
+--- Text of the CI STATUS row shown while the checks are still being fetched.
+M.CHECKS_LOADING_TEXT = "Loading checks…"
+--- Text of the CI STATUS row when the checks could not be fetched.
+M.CHECKS_FAILED_TEXT = "(could not load checks)"
+
+--- Build the CI STATUS section of the overview's right pane: a blank line,
+--- the `## CI STATUS (summary)` heading, and a row per check. `checks` nil
+--- means they are still being fetched (a spinner row: `opts.loading_mark`,
+--- highlighted `opts.loading_hl`, then CHECKS_LOADING_TEXT), and
+--- `opts.checks_failed` that fetching them failed. Line numbers in
+--- `hl_ranges` / `check_urls` are absolute: the section starts at `start_line`
+--- (0-indexed). `loading_row` is the absolute line of the spinner row, nil
+--- when there is none.
+--- @param checks table[]|nil statusCheckRollup, nil while loading
+--- @param start_line number 0-indexed line the section starts at
+--- @param opts { loading_mark: string|nil, loading_hl: string|nil, checks_failed: boolean|nil }|nil
+--- @return table { lines: string[], hl_ranges: table[], check_urls: table<number, string>, loading_row: number|nil }
+function M.build_overview_ci_lines(checks, start_line, opts)
+	opts = opts or {}
+	local lines = { "" }
+	local hl_ranges = {}
 	local check_urls = {}
-	table.insert(lines, "")
-	local summary = M.build_checks_summary(checks)
-	if summary ~= "" then
-		table.insert(lines, string.format("## CI STATUS (%s)", summary))
-	else
-		table.insert(lines, "## CI STATUS")
+	local loading_row
+	local function add(line)
+		table.insert(lines, line)
+		return start_line + #lines - 1
 	end
 
-	if #checks == 0 then
-		table.insert(lines, "(no checks)")
+	if type(checks) ~= "table" then
+		add("## CI STATUS")
+		if opts.checks_failed then
+			local row = add(M.CHECKS_FAILED_TEXT)
+			table.insert(hl_ranges, { line = row, hl = "Comment" })
+		else
+			local mark = opts.loading_mark or ""
+			local text = mark ~= "" and (mark .. " " .. M.CHECKS_LOADING_TEXT) or M.CHECKS_LOADING_TEXT
+			loading_row = add(text)
+			if mark ~= "" then
+				table.insert(
+					hl_ranges,
+					{ line = loading_row, col_start = 0, col_end = #mark, hl = opts.loading_hl or "Comment" }
+				)
+			end
+			table.insert(hl_ranges, { line = loading_row, col_start = mark ~= "" and #mark or 0, hl = "Comment" })
+		end
+		return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls, loading_row = loading_row }
+	end
+
+	local sorted = M.sort_checks(M.deduplicate_checks(checks))
+	local summary = M.build_checks_summary(sorted)
+	add(summary ~= "" and string.format("## CI STATUS (%s)", summary) or "## CI STATUS")
+	if #sorted == 0 then
+		add("(no checks)")
 	else
-		for _, check in ipairs(checks) do
+		for _, check in ipairs(sorted) do
 			local name = check.name or check.context or "unknown"
 			local symbol, hl = M.format_check_status(check)
 			local norm_status, norm_conclusion = M.normalize_check(check)
 			local conclusion = norm_conclusion ~= "" and norm_conclusion or norm_status
-			table.insert(lines, string.format("%s %s  %s", symbol, name, conclusion:lower()))
-			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
+			local row = add(string.format("%s %s  %s", symbol, name, conclusion:lower()))
+			table.insert(hl_ranges, { line = row, hl = hl })
 			local url = check.detailsUrl or check.targetUrl
 			if url then
-				check_urls[#lines - 1] = url
+				check_urls[row] = url
 			end
 		end
 	end
-
-	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls, avatar_positions = avatar_positions }
+	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls }
 end
 
 --- Calculate 3-pane layout for comment browser.
