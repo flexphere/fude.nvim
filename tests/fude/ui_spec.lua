@@ -1101,6 +1101,33 @@ describe("build_overview_left_lines", function()
 	end)
 end)
 
+describe("overview avatar positions", function()
+	local identity = function(s)
+		return s
+	end
+
+	it("left pane: the author line, after `author: `; none for an unknown author", function()
+		local result = ui.build_overview_left_lines({ number = 1, title = "T", author = { login = "kyu08" } }, {}, identity)
+		assert.are.same({ { line = 2, col = 8, login = "kyu08" } }, result.avatar_positions)
+		assert.are.equal('author: "@kyu08"', result.lines[3])
+		assert.are.same({}, ui.build_overview_left_lines({ number = 1, title = "T" }, {}, identity).avatar_positions)
+	end)
+
+	it("right pane: each reviewer line, after its status symbol", function()
+		local result = ui.build_overview_right_lines({
+			reviewRequests = { { login = "carol" } },
+			latestReviews = { { author = { login = "alice" }, state = "APPROVED" } },
+		})
+		local lines = {}
+		for _, p in ipairs(result.avatar_positions) do
+			table.insert(lines, result.lines[p.line + 1])
+			-- The column sits right after the symbol and its space
+			assert.are.equal("@" .. p.login, result.lines[p.line + 1]:sub(p.col + 1, p.col + #p.login + 1))
+		end
+		assert.are.same({ "✓ @alice  approved", "○ @carol  pending" }, lines)
+	end)
+end)
+
 describe("build_overview_right_lines", function()
 	it("shows REVIEWERS section with reviewers", function()
 		local pr = {

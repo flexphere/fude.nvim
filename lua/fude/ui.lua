@@ -669,6 +669,12 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.bo[right_buf].bufhidden = "wipe"
 	vim.bo[right_buf].filetype = "markdown"
 
+	-- Author and reviewer avatars, drawn as their downloads finish (a no-op
+	-- without snacks.nvim image support or with overview.avatars = false)
+	local avatars = require("fude.ui.avatars")
+	avatars.place(left_buf, left_result.avatar_positions)
+	avatars.place(right_buf, right_result.avatar_positions)
+
 	-- Calculate split-pane layout. The panes always take the layout's full
 	-- height, not the content's: a short PR must not shrink the window that
 	-- replaces the loading placeholder of the same size.

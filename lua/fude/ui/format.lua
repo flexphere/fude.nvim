@@ -871,6 +871,12 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	end
 	add_string("state", state)
 	add_string("author", "@" .. author)
+	-- Where ui/avatars draws the author's avatar: between `author: ` and
+	-- the quoted login (0-indexed line, byte column)
+	local avatar_positions = {}
+	if author ~= "unknown" then
+		table.insert(avatar_positions, { line = #lines - 1, col = #"author: ", login = author })
+	end
 	add_string("base", pr_info.baseRefName)
 	add_string("head", pr_info.headRefName)
 	add_string("url", pr_info.url)
@@ -962,15 +968,19 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 		sections = sections,
 		comment_positions = comment_positions,
 		comment_ranges = comment_ranges,
+		avatar_positions = avatar_positions,
 	}
 end
 
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
+--- `avatar_positions` (`{ line, col, login }`, 0-indexed line, byte column) is
+--- where ui/avatars draws each reviewer's avatar: after the status symbol.
 --- @param pr_info table PR data from gh pr view
---- @return table { lines: string[], hl_ranges: table[], check_urls: table }
+--- @return table { lines: string[], hl_ranges: table[], check_urls: table, avatar_positions: table[] }
 function M.build_overview_right_lines(pr_info)
 	local lines = {}
 	local hl_ranges = {}
+	local avatar_positions = {}
 
 	-- Reviewers
 	local review_requests = pr_info.reviewRequests or {}
@@ -991,6 +1001,7 @@ function M.build_overview_right_lines(pr_info)
 			local symbol, hl = M.format_review_status(reviewer.state)
 			table.insert(lines, string.format("%s @%s  %s", symbol, reviewer.login, reviewer.state:lower()))
 			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
+			table.insert(avatar_positions, { line = #lines - 1, col = #symbol + 1, login = reviewer.login })
 		end
 	end
 
@@ -1051,7 +1062,7 @@ function M.build_overview_right_lines(pr_info)
 		end
 	end
 
-	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls }
+	return { lines = lines, hl_ranges = hl_ranges, check_urls = check_urls, avatar_positions = avatar_positions }
 end
 
 --- Calculate 3-pane layout for comment browser.
