@@ -697,6 +697,27 @@ describe("open_overview_loading", function()
 		assert.are.same({ "" }, vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(right), 0, -1, false))
 	end)
 
+	it("the overview opens at the same position and size as the placeholder, whatever its content", function()
+		local handle = ui.open_overview_loading()
+		local pl, pr = placeholder_wins()
+		local placeholder = { vim.api.nvim_win_get_config(pl), vim.api.nvim_win_get_config(pr) }
+		handle.close()
+
+		ui.show_overview_float({ number = 1, title = "T", state = "OPEN", body = "short" }, {}, {})
+		local left, right = placeholder_wins()
+		local lc, rc = vim.api.nvim_win_get_config(left), vim.api.nvim_win_get_config(right)
+		assert.are.same(
+			{ placeholder[1].width, placeholder[1].height, placeholder[1].row, placeholder[1].col },
+			{ lc.width, lc.height, lc.row, lc.col }
+		)
+		assert.are.same(
+			{ placeholder[2].width, placeholder[2].height, placeholder[2].row, placeholder[2].col },
+			{ rc.width, rc.height, rc.row, rc.col }
+		)
+		-- The content is far shorter than the window
+		assert.is_true(vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(left)) < lc.height)
+	end)
+
 	it("q closes both panes, and closing again is a no-op", function()
 		local handle = ui.open_overview_loading()
 		local left, right = placeholder_wins()
