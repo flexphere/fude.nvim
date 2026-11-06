@@ -206,6 +206,10 @@ function M.start()
 		-- Detect detached HEAD: start with commit scope automatically
 		local started_detached = state.original_head_ref == nil
 
+		-- Fetch the :FudeReviewOverview data in the background, alongside the
+		-- review data below, so the overview opens at once (silent on failure)
+		require("fude.overview").prefetch()
+
 		-- Completion barrier: fire on_review_start after all async fetches complete
 		-- 5 async fetches: files, get_pr_commits, get_pr_viewed_files, get_authenticated_user, load_comments
 		local remaining = 5
@@ -656,6 +660,10 @@ function M.reload(silent)
 		end
 		on_done()
 	end)
+
+	-- Refresh the cached :FudeReviewOverview data in the background; not part of
+	-- the barrier, since its failure is silent and must not hold the reload
+	require("fude.overview").prefetch()
 
 	-- Reload comments (includes pending review detection)
 	require("fude.comments").load_comments(on_done, { silent = true })

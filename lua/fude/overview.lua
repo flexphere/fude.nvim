@@ -11,8 +11,113 @@ local config = require("fude.config")
 --- @type { handle: table, state: table }|nil
 local loading_in_flight
 
+--- The overview fetch in flight, if any, with the session it runs for and the
+--- callbacks waiting for it. prefetch() and show() share it, so a show() while
+--- the prefetch is still running waits for that request instead of sending a
+--- second one. `stale` is set when the cache is invalidated while the fetch
+--- runs: its data predates the change, so it is handed to the waiters but not
+--- cached.
+--- @alias fude.OverviewWaiter fun(err: string|nil, pr_info: table|nil, pr_comments: table|nil)
+--- @type { state: table, waiters: fude.OverviewWaiter[], stale: boolean }|nil
+local fetch_in_flight
+
+--- Fetch the overview data (PR info, then the PR-level comments) for `state`,
+--- joining the fetch in flight for the same session if there is one. On
+--- success, when `state` is still the active session, the result is stored in
+--- `state.overview_cache` before the waiters run. Every waiter is called once,
+--- also when the session changed meanwhile: each one checks `config.state`
+--- itself (show() must still close its placeholder then).
+--- @param state table config.state the fetch is for
+--- @param on_done fun(err: string|nil, pr_info: table|nil, pr_comments: table|nil)
+local function fetch_overview(state, on_done)
+	if fetch_in_flight and fetch_in_flight.state == state then
+		table.insert(fetch_in_flight.waiters, on_done)
+		return
+	end
+	local entry = { state = state, waiters = { on_done }, stale = false }
+	fetch_in_flight = entry
+
+	local function finish(err, pr_info, pr_comments)
+		if fetch_in_flight == entry then
+			fetch_in_flight = nil
+		end
+		if not err and config.state == state and not entry.stale then
+			state.overview_cache = { pr_info = pr_info, pr_comments = pr_comments }
+		end
+		for _, waiter in ipairs(entry.waiters) do
+			waiter(err, pr_info, pr_comments)
+		end
+	end
+
+	require("fude.gh").get_pr_overview(function(err, pr_info)
+		-- A stop (or stop + start) in between: the comments of the old PR are
+		-- not worth fetching, and nothing may be cached for the new session.
+		if config.state ~= state then
+			finish("session changed")
+			return
+		end
+		if err then
+			finish(err)
+			return
+		end
+		-- Issue comments plus submitted review bodies, which GitHub also shows
+		-- as comments in the Conversation tab.
+		require("fude.comments.sync").fetch_pr_level_comments(pr_info.number, function(pr_comments)
+			finish(nil, pr_info, pr_comments)
+		end)
+	end, state.pr_number)
+end
+
+--- Drop the cached overview data of the current session (and keep a fetch in
+--- flight from caching what it read before the change), so the next
+--- :FudeReviewOverview fetches again. Called after a request that changes what
+--- the overview shows (reviewers, labels).
+local function invalidate_cache()
+	config.state.overview_cache = nil
+	if fetch_in_flight and fetch_in_flight.state == config.state then
+		fetch_in_flight.stale = true
+	end
+end
+
+--- Fetch the overview data of the GitHub review session in the background and
+--- cache it in `state.overview_cache`, so the next :FudeReviewOverview opens
+--- at once. Called by init.start() and init.reload(). Silent: a failure only
+--- leaves the cache as it was, and show() then fetches (and reports errors)
+--- itself. No-op outside a GitHub review session.
+function M.prefetch()
+	local state = config.state
+	if not state.active or state.review_mode ~= "github" then
+		return
+	end
+	fetch_overview(state, function() end)
+end
+
+--- Open the overview float with the given data.
+--- @param state table config.state the data belongs to
+--- @param pr_info table
+--- @param pr_comments table
+local function open_overview(state, pr_info, pr_comments)
+	require("fude.ui").show_overview_float(pr_info, pr_comments, {
+		on_menu = function()
+			M.open_menu(pr_info, state)
+		end,
+		on_refresh = function()
+			M.show({ fresh = true })
+		end,
+		on_re_request = function()
+			M.re_request_review(pr_info, state)
+		end,
+	})
+end
+
 --- Show PR overview. Requires active review session.
-function M.show()
+--- Opens at once from `state.overview_cache` (filled by prefetch() and by every
+--- fetch) unless `opts.fresh` is set; otherwise shows the loading placeholder
+--- while fetching. A fetch already in flight for the session (the prefetch) is
+--- joined, not repeated.
+--- @param opts { fresh: boolean|nil }|nil fresh: ignore the cache and fetch again (`R`, after posting a comment)
+function M.show(opts)
+	opts = opts or {}
 	local state = config.state
 	if not state.active then
 		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
@@ -29,15 +134,18 @@ function M.show()
 		loading_in_flight.handle.close()
 	end
 
-	local gh = require("fude.gh")
-	local ui = require("fude.ui")
+	local cache = state.overview_cache
+	if cache and not opts.fresh then
+		open_overview(state, cache.pr_info, cache.pr_comments)
+		return
+	end
 
 	-- Two gh calls run before anything is shown; the placeholder says so.
 	-- Every terminal path below closes it.
-	local loading = ui.open_overview_loading()
+	local loading = require("fude.ui").open_overview_loading()
 	loading_in_flight = { handle = loading, state = state }
 
-	gh.get_pr_overview(function(err, pr_info)
+	fetch_overview(state, function(err, pr_info, pr_comments)
 		-- The overview and every flow started from it act on this session's
 		-- PR; a stop (or stop + start) in between must not let them through.
 		if config.state ~= state then
@@ -49,32 +157,13 @@ function M.show()
 			vim.notify("fude.nvim: No PR found: " .. (err or ""), vim.log.levels.ERROR)
 			return
 		end
-
-		-- Issue comments plus submitted review bodies, which GitHub also shows
-		-- as comments in the Conversation tab.
-		require("fude.comments.sync").fetch_pr_level_comments(pr_info.number, function(pr_comments)
-			if config.state ~= state then
-				loading.close()
-				return
-			end
-			-- The user closed the placeholder (`q`): they gave up waiting, so
-			-- the overview must not pop up over whatever they moved on to.
-			if not loading.is_open() then
-				return
-			end
-			loading.close()
-			ui.show_overview_float(pr_info, pr_comments, {
-				on_menu = function()
-					M.open_menu(pr_info, state)
-				end,
-				on_refresh = function()
-					M.show()
-				end,
-				on_re_request = function()
-					M.re_request_review(pr_info, state)
-				end,
-			})
-		end)
+		-- The user closed the placeholder (`q`): they gave up waiting, so
+		-- the overview must not pop up over whatever they moved on to.
+		if not loading.is_open() then
+			return
+		end
+		loading.close()
+		open_overview(state, pr_info, pr_comments)
 	end)
 end
 
@@ -182,6 +271,7 @@ local function run_toggle(captured_state, request, success_msg, failure_msg, don
 			done(false)
 			return
 		end
+		invalidate_cache()
 		vim.notify("fude.nvim: " .. success_msg, vim.log.levels.INFO)
 		done(true)
 	end)
@@ -404,6 +494,7 @@ function M.re_request_review(pr_info, captured_state)
 				vim.notify("fude.nvim: Failed to re-request review from " .. name .. ": " .. err, vim.log.levels.ERROR)
 				return
 			end
+			invalidate_cache()
 			vim.notify("fude.nvim: Re-requested review from " .. name, vim.log.levels.INFO)
 		end, pr_repo(pr_info))
 	end)
@@ -494,7 +585,7 @@ function M.create_comment(pr_number)
 			-- Drop the local draft only after the comment is posted.
 			drafts.remove(draft_key)
 			vim.notify("fude.nvim: Comment posted", vim.log.levels.INFO)
-			M.show()
+			M.show({ fresh = true })
 		end)
 	end, {
 		footer = " <CR> submit | q cancel ",

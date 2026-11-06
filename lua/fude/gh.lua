@@ -232,15 +232,17 @@ end
 
 --- Get extended PR info for overview display.
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.get_pr_overview(callback)
+--- @param pr_number number|nil the PR to view; nil lets gh infer it from the current branch
+---   (pass it whenever it is known: `gh pr view` without a number may hang on a detached HEAD)
+function M.get_pr_overview(callback, pr_number)
 	local fields = "number,title,body,labels,assignees,state,isDraft,author,"
 		.. "baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews,additions,deletions,changedFiles"
-	M.run_json({
-		"pr",
-		"view",
-		"--json",
-		fields,
-	}, callback)
+	local args = { "pr", "view" }
+	if pr_number then
+		table.insert(args, tostring(pr_number))
+	end
+	vim.list_extend(args, { "--json", fields })
+	M.run_json(args, callback)
 end
 
 --- Get issue-level comments on a PR (non-code-bound comments).
