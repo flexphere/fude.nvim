@@ -195,17 +195,14 @@ function M.show_telescope(opts)
 			local function toggle()
 				local selection = action_state.get_selected_entry()
 				local current = action_state.get_current_picker(prompt_bufnr)
-				local row = current and current:get_selection_row()
-				local prompt = current and current:_get_prompt()
 				M.toggle_item(selection and selection.value, opts, session, function(ok)
 					if not ok or not vim.api.nvim_buf_is_valid(prompt_bufnr) or not current then
 						return
 					end
-					-- A row index means the same item only while the filter is
-					-- unchanged; otherwise leave the selection where it lands.
-					if current:_get_prompt() == prompt then
-						restore_row = row
-					end
+					-- The row the cursor is on now, not when <Tab> was pressed:
+					-- the user may have moved on while the request was in
+					-- flight, and the refresh must leave them there.
+					restore_row = current:get_selection_row()
 					current:refresh(nil, { reset_prompt = false })
 				end)
 			end
