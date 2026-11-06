@@ -1645,7 +1645,7 @@ describe("format_toggle_entry", function()
 end)
 
 describe("format_reviewer_mark", function()
-	it("shows a pending request as a yellow dot regardless of the previous review", function()
+	it("shows a pending request as a yellow dot with a normal name regardless of the previous review", function()
 		assert.are.same({ "●", "DiagnosticWarn" }, { format.format_reviewer_mark(true, "APPROVED") })
 		assert.are.same({ "●", "DiagnosticWarn" }, { format.format_reviewer_mark(true, nil) })
 	end)
@@ -1654,14 +1654,17 @@ describe("format_reviewer_mark", function()
 		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { format.format_reviewer_mark(false, "APPROVED") })
 	end)
 
-	it("shows the other review states with their own marks", function()
-		assert.are.same({ "↻", "Comment" }, { format.format_reviewer_mark(false, "DISMISSED") })
-		assert.are.same({ "✗", "DiagnosticError" }, { format.format_reviewer_mark(false, "CHANGES_REQUESTED") })
-		assert.are.same({ "💬", "DiagnosticInfo" }, { format.format_reviewer_mark(false, "COMMENTED") })
+	it("shows the other review states with their own marks and a grey name", function()
+		assert.are.same({ "↻", "Comment", "Comment" }, { format.format_reviewer_mark(false, "DISMISSED") })
+		assert.are.same(
+			{ "✗", "DiagnosticError", "Comment" },
+			{ format.format_reviewer_mark(false, "CHANGES_REQUESTED") }
+		)
+		assert.are.same({ "💬", "DiagnosticInfo", "Comment" }, { format.format_reviewer_mark(false, "COMMENTED") })
 	end)
 
-	it("shows an open circle for a user neither requested nor reviewed", function()
-		assert.are.same({ "○", "Comment" }, { format.format_reviewer_mark(false, nil) })
+	it("shows a grey open circle and name for a user neither requested nor reviewed", function()
+		assert.are.same({ "○", "Comment", "Comment" }, { format.format_reviewer_mark(false, nil) })
 	end)
 end)
 

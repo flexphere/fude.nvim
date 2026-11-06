@@ -556,7 +556,9 @@ end
 
 --- Mark and highlight groups for a reviewer picker row, following the
 --- GitHub web UI: a pending request (review in progress) wins over the
---- user's previous review, since it is what the reviewer owes now.
+--- user's previous review, since it is what the reviewer owes now. The
+--- name is grey for a user with no pending request, so the requested users
+--- stand out, except an approval, whose name is green.
 --- @param requested boolean
 --- @param review_state string|nil latest review state (APPROVED, DISMISSED, ...)
 --- @return string mark, string mark_hl, string|nil text_hl highlight for the name
@@ -566,13 +568,13 @@ function M.format_reviewer_mark(requested, review_state)
 	elseif review_state == "APPROVED" then
 		return "✓", "DiagnosticOk", "DiagnosticOk"
 	elseif review_state == "CHANGES_REQUESTED" then
-		return "✗", "DiagnosticError", nil
+		return "✗", "DiagnosticError", "Comment"
 	elseif review_state == "COMMENTED" then
-		return "💬", "DiagnosticInfo", nil
+		return "💬", "DiagnosticInfo", "Comment"
 	elseif review_state == "DISMISSED" then
-		return "↻", "Comment", nil
+		return "↻", "Comment", "Comment"
 	end
-	return "○", "Comment", nil
+	return "○", "Comment", "Comment"
 end
 
 --- Format one toggle picker row as plain text (`● name  (detail)`), used by

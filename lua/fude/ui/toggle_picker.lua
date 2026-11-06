@@ -163,12 +163,18 @@ function M.show_telescope(opts)
 					display = function(entry)
 						local value = entry.value
 						local mark, mark_hl, text_hl = M.resolve_mark(value)
+						local line = format.format_toggle_entry(value.text, mark, M.resolve_detail(value))
+						local name_start = #mark + 1
+						local name_end = name_start + #value.text
 						local hls = { { { 0, #mark }, mark_hl } }
 						if text_hl then
-							local start = #mark + 1
-							table.insert(hls, { { start, start + #value.text }, text_hl })
+							table.insert(hls, { { name_start, name_end }, text_hl })
 						end
-						return format.format_toggle_entry(value.text, mark, M.resolve_detail(value)), hls
+						-- The detail in parentheses is grey, as in snacks
+						if #line > name_end then
+							table.insert(hls, { { name_end, #line }, "Comment" })
+						end
+						return line, hls
 					end,
 				}
 			end,
