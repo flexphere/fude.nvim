@@ -617,13 +617,14 @@ describe("overview show loading state", function()
 
 	local notifications
 	local shown_with
+	-- Every placeholder handle show() opened, in order
+	local loadings
 
-	--- The loading placeholder window, if one is open.
+	--- The placeholder window of the latest show(), while it is open.
 	local function loading_win()
-		for _, win in ipairs(vim.api.nvim_list_wins()) do
-			if vim.b[vim.api.nvim_win_get_buf(win)].fude_overview_loading then
-				return win
-			end
+		local handle = loadings[#loadings]
+		if handle and handle.is_open() then
+			return handle.win
 		end
 		return nil
 	end
@@ -634,11 +635,19 @@ describe("overview show loading state", function()
 		config.state.review_mode = "github"
 		notifications = {}
 		shown_with = nil
+		loadings = {}
 		helpers.mock(vim, "notify", function(msg, level)
 			table.insert(notifications, { msg = msg, level = level })
 		end)
 		helpers.mock(ui, "show_overview_float", function(pr_info, comments)
 			shown_with = { pr_info = pr_info, comments = comments }
+		end)
+		local open_loading = ui.open_overview_loading
+		helpers.mock(ui, "open_overview_loading", function()
+			local handle = open_loading()
+			handle.win = vim.api.nvim_get_current_win()
+			table.insert(loadings, handle)
+			return handle
 		end)
 	end)
 
@@ -716,6 +725,32 @@ describe("overview show loading state", function()
 		end)
 		assert.is_nil(shown_with)
 		assert.is_nil(loading_win())
+	end)
+
+	it("drops a second show() while the placeholder is open, and allows one after it closed", function()
+		local fetches = 0
+		local pending
+		helpers.mock_gh({
+			["pr:view"] = function(_, callback)
+				fetches = fetches + 1
+				pending = callback
+			end,
+			["api:repos/{owner}/{repo}/issues/7/comments"] = {},
+			["api:repos/{owner}/{repo}/pulls/7/reviews"] = {},
+		})
+		overview.show()
+		overview.show()
+		assert.are.equal(1, fetches)
+		assert.are.equal(1, #loadings)
+
+		pending(nil, { number = 7, title = "T" })
+		assert.is_true(helpers.wait_for(function()
+			return shown_with ~= nil
+		end))
+		-- The first show() is done: a new one fetches again
+		overview.show()
+		assert.are.equal(2, fetches)
+		assert.are.equal(2, #loadings)
 	end)
 end)
 
