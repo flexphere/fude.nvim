@@ -111,16 +111,25 @@ describe("overview re_request_review", function()
 		assert.is_false(posted)
 	end)
 
-	it("notifies an error when the API call fails", function()
+	it("notifies a WARN when GitHub refuses the re-request, an ERROR when it cannot be reached", function()
 		select_choice = { login = "alice", state = "APPROVED" }
 		helpers.mock_gh({
 			[POST_KEY] = "gh: Unprocessable Entity (HTTP 422)",
 		})
-
 		overview.re_request_review(make_pr_info())
-
 		assert.is_true(helpers.wait_for(function()
-			return has_notification("Failed to re-request review", vim.log.levels.ERROR)
+			return has_notification(
+				"Failed to re-request review from @alice: gh: Unprocessable Entity (HTTP 422)",
+				vim.log.levels.WARN
+			)
+		end))
+
+		helpers.mock_gh({
+			[POST_KEY] = "error connecting to api.github.com\n",
+		})
+		overview.re_request_review(make_pr_info())
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("Failed to re-request review from @alice: error connecting", vim.log.levels.ERROR)
 		end))
 	end)
 
@@ -568,7 +577,7 @@ describe("overview menu and toggle editors", function()
 		assert.is_true(has_notification("Re-requested review from @bob", vim.log.levels.INFO))
 	end)
 
-	it("keeps the mark and notifies when a label request fails", function()
+	it("keeps the mark and notifies a WARN when GitHub refuses a label request", function()
 		helpers.mock_gh({
 			["api:repos/{owner}/{repo}/labels"] = { { name = "docs" } },
 			["api:repos/{owner}/{repo}/issues/42/labels"] = "gh: Not Found (HTTP 404)",
@@ -580,8 +589,23 @@ describe("overview menu and toggle editors", function()
 		assert.is_true(helpers.wait_for(function()
 			return shown[2] ~= nil
 		end))
-		assert.is_true(has_notification("Failed to add label docs", vim.log.levels.ERROR))
+		assert.is_true(has_notification("Failed to add label docs: gh: Not Found (HTTP 404)", vim.log.levels.WARN))
+		assert.is_false(has_notification("Failed to add label docs", vim.log.levels.ERROR))
 		assert.are.same({ "● bug", "○ docs" }, shown[2])
+	end)
+
+	it("notifies an ERROR when a reviewer request fails without GitHub refusing it", function()
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/collaborators"] = { { login = "alice" } },
+			[REVIEWERS_KEY] = "HTTP 500: Internal Server Error\n",
+		})
+		table.insert(responders, pick("@alice"))
+
+		overview.edit_reviewers(make_pr_info())
+
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("Failed to request review from @alice: HTTP 500", vim.log.levels.ERROR)
+		end))
 	end)
 
 	it("refuses a toggle after the session was stopped while the picker was open", function()
