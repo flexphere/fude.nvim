@@ -1183,6 +1183,10 @@ function M.setup_keymaps(panel)
 		M.refresh()
 	end, "Expand/collapse commit message")
 
+	map("copy_path", function()
+		M.pick_path_to_copy(panel)
+	end, "Copy file name / relative path / absolute path")
+
 	map("help", function()
 		M.toggle_help(panel)
 	end, "Show panel keymaps")
@@ -1407,6 +1411,58 @@ function M.find_target_window(panel_win)
 		end
 	end
 	return nil
+end
+
+--- Build the choices of the `copy_path` picker for a Files section entry.
+--- @param rel_path string repo-relative path (a file, or a directory in tree mode)
+--- @param root string repository root directory
+--- @return table[] { label, text } for the file name, relative path, and absolute path
+function M.build_copy_choices(rel_path, root)
+	local name = rel_path:match("([^/]+)/*$") or rel_path
+	local choices = {
+		{ kind = "filename", text = name },
+		{ kind = "relative path", text = rel_path },
+		{ kind = "absolute path", text = (root:gsub("/+$", "")) .. "/" .. rel_path },
+	}
+	for _, choice in ipairs(choices) do
+		choice.label = choice.kind .. ": " .. choice.text
+	end
+	return choices
+end
+
+--- Pick the file name, relative path, or absolute path of the Files section
+--- entry under the cursor (file or tree-mode directory) and copy it.
+--- @param panel table sidepanel state
+function M.pick_path_to_copy(panel)
+	local entry_info = M.get_current_entry(panel)
+	if not entry_info or (entry_info.type ~= "file" and entry_info.type ~= "directory") then
+		vim.notify("fude.nvim: No file under cursor", vim.log.levels.INFO)
+		return
+	end
+	local root = get_diff().get_repo_root()
+	if not root then
+		vim.notify("fude.nvim: Could not resolve the repository root", vim.log.levels.WARN)
+		return
+	end
+	local choices = M.build_copy_choices(entry_info.entry.path, root)
+	vim.ui.select(choices, {
+		prompt = "Copy path",
+		format_item = function(choice)
+			return choice.label
+		end,
+	}, function(choice)
+		if not choice then
+			return
+		end
+		if require("fude.util").copy_to_clipboard(choice.text) then
+			vim.notify("fude.nvim: Copied " .. choice.text, vim.log.levels.INFO)
+		else
+			vim.notify(
+				"fude.nvim: Copied " .. choice.text .. " to the unnamed register (clipboard unavailable)",
+				vim.log.levels.WARN
+			)
+		end
+	end)
 end
 
 --- Toggle reviewed state for a scope entry.
