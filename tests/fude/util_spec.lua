@@ -76,6 +76,22 @@ describe("path_less", function()
 	end)
 end)
 
+describe("copy_to_clipboard", function()
+	local saved
+	before_each(function()
+		saved = vim.fn.getreg('"')
+	end)
+	after_each(function()
+		vim.fn.setreg('"', saved)
+	end)
+
+	it("sets the unnamed register and reports whether + was set", function()
+		local copied = util.copy_to_clipboard("hello")
+		assert.are.equal("hello", vim.fn.getreg('"'))
+		assert.are.equal(vim.fn.has("clipboard") == 1, copied)
+	end)
+end)
+
 describe("all_comments_resolved", function()
 	it("returns false for an empty list", function()
 		assert.is_false(util.all_comments_resolved({}))

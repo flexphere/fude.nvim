@@ -198,6 +198,31 @@ describe("build_help_lines", function()
 	end)
 end)
 
+describe("build_copy_choices", function()
+	local function texts(choices)
+		return vim.tbl_map(function(choice)
+			return choice.text
+		end, choices)
+	end
+
+	it("returns the file name, relative path, and absolute path of a nested file", function()
+		local choices = sidepanel.build_copy_choices("lua/fude/ui/sidepanel.lua", "/repo")
+		assert.are.same({ "sidepanel.lua", "lua/fude/ui/sidepanel.lua", "/repo/lua/fude/ui/sidepanel.lua" }, texts(choices))
+		assert.are.equal("filename: sidepanel.lua", choices[1].label)
+	end)
+
+	it("returns the path itself as the name of a top-level file", function()
+		assert.are.same(
+			{ "README.md", "README.md", "/repo/README.md" },
+			texts(sidepanel.build_copy_choices("README.md", "/repo"))
+		)
+	end)
+
+	it("uses the last component of a collapsed directory chain and drops a trailing slash of the root", function()
+		assert.are.same({ "fude", "lua/fude", "/repo/lua/fude" }, texts(sidepanel.build_copy_choices("lua/fude", "/repo/")))
+	end)
+end)
+
 describe("format_scope_section", function()
 	local scope_entries = {
 		{

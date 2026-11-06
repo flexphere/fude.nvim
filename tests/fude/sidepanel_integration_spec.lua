@@ -688,6 +688,84 @@ describe("sidepanel integration", function()
 		assert.is_nil(config.state.sidepanel)
 	end)
 
+	describe("copy_path", function()
+		local picked
+		before_each(function()
+			config.state.changed_files = {
+				{ path = "lua/fude/a.lua", status = "modified", additions = 5, deletions = 2 },
+			}
+			vim.fn.setreg('"', "before")
+			picked = nil
+		end)
+
+		local function move_to(panel, type)
+			for line = 1, vim.api.nvim_buf_line_count(panel.buf) do
+				vim.api.nvim_win_set_cursor(panel.win, { line, 0 })
+				local info = sidepanel.get_current_entry(panel)
+				if info and info.type == type then
+					return
+				end
+			end
+			error("no " .. type .. " row")
+		end
+
+		local function press_and_choose(panel, index)
+			helpers.mock(vim.ui, "select", function(items, opts, on_choice)
+				picked = { items = items, opts = opts }
+				on_choice(index and items[index] or nil)
+			end)
+			buf_keymap(panel.buf, "y").callback()
+		end
+
+		it("y on a file copies the picked file name, relative path, or absolute path", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to(panel, "file")
+			local expected = { "a.lua", "lua/fude/a.lua", "/mock/repo/lua/fude/a.lua" }
+			for index, text in ipairs(expected) do
+				press_and_choose(panel, index)
+				assert.are.equal(text, vim.fn.getreg('"'))
+			end
+			local labels = vim.tbl_map(function(item)
+				return picked.opts.format_item(item)
+			end, picked.items)
+			assert.are.same({
+				"filename: a.lua",
+				"relative path: lua/fude/a.lua",
+				"absolute path: /mock/repo/lua/fude/a.lua",
+			}, labels)
+		end)
+
+		it("y on a tree-mode directory copies the directory path", function()
+			config.opts.sidepanel.file_tree = "tree"
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to(panel, "directory")
+			press_and_choose(panel, 1)
+			assert.are.equal("fude", vim.fn.getreg('"'))
+			press_and_choose(panel, 2)
+			assert.are.equal("lua/fude", vim.fn.getreg('"'))
+		end)
+
+		it("cancelling the picker leaves the register unchanged", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to(panel, "file")
+			press_and_choose(panel, nil)
+			assert.is_not_nil(picked)
+			assert.are.equal("before", vim.fn.getreg('"'))
+		end)
+
+		it("y on a scope row opens no picker", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to(panel, "scope")
+			press_and_choose(panel, 1)
+			assert.is_nil(picked)
+			assert.are.equal("before", vim.fn.getreg('"'))
+		end)
+	end)
+
 	it("help uses overrides and omits disabled and shadowed mappings", function()
 		config.setup({
 			sidepanel = {
