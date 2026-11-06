@@ -1313,7 +1313,9 @@ function M.build_overview_right_lines(pr_info, opts)
 	else
 		local seen = {}
 		local pills = {}
-		for _, label in ipairs(labels) do
+		-- gh lists the labels in the reverse of the order the PR page shows them
+		for i = #labels, 1, -1 do
+			local label = labels[i]
 			local name = type(label) == "table" and label.name or label
 			local name_hl, cap_hl = M.build_label_hl_names(type(label) == "table" and label.color or nil)
 			if type(name) == "string" then
