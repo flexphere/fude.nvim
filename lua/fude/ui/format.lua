@@ -391,11 +391,28 @@ local function sort_by_name(entries, field)
 	end)
 end
 
+--- Sort rank of a reviewer picker row, in the order the marks are listed
+--- in the docs: requested, approved, changes requested, commented,
+--- dismissed, then everyone else.
+local REVIEWER_RANK = { APPROVED = 2, CHANGES_REQUESTED = 3, COMMENTED = 4, DISMISSED = 5 }
+
+--- @param entry table { requested, review_state }
+--- @return number
+local function reviewer_rank(entry)
+	if entry.requested then
+		return 1
+	end
+	return REVIEWER_RANK[entry.review_state] or 6
+end
+
 --- Build the entries of the overview's reviewer picker: repository
 --- collaborators with write access, users with a pending review request, and
---- collaborators who already reviewed. The PR author (GitHub rejects requesting the author),
---- bots, and teams (no login) are left out. Requested users come first, then
---- users who reviewed, then everyone else, each group sorted by login.
+--- collaborators who already reviewed. The PR author (GitHub rejects
+--- requesting the author), bots, teams (no login) and collaborators without
+--- write access are left out; a user with a pending request is always kept,
+--- so the request can be removed. Rows are ordered requested, approved,
+--- changes requested, commented, dismissed, then the rest, each group sorted
+--- by login.
 --- @param collaborators table[] `repos/{owner}/{repo}/collaborators` items ({ login, type, permissions });
 ---   empty when listing failed
 --- @param review_requests table[] reviewRequests from gh pr view (users have login, teams do not)
@@ -403,10 +420,25 @@ end
 --- @param author_login string|nil PR author login
 --- @return table[] list of { login: string, requested: boolean, review_state: string|nil }
 function M.build_reviewer_entries(collaborators, review_requests, latest_reviews, author_login)
+	-- GitHub accepts review requests only from users with write access.
+	-- Indexed first so a read-only member is excluded whichever list names
+	-- them; `permissions` absent is kept, so an unexpected response shape
+	-- degrades to the API's own 422 instead of an empty list.
+	local read_only = {}
+	for _, user in ipairs(collaborators or {}) do
+		local permissions = type(user) == "table" and type(user.permissions) == "table" and user.permissions or nil
+		if permissions and permissions.push == false and type(user.login) == "string" then
+			read_only[user.login] = true
+		end
+	end
+
 	local by_login = {}
 	local entries = {}
-	local function add(login)
+	local function add(login, requested)
 		if type(login) ~= "string" or login == "" or login == author_login then
+			return nil
+		end
+		if read_only[login] and not requested and not by_login[login] then
 			return nil
 		end
 		if not by_login[login] then
@@ -417,7 +449,7 @@ function M.build_reviewer_entries(collaborators, review_requests, latest_reviews
 	end
 
 	for _, req in ipairs(review_requests or {}) do
-		local entry = type(req) == "table" and add(req.login) or nil
+		local entry = type(req) == "table" and add(req.login, true) or nil
 		if entry then
 			entry.requested = true
 		end
@@ -445,35 +477,23 @@ function M.build_reviewer_entries(collaborators, review_requests, latest_reviews
 	end
 
 	for _, user in ipairs(collaborators or {}) do
-		-- GitHub accepts review requests only from users with write access;
-		-- `permissions` is kept when absent so an unexpected response shape
-		-- degrades to the API's own 422 instead of an empty list.
-		local permissions = type(user) == "table" and type(user.permissions) == "table" and user.permissions or nil
-		local read_only = permissions ~= nil and permissions.push == false
-		if type(user) == "table" and user.type ~= "Bot" and not read_only then
+		if type(user) == "table" and user.type ~= "Bot" then
 			add(user.login)
 		end
 	end
 
-	local requested, reviewed, others = {}, {}, {}
-	for _, entry in ipairs(entries) do
-		if entry.requested then
-			table.insert(requested, entry)
-		elseif entry.review_state then
-			table.insert(reviewed, entry)
-		else
-			table.insert(others, entry)
+	table.sort(entries, function(a, b)
+		local ra, rb = reviewer_rank(a), reviewer_rank(b)
+		if ra ~= rb then
+			return ra < rb
 		end
-	end
-	sort_by_name(requested, "login")
-	sort_by_name(reviewed, "login")
-	sort_by_name(others, "login")
-
-	local result = {}
-	for _, group in ipairs({ requested, reviewed, others }) do
-		vim.list_extend(result, group)
-	end
-	return result
+		local la, lb = a.login:lower(), b.login:lower()
+		if la ~= lb then
+			return la < lb
+		end
+		return a.login < b.login
+	end)
+	return entries
 end
 
 --- Format a review state enum for display (`CHANGES_REQUESTED` →

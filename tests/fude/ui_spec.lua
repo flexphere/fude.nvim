@@ -1561,6 +1561,31 @@ describe("build_reviewer_entries", function()
 		assert.are.same({ "unknown", "writer" }, logins(ui.build_reviewer_entries(collaborators, {}, {}, nil)))
 	end)
 
+	it("orders rows requested, approved, changes requested, commented, dismissed, then the rest", function()
+		local collaborators = { { login = "zoe" } }
+		local requests = { { login = "yuki" } }
+		local reviews = {
+			{ author = { login = "dan" }, state = "DISMISSED" },
+			{ author = { login = "cat" }, state = "COMMENTED" },
+			{ author = { login = "bea" }, state = "CHANGES_REQUESTED" },
+			{ author = { login = "amy" }, state = "APPROVED" },
+		}
+		assert.are.same(
+			{ "yuki", "amy", "bea", "cat", "dan", "zoe" },
+			logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil))
+		)
+	end)
+
+	it("excludes a read-only collaborator who reviewed, but keeps one with a pending request", function()
+		local collaborators = {
+			{ login = "reader", permissions = { push = false } },
+			{ login = "asked", permissions = { push = false } },
+		}
+		local requests = { { login = "asked" } }
+		local reviews = { { author = { login = "reader" }, state = "APPROVED", authorAssociation = "MEMBER" } }
+		assert.are.same({ "asked" }, logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil)))
+	end)
+
 	it("ignores an unsubmitted (PENDING) review", function()
 		local reviews = { { author = { login = "alice" }, state = "PENDING" } }
 		assert.are.same({}, ui.build_reviewer_entries({}, {}, reviews, nil))
