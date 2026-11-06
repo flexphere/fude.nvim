@@ -28,6 +28,7 @@ M.format_toggle_entry = format.format_toggle_entry
 M.format_reviewer_mark = format.format_reviewer_mark
 M.build_reviewers_summary = format.build_reviewers_summary
 M.calculate_overview_layout = format.calculate_overview_layout
+M.calculate_overview_loading_layout = format.calculate_overview_loading_layout
 M.calculate_comments_height = format.calculate_comments_height
 M.calculate_reply_window_dimensions = format.calculate_reply_window_dimensions
 M.format_reply_comments_for_display = format.format_reply_comments_for_display
@@ -501,6 +502,54 @@ function M.show_comments_float(comments, opts)
 	end
 
 	setup_github_refs(buf, get_repo_base_url())
+end
+
+--- Text of the overview's loading placeholder.
+M.OVERVIEW_LOADING_TEXT = "Loading PR overview…"
+
+--- Open the placeholder float shown while the overview's PR data is being
+--- fetched (two gh calls, which can take a while): a one-line float where
+--- the overview will open, titled like it. `q` / `<Esc>` close it, which
+--- overview.show reads as "do not show the overview after all".
+--- @return table handle { close: fun(), is_open: fun(): boolean }
+function M.open_overview_loading()
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { M.OVERVIEW_LOADING_TEXT })
+	vim.bo[buf].modifiable = false
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].bufhidden = "wipe"
+	vim.b[buf].fude_overview_loading = true
+
+	local ov = config.opts.overview or {}
+	local layout =
+		format.calculate_overview_layout(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80, ov.right_width or 30)
+	local dims = format.calculate_overview_loading_layout(layout, vim.o.lines)
+	local win = vim.api.nvim_open_win(buf, true, {
+		relative = "editor",
+		row = dims.row,
+		col = dims.col,
+		width = dims.width,
+		height = dims.height,
+		style = "minimal",
+		border = config.opts.float.border,
+		title = " PR Overview ",
+		title_pos = "center",
+	})
+	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
+	pcall(vim.api.nvim_buf_add_highlight, buf, ns, "Comment", 0, 0, -1)
+
+	local handle = {}
+	function handle.is_open()
+		return vim.api.nvim_win_is_valid(win)
+	end
+	function handle.close()
+		if handle.is_open() then
+			vim.api.nvim_win_close(win, true)
+		end
+	end
+	vim.keymap.set("n", "q", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
+	vim.keymap.set("n", "<Esc>", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
+	return handle
 end
 
 --- Show PR overview in a split-pane floating window.

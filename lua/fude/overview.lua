@@ -16,13 +16,19 @@ function M.show()
 	local gh = require("fude.gh")
 	local ui = require("fude.ui")
 
+	-- Two gh calls run before anything is shown; the placeholder says so.
+	-- Every terminal path below closes it.
+	local loading = ui.open_overview_loading()
+
 	gh.get_pr_overview(function(err, pr_info)
 		-- The overview and every flow started from it act on this session's
 		-- PR; a stop (or stop + start) in between must not let them through.
 		if config.state ~= state then
+			loading.close()
 			return
 		end
 		if err then
+			loading.close()
 			vim.notify("fude.nvim: No PR found: " .. (err or ""), vim.log.levels.ERROR)
 			return
 		end
@@ -31,8 +37,15 @@ function M.show()
 		-- as comments in the Conversation tab.
 		require("fude.comments.sync").fetch_pr_level_comments(pr_info.number, function(pr_comments)
 			if config.state ~= state then
+				loading.close()
 				return
 			end
+			-- The user closed the placeholder (`q`): they gave up waiting, so
+			-- the overview must not pop up over whatever they moved on to.
+			if not loading.is_open() then
+				return
+			end
+			loading.close()
 			ui.show_overview_float(pr_info, pr_comments, {
 				on_menu = function()
 					M.open_menu(pr_info, state)
