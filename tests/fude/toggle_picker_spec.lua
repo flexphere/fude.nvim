@@ -182,3 +182,70 @@ describe("toggle_picker.show_vim_select", function()
 		assert.is_true(closed)
 	end)
 end)
+
+describe("toggle_picker extra action", function()
+	local notified
+	local function make_opts(available, run)
+		return {
+			extra_action = {
+				key = "<C-e>",
+				label = "re-request",
+				available = available,
+				unavailable_reason = function(item)
+					return item.text .. " cannot"
+				end,
+				run = run or function(_, done)
+					done(true)
+				end,
+				result_on = true,
+			},
+		}
+	end
+
+	before_each(function()
+		notified = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notified, { msg = msg, level = level })
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("shows the key at the end of a row it applies to, and nothing elsewhere", function()
+		local opts = make_opts(function(item)
+			return not item.on
+		end)
+		assert.are.equal("<C-e>: re-request", toggle_picker.resolve_action_hint({ text = "@bob", on = false }, opts))
+		assert.is_nil(toggle_picker.resolve_action_hint({ text = "@bob", on = true }, opts))
+		assert.is_nil(toggle_picker.resolve_action_hint({ text = "@bob", on = false }, {}))
+	end)
+
+	it("sets item.on to result_on only after the request succeeded", function()
+		local finish
+		local opts = make_opts(function()
+			return true
+		end, function(_, done)
+			finish = done
+		end)
+		local item = { text = "@bob", on = false }
+		assert.is_true(toggle_picker.run_extra_action(item, opts, toggle_picker.new_session(opts)))
+		assert.is_false(item.on)
+		finish(true)
+		assert.is_true(item.on)
+	end)
+
+	it("refuses a row it does not apply to with an INFO and sends nothing", function()
+		local sent = false
+		local opts = make_opts(function()
+			return false
+		end, function()
+			sent = true
+		end)
+		local item = { text = "@bob", on = true }
+		assert.is_false(toggle_picker.run_extra_action(item, opts, toggle_picker.new_session(opts)))
+		assert.is_false(sent)
+		assert.are.same({ { msg = "fude.nvim: @bob cannot", level = vim.log.levels.INFO } }, notified)
+	end)
+end)

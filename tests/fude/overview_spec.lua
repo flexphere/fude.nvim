@@ -468,6 +468,51 @@ describe("overview menu and toggle editors", function()
 		assert.are.same({ "repos/octo/fude/labels", "repos/octo/fude/issues/42/labels" }, paths)
 	end)
 
+	it("Reviewer offers <C-e> re-request only for users who reviewed and are not requested", function()
+		local captured_opts
+		helpers.mock(require("fude.ui.toggle_picker"), "open", function(opts)
+			captured_opts = opts
+		end)
+		local posted
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/collaborators"] = { { login = "alice" } },
+			[REVIEWERS_KEY] = function(args, callback, stdin)
+				posted = { args = args, stdin = stdin }
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end,
+		})
+
+		overview.edit_reviewers(make_pr_info())
+
+		assert.is_true(helpers.wait_for(function()
+			return captured_opts ~= nil
+		end))
+		local action = captured_opts.extra_action
+		assert.are.equal("<C-e>", action.key)
+		local by_text = {}
+		for _, item in ipairs(captured_opts.items) do
+			by_text[item.text] = item
+		end
+		-- carol is requested, bob approved, alice never reviewed
+		assert.is_false(action.available(by_text["@carol"]))
+		assert.is_true(action.available(by_text["@bob"]))
+		assert.is_false(action.available(by_text["@alice"]))
+
+		local ok_seen
+		action.run(by_text["@bob"], function(ok)
+			ok_seen = ok
+		end)
+		assert.is_true(helpers.wait_for(function()
+			return ok_seen ~= nil
+		end))
+		assert.is_true(ok_seen)
+		assert.is_truthy(table.concat(posted.args, " "):find("--method POST", 1, true))
+		assert.are.same({ reviewers = { "bob" } }, vim.json.decode(posted.stdin))
+		assert.is_true(has_notification("Re-requested review from @bob", vim.log.levels.INFO))
+	end)
+
 	it("keeps the mark and notifies when a label request fails", function()
 		helpers.mock_gh({
 			["api:repos/{owner}/{repo}/labels"] = { { name = "docs" } },
