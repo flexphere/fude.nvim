@@ -391,18 +391,19 @@ local function sort_by_name(entries, field)
 	end)
 end
 
---- Sort rank of a reviewer picker row, in the order the marks are listed
---- in the docs: requested, approved, changes requested, commented,
---- dismissed, then everyone else.
-local REVIEWER_RANK = { APPROVED = 2, CHANGES_REQUESTED = 3, COMMENTED = 4, DISMISSED = 5 }
+--- Sort rank of a reviewer picker row: approved, changes requested,
+--- commented, dismissed, requested (review in progress), then everyone else.
+local REVIEWER_RANK = { APPROVED = 1, CHANGES_REQUESTED = 2, COMMENTED = 3, DISMISSED = 4 }
+local REQUESTED_RANK = 5
+local OTHER_RANK = 6
 
 --- @param entry table { requested, review_state }
 --- @return number
 local function reviewer_rank(entry)
 	if entry.requested then
-		return 1
+		return REQUESTED_RANK
 	end
-	return REVIEWER_RANK[entry.review_state] or 6
+	return REVIEWER_RANK[entry.review_state] or OTHER_RANK
 end
 
 --- Build the entries of the overview's reviewer picker: repository
@@ -410,9 +411,9 @@ end
 --- collaborators who already reviewed. The PR author (GitHub rejects
 --- requesting the author), bots, teams (no login) and collaborators without
 --- write access are left out; a user with a pending request is always kept,
---- so the request can be removed. Rows are ordered requested, approved,
---- changes requested, commented, dismissed, then the rest, each group sorted
---- by login.
+--- so the request can be removed. Rows are ordered approved, changes
+--- requested, commented, dismissed, requested, then the rest, each group
+--- sorted by login.
 --- @param collaborators table[] `repos/{owner}/{repo}/collaborators` items ({ login, type, permissions });
 ---   empty when listing failed
 --- @param review_requests table[] reviewRequests from gh pr view (users have login, teams do not)

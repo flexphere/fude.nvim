@@ -1520,15 +1520,15 @@ describe("build_reviewer_entries", function()
 		return result
 	end
 
-	it("orders requested users, then reviewers, then other collaborators, each by login", function()
+	it("puts reviewers before requested users and other collaborators last, each by login", function()
 		local collaborators = { { login = "zed" }, { login = "bob" }, { login = "carol" }, { login = "alice" } }
 		local requests = { { login = "carol" } }
 		local reviews = { { author = { login = "bob" }, state = "APPROVED", authorAssociation = "MEMBER" } }
 		local result = ui.build_reviewer_entries(collaborators, requests, reviews, nil)
-		assert.are.same({ "carol", "bob", "alice", "zed" }, logins(result))
-		assert.is_true(result[1].requested)
-		assert.is_false(result[2].requested)
-		assert.are.equal("APPROVED", result[2].review_state)
+		assert.are.same({ "bob", "carol", "alice", "zed" }, logins(result))
+		assert.is_false(result[1].requested)
+		assert.are.equal("APPROVED", result[1].review_state)
+		assert.is_true(result[2].requested)
 		assert.is_nil(result[3].review_state)
 	end)
 
@@ -1561,7 +1561,7 @@ describe("build_reviewer_entries", function()
 		assert.are.same({ "unknown", "writer" }, logins(ui.build_reviewer_entries(collaborators, {}, {}, nil)))
 	end)
 
-	it("orders rows requested, approved, changes requested, commented, dismissed, then the rest", function()
+	it("orders rows approved, changes requested, commented, dismissed, requested, then the rest", function()
 		local collaborators = { { login = "zoe" } }
 		local requests = { { login = "yuki" } }
 		local reviews = {
@@ -1571,7 +1571,7 @@ describe("build_reviewer_entries", function()
 			{ author = { login = "amy" }, state = "APPROVED" },
 		}
 		assert.are.same(
-			{ "yuki", "amy", "bea", "cat", "dan", "zoe" },
+			{ "amy", "bea", "cat", "dan", "yuki", "zoe" },
 			logins(ui.build_reviewer_entries(collaborators, requests, reviews, nil))
 		)
 	end)
@@ -1594,7 +1594,7 @@ describe("build_reviewer_entries", function()
 	it("keeps requested and reviewed users when the collaborator list is empty", function()
 		local requests = { { login = "carol" } }
 		local reviews = { { author = { login = "bob" }, state = "APPROVED" } }
-		assert.are.same({ "carol", "bob" }, logins(ui.build_reviewer_entries({}, requests, reviews, nil)))
+		assert.are.same({ "bob", "carol" }, logins(ui.build_reviewer_entries({}, requests, reviews, nil)))
 	end)
 
 	it("skips JSON null entries and authors", function()
