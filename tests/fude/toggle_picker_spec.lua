@@ -463,13 +463,6 @@ describe("toggle_picker loading re-render", function()
 		function picker.refresh(self)
 			self.refreshes = self.refreshes + 1
 		end
-		function picker.get_selection_row()
-			return 0
-		end
-		function picker._get_prompt()
-			return ""
-		end
-		function picker.register_completion_callback() end
 		function picker.find(self)
 			self.opts.attach_mappings(prompt_buf, function(mode, lhs, fn)
 				self.maps[mode .. lhs] = fn
@@ -515,6 +508,10 @@ describe("toggle_picker loading re-render", function()
 			local entry = picker.opts.finder.entry_maker(item)
 			return (entry.display(entry))
 		end
+
+		-- Telescope keeps the selected entry across the refreshes below
+		-- instead of moving the cursor back to the first row
+		assert.are.equal("follow", picker.opts.selection_strategy)
 
 		picker.maps["i<Tab>"]()
 		assert.are.equal(1, picker.refreshes)

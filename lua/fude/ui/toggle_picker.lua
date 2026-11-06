@@ -285,12 +285,16 @@ function M.show_telescope(opts)
 	local themes = require("telescope.themes")
 
 	local session = M.new_session(opts)
-	-- Row to restore after a refresh, with the prompt it was read under:
-	-- Telescope's refresh moves the selection back to the first row.
-	local restore
 
 	local picker = pickers.new(themes.get_dropdown({}), {
 		prompt_title = opts.title .. " (<Tab> toggle)",
+		-- A refresh (on request start, every spinner frame, on settle) keeps
+		-- the selected entry selected: new_table builds the entries once, so
+		-- Telescope finds the same entry after the refresh. The default
+		-- "reset" would move the cursor back to the first row, and restoring
+		-- a remembered row from a completion callback breaks when refreshes
+		-- overlap, which the spinner makes common.
+		selection_strategy = "follow",
 		finder = finders.new_table({
 			results = opts.items,
 			entry_maker = function(item)
@@ -336,16 +340,13 @@ function M.show_telescope(opts)
 			actions.select_default:replace(function()
 				actions.close(prompt_bufnr)
 			end)
-			-- Re-render the rows (loading mark, flipped mark) keeping the
-			-- selection where it is.
+			-- Re-render the rows (loading mark, flipped mark); the "follow"
+			-- strategy keeps the selection on the entry selected when the
+			-- refresh completes.
 			local function rerender(current)
 				if not vim.api.nvim_buf_is_valid(prompt_bufnr) or not current then
 					return
 				end
-				-- The row the cursor is on now, not when the key was pressed:
-				-- the user may have moved on while the request was in flight,
-				-- and the refresh must leave them there.
-				restore = { row = current:get_selection_row(), prompt = current:_get_prompt() }
 				current:refresh(nil, { reset_prompt = false })
 			end
 			-- The spinner re-renders through the picker that is current then
@@ -378,17 +379,6 @@ function M.show_telescope(opts)
 			return true
 		end,
 	})
-	picker:register_completion_callback(function(self)
-		if restore then
-			local saved = restore
-			restore = nil
-			-- A row index names the same item only under the same filter;
-			-- the prompt may have changed between refresh() and now.
-			if self:_get_prompt() == saved.prompt then
-				pcall(self.set_selection, self, saved.row)
-			end
-		end
-	end)
 	picker:find()
 end
 
