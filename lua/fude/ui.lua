@@ -523,9 +523,8 @@ M.OVERVIEW_LOADING_TEXT = "Loading PR overview…"
 
 --- Open the placeholder shown while the overview's PR data is being fetched
 --- (two gh calls, which can take a while): the overview's two panes at the
---- layout's full height — the overview itself is as tall once its content
---- fills that height, shorter otherwise — the left one titled like it and
---- holding the loading text. `q` / `<Esc>` close both, which overview.show
+--- same position and size as the overview itself, the left one titled like
+--- it and holding the loading text. `q` / `<Esc>` close both, which overview.show
 --- reads as "do not show the overview after all"; closing either pane by
 --- other means closes the other too.
 --- @return table handle { close: fun(), is_open: fun(): boolean }
@@ -622,13 +621,12 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.bo[right_buf].bufhidden = "wipe"
 	vim.bo[right_buf].filetype = "markdown"
 
-	-- Calculate split-pane layout
+	-- Calculate split-pane layout. The panes always take the layout's full
+	-- height, not the content's: a short PR must not shrink the window that
+	-- replaces the loading placeholder of the same size.
 	local ov = config.opts.overview or {}
 	local layout = overview_layout()
-
-	-- Use the taller content, capped at max layout height
-	local content_height = math.min(math.max(#left_result.lines, #right_result.lines) + 2, layout.left.height)
-	local row = math.floor((vim.o.lines - content_height) / 2)
+	local row = layout.left.row
 
 	-- Open left window (focused)
 	local left_win = vim.api.nvim_open_win(left_buf, true, {
@@ -636,7 +634,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		row = row,
 		col = layout.left.col,
 		width = layout.left.width,
-		height = content_height,
+		height = layout.left.height,
 		style = "minimal",
 		border = config.opts.float.border,
 		title = " PR Overview ",
@@ -654,7 +652,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		row = row,
 		col = layout.right.col,
 		width = layout.right.width,
-		height = content_height,
+		height = layout.right.height,
 		style = "minimal",
 		border = config.opts.float.border,
 	})
