@@ -1144,9 +1144,78 @@ function M.build_label_hl_names(hex)
 	return "ReviewLabel_" .. suffix, "ReviewLabelCap_" .. suffix
 end
 
+--- Spaces between a label pill's rounded end and its name.
+M.LABEL_PILL_PADDING = " "
+--- Spaces between two label pills on one row.
+M.LABEL_PILL_GAP = " "
+
+--- Build one label pill: LABEL_PILL_LEFT, the padded name, LABEL_PILL_RIGHT.
+--- `ranges` are byte ranges relative to the pill's start.
+--- @param name string label name
+--- @param name_hl string highlight group of the padded name
+--- @param cap_hl string highlight group of the rounded ends
+--- @return table { text: string, ranges: { col_start, col_end, hl }[] }
+function M.build_label_pill(name, name_hl, cap_hl)
+	local left, right, pad = M.LABEL_PILL_LEFT, M.LABEL_PILL_RIGHT, M.LABEL_PILL_PADDING
+	local body = pad .. name .. pad
+	local body_end = #left + #body
+	return {
+		text = left .. body .. right,
+		ranges = {
+			{ col_start = 0, col_end = #left, hl = cap_hl },
+			{ col_start = #left, col_end = body_end, hl = name_hl },
+			{ col_start = body_end, col_end = body_end + #right, hl = cap_hl },
+		},
+	}
+end
+
+--- Lay label pills out side by side, separated by LABEL_PILL_GAP, starting a
+--- new row when the next pill would exceed `width` display cells (a pill
+--- wider than `width` gets a row of its own). Without `width` every pill is
+--- on one row.
+--- @param pills table[] { text, ranges } from build_label_pill (or plain `{ text, ranges = {} }`)
+--- @param width number|nil available display cells per row
+--- @param display_width fun(s: string): number|nil cell width of a string (default: byte length)
+--- @return table[] rows { text: string, ranges: { col_start, col_end, hl }[] } with absolute byte columns
+function M.pack_label_pills(pills, width, display_width)
+	display_width = display_width or function(s)
+		return #s
+	end
+	local gap = M.LABEL_PILL_GAP
+	local rows = {}
+	local row, row_width
+	for _, pill in ipairs(pills) do
+		local pill_width = display_width(pill.text)
+		if row and width and row_width + display_width(gap) + pill_width > width then
+			row = nil
+		end
+		if not row then
+			row = { text = "", ranges = {} }
+			row_width = 0
+			table.insert(rows, row)
+		else
+			row.text = row.text .. gap
+			row_width = row_width + display_width(gap)
+		end
+		local offset = #row.text
+		for _, range in ipairs(pill.ranges) do
+			table.insert(row.ranges, {
+				col_start = offset + range.col_start,
+				col_end = offset + range.col_end,
+				hl = range.hl,
+			})
+		end
+		row.text = row.text .. pill.text
+		row_width = row_width + pill_width
+	end
+	return rows
+end
+
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
---- A label with a valid `color` is drawn as a pill (LABEL_PILL_LEFT, name,
---- LABEL_PILL_RIGHT) highlighted with the build_label_hl_names groups;
+--- A label with a valid `color` is drawn as a pill (build_label_pill)
+--- highlighted with the build_label_hl_names groups, the labels side by side
+--- and wrapped at `opts.labels_width` cells (pack_label_pills, measured with
+--- `opts.display_width`);
 --- `label_colors` lists those colours once each (normalized `rrggbb`) so the
 --- caller can define the groups (see calculate_label_colors).
 --- `avatar_positions` (`{ line, col, login }`, 0-indexed line, byte column) is
@@ -1159,7 +1228,7 @@ end
 --- `reviewers_loading_row`; `pr_info.reviewers_failed` shows
 --- REVIEWERS_FAILED_TEXT instead.
 --- @param pr_info table PR data from gh pr view
---- @param opts table|nil passed to build_overview_ci_lines
+--- @param opts table|nil passed to build_overview_ci_lines, plus `labels_width` / `display_width`
 --- @return table { lines: string[], hl_ranges: table[], check_urls: table, avatar_positions: table[],
 ---   label_colors: string[], ci_start: number, loading_row: number|nil, reviewers_loading_row: number|nil }
 function M.build_overview_right_lines(pr_info, opts)
@@ -1230,24 +1299,28 @@ function M.build_overview_right_lines(pr_info, opts)
 		table.insert(lines, "(no labels)")
 	else
 		local seen = {}
+		local pills = {}
 		for _, label in ipairs(labels) do
 			local name = type(label) == "table" and label.name or label
 			local name_hl, cap_hl = M.build_label_hl_names(type(label) == "table" and label.color or nil)
 			if name_hl and type(name) == "string" then
-				local left, right = M.LABEL_PILL_LEFT, M.LABEL_PILL_RIGHT
-				table.insert(lines, left .. name .. right)
-				local row = #lines - 1
-				local name_end = #left + #name
-				table.insert(hl_ranges, { line = row, col_start = 0, col_end = #left, hl = cap_hl })
-				table.insert(hl_ranges, { line = row, col_start = #left, col_end = name_end, hl = name_hl })
-				table.insert(hl_ranges, { line = row, col_start = name_end, col_end = name_end + #right, hl = cap_hl })
+				table.insert(pills, M.build_label_pill(name, name_hl, cap_hl))
 				local suffix = name_hl:sub(#"ReviewLabel_" + 1)
 				if not seen[suffix] then
 					seen[suffix] = true
 					table.insert(label_colors, suffix)
 				end
 			elseif type(name) == "string" then
-				table.insert(lines, name)
+				table.insert(pills, { text = name, ranges = {} })
+			end
+		end
+		for _, row in ipairs(M.pack_label_pills(pills, opts.labels_width, opts.display_width)) do
+			table.insert(lines, row.text)
+			for _, range in ipairs(row.ranges) do
+				table.insert(
+					hl_ranges,
+					{ line = #lines - 1, col_start = range.col_start, col_end = range.col_end, hl = range.hl }
+				)
 			end
 		end
 	end

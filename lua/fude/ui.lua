@@ -757,6 +757,8 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			loading_mark = loading_opts.loading_mark,
 			loading_hl = loading_opts.loading_hl,
 			checks_failed = pr_info.checks_failed == true,
+			labels_width = overview_layout().right.width,
+			display_width = vim.fn.strdisplaywidth,
 		})
 	end
 	-- Rebuilt by set_comments / set_reviewers / set_checks as the parts that
