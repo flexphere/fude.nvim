@@ -102,6 +102,17 @@ Using lazy.nvim: >lua
     |:FudeReviewToggle| and |:FudeReviewLocalToggle| are not listed
     (Start/Stop cover both states).
 
+:[range]FudeCommandRepeat                          *:FudeCommandRepeat*
+    Run the last fude command again, with the same arguments (and
+    bang). Any `:FudeXxx` command counts, including one picked from
+    |:FudeCommandPalette|; |:FudeCommandPalette| and
+    |:FudeCommandRepeat| themselves are not recorded. The range of the
+    original run is not kept: a line/selection command such as
+    |:FudeReviewComment| acts on the cursor line, or on the [range]
+    given to the repeat (`:'<,'>FudeCommandRepeat`); other commands
+    ignore the range. The last command is kept across review stop /
+    start, until Neovim exits. Without one, an INFO message is shown.
+
 :FudeReviewStart                                      *:FudeReviewStart*
     Start review session for the current branch's PR. Detects the PR
     automatically using `gh pr view`, fetches comments, sets up

@@ -24,6 +24,7 @@ local LOCAL = { active = true, review_mode = "local" }
 -- Commands usable in every state (PR helpers do not need a review session).
 local ALWAYS = {
 	"FudeChangePRState",
+	"FudeCommandRepeat",
 	"FudeCopyPRURL",
 	"FudeCreatePR",
 	"FudeEditLabels",
@@ -100,6 +101,7 @@ describe("commands.list", function()
 		end
 		assert.is_true(by_name.FudeReviewComment.range)
 		assert.is_true(by_name.FudeReviewSuggest.range)
+		assert.is_true(by_name.FudeCommandRepeat.range)
 		assert.are.equal("?", by_name.FudeReviewLocal.nargs)
 		assert.are.equal("?", by_name.FudeReviewLocalToggle.nargs)
 		assert.are.equal("?", by_name.FudeReviewLocalScope.nargs)
@@ -132,7 +134,7 @@ describe("commands.list", function()
 				nargs_count = nargs_count + 1
 			end
 		end
-		assert.are.equal(2, range_count)
+		assert.are.equal(3, range_count)
 		assert.are.equal(4, nargs_count)
 	end)
 
@@ -329,5 +331,101 @@ describe("FudeReviewSubmit review body drafts", function()
 		submit_with(nil, "discard")
 		assert.same({ event = "COMMENT" }, submitted)
 		assert.is_nil(drafts.get(drafts.current_key("review")))
+	end)
+end)
+
+describe("commands.build_repeat_cmd", function()
+	it("repeats the command with its arguments and bang", function()
+		assert.are.same(
+			{ cmd = "FudeReviewLocal", args = { "main" } },
+			commands.build_repeat_cmd({ name = "FudeReviewLocal", fargs = { "main" } })
+		)
+		assert.are.same({ cmd = "FudeReviewFiles" }, commands.build_repeat_cmd({ name = "FudeReviewFiles", fargs = {} }))
+		assert.are.same({ cmd = "X", bang = true }, commands.build_repeat_cmd({ name = "X", bang = true }))
+	end)
+
+	it("forwards a range only to a command that takes one", function()
+		local last = { name = "FudeReviewComment", fargs = {} }
+		assert.are.same({ cmd = "FudeReviewComment", range = { 3, 5 } }, commands.build_repeat_cmd(last, { 3, 5 }, true))
+		assert.are.same({ cmd = "FudeReviewComment" }, commands.build_repeat_cmd(last, nil, true))
+		assert.are.same(
+			{ cmd = "FudeReviewFiles" },
+			commands.build_repeat_cmd({ name = "FudeReviewFiles" }, { 3, 5 }, false)
+		)
+	end)
+
+	it("returns nil without a last command", function()
+		assert.is_nil(commands.build_repeat_cmd(nil))
+		assert.is_nil(commands.build_repeat_cmd({}))
+	end)
+end)
+
+describe(":FudeCommandRepeat", function()
+	local helpers = require("tests.helpers")
+	local runs
+	local saved
+
+	before_each(function()
+		vim.g.loaded_fude = nil
+		vim.cmd("runtime! plugin/fude.lua")
+		commands._reset_last()
+		runs = {}
+		saved = {}
+		for _, name in ipairs({ "FudeReviewFiles", "FudeReviewLocalScope", "FudeReviewComment" }) do
+			local entry = commands.find(name)
+			saved[entry] = entry.run
+			entry.run = function(opts)
+				table.insert(runs, { name = name, fargs = opts.fargs, range = opts.range, line1 = opts.line1 })
+			end
+		end
+	end)
+
+	after_each(function()
+		for entry, run in pairs(saved) do
+			entry.run = run
+		end
+		commands._reset_last()
+		helpers.cleanup()
+	end)
+
+	it("notifies when nothing has run yet", function()
+		local notified = {}
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notified, { msg = msg, level = level })
+		end)
+		vim.cmd("FudeCommandRepeat")
+		assert.are.equal(0, #runs)
+		assert.truthy(notified[1].msg:find("No command to repeat"))
+		assert.are.equal(vim.log.levels.INFO, notified[1].level)
+	end)
+
+	it("runs the last command again with its arguments, and is not recorded itself", function()
+		vim.cmd("FudeReviewLocalScope unpushed")
+		vim.cmd("FudeCommandRepeat")
+		vim.cmd("FudeCommandRepeat")
+		assert.are.equal(3, #runs)
+		for _, run in ipairs(runs) do
+			assert.are.equal("FudeReviewLocalScope", run.name)
+			assert.are.same({ "unpushed" }, run.fargs)
+		end
+		assert.are.equal("FudeReviewLocalScope", commands.get_last().name)
+
+		vim.cmd("FudeReviewFiles")
+		vim.cmd("FudeCommandRepeat")
+		assert.are.equal("FudeReviewFiles", runs[5].name)
+	end)
+
+	it("repeats a range command on the cursor line, or on the range given to the repeat", function()
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a", "b", "c", "d" })
+		vim.api.nvim_set_current_buf(buf)
+		vim.cmd("2,3FudeReviewComment")
+		vim.cmd("FudeCommandRepeat")
+		vim.cmd("3,4FudeCommandRepeat")
+		assert.are.equal(2, runs[1].range)
+		assert.are.equal(0, runs[2].range)
+		assert.are.equal(2, runs[3].range)
+		assert.are.equal(3, runs[3].line1)
+		vim.api.nvim_buf_delete(buf, { force = true })
 	end)
 end)
