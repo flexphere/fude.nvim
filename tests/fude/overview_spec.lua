@@ -327,7 +327,6 @@ describe("overview menu and toggle editors", function()
 					callback(nil, {})
 				end)
 			end,
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("Reviewer"))
 		table.insert(responders, pick("@carol"))
@@ -360,7 +359,6 @@ describe("overview menu and toggle editors", function()
 					callback(nil, {})
 				end)
 			end,
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("@bob"))
 
@@ -395,7 +393,6 @@ describe("overview menu and toggle editors", function()
 					callback(nil, {})
 				end)
 			end,
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("docs"))
 		table.insert(responders, pick("bug"))
@@ -412,6 +409,61 @@ describe("overview menu and toggle editors", function()
 			return shown[3] ~= nil
 		end))
 		assert.are.same({ "○ bug", "● docs" }, shown[3])
+	end)
+
+	it("does not reopen the overview when the label picker closes after an edit", function()
+		local pr_view_called = false
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/labels"] = { { name = "docs" } },
+			["api:repos/{owner}/{repo}/issues/42/labels"] = {},
+			["pr:view"] = function()
+				pr_view_called = true
+			end,
+		})
+		-- Toggle docs, then cancel the reopened select (closes the picker)
+		table.insert(responders, pick("docs"))
+
+		overview.edit_labels(make_pr_info())
+
+		assert.is_true(helpers.wait_for(function()
+			return shown[2] ~= nil
+		end))
+		assert.are.same({ "● bug", "● docs" }, shown[2])
+		vim.wait(100, function()
+			return pr_view_called
+		end)
+		assert.is_false(pr_view_called)
+	end)
+
+	it("does not reopen the overview when the reviewer picker closes, or when it has no rows", function()
+		local pr_view_called = false
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/collaborators"] = { { login = "alice" } },
+			["pr:view"] = function()
+				pr_view_called = true
+			end,
+		})
+		-- Cancel the picker without toggling
+		overview.edit_reviewers(make_pr_info())
+		assert.is_true(helpers.wait_for(function()
+			return shown[1] ~= nil
+		end))
+
+		-- No candidates at all: only the author
+		local pr_info = make_pr_info()
+		pr_info.reviewRequests = {}
+		pr_info.latestReviews = {}
+		pr_info.author = { login = "alice" }
+		overview.edit_reviewers(pr_info)
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("No reviewers to choose from", vim.log.levels.INFO)
+		end))
+
+		vim.wait(100, function()
+			return pr_view_called
+		end)
+		assert.is_false(pr_view_called)
+		assert.are.equal(1, #shown)
 	end)
 
 	it("refuses the menu of an overview opened in a session that was stopped and restarted", function()
@@ -520,7 +572,6 @@ describe("overview menu and toggle editors", function()
 		helpers.mock_gh({
 			["api:repos/{owner}/{repo}/labels"] = { { name = "docs" } },
 			["api:repos/{owner}/{repo}/issues/42/labels"] = "gh: Not Found (HTTP 404)",
-			["pr:view"] = "mocked: stop after fetch",
 		})
 		table.insert(responders, pick("docs"))
 
