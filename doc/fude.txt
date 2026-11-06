@@ -473,7 +473,12 @@ File opening position                                 *fude-file-position*
     state, e.g. `### @alice  2024-01-01 [approved]`.
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
-    pass/fail indicators and a summary count.
+    pass/fail indicators and a summary count. Each label is drawn as a
+    pill in its repository colour, with the text and background
+    colours the GitHub web UI computes from it (for 'background' dark
+    or light; the background is blended over the float's
+    `NormalFloat` colour). The rounded ends are Nerd Font glyphs, and
+    the colours need 'termguicolors'.
     With `overview.avatars = true` (off by default) and snacks.nvim
     image support, the author's avatar is drawn on
     the `author:` line and each reviewer's before their login, cut
