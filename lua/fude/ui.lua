@@ -714,7 +714,7 @@ local function overview_base_bg()
 	return vim.o.background == "light" and "#ffffff" or "#000000"
 end
 
---- Define the highlight groups of the overview's label boxes (see
+--- Define the highlight groups of the overview's label pills (see
 --- format.calculate_label_colors). Redefined on every render, since a
 --- colour scheme change clears them.
 --- @param label_colors string[] normalized `rrggbb` label colours
@@ -725,10 +725,10 @@ local function define_label_hls(label_colors)
 	local base_bg = overview_base_bg()
 	for _, hex in ipairs(label_colors) do
 		local colors = format.calculate_label_colors(hex, base_bg, vim.o.background)
-		local name_hl, border_hl = format.build_label_hl_names(hex)
+		local name_hl, cap_hl = format.build_label_hl_names(hex)
 		if colors and name_hl then
-			vim.api.nvim_set_hl(0, name_hl, { fg = colors.fg })
-			vim.api.nvim_set_hl(0, border_hl, { fg = colors.border })
+			vim.api.nvim_set_hl(0, name_hl, { fg = colors.fg, bg = colors.bg, bold = true })
+			vim.api.nvim_set_hl(0, cap_hl, { fg = colors.bg })
 		end
 	end
 end
