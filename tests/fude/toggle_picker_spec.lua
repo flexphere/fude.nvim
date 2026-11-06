@@ -73,10 +73,7 @@ describe("toggle_picker.resolve_mark", function()
 		local session = toggle_picker.new_session(opts)
 		assert.are.same({ "○", "Comment" }, { toggle_picker.resolve_mark(item, session) })
 		toggle_picker.toggle_item(item, opts, session)
-		assert.are.same(
-			{ toggle_picker.LOADING_MARK, toggle_picker.LOADING_HL },
-			{ toggle_picker.resolve_mark(item, session) }
-		)
+		assert.are.same({ ".  ", toggle_picker.LOADING_HL }, { toggle_picker.resolve_mark(item, session) })
 		finish(true)
 		assert.are.same({ "●", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 	end)
@@ -91,7 +88,7 @@ describe("toggle_picker.resolve_mark", function()
 		}
 		local session = toggle_picker.new_session(opts)
 		toggle_picker.toggle_item(item, opts, session)
-		assert.are.equal(toggle_picker.LOADING_MARK, (toggle_picker.resolve_mark(item, session)))
+		assert.are.equal(".  ", (toggle_picker.resolve_mark(item, session)))
 		finish(false)
 		assert.are.same({ "●", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 	end)
@@ -112,12 +109,121 @@ describe("toggle_picker.resolve_mark", function()
 		toggle_picker.toggle_item(other, opts, session)
 		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 		toggle_picker.toggle_item(item, opts, session)
-		assert.are.same(
-			{ toggle_picker.LOADING_MARK, toggle_picker.LOADING_HL, "DiagnosticOk" },
-			{ toggle_picker.resolve_mark(item, session) }
-		)
+		assert.are.same({ ".  ", toggle_picker.LOADING_HL, "DiagnosticOk" }, { toggle_picker.resolve_mark(item, session) })
 		-- Without a session nothing is ever loading
 		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { toggle_picker.resolve_mark(item) })
+	end)
+
+	it("follows the session's frame: . → .. → ... padded to the same width, looping", function()
+		assert.are.same({ ".  ", ".. ", "...", ".  " }, {
+			toggle_picker.format_loading_mark(1),
+			toggle_picker.format_loading_mark(2),
+			toggle_picker.format_loading_mark(3),
+			toggle_picker.format_loading_mark(4),
+		})
+		local item = { text = "bug", on = false }
+		local opts = {
+			on_toggle = function() end,
+		}
+		local session = toggle_picker.new_session(opts)
+		toggle_picker.toggle_item(item, opts, session)
+		assert.are.equal(".  ", (toggle_picker.resolve_mark(item, session)))
+		session.tick()
+		assert.are.equal(".. ", (toggle_picker.resolve_mark(item, session)))
+		session.tick()
+		assert.are.equal("...", (toggle_picker.resolve_mark(item, session)))
+		session.tick()
+		assert.are.equal(".  ", (toggle_picker.resolve_mark(item, session)))
+	end)
+end)
+
+describe("toggle_picker spinner timer", function()
+	local timers
+
+	--- A fake vim.uv timer recording start / stop / close.
+	local function fake_timer()
+		local t = { started = nil, stopped = false, closed = false }
+		function t.start(self, timeout, rep, cb)
+			self.started = { timeout = timeout, rep = rep, cb = cb }
+		end
+		function t.stop(self)
+			self.stopped = true
+		end
+		function t.close(self)
+			self.closed = true
+		end
+		table.insert(timers, t)
+		return t
+	end
+
+	before_each(function()
+		timers = {}
+		helpers.mock(vim.uv, "new_timer", fake_timer)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("runs from the first in-flight request to the last, re-rendering on every tick", function()
+		local finishes = {}
+		local opts = {
+			on_toggle = function(_, done)
+				table.insert(finishes, done)
+			end,
+		}
+		local session = toggle_picker.new_session(opts)
+		local renders = 0
+		session.rerender = function()
+			renders = renders + 1
+		end
+		local a, b = { text = "a", on = false }, { text = "b", on = false }
+
+		toggle_picker.toggle_item(a, opts, session)
+		assert.are.equal(1, #timers)
+		assert.are.equal(toggle_picker.LOADING_INTERVAL_MS, timers[1].started.timeout)
+		assert.are.equal(toggle_picker.LOADING_INTERVAL_MS, timers[1].started.rep)
+		-- A second request joins the running spinner
+		toggle_picker.toggle_item(b, opts, session)
+		assert.are.equal(1, #timers)
+
+		timers[1].started.cb()
+		assert.is_true(helpers.wait_for(function()
+			return renders == 1
+		end))
+		assert.are.equal(2, session.frame)
+
+		finishes[1](true)
+		assert.is_false(timers[1].stopped)
+		finishes[2](true)
+		assert.is_true(timers[1].stopped)
+		assert.is_true(timers[1].closed)
+
+		-- The next request starts a new spinner
+		toggle_picker.toggle_item(a, opts, session)
+		assert.are.equal(2, #timers)
+	end)
+
+	it("stops when the picker closes while a request is in flight", function()
+		local opts = {
+			on_toggle = function() end,
+		}
+		local session = toggle_picker.new_session(opts)
+		session.rerender = function() end
+		toggle_picker.toggle_item({ text = "a", on = false }, opts, session)
+		assert.are.equal(1, #timers)
+		session.close()
+		assert.is_true(timers[1].stopped)
+		assert.is_true(timers[1].closed)
+	end)
+
+	it("does not start without a rerender (vim.ui.select mode)", function()
+		local opts = {
+			on_toggle = function() end,
+		}
+		local session = toggle_picker.new_session(opts)
+		toggle_picker.toggle_item({ text = "a", on = false }, opts, session)
+		assert.are.equal(0, #timers)
 	end)
 end)
 
@@ -303,7 +409,7 @@ describe("toggle_picker loading re-render", function()
 
 		picked.actions.fude_toggle(picker, item)
 		assert.are.equal(1, updates)
-		assert.are.equal(toggle_picker.LOADING_MARK, picked.format(item)[1][1]:sub(1, #toggle_picker.LOADING_MARK))
+		assert.are.equal(".   ", picked.format(item)[1][1])
 		finish(false)
 		assert.are.equal(2, updates)
 		assert.are.equal("○ ", picked.format(item)[1][1])
@@ -382,7 +488,7 @@ describe("toggle_picker loading re-render", function()
 
 		picker.maps["i<Tab>"]()
 		assert.are.equal(1, picker.refreshes)
-		assert.are.equal(toggle_picker.LOADING_MARK .. " bug", displayed())
+		assert.are.equal(".   bug", displayed())
 		finish(false)
 		assert.are.equal(2, picker.refreshes)
 		assert.are.equal("○ bug", displayed())
