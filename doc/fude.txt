@@ -471,11 +471,12 @@ File opening position                                 *fude-file-position*
     its mark, padded to the mark's width so the name stays put
     (Telescope and snacks); the mark changes only after
     GitHub accepted the change (after a failure the old mark comes
-    back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it
-    and reopen the overview once every pending request finished. With
+    back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it.
+    The overview is not reopened afterwards: run |:FudeReviewOverview|
+    again to see the result. With
     `file_list_mode = "quickfix"` (or without the picker plugin)
     |vim.ui.select()| is used instead: choosing a row toggles it and
-    the select reopens.
+    the select reopens; cancelling closes it.
     The reviewer picker lists repository collaborators with write
     access, users with a pending request, and collaborators who already
     reviewed, excluding
