@@ -1315,28 +1315,24 @@ describe("blend_colors", function()
 end)
 
 describe("calculate_label_colors", function()
-	it("dark: lightens the text of a dark label and draws the border at 30% of it", function()
-		-- perceived lightness 0.363: HSL lightness 0.535 is raised by 0.237
-		assert.are.same({ fg = "#eb9fa6", border = "#473032" }, format.calculate_label_colors("d73a4a", "#000000", "dark"))
+	it("dark: fills with the label colour at LABEL_FILL_ALPHA and whitens GitHub's text colour", function()
+		-- perceived lightness 0.363: HSL lightness 0.535 is raised by 0.237, then mixed toward white
+		assert.are.same({ fg = "#f5cfd3", bg = "#81232c" }, format.calculate_label_colors("d73a4a", "#000000", "dark"))
 	end)
 
-	it("dark: keeps the colour of a label already lighter than the threshold", function()
-		-- perceived lightness 0.78
-		assert.are.same({ fg = "#fbca04", border = "#4b3d01" }, format.calculate_label_colors("fbca04", "#000000", "dark"))
+	it("dark: keeps the lightness of a label already lighter than the threshold", function()
+		-- perceived lightness 0.78: only the mix toward white applies
+		assert.are.same({ fg = "#fde582", bg = "#977902" }, format.calculate_label_colors("fbca04", "#000000", "dark"))
 	end)
 
-	it("dark: blends the border over the given base colour", function()
+	it("dark: blends the fill over the given base colour", function()
 		local colors = format.calculate_label_colors("ffffff", "#0d1117", "dark")
-		assert.are.equal(format.blend_colors(colors.fg, "#0d1117", 0.3), colors.border)
+		assert.are.equal(format.blend_colors("#ffffff", "#0d1117", format.LABEL_FILL_ALPHA), colors.bg)
 	end)
 
-	it("light: uses the label colour for text and border", function()
-		assert.are.same({ fg = "#d73a4a", border = "#d73a4a" }, format.calculate_label_colors("d73a4a", "#ffffff", "light"))
-	end)
-
-	it("light: darkens a light label so it stays readable", function()
-		-- perceived lightness 0.78: HSL lightness lowered by 0.25
-		assert.are.same({ fg = "#7e6502", border = "#7e6502" }, format.calculate_label_colors("fbca04", "#ffffff", "light"))
+	it("light: fills with the label colour and picks black or white text", function()
+		assert.are.same({ fg = "#ffffff", bg = "#d73a4a" }, format.calculate_label_colors("d73a4a", "#ffffff", "light"))
+		assert.are.same({ fg = "#000000", bg = "#fbca04" }, format.calculate_label_colors("fbca04", "#ffffff", "light"))
 	end)
 
 	it("returns nil for an invalid colour", function()
@@ -1347,7 +1343,7 @@ end)
 
 describe("build_label_hl_names", function()
 	it("names the groups by the normalized colour", function()
-		assert.are.same({ "ReviewLabel_d73a4a", "ReviewLabelBorder_d73a4a" }, { format.build_label_hl_names("#D73A4A") })
+		assert.are.same({ "ReviewLabel_d73a4a", "ReviewLabelCap_d73a4a" }, { format.build_label_hl_names("#D73A4A") })
 	end)
 
 	it("returns nil for an invalid colour", function()
@@ -1355,86 +1351,74 @@ describe("build_label_hl_names", function()
 	end)
 end)
 
-describe("build_label_box", function()
-	local function texts(rows)
-		return vim.tbl_map(function(r)
-			return r.text
-		end, rows)
-	end
+describe("build_label_pill", function()
+	local left, right = format.LABEL_PILL_LEFT, format.LABEL_PILL_RIGHT
 
-	it("frames the padded name in three lines and highlights the frame and the inside", function()
-		local box = format.build_label_box("bug", "N", "B", vim.fn.strdisplaywidth)
-		assert.are.same({ "╭─────╮", "│ bug │", "╰─────╯" }, box.lines)
-		assert.are.equal(7, box.width)
-		local v = #"│"
-		assert.are.same({ { col_start = 0, col_end = #box.lines[1], hl = "B" } }, box.ranges[1])
+	it("pads the name between the rounded ends and highlights each part", function()
+		local pill = format.build_label_pill("bug", "N", "C", vim.fn.strdisplaywidth)
+		assert.are.equal(left .. " bug " .. right, pill.text)
+		assert.are.equal(7, pill.width)
+		local body_end = #left + 5
 		assert.are.same({
-			{ col_start = 0, col_end = v, hl = "B" },
-			{ col_start = v + 5, col_end = v + 5 + v, hl = "B" },
-			{ col_start = v, col_end = v + 5, hl = "N" },
-		}, box.ranges[2])
-		assert.are.same({ { col_start = 0, col_end = #box.lines[3], hl = "B" } }, box.ranges[3])
+			{ col_start = 0, col_end = #left, hl = "C" },
+			{ col_start = body_end, col_end = body_end + #right, hl = "C" },
+			{ col_start = #left, col_end = body_end, hl = "N" },
+		}, pill.ranges)
 	end)
 
-	it("sizes the frame by display cells", function()
+	it("measures the width in display cells", function()
 		-- "é" is 2 bytes but 1 cell
-		local box = format.build_label_box("é", nil, nil, vim.fn.strdisplaywidth)
-		assert.are.same({ "╭───╮", "│ é │", "╰───╯" }, box.lines)
-		assert.are.equal(5, box.width)
+		assert.are.equal(5, format.build_label_pill("é", nil, nil, vim.fn.strdisplaywidth).width)
 	end)
 
 	it("has no highlights without groups (a label without a colour)", function()
-		assert.are.same({ {}, {}, {} }, format.build_label_box("bug", nil, nil).ranges)
+		assert.are.same({}, format.build_label_pill("bug", nil, nil).ranges)
 	end)
 
-	describe("pack_label_boxes", function()
-		local function box(name)
-			return format.build_label_box(name, "N", "B", vim.fn.strdisplaywidth)
+	describe("pack_label_pills", function()
+		local function pill(name)
+			return format.build_label_pill(name, "N", "C", vim.fn.strdisplaywidth)
+		end
+		local function texts(lines)
+			return vim.tbl_map(function(l)
+				return l.text
+			end, lines)
 		end
 
-		it("puts every box on one row of three lines without a width", function()
-			local lines = format.pack_label_boxes({ box("a"), box("b") })
-			assert.are.same(
-				{ "╭───╮ ╭───╮", "│ a │ │ b │", "╰───╯ ╰───╯" },
-				texts(lines)
-			)
-			-- the second box's ranges are shifted past the first box and the gap
-			local offset = #"╭───╮ "
-			assert.are.same({ col_start = offset, col_end = #lines[1].text, hl = "B" }, lines[1].ranges[2])
+		it("puts every pill on one row without a width", function()
+			local lines = format.pack_label_pills({ pill("a"), pill("b") })
+			assert.are.same({ pill("a").text .. " " .. pill("b").text }, texts(lines))
+			-- the second pill's ranges are shifted past the first pill and the gap
+			local offset = #pill("a").text + 1
+			assert.are.same({ col_start = offset, col_end = offset + #left, hl = "C" }, lines[1].ranges[4])
 		end)
 
-		it("starts a new row of boxes when the next one would exceed the width", function()
-			local lines = format.pack_label_boxes({ box("a"), box("b"), box("c") }, 11)
-			assert.are.same({
-				"╭───╮ ╭───╮",
-				"│ a │ │ b │",
-				"╰───╯ ╰───╯",
-				"╭───╮",
-				"│ c │",
-				"╰───╯",
-			}, texts(lines))
+		it("starts a new row, after an empty line, when the next pill would exceed the width", function()
+			local lines = format.pack_label_pills({ pill("a"), pill("b"), pill("c") }, 11)
+			assert.are.same({ pill("a").text .. " " .. pill("b").text, "", pill("c").text }, texts(lines))
 		end)
 
-		it("gives a box wider than the width a row of its own", function()
-			local lines = format.pack_label_boxes({ box("abcdef"), box("g") }, 3)
-			assert.are.same({ "│ abcdef │", "│ g │" }, { lines[2].text, lines[5].text })
+		it("gives a pill wider than the width a row of its own", function()
+			local lines = format.pack_label_pills({ pill("abcdef"), pill("g") }, 3)
+			assert.are.same({ pill("abcdef").text, "", pill("g").text }, texts(lines))
 		end)
 
-		it("returns no lines for no boxes", function()
-			assert.are.same({}, format.pack_label_boxes({}, 10))
+		it("returns no lines for no pills", function()
+			assert.are.same({}, format.pack_label_pills({}, 10))
 		end)
 	end)
 end)
 
 describe("define_label_hls", function()
-	it("defines the text and border groups without a fill", function()
+	it("defines a bold filled name group and a cap group in the fill colour", function()
 		ui._define_label_hls({ "d73a4a" })
 		local name = vim.api.nvim_get_hl(0, { name = "ReviewLabel_d73a4a" })
-		local border = vim.api.nvim_get_hl(0, { name = "ReviewLabelBorder_d73a4a" })
+		local cap = vim.api.nvim_get_hl(0, { name = "ReviewLabelCap_d73a4a" })
 		assert.is_not_nil(name.fg)
-		assert.is_nil(name.bg)
-		assert.is_not_nil(border.fg)
-		assert.is_nil(border.bg)
+		assert.is_not_nil(name.bg)
+		assert.is_true(name.bold)
+		assert.are.equal(name.bg, cap.fg)
+		assert.is_nil(cap.bg)
 	end)
 end)
 
@@ -1532,8 +1516,10 @@ describe("build_overview_right_lines", function()
 		}
 		local result = ui.build_overview_right_lines(pr, { display_width = vim.fn.strdisplaywidth })
 		assert.is_true(vim.tbl_contains(result.lines, "## LABELS"))
-		-- labels without a colour are boxed too, side by side
-		assert.is_true(vim.tbl_contains(result.lines, "│ bug │ │ urgent │"))
+		-- labels without a colour are pills too, side by side
+		local bug = format.build_label_pill("bug").text
+		local urgent = format.build_label_pill("urgent").text
+		assert.is_true(vim.tbl_contains(result.lines, bug .. format.LABEL_PILL_GAP .. urgent))
 	end)
 
 	it("draws a label with a colour as a pill highlighted with that colour's groups", function()
@@ -1549,29 +1535,34 @@ describe("build_overview_right_lines", function()
 			},
 		}
 		local result = ui.build_overview_right_lines(pr, { display_width = vim.fn.strdisplaywidth })
-		-- side by side; an invalid colour gives a box without highlights
-		local middle = "│ bug │ │ urgent │ │ docs │"
+		-- side by side; an invalid colour gives a pill without highlights
+		local gap = format.LABEL_PILL_GAP
+		local expected = format.build_label_pill("bug").text
+			.. gap
+			.. format.build_label_pill("urgent").text
+			.. gap
+			.. format.build_label_pill("docs").text
 		local row
 		for i, line in ipairs(result.lines) do
-			if line == middle then
+			if line == expected then
 				row = i - 1
 			end
 		end
 		assert.is_not_nil(row)
-		assert.are.equal("## LABELS", result.lines[row - 1])
+		assert.are.equal("## LABELS", result.lines[row])
 		local groups = {}
 		for _, hl in ipairs(result.hl_ranges) do
-			if hl.line >= row - 1 and hl.line <= row + 1 then
+			if hl.line == row then
 				groups[hl.hl] = (groups[hl.hl] or 0) + 1
 			end
 		end
-		-- two coloured boxes: top + bottom + both sides of the middle line each, and two insides
-		assert.are.same({ ReviewLabelBorder_d73a4a = 8, ReviewLabel_d73a4a = 2 }, groups)
+		-- two coloured pills: both ends and the padded name each
+		assert.are.same({ ReviewLabelCap_d73a4a = 4, ReviewLabel_d73a4a = 2 }, groups)
 		-- one entry per colour, however it is spelled
 		assert.are.same({ "d73a4a" }, result.label_colors)
 	end)
 
-	it("wraps the boxes at labels_width", function()
+	it("wraps the pills at labels_width with an empty line between rows", function()
 		local pr = {
 			number = 1,
 			title = "T",
@@ -1580,8 +1571,17 @@ describe("build_overview_right_lines", function()
 			labels = { { name = "aa" }, { name = "bb" }, { name = "cc" } },
 		}
 		local result = ui.build_overview_right_lines(pr, { labels_width = 13, display_width = vim.fn.strdisplaywidth })
-		assert.is_true(vim.tbl_contains(result.lines, "│ aa │ │ bb │"))
-		assert.is_true(vim.tbl_contains(result.lines, "│ cc │"))
+		local function pill(name)
+			return format.build_label_pill(name).text
+		end
+		local first
+		for i, line in ipairs(result.lines) do
+			if line == pill("aa") .. format.LABEL_PILL_GAP .. pill("bb") then
+				first = i
+			end
+		end
+		assert.is_not_nil(first)
+		assert.are.same({ "", pill("cc") }, { result.lines[first + 1], result.lines[first + 2] })
 	end)
 
 	it("returns no label colours when no label has one", function()
