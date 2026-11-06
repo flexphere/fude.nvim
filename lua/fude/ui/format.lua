@@ -1013,7 +1013,142 @@ M.REVIEWERS_LOADING_TEXT = "Loading reviewers…"
 --- Text of the REVIEWERS row when the reviewers could not be fetched.
 M.REVIEWERS_FAILED_TEXT = "(could not load reviewers)"
 
+--- Left / right ends of a label pill (Nerd Font powerline round glyphs, drawn
+--- in the pill's background colour so the row looks like GitHub's label).
+M.LABEL_PILL_LEFT = "\u{e0b6}"
+M.LABEL_PILL_RIGHT = "\u{e0b4}"
+
+--- Parse a `rrggbb` / `#rrggbb` colour.
+--- @param hex string|nil
+--- @return number|nil r, number|nil g, number|nil b (0-255), all nil when invalid
+function M.parse_hex_color(hex)
+	if type(hex) ~= "string" then
+		return nil
+	end
+	local r, g, b = hex:match("^#?(%x%x)(%x%x)(%x%x)$")
+	if not r then
+		return nil
+	end
+	return tonumber(r, 16), tonumber(g, 16), tonumber(b, 16)
+end
+
+local function to_hex(r, g, b)
+	local function clamp(v)
+		return math.max(0, math.min(255, math.floor(v + 0.5)))
+	end
+	return string.format("#%02x%02x%02x", clamp(r), clamp(g), clamp(b))
+end
+
+--- Composite `fg` drawn with opacity `alpha` over `bg` (terminals have no
+--- alpha, so GitHub's translucent label background is mixed in advance).
+--- @param fg string hex colour
+--- @param bg string hex colour
+--- @param alpha number 0-1, the weight of `fg`
+--- @return string|nil hex colour, nil when either colour is invalid
+function M.blend_colors(fg, bg, alpha)
+	local fr, fg_g, fb = M.parse_hex_color(fg)
+	local br, bg_g, bb = M.parse_hex_color(bg)
+	if not fr or not br then
+		return nil
+	end
+	return to_hex(fr * alpha + br * (1 - alpha), fg_g * alpha + bg_g * (1 - alpha), fb * alpha + bb * (1 - alpha))
+end
+
+local function rgb_to_hsl(r, g, b)
+	r, g, b = r / 255, g / 255, b / 255
+	local max, min = math.max(r, g, b), math.min(r, g, b)
+	local l = (max + min) / 2
+	if max == min then
+		return 0, 0, l
+	end
+	local d = max - min
+	local s = l > 0.5 and d / (2 - max - min) or d / (max + min)
+	local h
+	if max == r then
+		h = (g - b) / d + (g < b and 6 or 0)
+	elseif max == g then
+		h = (b - r) / d + 2
+	else
+		h = (r - g) / d + 4
+	end
+	return h / 6, s, l
+end
+
+local function hsl_to_rgb(h, s, l)
+	if s == 0 then
+		return l * 255, l * 255, l * 255
+	end
+	local function hue(p, q, t)
+		if t < 0 then
+			t = t + 1
+		elseif t > 1 then
+			t = t - 1
+		end
+		if t < 1 / 6 then
+			return p + (q - p) * 6 * t
+		elseif t < 1 / 2 then
+			return q
+		elseif t < 2 / 3 then
+			return p + (q - p) * (2 / 3 - t) * 6
+		end
+		return p
+	end
+	local q = l < 0.5 and l * (1 + s) or l + s - l * s
+	local p = 2 * l - q
+	return hue(p, q, h + 1 / 3) * 255, hue(p, q, h) * 255, hue(p, q, h - 1 / 3) * 255
+end
+
+--- Text and background colours of a label, computed the way the GitHub web UI
+--- (Primer's label CSS) does from the label's colour.
+--- dark: the background is the label colour at 18% opacity over `base_bg`;
+--- the text is the label colour, its HSL lightness raised by
+--- `(0.6 - perceived) * 100` points when the perceived lightness
+--- (`0.2126r + 0.7152g + 0.0722b`) is below 0.6.
+--- light: the background is the label colour; the text is black when the
+--- perceived lightness is above 0.453, else white.
+--- @param hex string label colour (`rrggbb`, as GitHub returns it)
+--- @param base_bg string hex colour the label is drawn on
+--- @param background string "dark" | "light"
+--- @return table|nil { fg: string, bg: string } hex colours, nil for an invalid colour
+function M.calculate_label_colors(hex, base_bg, background)
+	local r, g, b = M.parse_hex_color(hex)
+	if not r then
+		return nil
+	end
+	local perceived = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255
+	local label = to_hex(r, g, b)
+	if background == "light" then
+		return { fg = perceived > 0.453 and "#000000" or "#ffffff", bg = label }
+	end
+	local bg = M.blend_colors(label, base_bg, 0.18)
+	if not bg then
+		return nil
+	end
+	local h, s, l = rgb_to_hsl(r, g, b)
+	if perceived < 0.6 then
+		l = math.min(1, l + (0.6 - perceived))
+	end
+	return { fg = to_hex(hsl_to_rgb(h, s, l)), bg = bg }
+end
+
+--- Highlight group names of a label pill: `name` for the label text, `cap`
+--- for the rounded ends.
+--- @param hex string label colour
+--- @return string|nil name, string|nil cap (nil for an invalid colour)
+function M.build_label_hl_names(hex)
+	local r, g, b = M.parse_hex_color(hex)
+	if not r then
+		return nil
+	end
+	local suffix = string.format("%02x%02x%02x", r, g, b)
+	return "ReviewLabel_" .. suffix, "ReviewLabelCap_" .. suffix
+end
+
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
+--- A label with a valid `color` is drawn as a pill (LABEL_PILL_LEFT, name,
+--- LABEL_PILL_RIGHT) highlighted with the build_label_hl_names groups;
+--- `label_colors` lists those colours once each (normalized `rrggbb`) so the
+--- caller can define the groups (see calculate_label_colors).
 --- `avatar_positions` (`{ line, col, login }`, 0-indexed line, byte column) is
 --- where ui/avatars draws each reviewer's avatar: after the status symbol.
 --- The CI STATUS section comes last and starts at `ci_start` (0-indexed, its
@@ -1026,7 +1161,7 @@ M.REVIEWERS_FAILED_TEXT = "(could not load reviewers)"
 --- @param pr_info table PR data from gh pr view
 --- @param opts table|nil passed to build_overview_ci_lines
 --- @return table { lines: string[], hl_ranges: table[], check_urls: table, avatar_positions: table[],
----   ci_start: number, loading_row: number|nil, reviewers_loading_row: number|nil }
+---   label_colors: string[], ci_start: number, loading_row: number|nil, reviewers_loading_row: number|nil }
 function M.build_overview_right_lines(pr_info, opts)
 	opts = opts or {}
 	local lines = {}
@@ -1090,12 +1225,30 @@ function M.build_overview_right_lines(pr_info, opts)
 	table.insert(lines, "")
 	table.insert(lines, "## LABELS")
 
+	local label_colors = {}
 	if #labels == 0 then
 		table.insert(lines, "(no labels)")
 	else
+		local seen = {}
 		for _, label in ipairs(labels) do
-			local name = label.name or label
-			table.insert(lines, name)
+			local name = type(label) == "table" and label.name or label
+			local name_hl, cap_hl = M.build_label_hl_names(type(label) == "table" and label.color or nil)
+			if name_hl and type(name) == "string" then
+				local left, right = M.LABEL_PILL_LEFT, M.LABEL_PILL_RIGHT
+				table.insert(lines, left .. name .. right)
+				local row = #lines - 1
+				local name_end = #left + #name
+				table.insert(hl_ranges, { line = row, col_start = 0, col_end = #left, hl = cap_hl })
+				table.insert(hl_ranges, { line = row, col_start = #left, col_end = name_end, hl = name_hl })
+				table.insert(hl_ranges, { line = row, col_start = name_end, col_end = name_end + #right, hl = cap_hl })
+				local suffix = name_hl:sub(#"ReviewLabel_" + 1)
+				if not seen[suffix] then
+					seen[suffix] = true
+					table.insert(label_colors, suffix)
+				end
+			elseif type(name) == "string" then
+				table.insert(lines, name)
+			end
 		end
 	end
 
@@ -1111,6 +1264,7 @@ function M.build_overview_right_lines(pr_info, opts)
 		hl_ranges = hl_ranges,
 		check_urls = ci.check_urls,
 		avatar_positions = avatar_positions,
+		label_colors = label_colors,
 		ci_start = ci_start,
 		loading_row = ci.loading_row,
 		reviewers_loading_row = reviewers_loading_row,
