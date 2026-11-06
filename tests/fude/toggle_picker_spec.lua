@@ -643,6 +643,48 @@ describe("toggle_picker row images", function()
 		assert.are.equal(1, renders)
 	end)
 
+	it("load_images asks the first rows at once and the rest a few at a time, stopping on close", function()
+		local asked = {}
+		local answers = {}
+		local items = {}
+		for i = 1, toggle_picker.IMAGE_FIRST + toggle_picker.IMAGE_CONCURRENCY + 3 do
+			table.insert(items, { text = "u" .. i })
+		end
+		local opts = {
+			items = items,
+			images = function(item, cb)
+				table.insert(asked, item.text)
+				answers[item.text] = cb
+			end,
+		}
+		local session = toggle_picker.new_session(opts)
+		session.load_images()
+		-- The first IMAGE_FIRST rows plus IMAGE_CONCURRENCY of the rest, in order
+		local expected = {}
+		for i = 1, toggle_picker.IMAGE_FIRST + toggle_picker.IMAGE_CONCURRENCY do
+			table.insert(expected, "u" .. i)
+		end
+		assert.are.same(expected, asked)
+
+		-- One of the rest answering lets the next row go
+		local first_rest = "u" .. (toggle_picker.IMAGE_FIRST + 1)
+		answers[first_rest]("/cache/x.png")
+		assert.is_true(helpers.wait_for(function()
+			return #asked == #expected + 1
+		end))
+		assert.are.equal("u" .. (#expected + 1), asked[#asked])
+		-- An answer to one of the first rows does not
+		answers.u1("/cache/1.png")
+		vim.wait(50)
+		assert.are.equal(#expected + 1, #asked)
+
+		-- Once the picker closes, no new row is asked for
+		session.close()
+		answers["u" .. (toggle_picker.IMAGE_FIRST + 2)]("/cache/y.png")
+		vim.wait(50)
+		assert.are.equal(#expected + 1, #asked)
+	end)
+
 	it("snacks: places the rows' images after each dirty render", function()
 		config.setup({ file_list_mode = "snacks" })
 		local snacks = fake_snacks_image()
@@ -688,6 +730,10 @@ describe("toggle_picker row images", function()
 		-- The wrapped render places nothing until a file is known
 		list:render()
 		assert.are.equal(0, #placed)
+		-- Asked once the picker is on screen
+		assert.is_true(helpers.wait_for(function()
+			return answers.a ~= nil
+		end))
 		answers.a("/cache/a.png")
 		assert.is_true(helpers.wait_for(function()
 			return #placed == 1
@@ -779,6 +825,10 @@ describe("toggle_picker row images", function()
 		-- The first render placed nothing (no file known yet) but cleaned
 		assert.are.equal(0, #placed)
 		assert.are.same({ results_buf }, cleaned)
+		-- Asked once the picker is on screen
+		assert.is_true(helpers.wait_for(function()
+			return answers.b ~= nil
+		end))
 		answers.b("/cache/b.png")
 		assert.is_true(helpers.wait_for(function()
 			return #placed == 1
