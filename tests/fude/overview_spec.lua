@@ -684,10 +684,13 @@ describe("overview edit commands (:FudeEditReviewers / :FudeEditLabels)", functi
 		assert.is_false(opened.items[2].on)
 	end)
 
-	it("FudeEditReviewers uses the review session's PR and the PR's repository", function()
+	it("FudeEditReviewers looks the review session's PR up by URL and edits in the PR's repository", function()
 		config.state.active = true
 		config.state.review_mode = "github"
 		config.state.pr_number = 42
+		-- The URL pins the repository: a bare number would be resolved against
+		-- the cwd, which a `:cd` may have moved to another repository
+		config.state.pr_url = "https://github.com/octo/fude/pull/42"
 		local seen = {}
 		mock_edit_info(nil, make_pr_info(), seen)
 		local paths = {}
@@ -705,7 +708,7 @@ describe("overview edit commands (:FudeEditReviewers / :FudeEditLabels)", functi
 		assert.is_true(helpers.wait_for(function()
 			return opened ~= nil
 		end))
-		assert.are.equal(42, seen.num)
+		assert.are.equal("https://github.com/octo/fude/pull/42", seen.num)
 		assert.are.same({ "repos/octo/fude/collaborators" }, paths)
 		assert.are.equal("Reviewers", opened.title)
 		assert.are.same({ "@carol", "@alice" }, { opened.items[1].text, opened.items[2].text })
