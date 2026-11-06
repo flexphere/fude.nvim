@@ -951,10 +951,15 @@ function M.is_last_normal_window(win)
 	return true
 end
 
---- Return the most recently used listed buffer, or nil when there is none.
+--- Return the most recently used listed normal buffer (`buftype == ""`), or nil
+--- when there is none. Special buffers such as terminals are skipped: pickers
+--- like snacks.picker open files only in a window showing a normal buffer, so a
+--- window holding a terminal would leave the panel as their fallback target.
 --- @return number|nil
 local function last_used_listed_buf()
-	local infos = vim.fn.getbufinfo({ buflisted = 1 })
+	local infos = vim.tbl_filter(function(info)
+		return vim.bo[info.bufnr].buftype == ""
+	end, vim.fn.getbufinfo({ buflisted = 1 }))
 	table.sort(infos, function(a, b)
 		return a.lastused > b.lastused
 	end)

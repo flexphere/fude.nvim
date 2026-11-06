@@ -400,8 +400,13 @@ describe("sidepanel integration", function()
 		it("ensure_editor_window opens a window with the global number and signcolumn after :bdelete", function()
 			local shown = helpers.create_buf({ "shown" }, "/mock/repo/shown.lua")
 			local deleted = helpers.create_buf({ "deleted" }, "/mock/repo/deleted.lua")
-			vim.bo[shown].buflisted = true
-			vim.bo[deleted].buflisted = true
+			-- File buffers are normal (`buftype == ""`), unlike the scratch buffers create_buf makes
+			for _, buf in ipairs({ shown, deleted }) do
+				vim.bo[buf].buftype = ""
+				vim.bo[buf].buflisted = true
+				-- A normal buffer with lines set counts as modified, which :bdelete refuses
+				vim.bo[buf].modified = false
+			end
 			vim.api.nvim_set_current_buf(shown)
 			vim.api.nvim_set_current_buf(deleted)
 			sidepanel.open()
@@ -421,6 +426,32 @@ describe("sidepanel integration", function()
 			assert.are.equal("yes", vim.wo[new_win].signcolumn)
 			assert.is_false(vim.wo[new_win].winfixwidth)
 			assert.are.equal(new_win, panel.prev_win)
+		end)
+
+		it("ensure_editor_window opens an empty normal buffer when the only other listed buffer is a terminal", function()
+			local term = vim.api.nvim_create_buf(true, false)
+			vim.api.nvim_open_term(term, {})
+			local deleted = helpers.create_buf({ "deleted" }, "/mock/repo/deleted.lua")
+			vim.bo[deleted].buftype = ""
+			vim.bo[deleted].buflisted = true
+			vim.bo[deleted].modified = false
+			vim.api.nvim_set_current_buf(term)
+			vim.api.nvim_set_current_buf(deleted)
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			vim.cmd("wincmd l")
+
+			vim.cmd("bdelete " .. deleted)
+
+			assert.is_true(helpers.wait_for(function()
+				return #normal_wins() == 2
+			end))
+			local new_win = vim.api.nvim_get_current_win()
+			assert.are_not.equal(panel.win, new_win)
+			local new_buf = vim.api.nvim_win_get_buf(new_win)
+			assert.are_not.equal(term, new_buf)
+			assert.are.equal("", vim.bo[new_buf].buftype)
+			vim.api.nvim_buf_delete(term, { force = true })
 		end)
 
 		it("ensure_editor_window does nothing while another normal window remains", function()
