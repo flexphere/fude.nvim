@@ -471,7 +471,8 @@ File opening position                                 *fude-file-position*
     GitHub accepted the change (after a failure the old mark comes
     back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it.
     The overview is not reopened afterwards: run |:FudeReviewOverview|
-    again to see the result. With
+    again to see the result. |:FudeEditReviewers| and |:FudeEditLabels|
+    open the same pickers without the overview. With
     `file_list_mode = "quickfix"` (or without the picker plugin)
     |vim.ui.select()| is used instead: choosing a row toggles it and
     the select reopens; cancelling closes it.
@@ -803,6 +804,25 @@ File opening position                                 *fude-file-position*
     HEAD, from the commit). Does not require an active review session.
     Refused in the local review's commit scope, where HEAD is detached
     onto a past commit that may belong to another PR.
+
+:FudeEditReviewers                                *:FudeEditReviewers*
+    Request or remove reviewers of the current PR. Opens the same
+    `<Tab>`-toggle picker as |:FudeReviewOverview|'s `C` → Reviewer
+    (`<C-e>` re-requests a review; see there for the rows, marks and
+    the `vim.ui.select` fallback), without opening the overview.
+
+    When a GitHub review session is active, uses its PR. Otherwise,
+    detects the PR from the current branch (on a detached HEAD, from
+    the commit). Does not require an active review session, and the
+    picker is not tied to one: stopping or starting a review while it
+    is open does not affect it. Refused in the local review's commit
+    scope, like |:FudeChangePRState|.
+
+:FudeEditLabels                                      *:FudeEditLabels*
+    Add or remove labels of the current PR. Opens the same
+    `<Tab>`-toggle picker as |:FudeReviewOverview|'s `C` → Label,
+    without opening the overview. Resolves the PR and behaves like
+    |:FudeEditReviewers| otherwise.
 
 :FudeReviewSubmit                                    *:FudeReviewSubmit*
     Submit all pending comments as a single GitHub review. This allows
