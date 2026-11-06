@@ -26,8 +26,8 @@ function M.show()
 		-- as comments in the Conversation tab.
 		require("fude.comments.sync").fetch_pr_level_comments(pr_info.number, function(pr_comments)
 			ui.show_overview_float(pr_info, pr_comments, {
-				on_new_comment = function()
-					M.create_comment(pr_info.number)
+				on_menu = function()
+					M.open_menu(pr_info)
 				end,
 				on_refresh = function()
 					M.show()
@@ -40,25 +40,214 @@ function M.show()
 	end)
 end
 
+--- Whether the session captured before an async step is still the active one.
+--- @param captured_state table config.state at the time the flow started
+--- @return boolean
+local function is_current(captured_state)
+	return config.state == captured_state and config.state.active == true
+end
+
+--- Build a function that reopens the overview, guarded like re_request_review:
+--- the overview float is closed before the flows below run, and a stop()
+--- (or stop + start of another session) while they wait must not reopen it.
+--- @param captured_state table
+--- @return fun()
+local function make_reopen(captured_state)
+	return function()
+		if is_current(captured_state) then
+			M.show()
+		end
+	end
+end
+
+--- Actions of the overview's `C` menu, in display order.
+M.MENU_ITEMS = {
+	{ key = "comment", label = "Comment: write a new comment on the PR" },
+	{ key = "reviewer", label = "Reviewer: request a review or remove a review request" },
+	{ key = "label", label = "Label: add or remove labels on the PR" },
+}
+
+--- Open the overview's `C` menu: new PR comment, reviewers, or labels.
+--- @param pr_info table PR data from gh pr view
+function M.open_menu(pr_info)
+	local reopen = make_reopen(config.state)
+	vim.ui.select(M.MENU_ITEMS, {
+		prompt = "Edit PR:",
+		format_item = function(item)
+			return item.label
+		end,
+	}, function(choice)
+		if not choice then
+			reopen()
+		elseif choice.key == "comment" then
+			M.create_comment(pr_info.number)
+		elseif choice.key == "reviewer" then
+			M.edit_reviewers(pr_info)
+		elseif choice.key == "label" then
+			M.edit_labels(pr_info)
+		end
+	end)
+end
+
+--- Run one toggle request from a toggle picker, refusing when the session it
+--- was opened in is gone (the picker can outlive a :FudeReviewStop).
+--- @param captured_state table
+--- @param request fun(cb: fun(err: string|nil)) sends the request
+--- @param success_msg string
+--- @param failure_msg string
+--- @param done fun(ok: boolean)
+local function run_toggle(captured_state, request, success_msg, failure_msg, done)
+	if not is_current(captured_state) then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		done(false)
+		return
+	end
+	request(function(err)
+		if err then
+			vim.notify("fude.nvim: " .. failure_msg .. ": " .. err, vim.log.levels.ERROR)
+			done(false)
+			return
+		end
+		vim.notify("fude.nvim: " .. success_msg, vim.log.levels.INFO)
+		done(true)
+	end)
+end
+
+--- Edit the PR's requested reviewers in a toggle picker: `<Tab>` requests a
+--- review from the user under the cursor, or removes their pending request.
+--- @param pr_info table PR data from gh pr view (number, author, reviewRequests, latestReviews)
+function M.edit_reviewers(pr_info)
+	local gh = require("fude.gh")
+	local format = require("fude.ui.format")
+	local captured_state = config.state
+	local reopen = make_reopen(captured_state)
+	-- author can be JSON null, which decodes to truthy vim.NIL
+	local author = type(pr_info.author) == "table" and pr_info.author.login or nil
+
+	gh.get_collaborators(function(err, collaborators)
+		if not is_current(captured_state) then
+			return
+		end
+		if err or type(collaborators) ~= "table" then
+			-- Listing collaborators needs push access; the users already
+			-- involved in the PR can still be edited.
+			vim.notify(
+				"fude.nvim: Could not list collaborators; showing requested and reviewed users only: " .. (err or ""),
+				vim.log.levels.WARN
+			)
+			collaborators = {}
+		end
+
+		local entries =
+			format.build_reviewer_entries(collaborators, pr_info.reviewRequests or {}, pr_info.latestReviews or {}, author)
+		if #entries == 0 then
+			vim.notify("fude.nvim: No reviewers to choose from", vim.log.levels.INFO)
+			reopen()
+			return
+		end
+
+		local items = {}
+		for _, entry in ipairs(entries) do
+			table.insert(items, {
+				text = "@" .. entry.login,
+				on = entry.requested,
+				-- Rendered from item.on, so it follows a toggle in place
+				detail = function(item)
+					return format.format_reviewer_detail(item.on, entry.review_state)
+				end,
+				value = entry.login,
+			})
+		end
+
+		require("fude.ui.toggle_picker").open({
+			title = "Reviewers",
+			items = items,
+			on_close = reopen,
+			is_alive = function()
+				return is_current(captured_state)
+			end,
+			on_toggle = function(item, done)
+				local login = item.value
+				if item.on then
+					run_toggle(captured_state, function(cb)
+						gh.remove_review_request(pr_info.number, { login }, cb)
+					end, "Removed review request from @" .. login, "Failed to remove review request from @" .. login, done)
+				else
+					run_toggle(captured_state, function(cb)
+						gh.re_request_review(pr_info.number, { login }, cb)
+					end, "Requested review from @" .. login, "Failed to request review from @" .. login, done)
+				end
+			end,
+		})
+	end)
+end
+
+--- Edit the PR's labels in a toggle picker: `<Tab>` adds the label under the
+--- cursor, or removes it when the PR already has it.
+--- @param pr_info table PR data from gh pr view (number, labels)
+function M.edit_labels(pr_info)
+	local gh = require("fude.gh")
+	local format = require("fude.ui.format")
+	local captured_state = config.state
+	local reopen = make_reopen(captured_state)
+
+	gh.get_repo_labels(function(err, repo_labels)
+		if not is_current(captured_state) then
+			return
+		end
+		if err or type(repo_labels) ~= "table" then
+			-- The labels already on the PR can still be removed.
+			vim.notify(
+				"fude.nvim: Could not list repository labels; showing the PR's labels only: " .. (err or ""),
+				vim.log.levels.WARN
+			)
+			repo_labels = {}
+		end
+
+		local entries = format.build_label_entries(repo_labels, pr_info.labels or {})
+		if #entries == 0 then
+			vim.notify("fude.nvim: No labels to choose from", vim.log.levels.INFO)
+			reopen()
+			return
+		end
+
+		local items = {}
+		for _, entry in ipairs(entries) do
+			table.insert(items, { text = entry.name, on = entry.applied, detail = entry.description, value = entry.name })
+		end
+
+		require("fude.ui.toggle_picker").open({
+			title = "Labels",
+			items = items,
+			on_close = reopen,
+			is_alive = function()
+				return is_current(captured_state)
+			end,
+			on_toggle = function(item, done)
+				local name = item.value
+				if item.on then
+					run_toggle(captured_state, function(cb)
+						gh.remove_label(pr_info.number, name, cb)
+					end, "Removed label " .. name, "Failed to remove label " .. name, done)
+				else
+					run_toggle(captured_state, function(cb)
+						gh.add_labels(pr_info.number, { name }, cb)
+					end, "Added label " .. name, "Failed to add label " .. name, done)
+				end
+			end,
+		})
+	end)
+end
+
 --- Re-request a review from a reviewer who has already reviewed.
 --- @param pr_info table PR data from gh pr view (number, author, reviewRequests, latestReviews)
 function M.re_request_review(pr_info)
 	local ui = require("fude.ui")
 	local gh = require("fude.gh")
 
-	-- Capture state table identity to detect reset_state() across callbacks
-	local captured_state = config.state
-
 	-- The overview float is closed before this function runs, so every
-	-- terminal path reopens it. M.show() itself guards on state.active with
-	-- a WARN notify; guard here silently so a stop() racing the async flow
-	-- does not produce noise. The identity check also prevents reopening in
-	-- a different session started after a stop().
-	local function reopen()
-		if config.state == captured_state and config.state.active then
-			M.show()
-		end
-	end
+	-- terminal path reopens it (see make_reopen for the guard).
+	local reopen = make_reopen(config.state)
 
 	local candidates = ui.build_re_request_candidates(
 		pr_info.reviewRequests or {},

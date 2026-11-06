@@ -22,6 +22,9 @@ M.build_checks_summary = format.build_checks_summary
 M.format_review_status = format.format_review_status
 M.build_reviewers_list = format.build_reviewers_list
 M.build_re_request_candidates = format.build_re_request_candidates
+M.build_reviewer_entries = format.build_reviewer_entries
+M.build_label_entries = format.build_label_entries
+M.format_toggle_entry = format.format_toggle_entry
 M.build_reviewers_summary = format.build_reviewers_summary
 M.calculate_overview_layout = format.calculate_overview_layout
 M.calculate_comments_height = format.calculate_comments_height
@@ -502,7 +505,8 @@ end
 --- Show PR overview in a split-pane floating window.
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
---- @param opts table { on_new_comment: fun()|nil, on_refresh: fun()|nil, on_re_request: fun()|nil }
+--- @param opts table { on_menu: fun()|nil, on_refresh: fun()|nil, on_re_request: fun()|nil }
+---   (on_menu runs on `C`: the Comment / Reviewer / Label menu)
 function M.show_overview_float(pr_info, issue_comments, opts)
 	local left_result = format.build_overview_left_lines(pr_info, issue_comments, config.format_date)
 	local right_result = format.build_overview_right_lines(pr_info)
@@ -615,10 +619,10 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 
 	vim.keymap.set("n", "C", function()
 		close_both()
-		if opts.on_new_comment then
-			opts.on_new_comment()
+		if opts.on_menu then
+			opts.on_menu()
 		end
-	end, { buffer = left_buf, desc = "New PR comment" })
+	end, { buffer = left_buf, desc = "Write a PR comment or edit reviewers / labels" })
 
 	vim.keymap.set("n", "R", function()
 		close_both()
