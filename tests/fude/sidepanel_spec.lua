@@ -208,7 +208,17 @@ describe("build_copy_choices", function()
 	it("returns the file name, relative path, and absolute path of a nested file", function()
 		local choices = sidepanel.build_copy_choices("lua/fude/ui/sidepanel.lua", "/repo")
 		assert.are.same({ "sidepanel.lua", "lua/fude/ui/sidepanel.lua", "/repo/lua/fude/ui/sidepanel.lua" }, texts(choices))
-		assert.are.equal("filename: sidepanel.lua", choices[1].label)
+	end)
+
+	it("labels choices with snake_case keys and starts every value in the same column", function()
+		local labels = vim.tbl_map(function(choice)
+			return choice.label
+		end, sidepanel.build_copy_choices("a.lua", "/repo"))
+		assert.are.same({
+			"filename:      a.lua",
+			"relative_path: a.lua",
+			"absolute_path: /repo/a.lua",
+		}, labels)
 	end)
 
 	it("returns the path itself as the name of a top-level file", function()

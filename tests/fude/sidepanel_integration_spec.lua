@@ -730,9 +730,9 @@ describe("sidepanel integration", function()
 				return picked.opts.format_item(item)
 			end, picked.items)
 			assert.are.same({
-				"filename: a.lua",
-				"relative path: lua/fude/a.lua",
-				"absolute path: /mock/repo/lua/fude/a.lua",
+				"filename:      a.lua",
+				"relative_path: lua/fude/a.lua",
+				"absolute_path: /mock/repo/lua/fude/a.lua",
 			}, labels)
 		end)
 

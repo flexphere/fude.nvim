@@ -1421,11 +1421,17 @@ function M.build_copy_choices(rel_path, root)
 	local name = rel_path:match("([^/]+)/*$") or rel_path
 	local choices = {
 		{ kind = "filename", text = name },
-		{ kind = "relative path", text = rel_path },
-		{ kind = "absolute path", text = (root:gsub("/+$", "")) .. "/" .. rel_path },
+		{ kind = "relative_path", text = rel_path },
+		{ kind = "absolute_path", text = (root:gsub("/+$", "")) .. "/" .. rel_path },
 	}
+	-- Pad the keys so the values start in the same column
+	local key_width = 0
 	for _, choice in ipairs(choices) do
-		choice.label = choice.kind .. ": " .. choice.text
+		key_width = math.max(key_width, #choice.kind + 1)
+	end
+	for _, choice in ipairs(choices) do
+		local key = choice.kind .. ":"
+		choice.label = key .. string.rep(" ", key_width - #key + 1) .. choice.text
 	end
 	return choices
 end
