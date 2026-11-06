@@ -927,6 +927,10 @@ File opening position                                 *fude-file-position*
       `R`       Reload review data
       `q`       Close panel
       `m`       Expand / collapse a folded commit message
+      `y`       On a file or directory: pick its file name, path
+                relative to the repository root, or absolute path and
+                copy it (unnamed register, and `+` when a clipboard
+                provider is available)
       `?`       Open a floating reference of configured panel keymaps
 
     The "? Help" hint appears below the file list. Both the hint and help
@@ -1123,6 +1127,7 @@ Default configuration: >lua
         prev_entry = "k",
         change_base = "b",
         toggle_commit_message = "m",
+        copy_path = "y",
         help = "?",
       },
     },
@@ -1387,6 +1392,9 @@ Options:
                   - `toggle_commit_message`: "m" (expand or collapse a
                     commit message folded by
                     `sidepanel.commit_message.max_lines`)
+                  - `copy_path`: "y" (pick the file name, relative path,
+                    or absolute path of the file or directory under the
+                    cursor and copy it)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
                   Set an action to `false` or an empty string to disable its

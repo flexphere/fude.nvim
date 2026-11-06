@@ -291,6 +291,7 @@ require("fude").setup({
       prev_entry = "k",          -- jump to previous selectable entry
       change_base = "b",         -- local review only: pick a new base branch
       toggle_commit_message = "m", -- expand/collapse a folded commit message
+      copy_path = "y",           -- pick and copy the file name / relative path / absolute path
       help = "?",                -- show configured panel keymaps
     },
   },
@@ -349,6 +350,8 @@ The unviewed settings apply to the side panel, not the file pickers.
 File and folder icons use the optional nvim-web-devicons integration;
 folders use open/closed icons to match their fold state.
 Set `sidepanel.icons = false` to hide them; fold arrows remain visible.
+Press `y` on a file or directory to pick its file name, path relative to the
+repository root, or absolute path and copy it.
 
 While a single commit is the review scope, a Commit Message section between
 Review Scope and Files shows the commit's full message, wrapped to the panel
