@@ -24,7 +24,15 @@ describe("build_local_scope_entries", function()
 	it("keys commit specs by sha so several commits stay distinct", function()
 		local entries = scope.build_local_scope_entries({
 			{ scope = "uncommitted", label = "Uncommitted (staged + unstaged)", is_current = false },
-			{ scope = "commit", commit_sha = "aaa111", commit_index = 1, label = "Commit [1/2] aaa1 a", is_current = false },
+			{
+				scope = "commit",
+				commit_sha = "aaa111",
+				short_sha = "aaa1",
+				subject = "a",
+				commit_index = 1,
+				label = "Commit [1/2] aaa1 a",
+				is_current = false,
+			},
 			{ scope = "commit", commit_sha = "bbb222", commit_index = 2, label = "Commit [2/2] bbb2 b", is_current = true },
 		})
 		assert.equals(3, #entries)
@@ -35,6 +43,9 @@ describe("build_local_scope_entries", function()
 		assert.equals("commit", entries[2].local_scope)
 		assert.equals("aaa111", entries[2].value)
 		assert.equals("aaa111", entries[2].sha)
+		-- The copy picker reads the short sha and subject, not the formatted label
+		assert.equals("aaa1", entries[2].short_sha)
+		assert.equals("a", entries[2].subject)
 		assert.equals("commit", entries[3].local_scope)
 		assert.equals("bbb222", entries[3].value)
 		assert.equals("bbb222", entries[3].sha)
@@ -130,6 +141,8 @@ describe("build_scope_entries", function()
 		-- Subsequent entries are commits with index
 		assert.is_false(entries[2].is_full_pr)
 		assert.are.equal("abc1234567890", entries[2].sha)
+		assert.are.equal("abc1234", entries[2].short_sha)
+		assert.are.equal("feat: add login", entries[2].subject)
 		assert.truthy(entries[2].display_text:find("%[1/2%]"))
 		assert.truthy(entries[2].display_text:find("abc1234"))
 		assert.truthy(entries[2].display_text:find("feat: add login"))

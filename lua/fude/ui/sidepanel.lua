@@ -639,17 +639,16 @@ local function add_file_icons(file_entries)
 	return "", ""
 end
 
--- Full message of the commit under review, or nil outside a commit scope.
+-- Full message of a commit of the reviewed branch or PR, or nil when unknown.
 -- Local messages come from git and are cached per panel, since render runs
 -- on every BufEnter; GitHub messages are already in `state.pr_commits`.
-local function current_commit_message(panel)
+local function commit_message_for(panel, sha)
 	local state = config.state
 	if state.review_mode == "local" then
 		local session = state.local_session
-		if not require("fude.local.session").in_commit_scope() or not session.scope_commit_sha then
+		if not session then
 			return nil
 		end
-		local sha = session.scope_commit_sha
 		panel.commit_messages = panel.commit_messages or {}
 		-- Only successes are cached, so a transient git failure is retried on the next render
 		if panel.commit_messages[sha] == nil then
@@ -657,8 +656,21 @@ local function current_commit_message(panel)
 		end
 		return panel.commit_messages[sha]
 	end
+	return M.find_pr_commit_message(state.pr_commits, sha)
+end
+
+-- Full message of the commit under review, or nil outside a commit scope.
+local function current_commit_message(panel)
+	local state = config.state
+	if state.review_mode == "local" then
+		local session = state.local_session
+		if not require("fude.local.session").in_commit_scope() or not session.scope_commit_sha then
+			return nil
+		end
+		return commit_message_for(panel, session.scope_commit_sha)
+	end
 	if state.scope == "commit" then
-		return M.find_pr_commit_message(state.pr_commits, state.scope_commit_sha)
+		return commit_message_for(panel, state.scope_commit_sha)
 	end
 	return nil
 end
@@ -1258,7 +1270,7 @@ function M.setup_keymaps(panel)
 
 	map("copy_path", function()
 		M.pick_path_to_copy(panel)
-	end, "Copy file name / relative path / absolute path")
+	end, "Copy file path or commit hash/title")
 
 	map("help", function()
 		M.toggle_help(panel)
@@ -1486,36 +1498,113 @@ function M.find_target_window(panel_win)
 	return nil
 end
 
---- Build the choices of the `copy_path` picker for a Files section entry.
---- @param rel_path string repo-relative path (a file, or a directory in tree mode)
---- @param root string repository root directory
---- @return table[] { label, text } for the file name, relative path, and absolute path
-function M.build_copy_choices(rel_path, root)
-	local name = rel_path:match("([^/]+)/*$") or rel_path
-	local choices = {
-		{ kind = "filename", text = name },
-		{ kind = "relative_path", text = rel_path },
-		{ kind = "absolute_path", text = (root:gsub("/+$", "")) .. "/" .. rel_path },
-	}
-	-- Pad the keys so the values start in the same column
+--- Pad each choice's `kind:` key so the values start in the same column,
+--- storing the result in `choice.label`.
+--- The value shown is `choice.summary` when set (a multi-line text), else `choice.text`.
+--- @param choices table[] { kind, text, summary? }
+--- @return table[] the same choices
+local function label_copy_choices(choices)
 	local key_width = 0
 	for _, choice in ipairs(choices) do
 		key_width = math.max(key_width, #choice.kind + 1)
 	end
 	for _, choice in ipairs(choices) do
 		local key = choice.kind .. ":"
-		choice.label = key .. string.rep(" ", key_width - #key + 1) .. choice.text
+		choice.label = key .. string.rep(" ", key_width - #key + 1) .. (choice.summary or choice.text)
 	end
 	return choices
 end
 
---- Pick the file name, relative path, or absolute path of the Files section
---- entry under the cursor (file or tree-mode directory) and copy it.
+--- Build the choices of the `copy_path` picker for a Files section entry.
+--- @param rel_path string repo-relative path (a file, or a directory in tree mode)
+--- @param root string repository root directory
+--- @return table[] { kind, text, label } for the file name, relative path, and absolute path
+function M.build_copy_choices(rel_path, root)
+	local name = rel_path:match("([^/]+)/*$") or rel_path
+	return label_copy_choices({
+		{ kind = "filename", text = name },
+		{ kind = "relative_path", text = rel_path },
+		{ kind = "absolute_path", text = (root:gsub("/+$", "")) .. "/" .. rel_path },
+	})
+end
+
+--- Build the choices of the `copy_path` picker for a Review Scope commit entry.
+--- `short_hash` falls back to the first 7 characters of `sha`, and `title` /
+--- `full_message` are left out when unknown, so a choice never copies an empty
+--- string. A multi-line message is shown as its first line plus the line count,
+--- since a picker row holds one line; `summary` is that row text, also used by
+--- the copy notification.
+--- @param sha string full commit SHA
+--- @param short_sha string|nil abbreviated SHA
+--- @param subject string|nil first line of the commit message
+--- @param message string|nil full commit message
+--- @return table[] { kind, text, summary?, label } for the full hash, short hash, title, and full message
+function M.build_commit_copy_choices(sha, short_sha, subject, message)
+	local choices = {
+		{ kind = "hash", text = sha },
+		{ kind = "short_hash", text = (short_sha and short_sha ~= "") and short_sha or sha:sub(1, 7) },
+	}
+	if subject and subject ~= "" then
+		table.insert(choices, { kind = "title", text = subject })
+	end
+	if type(message) == "string" and message:match("%S") then
+		local line_count = select(2, message:gsub("\n", "\n")) + 1
+		local summary = message:match("^[^\n]*")
+		if line_count > 1 then
+			summary = string.format("%s … (%d lines)", summary, line_count)
+		end
+		table.insert(choices, { kind = "full_message", text = message, summary = summary })
+	end
+	return label_copy_choices(choices)
+end
+
+--- Show the copy picker and copy the picked choice's text.
+--- @param choices table[] { text, label }
+--- @param prompt string
+--- @param kind string `vim.ui.select` kind
+local function select_and_copy(choices, prompt, kind)
+	vim.ui.select(choices, {
+		prompt = prompt,
+		-- Lets vim.ui.select providers (dressing.nvim, snacks.nvim) configure this picker, e.g. open it in normal mode
+		kind = kind,
+		format_item = function(choice)
+			return choice.label
+		end,
+	}, function(choice)
+		if not choice then
+			return
+		end
+		local shown = choice.summary or choice.text
+		if require("fude.util").copy_to_clipboard(choice.text) then
+			vim.notify("fude.nvim: Copied " .. shown, vim.log.levels.INFO)
+		else
+			vim.notify(
+				"fude.nvim: Copied " .. shown .. " to the unnamed register (clipboard unavailable)",
+				vim.log.levels.WARN
+			)
+		end
+	end)
+end
+
+--- Pick what to copy from the entry under the cursor: the file name, relative
+--- path, or absolute path of a Files section entry (file or tree-mode
+--- directory), or the hash, short hash, or title of a Review Scope commit.
 --- @param panel table sidepanel state
 function M.pick_path_to_copy(panel)
 	local entry_info = M.get_current_entry(panel)
+	if entry_info and entry_info.type == "scope" then
+		local entry = entry_info.entry
+		if not entry.sha then
+			vim.notify("fude.nvim: No commit under cursor", vim.log.levels.INFO)
+			return
+		end
+		local message = commit_message_for(panel, entry.sha)
+		local choices = M.build_commit_copy_choices(entry.sha, entry.short_sha, entry.subject, message)
+		select_and_copy(choices, "Copy commit", "fude_copy_commit")
+		return
+	end
 	if not entry_info or (entry_info.type ~= "file" and entry_info.type ~= "directory") then
-		vim.notify("fude.nvim: No file under cursor", vim.log.levels.INFO)
+		vim.notify("fude.nvim: No file or commit under cursor", vim.log.levels.INFO)
 		return
 	end
 	-- The root the panel rendered and opens files with, so a `:cd` elsewhere
@@ -1525,27 +1614,7 @@ function M.pick_path_to_copy(panel)
 		vim.notify("fude.nvim: Could not resolve the repository root", vim.log.levels.WARN)
 		return
 	end
-	local choices = M.build_copy_choices(entry_info.entry.path, root)
-	vim.ui.select(choices, {
-		prompt = "Copy path",
-		-- Lets vim.ui.select providers (dressing.nvim, snacks.nvim) configure this picker, e.g. open it in normal mode
-		kind = "fude_copy_path",
-		format_item = function(choice)
-			return choice.label
-		end,
-	}, function(choice)
-		if not choice then
-			return
-		end
-		if require("fude.util").copy_to_clipboard(choice.text) then
-			vim.notify("fude.nvim: Copied " .. choice.text, vim.log.levels.INFO)
-		else
-			vim.notify(
-				"fude.nvim: Copied " .. choice.text .. " to the unnamed register (clipboard unavailable)",
-				vim.log.levels.WARN
-			)
-		end
-	end)
+	select_and_copy(M.build_copy_choices(entry_info.entry.path, root), "Copy path", "fude_copy_path")
 end
 
 --- Toggle reviewed state for a scope entry.

@@ -877,13 +877,85 @@ describe("sidepanel integration", function()
 			assert.are.equal("before", vim.fn.getreg('"'))
 		end)
 
-		it("y on a scope row opens no picker", function()
+		local function move_to_scope(panel, predicate)
+			for line = 1, vim.api.nvim_buf_line_count(panel.buf) do
+				vim.api.nvim_win_set_cursor(panel.win, { line, 0 })
+				local info = sidepanel.get_current_entry(panel)
+				if info and info.type == "scope" and predicate(info.entry) then
+					return
+				end
+			end
+			error("no matching scope row")
+		end
+
+		it("y on the Entire PR row opens no picker", function()
 			sidepanel.open()
 			local panel = config.state.sidepanel
-			move_to(panel, "scope")
+			move_to_scope(panel, function(entry)
+				return entry.is_full_pr
+			end)
 			press_and_choose(panel, 1)
 			assert.is_nil(picked)
 			assert.are.equal("before", vim.fn.getreg('"'))
+		end)
+
+		it("y on a PR commit row copies the picked hash, short hash, title, or full message", function()
+			config.state.pr_commits = {
+				{
+					sha = "c1sha00000",
+					commit = { message = "feat: first\n\nbody line", author = { name = "a", date = "" } },
+				},
+			}
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to_scope(panel, function(entry)
+				return entry.sha == "c1sha00000"
+			end)
+			local expected = { "c1sha00000", "c1sha00", "feat: first", "feat: first\n\nbody line" }
+			for index, text in ipairs(expected) do
+				press_and_choose(panel, index)
+				assert.are.equal(text, vim.fn.getreg('"'))
+			end
+			assert.are.equal("fude_copy_commit", picked.opts.kind)
+			assert.are.equal("Copy commit", picked.opts.prompt)
+		end)
+
+		it("y on a local commit row copies its hash or full message, and on a non-commit scope opens no picker", function()
+			config.state.review_mode = "local"
+			config.state.local_session = {
+				scope = "base",
+				base_ref = "main",
+				branch = "feat/x",
+				worktree_root = "/mock/repo",
+				commits = { { sha = "l1sha00000", short_sha = "l1sha00", subject = "fix: local" } },
+			}
+			helpers.mock(require("fude.diff"), "get_upstream_ref", function()
+				return nil
+			end)
+			local message_lookups = {}
+			helpers.mock(require("fude.diff"), "get_commit_message", function(sha, cwd)
+				table.insert(message_lookups, { sha, cwd })
+				return "fix: local\n\nwhy"
+			end)
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to_scope(panel, function(entry)
+				return entry.sha == "l1sha00000"
+			end)
+			local expected = { "l1sha00000", "l1sha00", "fix: local", "fix: local\n\nwhy" }
+			for index, text in ipairs(expected) do
+				press_and_choose(panel, index)
+				assert.are.equal(text, vim.fn.getreg('"'))
+			end
+			-- Read from the session's worktree once, then from the panel's cache
+			assert.are.same({ { "l1sha00000", "/mock/repo" } }, message_lookups)
+
+			picked = nil
+			move_to_scope(panel, function(entry)
+				return entry.local_scope == "uncommitted"
+			end)
+			press_and_choose(panel, 1)
+			assert.is_nil(picked)
 		end)
 	end)
 
