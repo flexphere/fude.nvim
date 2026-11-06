@@ -23,19 +23,39 @@ M.CELL_WIDTH = 2
 --- Directory override for tests (nil = `stdpath("cache")/fude/avatars`).
 M._dir = nil
 
+--- Avatar of Copilot code review (`copilot-pull-request-reviewer[bot]`):
+--- the icon of its GitHub App, which `github.com/<login>.png` does not serve.
+M.COPILOT_AVATAR_URL = "https://avatars.githubusercontent.com/in/946600?v=4&s=" .. M.SIZE
+
 --- The avatar URL of a user login: GitHub serves `github.com/<login>.png`
---- for users. Bots (`[bot]` logins, Copilot) and anything that is not a plain
---- login get nil, since no image lives at that address.
+--- for users, and Copilot (either login form) has its App's icon. Other bots
+--- (`[bot]` logins) and anything that is not a plain login get nil, since no
+--- image lives at that address.
 --- @param login any
 --- @return string|nil
 function M.build_avatar_url(login)
-	if type(login) ~= "string" or not login:match("^[%w%-]+$") then
+	if type(login) ~= "string" then
 		return nil
 	end
 	if require("fude.ui.format").is_copilot_login(login) then
+		return M.COPILOT_AVATAR_URL
+	end
+	if not login:match("^[%w%-]+$") then
 		return nil
 	end
 	return "https://github.com/" .. login .. ".png?size=" .. M.SIZE
+end
+
+--- File name (without extension) a login's avatar is cached under: the
+--- login, or `copilot` for either Copilot login form, so the GraphQL and REST
+--- logins share one file and no `[bot]` brackets reach the file system.
+--- @param login string
+--- @return string
+function M.cache_name(login)
+	if require("fude.ui.format").is_copilot_login(login) then
+		return "copilot"
+	end
+	return login
 end
 
 --- @return string
@@ -50,7 +70,7 @@ end
 --- @return string
 function M.cache_path(login, round)
 	local suffix = round and (".round" .. M.CANVAS) or ""
-	return M.cache_dir() .. "/" .. login .. suffix .. ".png"
+	return M.cache_dir() .. "/" .. M.cache_name(login) .. suffix .. ".png"
 end
 
 --- The ImageMagick command that resizes `src` to `size` px, centers it on a
@@ -168,14 +188,15 @@ function M.fetch(login, cb)
 	if not exe and exists(square) then
 		return cb(square)
 	end
-	if in_flight[login] then
-		table.insert(in_flight[login], cb)
+	local key = M.cache_name(login)
+	if in_flight[key] then
+		table.insert(in_flight[key], cb)
 		return
 	end
-	in_flight[login] = { cb }
+	in_flight[key] = { cb }
 	local function finish(path)
-		local callbacks = in_flight[login]
-		in_flight[login] = nil
+		local callbacks = in_flight[key]
+		in_flight[key] = nil
 		for _, f in ipairs(callbacks) do
 			f(path)
 		end
