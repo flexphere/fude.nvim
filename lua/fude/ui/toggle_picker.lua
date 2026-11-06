@@ -62,6 +62,12 @@ M.LOADING_INTERVAL_MS = 120
 --- and the two columns that make a square at the usual cell aspect ratio.
 M.IMAGE_HEIGHT = 1
 M.IMAGE_WIDTH = 2
+--- Image loading order (`opts.images`): the first IMAGE_FIRST rows — about
+--- what the picker shows — are asked for at once, and the rest in parallel
+--- with them but at most IMAGE_CONCURRENCY at a time, so a large list does
+--- not start a download per row together and delay the visible ones.
+M.IMAGE_FIRST = 10
+M.IMAGE_CONCURRENCY = 4
 
 --- The loading mark of a frame, padded with spaces to `width` display cells
 --- — the width of the mark it stands in for — so the name after it stays
@@ -138,17 +144,48 @@ function M.new_session(opts)
 			end
 		end)
 	end
-	--- Ask `opts.images` for every item's file; each answer is kept and
+	--- Ask `opts.images` for every item's file, in display order: the first
+	--- IMAGE_FIRST at once, the rest IMAGE_CONCURRENCY at a time alongside
+	--- them, and no new ones once the picker closes. Each answer is kept and
 	--- shown by the next re-render.
 	function session.load_images()
 		if not opts.images then
 			return
 		end
-		for _, item in ipairs(opts.items or {}) do
+		local items = opts.items or {}
+		local function ask(item, on_answer)
+			local answered = false
 			opts.images(item, function(path)
+				if answered then
+					return
+				end
+				answered = true
 				session.images[item] = path or false
 				session.request_rerender()
+				if on_answer then
+					on_answer()
+				end
 			end)
+		end
+		local first = math.min(M.IMAGE_FIRST, #items)
+		for i = 1, first do
+			ask(items[i])
+		end
+		local next_index = first + 1
+		local function pump()
+			if next_index > #items or session.closing then
+				return
+			end
+			local item = items[next_index]
+			next_index = next_index + 1
+			-- On the next tick: a cached image answers at once, and a long
+			-- list must not recurse through every row
+			ask(item, function()
+				vim.schedule(pump)
+			end)
+		end
+		for _ = 1, M.IMAGE_CONCURRENCY do
+			pump()
 		end
 	end
 	function session.finish()
@@ -385,7 +422,6 @@ function M.show_telescope(opts)
 	local themes = require("telescope.themes")
 
 	local session = M.new_session(opts)
-	session.load_images()
 
 	local picker = pickers.new(themes.get_dropdown({}), {
 		prompt_title = opts.title .. " (<Tab> toggle)",
@@ -539,6 +575,10 @@ function M.show_telescope(opts)
 		end
 	end
 	picker:find()
+	-- Images after the picker is on screen
+	if opts.images then
+		vim.schedule(session.load_images)
+	end
 end
 
 --- Show the picker with snacks.picker.
@@ -644,7 +684,8 @@ function M.show_snacks(opts)
 			end
 			M.place_row_images(self.win.buf, rows, session)
 		end
-		session.load_images()
+		-- Images after the picker is on screen
+		vim.schedule(session.load_images)
 	end
 end
 
