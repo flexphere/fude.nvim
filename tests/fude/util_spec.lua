@@ -161,3 +161,40 @@ describe("open_url", function()
 		assert.truthy(notified[2].msg:find("Failed to open https://y: .*boom"))
 	end)
 end)
+
+describe("reset_selection_on_prompt_change", function()
+	it("should_reset_selection is true only when the prompt changed", function()
+		assert.is_true(util.should_reset_selection("a", ""))
+		assert.is_true(util.should_reset_selection("", "a"))
+		assert.is_false(util.should_reset_selection("a", "a"))
+	end)
+
+	it("selects the first row when the prompt changed, else keeps the picker's strategy", function()
+		local calls = {}
+		local picker = {}
+		function picker._do_selection(_, prompt)
+			table.insert(calls, "own:" .. prompt)
+		end
+		function picker.get_reset_row()
+			return 0
+		end
+		function picker.set_selection(_, row)
+			table.insert(calls, "reset:" .. row)
+		end
+		assert.are.equal(picker, util.reset_selection_on_prompt_change(picker))
+
+		picker:_do_selection("") -- first refresh: the picker's own strategy
+		picker:_do_selection("") -- a refresh with the same prompt
+		picker:_do_selection("a") -- typed
+		picker:_do_selection("a") -- e.g. a <Tab> toggle refreshing the rows
+		picker:_do_selection("") -- deleted
+		assert.are.same({ "own:", "own:", "reset:0", "own:a", "reset:0" }, calls)
+	end)
+
+	it("leaves a picker without _do_selection alone", function()
+		local picker = { find = function() end }
+		assert.are.equal(picker, util.reset_selection_on_prompt_change(picker))
+		assert.is_nil(picker._do_selection)
+		assert.is_nil(util.reset_selection_on_prompt_change(nil))
+	end)
+end)

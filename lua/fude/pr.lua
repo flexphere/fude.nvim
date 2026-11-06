@@ -1262,35 +1262,35 @@ local function pick_entry(entries, opts, callback)
 			layout_config = { height = M.calculate_compact_picker_height(#entries) },
 		})
 	end
-	pickers
-		.new(picker_opts, {
-			prompt_title = opts.title,
-			finder = finders.new_table({
-				results = entries,
-				entry_maker = function(entry)
-					return {
-						value = entry.value,
-						display = entry.display,
-						ordinal = entry.display,
-					}
-				end,
-			}),
-			sorter = conf.generic_sorter({}),
-			previewer = opts.make_previewer and opts.make_previewer() or nil,
-			attach_mappings = function(prompt_bufnr)
-				actions.select_default:replace(function()
-					actions.close(prompt_bufnr)
-					local selection = action_state.get_selected_entry()
-					if selection then
-						callback(selection.value)
-					else
-						callback(nil)
-					end
-				end)
-				return true
+	local picker = pickers.new(picker_opts, {
+		prompt_title = opts.title,
+		finder = finders.new_table({
+			results = entries,
+			entry_maker = function(entry)
+				return {
+					value = entry.value,
+					display = entry.display,
+					ordinal = entry.display,
+				}
 			end,
-		})
-		:find()
+		}),
+		sorter = conf.generic_sorter({}),
+		previewer = opts.make_previewer and opts.make_previewer() or nil,
+		attach_mappings = function(prompt_bufnr)
+			actions.select_default:replace(function()
+				actions.close(prompt_bufnr)
+				local selection = action_state.get_selected_entry()
+				if selection then
+					callback(selection.value)
+				else
+					callback(nil)
+				end
+			end)
+			return true
+		end,
+	})
+	require("fude.util").reset_selection_on_prompt_change(picker)
+	picker:find()
 end
 
 --- Build the picker entries for the "create as stacked PR?" prompt.

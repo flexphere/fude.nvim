@@ -674,7 +674,9 @@ function M.show_telescope()
 		})
 	end
 
-	create_picker(entries):find()
+	local picker = create_picker(entries)
+	require("fude.util").reset_selection_on_prompt_change(picker)
+	picker:find()
 end
 
 --- Show changed files in a snacks.picker.

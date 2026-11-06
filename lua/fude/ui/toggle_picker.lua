@@ -24,6 +24,10 @@ local format = require("fude.ui.format")
 --- @field on_close fun()|nil called once when the picker is closed and no request is in flight
 --- @field is_alive fun(): boolean|nil vim.ui.select only: reopen after a toggle while this returns true
 --- @field extra_action fude.TogglePickerAction|nil a second key (Telescope / snacks only)
+--- @field images (fun(item: fude.TogglePickerItem, cb: fun(path: string|nil)))|nil Telescope / snacks
+---   only: asked once per item for the file of an image drawn inline before its row (IMAGE_HEIGHT
+---   by IMAGE_WIDTH cells, through snacks.nvim's image module); `cb(nil)` for none. The rows are
+---   drawn again after every re-render of the list, and once more when a file arrives.
 
 --- @class fude.TogglePickerAction
 --- @field key string lhs, e.g. "<C-e>"; shown at the end of each row it applies to
@@ -53,6 +57,21 @@ end
 M.LOADING_FRAMES = { "⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷" }
 M.LOADING_HL = "DiagnosticInfo"
 M.LOADING_INTERVAL_MS = 120
+
+--- Size in cells of the image drawn before a row (`opts.images`): one row,
+--- and the two columns that make a square at the usual cell aspect ratio.
+M.IMAGE_HEIGHT = 1
+M.IMAGE_WIDTH = 2
+--- Cells the image takes in the row: snacks.nvim draws an image with text
+--- around it IMAGE_WIDTH + 2 cells wide (a blank cell each side). The row
+--- holds that many spaces before the name for it (`image_slot`).
+M.IMAGE_CELLS = M.IMAGE_WIDTH + 2
+--- Image loading order (`opts.images`): the first IMAGE_FIRST rows — about
+--- what the picker shows — are asked for at once, and the rest in parallel
+--- with them but at most IMAGE_CONCURRENCY at a time, so a large list does
+--- not start a download per row together and delay the visible ones.
+M.IMAGE_FIRST = 10
+M.IMAGE_CONCURRENCY = 4
 
 --- The loading mark of a frame, padded with spaces to `width` display cells
 --- — the width of the mark it stands in for — so the name after it stays
@@ -98,10 +117,81 @@ end
 --- nil in vim.ui.select mode, whose select is closed while a request runs). It
 --- runs while any request is in flight and stops with the last one, or when
 --- the picker closes.
+---
+--- `session.images[item]` is the file of the item's row image once known
+--- (false for none); `load_images()` asks `opts.images` for every item and
+--- re-renders, once per batch, as the files arrive.
 --- @param opts fude.TogglePickerOpts
---- @return table session { pending, frame, rerender, close(), finish(), start_spinner(), stop_spinner(), tick() }
+--- @return table session { pending, frame, rerender, images, close(), finish(), start_spinner(),
+---   stop_spinner(), tick(), request_rerender(), load_images() }
 function M.new_session(opts)
-	local session = { pending = {}, closing = false, closed = false, frame = 1, rerender = nil, timer = nil }
+	local session = {
+		pending = {},
+		closing = false,
+		closed = false,
+		frame = 1,
+		rerender = nil,
+		timer = nil,
+		images = {},
+	}
+	--- Re-render once on the next tick, however often it is asked before.
+	local rerender_queued = false
+	function session.request_rerender()
+		if rerender_queued then
+			return
+		end
+		rerender_queued = true
+		vim.schedule(function()
+			rerender_queued = false
+			if session.rerender and not session.closed then
+				session.rerender()
+			end
+		end)
+	end
+	--- Ask `opts.images` for every item's file, in display order: the first
+	--- IMAGE_FIRST at once, the rest IMAGE_CONCURRENCY at a time alongside
+	--- them, and no new ones once the picker closes. Each answer is kept and
+	--- shown by the next re-render.
+	function session.load_images()
+		if not opts.images then
+			return
+		end
+		local items = opts.items or {}
+		local function ask(item, on_answer)
+			local answered = false
+			opts.images(item, function(path)
+				if answered then
+					return
+				end
+				answered = true
+				session.images[item] = path or false
+				session.request_rerender()
+				if on_answer then
+					on_answer()
+				end
+			end)
+		end
+		local first = math.min(M.IMAGE_FIRST, #items)
+		for i = 1, first do
+			ask(items[i])
+		end
+		local next_index = first + 1
+		local function pump()
+			if next_index > #items or session.closing then
+				return
+			end
+			local item = items[next_index]
+			next_index = next_index + 1
+			-- On the next tick: a cached image answers at once, and a long
+			-- list must not recurse through every row
+			ask(item, function()
+				vim.schedule(pump)
+			end)
+		end
+		for _ = 1, M.IMAGE_CONCURRENCY do
+			pump()
+		end
+	end
 	function session.finish()
 		if session.closing and not session.closed and next(session.pending) == nil then
 			session.closed = true
@@ -239,6 +329,160 @@ function M.resolve_action_hint(item, opts)
 	return nil, nil
 end
 
+--- The snacks.nvim image module, or nil without it.
+local function snacks_image()
+	local ok, snacks = pcall(require, "snacks")
+	if ok and type(snacks) == "table" and type(snacks.image) == "table" and snacks.image.placement then
+		return snacks.image
+	end
+	return nil
+end
+
+--- The spaces held before a row's name for its image (`opts.images`), so the
+--- name sits in the same column whether the image is drawn, still loading,
+--- or missing; "" without images.
+--- @param opts fude.TogglePickerOpts
+--- @return string
+function M.image_slot(opts)
+	return opts.images and string.rep(" ", M.IMAGE_CELLS) or ""
+end
+
+--- 0-based byte range of a row's image slot — the IMAGE_CELLS spaces right
+--- before the name — in the row's text as the picker wrote it (with whatever
+--- prefix it added).
+--- @param line string
+--- @param text string the row's name
+--- @return number|nil start, number|nil finish (exclusive)
+function M.find_image_slot(line, text)
+	local slot = string.rep(" ", M.IMAGE_CELLS)
+	local s = line:find(slot .. text, 1, true)
+	if not s then
+		return nil, nil
+	end
+	return s - 1, s - 1 + M.IMAGE_CELLS
+end
+
+--- End of the text a placement conceals: as many slot cells as the image
+--- takes, so a narrower image leaves the rest of the slot as spaces.
+local function conceal_end(col, width)
+	return col + math.min(M.IMAGE_CELLS, width or M.IMAGE_CELLS)
+end
+
+--- Whether the placement's extmark is still shown at `row`/`col` (0-based col).
+local function extmark_at(image, placement, row, col)
+	local eid = type(placement.eids) == "table" and placement.eids[1] or nil
+	if not eid then
+		return false
+	end
+	local ns = image.placement.ns or vim.api.nvim_create_namespace("snacks.image")
+	local ok, mark = pcall(vim.api.nvim_buf_get_extmark_by_id, placement.buf, ns, eid, { details = true })
+	return ok
+		and type(mark) == "table"
+		and mark[1] == row - 1
+		and mark[2] == col
+		and not (type(mark[3]) == "table" and mark[3].invalid)
+end
+
+local function close_placement(held)
+	pcall(function()
+		held.placement:close()
+	end)
+end
+
+--- Draw the image of `item` on `row` (1-based) of `buf`, right after the
+--- picker wrote that row: into the row's image slot, concealing it. The
+--- item's placement is kept across re-renders — rewriting a row hides it,
+--- so it is drawn again at once, in the same tick, before the screen is
+--- redrawn, and moved when the item moved — instead of being made anew,
+--- which would leave the row blank until snacks' deferred update. Nothing is
+--- drawn while the file is unknown or the row has no slot (another item's
+--- placement is left to `prune_row_images`). Placements are tracked per
+--- buffer and item in `session.placed`. Needs snacks.nvim's image module;
+--- a no-op without.
+--- @param buf number
+--- @param row number 1-based
+--- @param item fude.TogglePickerItem
+--- @param session table from new_session
+function M.place_row_image(buf, row, item, session)
+	local image = snacks_image()
+	if not image or type(item) ~= "table" or not vim.api.nvim_buf_is_valid(buf) then
+		return
+	end
+	session.placed = session.placed or {}
+	local placed = session.placed[buf] or {}
+	session.placed[buf] = placed
+	local path = session.images[item]
+	local line = vim.api.nvim_buf_get_lines(buf, row - 1, row, false)[1]
+	local col, finish
+	if path and line and type(item.text) == "string" then
+		col, finish = M.find_image_slot(line, item.text)
+	end
+	local held = placed[item]
+	if held and (not col or held.path ~= path) then
+		close_placement(held)
+		placed[item] = nil
+		held = nil
+	end
+	if not col then
+		return
+	end
+	if not held then
+		local ok, placement = pcall(image.placement.new, buf, path, {
+			pos = { row, col },
+			range = { row, col, row, finish },
+			conceal = true,
+			inline = true,
+			height = M.IMAGE_HEIGHT,
+			width = M.IMAGE_WIDTH,
+			-- Conceal only the cells the image takes (its width is known
+			-- once snacks measured it)
+			on_update_pre = function(self)
+				local got, state = pcall(self.state, self)
+				if got and type(state) == "table" and self.opts.range then
+					self.opts.range[4] = conceal_end(self.opts.range[2], state.loc.width)
+				end
+			end,
+		})
+		if ok and placement then
+			placed[item] = { placement = placement, path = path }
+		end
+		return
+	end
+	local placement = held.placement
+	local loc = type(placement._state) == "table" and placement._state.loc or nil
+	local pos = placement.opts.pos
+	local moved = pos[1] ~= row or pos[2] ~= col
+	placement.opts.pos = { row, col }
+	placement.opts.range = { row, col, row, conceal_end(col, loc and loc.width) }
+	-- Not drawn yet: its first update draws it where it now is
+	if not loc then
+		return
+	end
+	if not moved and extmark_at(image, placement, row, col) then
+		return
+	end
+	loc[1], loc[2] = row, col
+	pcall(placement.render_grid, placement, loc)
+end
+
+--- Close the placements in `buf` of every item but `keep` (a set of items):
+--- after a full render, for the items no longer shown.
+--- @param buf number
+--- @param keep table<fude.TogglePickerItem, boolean>
+--- @param session table from new_session
+function M.prune_row_images(buf, keep, session)
+	local placed = session.placed and session.placed[buf]
+	if not placed then
+		return
+	end
+	for item, held in pairs(placed) do
+		if not keep[item] then
+			close_placement(held)
+			placed[item] = nil
+		end
+	end
+end
+
 --- Show the picker with vim.ui.select. Choosing a row toggles it and reopens
 --- the select once the request settled; cancelling closes.
 --- @param opts fude.TogglePickerOpts
@@ -285,6 +529,7 @@ function M.show_telescope(opts)
 	local themes = require("telescope.themes")
 
 	local session = M.new_session(opts)
+	local slot = M.image_slot(opts)
 
 	local picker = pickers.new(themes.get_dropdown({}), {
 		prompt_title = opts.title .. " (<Tab> toggle)",
@@ -312,8 +557,9 @@ function M.show_telescope(opts)
 					display = function(entry)
 						local value = entry.value
 						local mark, mark_hl, text_hl = M.resolve_mark(value, session)
-						local line = format.format_toggle_entry(value.text, mark, M.resolve_detail(value))
-						local name_start = #mark + 1
+						-- mark, image slot, name, detail
+						local line = format.format_toggle_entry(slot .. value.text, mark, M.resolve_detail(value))
+						local name_start = #mark + 1 + #slot
 						local name_end = name_start + #value.text
 						local hls = { { { 0, #mark }, mark_hl } }
 						if text_hl then
@@ -386,7 +632,93 @@ function M.show_telescope(opts)
 			return true
 		end,
 	})
+	if opts.images then
+		-- Telescope writes the results one row at a time; draw the row's
+		-- image right after, in the same tick, so it is never missing from
+		-- a redraw.
+		local entry_adder = picker.entry_adder
+		picker.entry_adder = function(self, index, entry, ...)
+			local ret = entry_adder(self, index, entry, ...)
+			if type(entry) == "table" and entry.value and self.results_bufnr then
+				local ok, row = pcall(self.get_row, self, index)
+				if ok and type(row) == "number" and row >= 0 then
+					M.place_row_image(self.results_bufnr, row + 1, entry.value, session)
+				end
+			end
+			return ret
+		end
+		-- The item each 0-based results row shows (all rows when `which` is nil)
+		local function result_rows(current, which)
+			local bufnr = current.results_bufnr
+			if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+				return nil, {}
+			end
+			if not which then
+				which = {}
+				for row = 0, vim.api.nvim_buf_line_count(bufnr) - 1 do
+					table.insert(which, row)
+				end
+			end
+			local rows = {}
+			for _, row in ipairs(which) do
+				local ok, index = pcall(current.get_index, current, row)
+				local entry = ok and index and current.manager and current.manager:get_entry(index) or nil
+				if type(entry) == "table" and entry.value then
+					table.insert(rows, { row = row + 1, item = entry.value })
+				end
+			end
+			return bufnr, rows
+		end
+		-- Once a refresh is done: every shown row has its image (a row
+		-- Telescope moved without rewriting it), and the items no longer
+		-- shown lose theirs.
+		picker:register_completion_callback(function(self)
+			local bufnr, rows = result_rows(self)
+			if not bufnr then
+				return
+			end
+			local keep = {}
+			for _, entry in ipairs(rows) do
+				keep[entry.item] = true
+				M.place_row_image(bufnr, entry.row, entry.item, session)
+			end
+			M.prune_row_images(bufnr, keep, session)
+		end)
+		-- Moving the selection rewrites the caret of the old and the new row,
+		-- which can shift their slot when the caret and the entry prefix
+		-- differ in length.
+		local set_selection = picker.set_selection
+		picker.set_selection = function(self, row)
+			local ok_old, old = pcall(self.get_selection_row, self)
+			local ret = set_selection(self, row)
+			local which = {}
+			if ok_old and type(old) == "number" then
+				table.insert(which, old)
+			end
+			if type(row) == "number" and row ~= old then
+				table.insert(which, row)
+			end
+			local bufnr, rows = result_rows(self, which)
+			for _, entry in ipairs(rows) do
+				M.place_row_image(bufnr, entry.row, entry.item, session)
+			end
+			return ret
+		end
+	end
+	-- Typing or deleting in the prompt starts again from the first row; the
+	-- "follow" strategy above only applies to this picker's own refreshes.
+	require("fude.util").reset_selection_on_prompt_change(picker)
 	picker:find()
+	if opts.images then
+		-- The image conceals its slot (the snacks list sets this itself)
+		local win = picker.results_win
+		if win and vim.api.nvim_win_is_valid(win) then
+			vim.api.nvim_set_option_value("conceallevel", 2, { win = win, scope = "local" })
+			vim.api.nvim_set_option_value("concealcursor", "nvic", { win = win, scope = "local" })
+		end
+		-- Images after the picker is on screen
+		vim.schedule(session.load_images)
+	end
 end
 
 --- Show the picker with snacks.picker.
@@ -400,6 +732,7 @@ function M.show_snacks(opts)
 	end
 
 	local session = M.new_session(opts)
+	local slot = M.image_slot(opts)
 
 	-- Re-render the rows (loading mark, then the new mark or the old one back
 	-- after a failure); the cursor stays put.
@@ -429,7 +762,7 @@ function M.show_snacks(opts)
 	end
 
 	-- snacks matches on item.text, which the items already carry
-	snacks_picker.pick({
+	local picker = snacks_picker.pick({
 		source = "fude_toggle",
 		title = opts.title .. " (<Tab> toggle)",
 		items = opts.items,
@@ -439,7 +772,12 @@ function M.show_snacks(opts)
 		sort = { fields = { "score:desc", "idx" } },
 		format = function(item, _)
 			local mark, mark_hl, text_hl = M.resolve_mark(item, session)
-			local chunks = { { mark .. " ", mark_hl }, { item.text, text_hl } }
+			-- mark, image slot, name, detail
+			local chunks = { { mark .. " ", mark_hl } }
+			if slot ~= "" then
+				table.insert(chunks, { slot })
+			end
+			table.insert(chunks, { item.text, text_hl })
 			local detail = M.resolve_detail(item)
 			if detail and detail ~= "" then
 				table.insert(chunks, { "  (" .. detail .. ")", "Comment" })
@@ -466,6 +804,38 @@ function M.show_snacks(opts)
 		},
 		win = { input = { keys = input_keys }, list = { keys = list_keys } },
 	})
+	if opts.images and type(picker) == "table" and type(picker.list) == "table" then
+		-- Images arriving later re-render through the picker
+		session.rerender = function()
+			rerender(picker)
+		end
+		-- A dirty render blanks the list buffer and writes it one row at a
+		-- time before redrawing the screen; draw each row's image right
+		-- after its row, so it is never missing from that redraw.
+		local list = picker.list
+		local write_row = list._render
+		list._render = function(self, item, row, ...)
+			local ret = write_row(self, item, row, ...)
+			M.place_row_image(self.win.buf, row, item, session)
+			return ret
+		end
+		-- Afterwards the items no longer shown lose their images
+		local render = list.render
+		list.render = function(self, ...)
+			local dirty = self.dirty
+			local ret = render(self, ...)
+			if dirty and self.win and self.win.buf then
+				local keep = {}
+				for _, item in pairs(self.visible or {}) do
+					keep[item] = true
+				end
+				M.prune_row_images(self.win.buf, keep, session)
+			end
+			return ret
+		end
+		-- Images after the picker is on screen
+		vim.schedule(session.load_images)
+	end
 end
 
 --- Open the toggle picker.

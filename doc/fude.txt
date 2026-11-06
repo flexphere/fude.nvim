@@ -458,7 +458,11 @@ File opening position                                 *fude-file-position*
     With `overview.avatars = true` (off by default) and snacks.nvim
     image support, the author's avatar is drawn on
     the `author:` line and each reviewer's before their login, cut
-    into a circle like the GitHub web UI (see `overview.avatars`).
+    into a circle like the GitHub web UI (see `overview.avatars`);
+    the reviewer picker (Telescope and snacks) draws the same avatar
+    between each row's mark and name, loading them once the picker is
+    shown: the first rows at once, the rest a few at a time. Space is
+    kept for the avatar, so names do not move as the images arrive.
     Requires an active review session.
     The PR title, body headings, and comments use Markdown headings
     and are foldable with
@@ -1338,8 +1342,9 @@ Options:
                   (default: 30). Minimum effective width is 15 columns.
 
 `overview.avatars`  Draw the PR author's avatar (frontmatter `author:`
-                  line) and each reviewer's (right pane) inline with
-                  snacks.nvim's image module (default: false). Needs a
+                  line) and each reviewer's (right pane, and before
+                  each row of the Telescope / snacks reviewer picker)
+                  inline with snacks.nvim's image module (default: false). Needs a
                   terminal snacks supports (kitty graphics protocol:
                   kitty, ghostty, wezterm; tmux with
                   `allow-passthrough`) and `curl`; the images are cached

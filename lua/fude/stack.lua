@@ -291,38 +291,38 @@ function M.show_telescope(entries, on_select)
 	local actions = require("telescope.actions")
 	local action_state = require("telescope.actions.state")
 
-	pickers
-		.new(
-			require("telescope.themes").get_dropdown({
-				previewer = false,
-				layout_config = { height = require("fude.pr").calculate_compact_picker_height(#entries) },
-			}),
-			{
-				prompt_title = "PR Stack",
-				finder = finders.new_table({
-					results = entries,
-					entry_maker = function(entry)
-						return {
-							value = entry,
-							display = (entry.is_current and "▶" or " ") .. " " .. entry.display_text,
-							ordinal = entry.display_text,
-						}
-					end,
-				}),
-				sorter = conf.generic_sorter({}),
-				attach_mappings = function(prompt_bufnr)
-					actions.select_default:replace(function()
-						actions.close(prompt_bufnr)
-						local selection = action_state.get_selected_entry()
-						if selection then
-							on_select(selection.value)
-						end
-					end)
-					return true
+	local picker = pickers.new(
+		require("telescope.themes").get_dropdown({
+			previewer = false,
+			layout_config = { height = require("fude.pr").calculate_compact_picker_height(#entries) },
+		}),
+		{
+			prompt_title = "PR Stack",
+			finder = finders.new_table({
+				results = entries,
+				entry_maker = function(entry)
+					return {
+						value = entry,
+						display = (entry.is_current and "▶" or " ") .. " " .. entry.display_text,
+						ordinal = entry.display_text,
+					}
 				end,
-			}
-		)
-		:find()
+			}),
+			sorter = conf.generic_sorter({}),
+			attach_mappings = function(prompt_bufnr)
+				actions.select_default:replace(function()
+					actions.close(prompt_bufnr)
+					local selection = action_state.get_selected_entry()
+					if selection then
+						on_select(selection.value)
+					end
+				end)
+				return true
+			end,
+		}
+	)
+	require("fude.util").reset_selection_on_prompt_change(picker)
+	picker:find()
 end
 
 --- @param entries table[]
