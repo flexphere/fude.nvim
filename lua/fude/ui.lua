@@ -222,12 +222,27 @@ local function setup_github_refs(buf, repo_url, line_urls)
 	end, { buffer = buf, desc = "Open GitHub reference" })
 end
 
+--- Snapshot the review state that decides whether a shown comment is on
+--- GitHub. UIs take it when they render comments and pass it to
+--- `open_comment_in_browser`: they can stay open across `:FudeReviewStop`,
+--- whose `reset_state()` clears `pending_review_id`, so reading the live state
+--- on `o` would open an unpublished pending comment's URL.
+--- @return { pending_review_id: number|nil, is_local: boolean, pr_url: string|nil }
+function M.capture_open_context()
+	local state = config.state
+	return {
+		pending_review_id = state.pending_review_id,
+		is_local = state.review_mode == "local",
+		pr_url = state.pr_url,
+	}
+end
+
 --- Open a comment's GitHub page, or explain why it has none (local review,
 --- pending review, no comment under the cursor).
 --- @param comment table|nil
-function M.open_comment_in_browser(comment)
-	local state = config.state
-	util.open_url(data.find_comment_url(comment, state.pending_review_id, state.review_mode == "local"))
+--- @param ctx table from capture_open_context, taken when the comment was shown
+function M.open_comment_in_browser(comment, ctx)
+	util.open_url(data.find_comment_url(comment, ctx.pending_review_id, ctx.is_local))
 end
 
 --- Select review event type using vim.ui.select.
@@ -462,8 +477,9 @@ function M.show_comments_float(comments, opts)
 	-- here to act on when the user comes back. Unlike e/d/R there is no
 	-- fallback to the last comment, so a separator line opens nothing rather
 	-- than another comment's page (same as the comment browser and overview).
+	local open_ctx = M.capture_open_context()
 	vim.keymap.set("n", "o", function()
-		M.open_comment_in_browser(comment_on_cursor_line())
+		M.open_comment_in_browser(comment_on_cursor_line(), open_ctx)
 	end, { buffer = buf, desc = "Open comment on GitHub" })
 
 	local km = config.opts.keymaps
@@ -620,6 +636,9 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 
 	-- `o` opens the comment under the cursor, or the PR anywhere else (body,
 	-- frontmatter, headings). The overview stays open.
+	-- PR-level comments are never pending; the snapshot only keeps the review
+	-- mode the overview was opened in
+	local open_ctx = M.capture_open_context()
 	local function open_pr()
 		util.open_url(pr_info.url, "No PR URL to open")
 	end
@@ -627,7 +646,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		local line = vim.api.nvim_win_get_cursor(left_win)[1] - 1
 		local index = format.find_comment_index_at_line(left_result.comment_ranges, line)
 		if index then
-			M.open_comment_in_browser(issue_comments[index])
+			M.open_comment_in_browser(issue_comments[index], open_ctx)
 		else
 			open_pr()
 		end

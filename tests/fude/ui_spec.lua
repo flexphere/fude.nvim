@@ -3238,6 +3238,28 @@ describe("o key in the comment viewer and PR overview", function()
 		}, notified)
 	end)
 
+	it("viewer keeps refusing a pending comment after :FudeReviewStop resets the state", function()
+		config.state.pending_review_id = 9
+		ui.show_comments_float({
+			{
+				id = 1,
+				user = { login = "a" },
+				created_at = "",
+				body = "p",
+				html_url = "https://gh/1",
+				pull_request_review_id = 9,
+			},
+		})
+		local buf = vim.api.nvim_get_current_buf()
+		config.reset_state()
+		press(buf, "o")
+		assert.are.same({}, opened)
+		assert.are.same(
+			{ "fude.nvim: Pending comments are not published on GitHub until the review is submitted" },
+			notified
+		)
+	end)
+
 	it("overview opens a comment on its lines, the PR elsewhere, and the PR from the right pane", function()
 		local pr_info = { number = 1, title = "T", state = "OPEN", url = "https://gh/pull/1", body = "body text" }
 		local issue_comments = {

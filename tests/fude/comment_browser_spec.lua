@@ -183,6 +183,38 @@ describe("comment browser o key", function()
 		assert.are.same({ "https://gh/pull/42", "https://gh/i9" }, opened)
 	end)
 
+	it("keeps the review state it was opened with after :FudeReviewStop resets the state", function()
+		config.state.pending_review_id = 7
+		config.state.comments[1].pull_request_review_id = 7
+		config.state.comments[2].pull_request_review_id = 7
+		config.state.comment_map = data.build_comment_map(config.state.comments)
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		local saved = config.state
+		config.reset_state()
+		press(browser.left_buf, "o")
+		vim.api.nvim_win_set_cursor(browser.upper_win, { 1, 0 })
+		press(browser.upper_buf, "o")
+		assert.are.same({}, opened)
+		local reason = "fude.nvim: Pending comments are not published on GitHub until the review is submitted"
+		assert.are.same({ reason, reason }, notified)
+		-- after_each closes the browser through the state it was registered in
+		config.state = saved
+	end)
+
+	it("opens the PR from the PR-level row after :FudeReviewStop resets the state", function()
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		vim.api.nvim_set_current_win(browser.left_win)
+		vim.api.nvim_win_set_cursor(browser.left_win, { 2, 0 })
+		vim.api.nvim_exec_autocmds("CursorMoved", { buffer = browser.left_buf })
+		local saved = config.state
+		config.reset_state()
+		press(browser.left_buf, "o")
+		assert.are.same({ "https://gh/pull/42" }, opened)
+		config.state = saved
+	end)
+
 	it("opens nothing for a draft row from either pane and says why", function()
 		helpers.mock(require("fude.drafts"), "list_drafts", function()
 			return {

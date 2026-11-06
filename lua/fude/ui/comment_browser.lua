@@ -345,6 +345,9 @@ local function create_browser(entries, issue_comments)
 		closing = false,
 		mode = "reply", -- "reply" | "edit" | "new_pr_comment"
 		augroup = nil,
+		-- Review state the shown comments came from, for `o` (see
+		-- ui.capture_open_context); retaken by refresh with the new data
+		open_ctx = get_ui().capture_open_context(),
 	}
 	state.comment_browser = browser
 
@@ -434,6 +437,7 @@ local function create_browser(entries, issue_comments)
 
 			-- Rebuild left pane
 			browser.entries = new_entries
+			browser.open_ctx = get_ui().capture_open_context()
 			browser.issue_comments = new_issue_comments
 			entries = new_entries
 			issue_comments = new_issue_comments
@@ -762,9 +766,9 @@ local function create_browser(entries, issue_comments)
 	end, { buffer = left_buf, desc = "Refresh" })
 
 	vim.keymap.set("n", "o", function()
-		local comment, url, reason = M.find_entry_open_target(current_entry(), state.pr_url)
+		local comment, url, reason = M.find_entry_open_target(current_entry(), browser.open_ctx.pr_url)
 		if comment then
-			get_ui().open_comment_in_browser(comment)
+			get_ui().open_comment_in_browser(comment, browser.open_ctx)
 		else
 			util.open_url(url, reason)
 		end
@@ -796,13 +800,13 @@ local function create_browser(entries, issue_comments)
 		local entry = current_entry()
 		if entry and entry.type == "draft" then
 			-- The pane previews the draft body, which has no GitHub page
-			local _, _, reason = M.find_entry_open_target(entry, state.pr_url)
+			local _, _, reason = M.find_entry_open_target(entry, browser.open_ctx.pr_url)
 			util.open_url(nil, reason)
 			return
 		end
 		local line = vim.api.nvim_win_get_cursor(upper_win)[1] - 1
 		local index = format.find_comment_index_at_line(browser.thread_comment_ranges, line)
-		get_ui().open_comment_in_browser(index and (browser.thread_comments or {})[index] or nil)
+		get_ui().open_comment_in_browser(index and (browser.thread_comments or {})[index] or nil, browser.open_ctx)
 	end, { buffer = upper_buf, desc = "Open comment on GitHub" })
 
 	vim.keymap.set("n", "e", function()
