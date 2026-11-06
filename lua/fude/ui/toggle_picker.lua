@@ -45,16 +45,33 @@ function M.resolve_detail(item)
 	return item.detail
 end
 
---- Mark shown in place of a row's own mark while its request is in flight,
---- and its highlight. The row's `on` is still the state before the request,
---- which the mark would otherwise show as if nothing were happening.
-M.LOADING_MARK = "…"
+--- Frames of the mark shown in place of a row's own mark while its request is
+--- in flight (`.` → `..` → `...`, looping), their highlight, and the time each
+--- frame stays. The row's `on` is still the state before the request, which
+--- the mark would otherwise show as if nothing were happening.
+M.LOADING_FRAMES = { ".", "..", "..." }
 M.LOADING_HL = "DiagnosticInfo"
+M.LOADING_INTERVAL_MS = 300
+
+--- The loading mark of a frame, padded to the widest frame so the name after
+--- it does not move from frame to frame.
+--- @param frame number 1-based frame index (wrapped into the frame list)
+--- @return string
+function M.format_loading_mark(frame)
+	local frames = M.LOADING_FRAMES
+	local text = frames[(frame - 1) % #frames + 1]
+	local width = 0
+	for _, f in ipairs(frames) do
+		width = math.max(width, #f)
+	end
+	return text .. string.rep(" ", width - #text)
+end
 
 --- Resolve an item's mark for the current render: `item.mark(item)` when
 --- given, else the plain applied / not-applied mark from `item.on`. While the
---- item's request is in flight (`session.pending[item]`) the loading mark
---- replaces it; the name highlight stays the item's own.
+--- item's request is in flight (`session.pending[item]`) the loading mark of
+--- the session's current frame replaces it; the name highlight stays the
+--- item's own.
 --- @param item fude.TogglePickerItem
 --- @param session table|nil from new_session; nil never shows the loading mark
 --- @return string mark, string mark_hl, string|nil text_hl
@@ -66,19 +83,25 @@ function M.resolve_mark(item, session)
 		mark, mark_hl = format.format_toggle_mark(item.on)
 	end
 	if session and session.pending[item] then
-		return M.LOADING_MARK, M.LOADING_HL, text_hl
+		return M.format_loading_mark(session.frame), M.LOADING_HL, text_hl
 	end
 	return mark, mark_hl, text_hl
 end
 
 --- Per-picker state shared by every close path: the items whose request is
---- in flight, and whether the picker was asked to close. on_close runs once,
---- and only after every in-flight request settled, so the overview it reopens
---- is fetched after GitHub applied the last toggle.
+--- in flight, whether the picker was asked to close, and the loading spinner.
+--- on_close runs once, and only after every in-flight request settled, so
+--- the overview it reopens is fetched after GitHub applied the last toggle.
+---
+--- The spinner is a timer advancing `session.frame` every LOADING_INTERVAL_MS
+--- and calling `session.rerender` (set by the Telescope / snacks adapters;
+--- nil in vim.ui.select mode, whose select is closed while a request runs). It
+--- runs while any request is in flight and stops with the last one, or when
+--- the picker closes.
 --- @param opts fude.TogglePickerOpts
---- @return table session { pending, close(), finish() }
+--- @return table session { pending, frame, rerender, close(), finish(), start_spinner(), stop_spinner(), tick() }
 function M.new_session(opts)
-	local session = { pending = {}, closing = false, closed = false }
+	local session = { pending = {}, closing = false, closed = false, frame = 1, rerender = nil, timer = nil }
 	function session.finish()
 		if session.closing and not session.closed and next(session.pending) == nil then
 			session.closed = true
@@ -87,8 +110,37 @@ function M.new_session(opts)
 			end
 		end
 	end
+	--- Advance to the next frame and re-render; the timer callback.
+	function session.tick()
+		session.frame = session.frame % #M.LOADING_FRAMES + 1
+		if session.rerender then
+			session.rerender()
+		end
+	end
+	function session.start_spinner()
+		if session.timer or not session.rerender then
+			return
+		end
+		local timer = vim.uv.new_timer()
+		if not timer then
+			return
+		end
+		session.timer = timer
+		timer:start(M.LOADING_INTERVAL_MS, M.LOADING_INTERVAL_MS, vim.schedule_wrap(session.tick))
+	end
+	function session.stop_spinner()
+		local timer = session.timer
+		if not timer then
+			return
+		end
+		session.timer = nil
+		timer:stop()
+		timer:close()
+	end
 	function session.close()
 		session.closing = true
+		-- Nothing is shown any more; in-flight requests still settle
+		session.stop_spinner()
 		session.finish()
 	end
 	return session
@@ -101,7 +153,7 @@ end
 --- request before the first one lands. While it is in flight
 --- `session.pending[item]` is set, which `resolve_mark` renders as the loading
 --- mark, so the picker re-renders on start and again once settled, whatever
---- the result.
+--- the result; the spinner runs from the first in-flight request to the last.
 --- @param item fude.TogglePickerItem|nil
 --- @param session table from new_session
 --- @param request fun(done: fun(ok: boolean))
@@ -113,6 +165,7 @@ local function run_item(item, session, request, apply, on_done)
 		return false
 	end
 	session.pending[item] = true
+	session.start_spinner()
 	local settled = false
 	request(function(ok)
 		if settled then
@@ -120,6 +173,9 @@ local function run_item(item, session, request, apply, on_done)
 		end
 		settled = true
 		session.pending[item] = nil
+		if next(session.pending) == nil then
+			session.stop_spinner()
+		end
 		if ok then
 			apply()
 		end
@@ -292,6 +348,12 @@ function M.show_telescope(opts)
 				restore = { row = current:get_selection_row(), prompt = current:_get_prompt() }
 				current:refresh(nil, { reset_prompt = false })
 			end
+			-- The spinner re-renders through the picker that is current then
+			session.rerender = function()
+				if vim.api.nvim_buf_is_valid(prompt_bufnr) then
+					rerender(action_state.get_current_picker(prompt_bufnr))
+				end
+			end
 			-- Run `fn(item, opts, session, on_done)` on the selected row,
 			-- re-rendering when the request starts (loading mark) and once it
 			-- settled (the new mark, or the old one back after a failure).
@@ -350,8 +412,11 @@ function M.show_snacks(opts)
 		end
 	end
 	-- Run `fn(item, opts, session, on_done)` on `item`, re-rendering when the
-	-- request starts and once it settled.
+	-- request starts and once it settled; the spinner re-renders the same way.
 	local function run(fn, picker, item)
+		session.rerender = function()
+			rerender(picker)
+		end
 		local started = fn(item, opts, session, function()
 			rerender(picker)
 		end)
