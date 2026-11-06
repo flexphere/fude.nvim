@@ -656,24 +656,6 @@ function M.calculate_overview_layout(columns, screen_lines, pct_w, pct_h, right_
 	}
 end
 
---- Calculate the placeholder float shown while the overview's PR data is
---- being fetched: one line spanning both panes of the overview layout, so it
---- sits where the overview will open, vertically centered like it.
---- @param layout table from calculate_overview_layout
---- @param screen_lines number screen height
---- @return table { width, height, row, col }
-function M.calculate_overview_loading_layout(layout, screen_lines)
-	local height = 1
-	-- Both panes plus the two inner border columns between them
-	local width = layout.left.width + layout.right.width + 2
-	return {
-		width = width,
-		height = height,
-		row = math.max(0, math.floor((screen_lines - (height + 2)) / 2)),
-		col = layout.left.col,
-	}
-end
-
 --- Calculate upper window height for reply view.
 --- @param line_count number total lines of formatted comments
 --- @param min_height number minimum height
