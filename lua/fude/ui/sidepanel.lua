@@ -1270,7 +1270,7 @@ function M.setup_keymaps(panel)
 
 	map("copy_path", function()
 		M.pick_path_to_copy(panel)
-	end, "Copy file path or commit hash/title")
+	end, "Copy file path, commit hash/title/message, or branch")
 
 	map("help", function()
 		M.toggle_help(panel)
@@ -1558,6 +1558,18 @@ function M.build_commit_copy_choices(sha, short_sha, subject, message)
 	return label_copy_choices(choices)
 end
 
+--- Copy `text` and report it; `shown` replaces the text in the message (e.g. a long message's summary).
+--- @param text string
+--- @param shown string|nil
+local function copy_text(text, shown)
+	shown = shown or text
+	if require("fude.util").copy_to_clipboard(text) then
+		vim.notify("fude.nvim: Copied " .. shown, vim.log.levels.INFO)
+	else
+		vim.notify("fude.nvim: Copied " .. shown .. " to the unnamed register (clipboard unavailable)", vim.log.levels.WARN)
+	end
+end
+
 --- Show the copy picker and copy the picked choice's text.
 --- @param choices table[] { text, label }
 --- @param prompt string
@@ -1574,28 +1586,26 @@ local function select_and_copy(choices, prompt, kind)
 		if not choice then
 			return
 		end
-		local shown = choice.summary or choice.text
-		if require("fude.util").copy_to_clipboard(choice.text) then
-			vim.notify("fude.nvim: Copied " .. shown, vim.log.levels.INFO)
-		else
-			vim.notify(
-				"fude.nvim: Copied " .. shown .. " to the unnamed register (clipboard unavailable)",
-				vim.log.levels.WARN
-			)
-		end
+		copy_text(choice.text, choice.summary)
 	end)
 end
 
 --- Pick what to copy from the entry under the cursor: the file name, relative
 --- path, or absolute path of a Files section entry (file or tree-mode
---- directory), or the hash, short hash, or title of a Review Scope commit.
+--- directory), or the hash, short hash, title, or full message of a Review
+--- Scope commit. A local base/unpushed scope row copies its branch at once.
 --- @param panel table sidepanel state
 function M.pick_path_to_copy(panel)
 	local entry_info = M.get_current_entry(panel)
 	if entry_info and entry_info.type == "scope" then
 		local entry = entry_info.entry
+		-- A branch row has one value to copy, so it is copied without a picker
+		if entry.branch then
+			copy_text(entry.branch)
+			return
+		end
 		if not entry.sha then
-			vim.notify("fude.nvim: No commit under cursor", vim.log.levels.INFO)
+			vim.notify("fude.nvim: No commit or branch under cursor", vim.log.levels.INFO)
 			return
 		end
 		local message = commit_message_for(panel, entry.sha)

@@ -957,6 +957,31 @@ describe("sidepanel integration", function()
 			press_and_choose(panel, 1)
 			assert.is_nil(picked)
 		end)
+
+		it("y on a local base or unpushed row copies its branch without a picker", function()
+			config.state.review_mode = "local"
+			config.state.local_session = {
+				scope = "base",
+				base_ref = "master",
+				branch = "feat/x",
+				worktree_root = "/mock/repo",
+				commits = {},
+			}
+			helpers.mock(require("fude.diff"), "get_upstream_ref", function()
+				return "origin/feat/x"
+			end)
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			local expected = { base = "master", unpushed = "feat/x" }
+			for scope_name, branch in pairs(expected) do
+				move_to_scope(panel, function(entry)
+					return entry.local_scope == scope_name
+				end)
+				press_and_choose(panel, 1)
+				assert.is_nil(picked)
+				assert.are.equal(branch, vim.fn.getreg('"'))
+			end
+		end)
 	end)
 
 	it("help uses overrides and omits disabled and shadowed mappings", function()
