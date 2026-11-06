@@ -1082,6 +1082,7 @@ function M.setup_keymaps(panel)
 	-- the priority order documented in doc/fude.txt (`sidepanel.keymaps`), so
 	-- keep the two in sync.
 	local used_lhs = {}
+	local nowait = not (config.opts.sidepanel and config.opts.sidepanel.nowait == false)
 	panel.help_mappings = {}
 	local function map(action, callback, desc)
 		local lhs = keymaps[action]
@@ -1093,7 +1094,7 @@ function M.setup_keymaps(panel)
 			return
 		end
 		used_lhs[key] = true
-		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc })
+		vim.keymap.set("n", lhs, callback, { buffer = buf, desc = desc, nowait = nowait })
 		table.insert(panel.help_mappings, { action = action, lhs = lhs, desc = desc })
 	end
 
@@ -1182,6 +1183,10 @@ function M.setup_keymaps(panel)
 		panel.commit_message_expanded = not panel.commit_message_expanded
 		M.refresh()
 	end, "Expand/collapse commit message")
+
+	map("copy_path", function()
+		M.pick_path_to_copy(panel)
+	end, "Copy file name / relative path / absolute path")
 
 	map("help", function()
 		M.toggle_help(panel)
@@ -1407,6 +1412,68 @@ function M.find_target_window(panel_win)
 		end
 	end
 	return nil
+end
+
+--- Build the choices of the `copy_path` picker for a Files section entry.
+--- @param rel_path string repo-relative path (a file, or a directory in tree mode)
+--- @param root string repository root directory
+--- @return table[] { label, text } for the file name, relative path, and absolute path
+function M.build_copy_choices(rel_path, root)
+	local name = rel_path:match("([^/]+)/*$") or rel_path
+	local choices = {
+		{ kind = "filename", text = name },
+		{ kind = "relative_path", text = rel_path },
+		{ kind = "absolute_path", text = (root:gsub("/+$", "")) .. "/" .. rel_path },
+	}
+	-- Pad the keys so the values start in the same column
+	local key_width = 0
+	for _, choice in ipairs(choices) do
+		key_width = math.max(key_width, #choice.kind + 1)
+	end
+	for _, choice in ipairs(choices) do
+		local key = choice.kind .. ":"
+		choice.label = key .. string.rep(" ", key_width - #key + 1) .. choice.text
+	end
+	return choices
+end
+
+--- Pick the file name, relative path, or absolute path of the Files section
+--- entry under the cursor (file or tree-mode directory) and copy it.
+--- @param panel table sidepanel state
+function M.pick_path_to_copy(panel)
+	local entry_info = M.get_current_entry(panel)
+	if not entry_info or (entry_info.type ~= "file" and entry_info.type ~= "directory") then
+		vim.notify("fude.nvim: No file under cursor", vim.log.levels.INFO)
+		return
+	end
+	-- The root the panel rendered and opens files with, so a `:cd` elsewhere
+	-- after opening the panel does not change the copied absolute path
+	local root = panel.repo_root or get_diff().get_repo_root()
+	if not root then
+		vim.notify("fude.nvim: Could not resolve the repository root", vim.log.levels.WARN)
+		return
+	end
+	local choices = M.build_copy_choices(entry_info.entry.path, root)
+	vim.ui.select(choices, {
+		prompt = "Copy path",
+		-- Lets vim.ui.select providers (dressing.nvim, snacks.nvim) configure this picker, e.g. open it in normal mode
+		kind = "fude_copy_path",
+		format_item = function(choice)
+			return choice.label
+		end,
+	}, function(choice)
+		if not choice then
+			return
+		end
+		if require("fude.util").copy_to_clipboard(choice.text) then
+			vim.notify("fude.nvim: Copied " .. choice.text, vim.log.levels.INFO)
+		else
+			vim.notify(
+				"fude.nvim: Copied " .. choice.text .. " to the unnamed register (clipboard unavailable)",
+				vim.log.levels.WARN
+			)
+		end
+	end)
 end
 
 --- Toggle reviewed state for a scope entry.

@@ -549,13 +549,8 @@ local function open_error_float(lines, highlights, title, pr_url)
 	-- Copy the whole float (message, suggestion and original error) to the
 	-- clipboard and the unnamed register, e.g. to paste into an issue
 	vim.keymap.set("n", "c", function()
-		local text = table.concat(lines, "\n")
-		vim.fn.setreg('"', text)
-		-- Without a clipboard provider (ssh without OSC 52, headless) "+" is not
-		-- set. Reading "+" back to check is avoided: with the OSC 52 provider
-		-- that read is a terminal query that may block or fail spuriously
-		local copied = vim.fn.has("clipboard") == 1 and pcall(vim.fn.setreg, "+", text)
-		if copied then
+		-- Without a clipboard provider (ssh without OSC 52, headless) "+" is not set
+		if require("fude.util").copy_to_clipboard(table.concat(lines, "\n")) then
 			vim.notify("fude.nvim: Error message copied", vim.log.levels.INFO)
 		else
 			vim.notify("fude.nvim: Error message copied to the unnamed register (clipboard unavailable)", vim.log.levels.WARN)

@@ -57,4 +57,15 @@ function M.all_comments_resolved(comments)
 	return true
 end
 
+--- Copy text to the unnamed register and, when a clipboard provider exists,
+--- to the `+` register. `+` is never read back to check the copy: with the
+--- OSC 52 provider that read is a terminal query that may block or fail
+--- spuriously.
+--- @param text string
+--- @return boolean true when `+` was set too, false when only the unnamed register was
+function M.copy_to_clipboard(text)
+	vim.fn.setreg('"', text)
+	return vim.fn.has("clipboard") == 1 and pcall(vim.fn.setreg, "+", text) or false
+end
+
 return M

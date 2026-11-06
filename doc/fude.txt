@@ -927,6 +927,10 @@ File opening position                                 *fude-file-position*
       `R`       Reload review data
       `q`       Close panel
       `m`       Expand / collapse a folded commit message
+      `y`       On a file or directory: pick its file name, path
+                relative to the repository root, or absolute path and
+                copy it (unnamed register, and `+` when a clipboard
+                provider is available)
       `?`       Open a floating reference of configured panel keymaps
 
     The "? Help" hint appears below the file list. Both the hint and help
@@ -1110,6 +1114,7 @@ Default configuration: >lua
       position = "left", -- "left", "right", "top", or "bottom"
       file_tree = "flat", -- "flat" or "tree"
       icons = true, -- Use nvim-web-devicons when available
+      nowait = true, -- Panel keys do not wait for longer mappings
       commit_message = {
         max_lines = 8, -- Rows shown before the rest is folded
       },
@@ -1123,6 +1128,7 @@ Default configuration: >lua
         prev_entry = "k",
         change_base = "b",
         toggle_commit_message = "m",
+        copy_path = "y",
         help = "?",
       },
     },
@@ -1360,6 +1366,14 @@ Options:
                   when installed (default: true). Set false to hide icons
                   and skip loading the icon provider. Requires a Nerd Font.
 
+`sidepanel.nowait`  Register the `sidepanel.keymaps` mappings with |:map-nowait|
+                  (default: true), so a panel key runs at once even when
+                  another mapping starts with the same key (e.g. a global
+                  `cs` would otherwise delay a panel `c` by 'timeoutlen').
+                  Such longer mappings cannot be used in the panel while it
+                  is true; set false to keep them, e.g. `<leader>` mappings
+                  when a panel key is your leader.
+
 `sidepanel.commit_message.max_lines`
                   Rows of the side panel's Commit Message section shown
                   before the rest is folded into a "… N more lines" hint
@@ -1387,6 +1401,12 @@ Options:
                   - `toggle_commit_message`: "m" (expand or collapse a
                     commit message folded by
                     `sidepanel.commit_message.max_lines`)
+                  - `copy_path`: "y" (pick the file name, relative path,
+                    or absolute path of the file or directory under the
+                    cursor and copy it; the picker is opened through
+                    |vim.ui.select()| with `kind = "fude_copy_path"`, so
+                    a provider such as dressing.nvim can be configured to
+                    open it in normal mode)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
                   Set an action to `false` or an empty string to disable its
