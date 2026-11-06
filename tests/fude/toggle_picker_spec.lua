@@ -542,11 +542,12 @@ end)
 describe("toggle_picker row images", function()
 	local config = require("fude.config")
 	local restore_fakes
-	local placed, cleaned
+	local placed, cleaned, closed
 
-	--- A fake snacks image module recording placements.
+	--- A fake snacks image module recording placements (each a table whose
+	--- close() records its index in `closed`).
 	local function fake_snacks_image()
-		placed, cleaned = {}, {}
+		placed, cleaned, closed = {}, {}, {}
 		return {
 			image = {
 				supports_terminal = function()
@@ -554,7 +555,12 @@ describe("toggle_picker row images", function()
 				end,
 				placement = {
 					new = function(buf, file, opts)
-						table.insert(placed, { buf = buf, file = file, opts = opts })
+						local placement = { buf = buf, file = file, opts = opts, id = #placed + 1 }
+						function placement.close(self)
+							table.insert(closed, self.id)
+						end
+						table.insert(placed, placement)
+						return placement
 					end,
 					clean = function(buf)
 						table.insert(cleaned, buf)
@@ -588,13 +594,24 @@ describe("toggle_picker row images", function()
 		assert.are.equal(1, #placed)
 		assert.are.same(
 			{ buf = buf, file = "/cache/a.png", opts = { pos = { 1, 0 }, inline = true, height = 1, width = 2 } },
-			placed[1]
+			{ buf = placed[1].buf, file = placed[1].file, opts = placed[1].opts }
 		)
+		assert.are.equal(placed[1], session.placed[buf][1])
+
+		-- `only`: the given rows' placements are closed and made again, the
+		-- buffer's other placements and the buffer itself are left alone
+		session.images[c] = "/cache/c.png"
+		toggle_picker.place_row_images(buf, { { row = 1, item = a }, { row = 3, item = c } }, session, { only = true })
+		assert.are.same({ buf }, cleaned)
+		assert.are.same({ 1 }, closed)
+		assert.are.equal(3, #placed)
+		assert.are.same({ { 1, 0 }, { 3, 0 } }, { placed[2].opts.pos, placed[3].opts.pos })
+		assert.are.same({ placed[2], placed[3] }, { session.placed[buf][1], session.placed[buf][3] })
 		-- Without snacks nothing happens
 		restore_fakes()
 		restore_fakes = install_fakes({ ["snacks"] = nil })
 		toggle_picker.place_row_images(buf, { { row = 1, item = a } }, session)
-		assert.are.equal(1, #placed)
+		assert.are.equal(3, #placed)
 	end)
 
 	it("load_images asks once per item and re-renders once per batch of answers", function()
@@ -697,6 +714,14 @@ describe("toggle_picker row images", function()
 		function picker.get_index(_, row)
 			return row + 1
 		end
+		picker.selection_row = 0
+		function picker.get_selection_row(self)
+			return self.selection_row
+		end
+		function picker.set_selection(self, row)
+			-- Telescope rewrites the old and the new row to move the caret
+			self.selection_row = row
+		end
 		function picker.refresh(self)
 			self.refreshes = self.refreshes + 1
 			if self.completion then
@@ -761,6 +786,20 @@ describe("toggle_picker row images", function()
 		assert.are.equal(1, picker.refreshes)
 		assert.are.same({ buf = results_buf, file = "/cache/b.png" }, { buf = placed[1].buf, file = placed[1].file })
 		assert.are.same({ 2, 0 }, placed[1].opts.pos)
+
+		-- Moving the selection onto row 2 (b) and back redraws b's image each
+		-- time without cleaning the buffer; a has no file, so nothing for it
+		local cleans = #cleaned
+		picker:set_selection(1)
+		assert.are.equal(1, picker.selection_row)
+		assert.are.same({ 1 }, closed)
+		assert.are.equal(2, #placed)
+		assert.are.same({ 2, 0 }, placed[2].opts.pos)
+		picker:set_selection(0)
+		assert.are.same({ 1, 2 }, closed)
+		assert.are.equal(3, #placed)
+		assert.are.same({ 2, 0 }, placed[3].opts.pos)
+		assert.are.equal(cleans, #cleaned)
 	end)
 end)
 
