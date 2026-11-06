@@ -1351,6 +1351,66 @@ describe("build_label_hl_names", function()
 	end)
 end)
 
+describe("build_label_pill", function()
+	it("pads the name inside the rounded ends and highlights each part", function()
+		local left, right = format.LABEL_PILL_LEFT, format.LABEL_PILL_RIGHT
+		local pill = format.build_label_pill("bug", "N", "C")
+		assert.are.equal(left .. " bug " .. right, pill.text)
+		assert.are.same({
+			{ col_start = 0, col_end = #left, hl = "C" },
+			{ col_start = #left, col_end = #left + 5, hl = "N" },
+			{ col_start = #left + 5, col_end = #left + 5 + #right, hl = "C" },
+		}, pill.ranges)
+	end)
+end)
+
+describe("pack_label_pills", function()
+	local function plain(text)
+		return { text = text, ranges = { { col_start = 0, col_end = #text, hl = text } } }
+	end
+
+	it("puts every pill on one row without a width", function()
+		local rows = format.pack_label_pills({ plain("ab"), plain("cd") })
+		assert.are.same({
+			{
+				text = "ab cd",
+				ranges = { { col_start = 0, col_end = 2, hl = "ab" }, { col_start = 3, col_end = 5, hl = "cd" } },
+			},
+		}, rows)
+	end)
+
+	it("starts a new row when the next pill would exceed the width", function()
+		local rows = format.pack_label_pills({ plain("ab"), plain("cd"), plain("ef") }, 5)
+		assert.are.same(
+			{ "ab cd", "ef" },
+			vim.tbl_map(function(r)
+				return r.text
+			end, rows)
+		)
+		assert.are.same({ { col_start = 0, col_end = 2, hl = "ef" } }, rows[2].ranges)
+	end)
+
+	it("gives a pill wider than the width a row of its own", function()
+		local rows = format.pack_label_pills({ plain("abcdef"), plain("g") }, 3)
+		assert.are.same(
+			{ "abcdef", "g" },
+			vim.tbl_map(function(r)
+				return r.text
+			end, rows)
+		)
+	end)
+
+	it("measures with display_width rather than bytes", function()
+		-- "é" is 2 bytes but 1 cell: "é é" fits in 3 cells
+		local rows = format.pack_label_pills({ plain("é"), plain("é") }, 3, vim.fn.strdisplaywidth)
+		assert.are.equal(1, #rows)
+	end)
+
+	it("returns no rows for no pills", function()
+		assert.are.same({}, format.pack_label_pills({}, 10))
+	end)
+end)
+
 describe("define_label_hls", function()
 	it("defines the pill groups from the colour and the float background", function()
 		ui._define_label_hls({ "d73a4a" })
@@ -1455,23 +1515,9 @@ describe("build_overview_right_lines", function()
 			labels = { { name = "bug" }, { name = "urgent" } },
 		}
 		local result = ui.build_overview_right_lines(pr)
-		local found_header = false
-		local found_bug = false
-		local found_urgent = false
-		for _, line in ipairs(result.lines) do
-			if line == "## LABELS" then
-				found_header = true
-			end
-			if line == "bug" then
-				found_bug = true
-			end
-			if line == "urgent" then
-				found_urgent = true
-			end
-		end
-		assert.is_true(found_header)
-		assert.is_true(found_bug)
-		assert.is_true(found_urgent)
+		assert.is_true(vim.tbl_contains(result.lines, "## LABELS"))
+		-- labels without a colour are plain names, side by side
+		assert.is_true(vim.tbl_contains(result.lines, "bug urgent"))
 	end)
 
 	it("draws a label with a colour as a pill highlighted with that colour's groups", function()
@@ -1487,30 +1533,39 @@ describe("build_overview_right_lines", function()
 			},
 		}
 		local result = ui.build_overview_right_lines(pr)
-		local left, right = format.LABEL_PILL_LEFT, format.LABEL_PILL_RIGHT
+		local bug = format.build_label_pill("bug", "ReviewLabel_d73a4a", "ReviewLabelCap_d73a4a").text
+		local urgent = format.build_label_pill("urgent", "ReviewLabel_d73a4a", "ReviewLabelCap_d73a4a").text
+		-- side by side on one row; an invalid colour falls back to the plain name
+		local expected = bug .. format.LABEL_PILL_GAP .. urgent .. format.LABEL_PILL_GAP .. "docs"
 		local row
 		for i, line in ipairs(result.lines) do
-			if line == left .. "bug" .. right then
+			if line == expected then
 				row = i - 1
 			end
 		end
 		assert.is_not_nil(row)
-		local ranges = {}
+		local count = 0
 		for _, hl in ipairs(result.hl_ranges) do
 			if hl.line == row then
-				table.insert(ranges, { hl.col_start, hl.col_end, hl.hl })
+				count = count + 1
 			end
 		end
-		assert.are.same({
-			{ 0, #left, "ReviewLabelCap_d73a4a" },
-			{ #left, #left + 3, "ReviewLabel_d73a4a" },
-			{ #left + 3, #left + 3 + #right, "ReviewLabelCap_d73a4a" },
-		}, ranges)
-		assert.is_true(vim.tbl_contains(result.lines, left .. "urgent" .. right))
-		-- an invalid colour falls back to the plain name
-		assert.is_true(vim.tbl_contains(result.lines, "docs"))
+		assert.are.equal(6, count)
 		-- one entry per colour, however it is spelled
 		assert.are.same({ "d73a4a" }, result.label_colors)
+	end)
+
+	it("wraps the label row at labels_width", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			labels = { { name = "aaaa" }, { name = "bbbb" }, { name = "cccc" } },
+		}
+		local result = ui.build_overview_right_lines(pr, { labels_width = 9 })
+		assert.is_true(vim.tbl_contains(result.lines, "aaaa bbbb"))
+		assert.is_true(vim.tbl_contains(result.lines, "cccc"))
 	end)
 
 	it("returns no label colours when no label has one", function()
