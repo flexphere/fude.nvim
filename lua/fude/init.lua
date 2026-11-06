@@ -170,7 +170,9 @@ function M.start()
 	local gh_mod = require("fude.gh")
 	vim.notify("fude.nvim: Detecting PR...", vim.log.levels.INFO)
 
-	gh_mod.get_pr_info(function(err, pr_info)
+	-- The PR lookup also asks for the overview's body fields, so the overview
+	-- data is complete at the same time the PR is known (no second gh pr view)
+	gh_mod.get_pr_info(function(err, pr_info, has_overview)
 		if err then
 			vim.notify("fude.nvim: No PR found for current branch. " .. (err or ""), vim.log.levels.ERROR)
 			return
@@ -206,9 +208,31 @@ function M.start()
 		-- Detect detached HEAD: start with commit scope automatically
 		local started_detached = state.original_head_ref == nil
 
+		-- Fetch the :FudeReviewOverview data in the background, alongside the
+		-- review data below, so the overview opens at once (silent on failure).
+		-- The body usually came with the PR lookup; on_overview_ready runs as
+		-- soon as it is cached, after the rest of this setup (scheduled).
+		require("fude.overview").prefetch({
+			pr_info = has_overview and pr_info or nil,
+			on_ready = function()
+				vim.schedule(function()
+					local hook = config.opts.on_overview_ready
+					if not hook or not (config.state.active and config.state == state) then
+						return
+					end
+					local ok, hook_err = pcall(hook, { pr_number = state.pr_number, pr_url = state.pr_url })
+					if not ok then
+						vim.notify("fude.nvim: on_overview_ready error: " .. tostring(hook_err), vim.log.levels.ERROR)
+					end
+				end)
+			end,
+		})
+
 		-- Completion barrier: fire on_review_start after all async fetches complete
-		-- 5 async fetches: files, get_pr_commits, get_pr_viewed_files, get_authenticated_user, load_comments
-		local remaining = 5
+		-- 4 async fetches: files, get_pr_commits, get_pr_viewed_files, get_authenticated_user.
+		-- The review comments load alongside but outside the barrier (below), so
+		-- on_review_start — and an overview it opens — does not wait for them.
+		local remaining = 4
 		local function on_ready()
 			remaining = remaining - 1
 			if remaining > 0 then
@@ -275,7 +299,7 @@ function M.start()
 				state.pr_node_id = pr_node_id
 			end
 			on_ready()
-		end)
+		end, require("fude.drafts").repo_slug(state.pr_url))
 
 		-- Apply diffopt settings
 		if config.opts.diffopt then
@@ -307,11 +331,16 @@ function M.start()
 			on_ready()
 		end)
 
-		local comments_mod = require("fude.comments")
-		comments_mod.load_comments(on_ready)
+		-- Comments are drawn when they arrive (load_comments refreshes the
+		-- extmarks); the side panel's per-file counts are re-rendered then.
+		require("fude.comments").load_comments(function()
+			if config.state.active and config.state == state then
+				require("fude.ui.sidepanel").refresh()
+			end
+		end)
 
 		M.setup_review_autocmds(state)
-	end)
+	end, { with_overview = true })
 end
 
 --- Create the review-mode augroup and shared autocmds (extmark refresh,
@@ -657,6 +686,10 @@ function M.reload(silent)
 		on_done()
 	end)
 
+	-- Refresh the cached :FudeReviewOverview data in the background; not part of
+	-- the barrier, since its failure is silent and must not hold the reload
+	require("fude.overview").prefetch()
+
 	-- Reload comments (includes pending review detection)
 	require("fude.comments").load_comments(on_done, { silent = true })
 
@@ -684,7 +717,7 @@ function M.reload(silent)
 			config.state.pr_node_id = pr_node_id
 		end
 		on_done()
-	end)
+	end, require("fude.drafts").repo_slug(config.state.pr_url))
 
 	-- Reload PR commits
 	gh_mod.get_pr_commits(config.state.pr_number, function(err, commits)

@@ -179,6 +179,63 @@ describe("init integration", function()
 			assert.are.equal("https://github.com/owner/repo/pull/42", cb_info.pr_url)
 		end)
 
+		it("calls on_review_start without waiting for the review comments, which load after it", function()
+			local cb_called = false
+			config.setup({
+				on_review_start = function()
+					cb_called = true
+				end,
+			})
+			setup_gh_mocks()
+			local comments_mod = require("fude.comments")
+			local finish_comments
+			helpers.mock(comments_mod, "load_comments", function(callback)
+				finish_comments = callback
+			end)
+			local refreshed = 0
+			helpers.mock(require("fude.ui.sidepanel"), "refresh", function()
+				refreshed = refreshed + 1
+			end)
+
+			init.start()
+
+			assert.is_true(helpers.wait_for(function()
+				return cb_called
+			end))
+			assert.is_not_nil(finish_comments)
+			-- The side panel's comment counts are re-rendered when they land
+			local before = refreshed
+			finish_comments()
+			assert.are.equal(before + 1, refreshed)
+		end)
+
+		it("calls on_overview_ready with the overview body taken from the PR lookup", function()
+			local info
+			config.setup({
+				on_overview_ready = function(i)
+					info = i
+				end,
+			})
+			setup_gh_mocks()
+			local overview = require("fude.overview")
+			local prefetch_opts
+			local real_prefetch = overview.prefetch
+			helpers.mock(overview, "prefetch", function(opts)
+				prefetch_opts = opts
+				return real_prefetch(opts)
+			end)
+
+			init.start()
+
+			assert.is_true(helpers.wait_for(function()
+				return info ~= nil
+			end))
+			assert.are.same({ pr_number = 42, pr_url = "https://github.com/owner/repo/pull/42" }, info)
+			-- The PR lookup's own result was handed over as the body
+			assert.are.equal(42, prefetch_opts.pr_info.number)
+			assert.is_not_nil(config.state.overview_cache)
+		end)
+
 		it("does not error when on_review_start is nil", function()
 			config.setup({ on_review_start = nil })
 			setup_gh_mocks()
@@ -418,6 +475,25 @@ describe("init integration", function()
 			assert.are.equal(1, #config.state.changed_files)
 			assert.are.equal("lua/fude/new.lua", config.state.changed_files[1].path)
 			assert.are.equal(2, #config.state.pr_commits)
+		end)
+
+		it("prefetches the overview data on start and on reload", function()
+			local calls = {}
+			helpers.mock(require("fude.overview"), "prefetch", function()
+				table.insert(calls, { active = config.state.active, review_mode = config.state.review_mode })
+			end)
+			init.start()
+			assert.is_true(helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end))
+			-- Started with the session already set up, so it targets the GitHub session
+			assert.are.same({ { active = true, review_mode = "github" } }, calls)
+
+			init.reload(true)
+			assert.is_true(helpers.wait_for(function()
+				return not config.state.reloading
+			end))
+			assert.are.equal(2, #calls)
 		end)
 
 		it("prevents concurrent reloads", function()

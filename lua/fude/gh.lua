@@ -96,21 +96,59 @@ function M.get_pr_by_commit(sha, callback)
 	end)
 end
 
+--- Fields of the PR lookup that starts a review (`get_pr_info`).
+M.PR_INFO_FIELDS = "number,baseRefName,baseRefOid,headRefName,url,state"
+--- Fields of the PR overview's body request (`get_pr_overview`). The
+--- reviewers and the CI checks are fetched on their own (get_pr_reviewers,
+--- get_pr_checks), so the body arrives as soon as possible.
+M.PR_OVERVIEW_FIELDS = "number,title,body,labels,assignees,state,isDraft,author,"
+	.. "baseRefName,headRefName,url,additions,deletions,changedFiles"
+
+--- Union of two comma-separated `--json` field lists, in order, without
+--- duplicates. Pure.
+--- @param a string
+--- @param b string
+--- @return string
+function M.merge_json_fields(a, b)
+	local seen, fields = {}, {}
+	for _, list in ipairs({ a, b }) do
+		for _, field in ipairs(vim.split(list, ",", { trimempty = true })) do
+			if not seen[field] then
+				seen[field] = true
+				table.insert(fields, field)
+			end
+		end
+	end
+	return table.concat(fields, ",")
+end
+
 --- Get PR info for the current branch.
 --- Detects detached HEAD synchronously and uses commit-based lookup directly,
 --- avoiding `gh pr view` which may hang without a branch.
---- @param callback fun(err: string|nil, data: table|nil)
-function M.get_pr_info(callback)
+--- With `opts.with_overview` the `gh pr view` of a branch also asks for the
+--- overview's body fields (`PR_OVERVIEW_FIELDS`), so a review start gets the
+--- overview body from the same request; the third callback argument says
+--- whether `data` carries them (never on a detached HEAD, whose commit-based
+--- lookup returns only the PR info).
+--- @param callback fun(err: string|nil, data: table|nil, has_overview: boolean)
+--- @param opts { with_overview: boolean|nil }|nil
+function M.get_pr_info(callback, opts)
 	-- Detect detached HEAD: use commit-based lookup directly
 	local ref_result = vim.system({ "git", "symbolic-ref", "--quiet", "HEAD" }, { text = true }):wait()
 	if ref_result.code ~= 0 then
 		local sha, sha_err = M.get_head_sha()
 		if not sha then
-			return callback(sha_err or "Not in a git repository", nil)
+			return callback(sha_err or "Not in a git repository", nil, false)
 		end
-		return M.get_pr_by_commit(sha, callback)
+		return M.get_pr_by_commit(sha, function(err, data)
+			callback(err, data, false)
+		end)
 	end
-	M.run_json({ "pr", "view", "--json", "number,baseRefName,baseRefOid,headRefName,url,state" }, callback)
+	local with_overview = opts ~= nil and opts.with_overview == true
+	local fields = with_overview and M.merge_json_fields(M.PR_INFO_FIELDS, M.PR_OVERVIEW_FIELDS) or M.PR_INFO_FIELDS
+	M.run_json({ "pr", "view", "--json", fields }, function(err, data)
+		callback(err, data, with_overview and not err)
+	end)
 end
 
 --- Get the list of files changed in a PR.
@@ -232,15 +270,61 @@ end
 
 --- Get extended PR info for overview display.
 --- @param callback fun(err: string|nil, data: table|nil)
-function M.get_pr_overview(callback)
-	local fields = "number,title,body,labels,assignees,state,isDraft,author,"
-		.. "baseRefName,headRefName,url,statusCheckRollup,reviewRequests,latestReviews,additions,deletions,changedFiles"
-	M.run_json({
-		"pr",
-		"view",
-		"--json",
-		fields,
-	}, callback)
+--- @param pr_number number|nil the PR to view; nil lets gh infer it from the current branch
+---   (pass it whenever it is known: `gh pr view` without a number may hang on a detached HEAD)
+function M.get_pr_overview(callback, pr_number)
+	-- statusCheckRollup and the reviewers are left out, so the overview opens
+	-- with the body as soon as possible: get_pr_checks and get_pr_reviewers
+	-- fill CI STATUS and REVIEWERS in later.
+	local fields = M.PR_OVERVIEW_FIELDS
+	local args = { "pr", "view" }
+	if pr_number then
+		table.insert(args, tostring(pr_number))
+	end
+	vim.list_extend(args, { "--json", fields })
+	M.run_json(args, callback)
+end
+
+--- Get the PR's reviewers (`reviewRequests`, `latestReviews`) on their own, so
+--- the overview does not wait for them. JSON nulls are normalized to empty lists.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param callback fun(err: string|nil, reviewers: { reviewRequests: table[], latestReviews: table[] }|nil)
+function M.get_pr_reviewers(pr_number, callback)
+	local args = { "pr", "view" }
+	if pr_number then
+		table.insert(args, tostring(pr_number))
+	end
+	vim.list_extend(args, { "--json", "reviewRequests,latestReviews" })
+	M.run_json(args, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		data = type(data) == "table" and data or {}
+		local requests, reviews = data.reviewRequests, data.latestReviews
+		callback(nil, {
+			reviewRequests = type(requests) == "table" and requests or {},
+			latestReviews = type(reviews) == "table" and reviews or {},
+		})
+	end)
+end
+
+--- Get the PR's CI checks (`statusCheckRollup`) on their own, so the overview
+--- does not wait for them. JSON null is normalized to an empty list.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param callback fun(err: string|nil, checks: table[]|nil)
+function M.get_pr_checks(pr_number, callback)
+	local args = { "pr", "view" }
+	if pr_number then
+		table.insert(args, tostring(pr_number))
+	end
+	vim.list_extend(args, { "--json", "statusCheckRollup" })
+	M.run_json(args, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		local checks = type(data) == "table" and data.statusCheckRollup or nil
+		callback(nil, type(checks) == "table" and checks or {})
+	end)
 end
 
 --- Get issue-level comments on a PR (non-code-bound comments).
@@ -368,9 +452,28 @@ function M.parse_viewed_files_response(data)
 	return viewed_map, pr.id, page_info.hasNextPage or false, page_info.endCursor
 end
 
---- Get the owner and repo name from gh CLI.
+--- Split an `owner/repo` slug into its owner and repository name.
+--- @param repo string|nil
+--- @return string|nil owner, string|nil name (both nil unless exactly `owner/name`)
+function M.parse_repo_slug(repo)
+	if type(repo) ~= "string" then
+		return nil, nil
+	end
+	local owner, name = repo:match("^([^/%s]+)/([^/%s]+)$")
+	return owner, name
+end
+
+--- Get the owner and repo name: from `repo` (`owner/repo`, e.g. the review
+--- session's PR URL slug) when given, which saves a `gh repo view` round trip,
+--- else from gh CLI (the cwd's repository).
 --- @param callback fun(err: string|nil, owner: string|nil, repo: string|nil)
-function M.get_repo_owner(callback)
+--- @param repo string|nil `owner/repo`
+function M.get_repo_owner(callback, repo)
+	local owner, name = M.parse_repo_slug(repo)
+	if owner then
+		callback(nil, owner, name)
+		return
+	end
 	M.run_json({ "repo", "view", "--json", "owner,name" }, function(err, data)
 		if err then
 			return callback(err)
@@ -382,7 +485,8 @@ end
 --- Fetch viewed state for all changed files in a PR (with pagination).
 --- @param pr_number number
 --- @param callback fun(err: string|nil, viewed_map: table<string, string>|nil, pr_node_id: string|nil)
-function M.get_pr_viewed_files(pr_number, callback)
+--- @param repo_slug string|nil `owner/repo` of the PR (skips the `gh repo view` lookup)
+function M.get_pr_viewed_files(pr_number, callback, repo_slug)
 	M.get_repo_owner(function(owner_err, owner, repo)
 		if owner_err then
 			return callback(owner_err)
@@ -413,7 +517,7 @@ function M.get_pr_viewed_files(pr_number, callback)
 		end
 
 		fetch_page(nil)
-	end)
+	end, repo_slug)
 end
 
 --- Mark a file as viewed in a PR.
@@ -523,19 +627,39 @@ function M.get_head_sha()
 	return nil, "Failed to get HEAD SHA"
 end
 
+--- Callbacks waiting for a reviews listing in flight, by PR number and cwd.
+--- @type table<string, function[]>
+local reviews_in_flight = {}
+
 --- Get all reviews on a PR.
 --- Paginated: the endpoint returns reviews oldest first, 30 per page, and
 --- every standalone review comment creates one COMMENTED review, so on a
 --- long-reviewed PR the viewer's pending review (the newest) sits past the
 --- first page and would otherwise never be detected.
+--- A call while the same listing (same PR, same cwd) is still in flight
+--- joins it instead of sending a second request: a review start asks for it
+--- twice at once (pending review detection and the overview's review bodies).
 --- @param pr_number number
 --- @param callback fun(err: string|nil, reviews: table|nil)
 function M.get_reviews(pr_number, callback)
+	local key = tostring(pr_number) .. "\0" .. vim.fn.getcwd()
+	local waiting = reviews_in_flight[key]
+	if waiting then
+		table.insert(waiting, callback)
+		return
+	end
+	waiting = { callback }
+	reviews_in_flight[key] = waiting
 	M.run_json({
 		"api",
 		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews",
 		"--paginate",
-	}, callback)
+	}, function(err, reviews)
+		reviews_in_flight[key] = nil
+		for _, cb in ipairs(waiting) do
+			cb(err, reviews)
+		end
+	end)
 end
 
 --- Get comments for a specific review (paginated, 30 per page otherwise).
@@ -1287,7 +1411,8 @@ end
 --- Returns per-thread info (outdated/resolved) and a comment_id → thread_node_id mapping.
 --- @param pr_number number
 --- @param callback fun(err: string|nil, thread_info_map: table|nil, thread_map: table<number, string>|nil)
-function M.get_review_threads(pr_number, callback)
+--- @param repo_slug string|nil `owner/repo` of the PR (skips the `gh repo view` lookup)
+function M.get_review_threads(pr_number, callback, repo_slug)
 	M.get_repo_owner(function(owner_err, owner, repo)
 		if owner_err then
 			return callback(owner_err, nil, nil)
@@ -1318,7 +1443,7 @@ function M.get_review_threads(pr_number, callback)
 		end
 
 		fetch_page(nil)
-	end)
+	end, repo_slug)
 end
 
 --- Reply to a review thread, attached to an existing pending review.

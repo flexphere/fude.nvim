@@ -330,6 +330,16 @@ function M.fetch(login, cb)
 	end)
 end
 
+--- Remove every avatar drawn in `buf` (before drawing a rebuilt pane's).
+--- A no-op without snacks.nvim.
+--- @param buf number
+function M.clear(buf)
+	local ok, snacks = pcall(require, "snacks")
+	if ok and type(snacks) == "table" and type(snacks.image) == "table" and snacks.image.placement then
+		pcall(snacks.image.placement.clean, buf)
+	end
+end
+
 --- Draw the avatars of `positions` (`{ line (0-indexed), col, login }`, from
 --- the overview line builders) into `buf`, each once its file is available.
 --- Nothing happens when avatars are disabled or unsupported, and a buffer

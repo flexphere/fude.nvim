@@ -389,6 +389,96 @@ describe("build_review_threads_query", function()
 	end)
 end)
 
+describe("repo owner lookup", function()
+	local helpers = require("tests.helpers")
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("parse_repo_slug splits owner/repo and rejects anything else", function()
+		assert.are.same({ "owner", "repo" }, { gh.parse_repo_slug("owner/repo") })
+		assert.are.same({}, { gh.parse_repo_slug("owner") })
+		assert.are.same({}, { gh.parse_repo_slug("a/b/c") })
+		assert.are.same({}, { gh.parse_repo_slug(nil) })
+	end)
+
+	it("get_repo_owner answers from the slug without gh, else asks gh repo view", function()
+		local calls = {}
+		helpers.mock(gh, "run_json", function(args, cb)
+			table.insert(calls, args)
+			cb(nil, { owner = { login = "cwd-owner" }, name = "cwd-repo" })
+		end)
+		local got
+		gh.get_repo_owner(function(err, owner, repo)
+			got = { err, owner, repo }
+		end, "owner/repo")
+		assert.are.same({ nil, "owner", "repo" }, got)
+		assert.are.equal(0, #calls)
+		gh.get_repo_owner(function(err, owner, repo)
+			got = { err, owner, repo }
+		end)
+		assert.are.same({ nil, "cwd-owner", "cwd-repo" }, got)
+		assert.are.same({ "repo", "view", "--json", "owner,name" }, calls[1])
+	end)
+
+	it("get_review_threads and get_pr_viewed_files query the given repository", function()
+		local queries = {}
+		helpers.mock(gh, "run_json", function(args, cb)
+			assert.are_not.equal("repo", args[1])
+			table.insert(queries, args[#args])
+			cb(nil, {})
+		end)
+		gh.get_review_threads(42, function() end, "owner/repo")
+		gh.get_pr_viewed_files(42, function() end, "owner/repo")
+		assert.are.equal(2, #queries)
+		for _, q in ipairs(queries) do
+			assert.truthy(q:find('owner: "owner"', 1, true))
+			assert.truthy(q:find('name: "repo"', 1, true))
+		end
+	end)
+end)
+
+describe("get_pr_reviewers / get_reviews", function()
+	local helpers = require("tests.helpers")
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("get_pr_reviewers asks only for the reviewer fields and normalizes nulls", function()
+		local got_args, result
+		helpers.mock(gh, "run_json", function(args, cb)
+			got_args = args
+			cb(nil, { reviewRequests = vim.NIL, latestReviews = { { state = "APPROVED" } } })
+		end)
+		gh.get_pr_reviewers(7, function(err, reviewers)
+			result = { err, reviewers }
+		end)
+		assert.are.same({ "pr", "view", "7", "--json", "reviewRequests,latestReviews" }, got_args)
+		assert.are.same({ nil, { reviewRequests = {}, latestReviews = { { state = "APPROVED" } } } }, result)
+	end)
+
+	it("get_reviews joins a listing of the same PR in flight instead of requesting it again", function()
+		local requests = {}
+		helpers.mock(gh, "run_json", function(args, cb)
+			table.insert(requests, { args = args, cb = cb })
+		end)
+		local answers = {}
+		gh.get_reviews(7, function(err, reviews)
+			table.insert(answers, { "first", err, reviews })
+		end)
+		gh.get_reviews(7, function(err, reviews)
+			table.insert(answers, { "second", err, reviews })
+		end)
+		gh.get_reviews(8, function() end)
+		assert.are.equal(2, #requests)
+		requests[1].cb(nil, { { id = 1 } })
+		assert.are.same({ { "first", nil, { { id = 1 } } }, { "second", nil, { { id = 1 } } } }, answers)
+		-- Once answered, the next call requests again
+		gh.get_reviews(7, function() end)
+		assert.are.equal(3, #requests)
+	end)
+end)
+
 describe("build_resolve_thread_mutation", function()
 	it("builds resolveReviewThread when resolving", function()
 		local query = gh.build_resolve_thread_mutation(true)
@@ -455,6 +545,72 @@ describe("get_pr_info", function()
 
 		assert.same({ "pr", "view", "--json" }, { seen[1], seen[2], seen[3] })
 		assert.is_true(vim.tbl_contains(vim.split(seen[4], ","), "baseRefOid"))
+	end)
+end)
+
+describe("get_pr_info with the overview fields", function()
+	local helpers = require("tests.helpers")
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	local function on_branch(code)
+		local original_system = vim.system
+		helpers.mock(vim, "system", function(cmd, ...)
+			if cmd[1] == "git" and cmd[2] == "symbolic-ref" then
+				return {
+					wait = function()
+						return { code = code, stdout = code == 0 and "refs/heads/feature\n" or "", stderr = "" }
+					end,
+				}
+			end
+			return original_system(cmd, ...)
+		end)
+	end
+
+	it("merge_json_fields joins two field lists without duplicates, in order", function()
+		assert.are.equal("a,b,c,d", gh.merge_json_fields("a,b,c", "b,d,a"))
+		assert.are.equal("a", gh.merge_json_fields("a", ""))
+	end)
+
+	it("asks for the PR info and the overview body in one gh pr view on a branch", function()
+		on_branch(0)
+		local seen
+		helpers.mock(gh, "run_json", function(args, callback)
+			seen = args
+			callback(nil, { number = 7, title = "T" })
+		end)
+		local got
+		gh.get_pr_info(function(err, data, has_overview)
+			got = { err, data, has_overview }
+		end, { with_overview = true })
+		local fields = vim.split(seen[4], ",")
+		for _, field in ipairs(vim.split(gh.PR_INFO_FIELDS .. "," .. gh.PR_OVERVIEW_FIELDS, ",")) do
+			assert.is_true(vim.tbl_contains(fields, field), field)
+		end
+		assert.are.same({ nil, { number = 7, title = "T" }, true }, got)
+
+		-- Without the option: only the PR info fields, no overview body
+		gh.get_pr_info(function(err, data, has_overview)
+			got = { err, data, has_overview }
+		end)
+		assert.are.equal(gh.PR_INFO_FIELDS, seen[4])
+		assert.is_false(got[3])
+	end)
+
+	it("never claims the overview body on a detached HEAD", function()
+		on_branch(1)
+		helpers.mock(gh, "get_head_sha", function()
+			return "abc"
+		end)
+		helpers.mock(gh, "get_pr_by_commit", function(_, callback)
+			callback(nil, { number = 7 })
+		end)
+		local got
+		gh.get_pr_info(function(err, data, has_overview)
+			got = { err, data, has_overview }
+		end, { with_overview = true })
+		assert.are.same({ nil, { number = 7 }, false }, got)
 	end)
 end)
 
@@ -1032,6 +1188,58 @@ describe("get_pr_state", function()
 		end)
 		assert.are.equal("no PR for commit", result_err)
 		assert.is_false(called_run)
+	end)
+end)
+
+describe("get_pr_overview / get_pr_checks", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("leaves the slow statusCheckRollup out of the overview request", function()
+		local captured
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured = args
+			callback(nil, {})
+		end)
+		gh.get_pr_overview(function() end, 7)
+		assert.are.same({ "pr", "view", "7", "--json" }, vim.list_slice(captured, 1, 4))
+		assert.is_false(vim.tbl_contains(vim.split(captured[5], ","), "statusCheckRollup"))
+	end)
+
+	it("requests only statusCheckRollup and hands over the list, JSON null as empty", function()
+		local captured
+		local answer = { statusCheckRollup = { { name = "ci" } } }
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured = args
+			callback(nil, answer)
+		end)
+		local got
+		gh.get_pr_checks(7, function(err, checks)
+			got = { err = err, checks = checks }
+		end)
+		assert.are.same({ "pr", "view", "7", "--json", "statusCheckRollup" }, captured)
+		assert.are.same({ err = nil, checks = { { name = "ci" } } }, got)
+
+		answer = { statusCheckRollup = vim.NIL }
+		gh.get_pr_checks(nil, function(_, checks)
+			got = checks
+		end)
+		assert.are.same({ "pr", "view", "--json", "statusCheckRollup" }, captured)
+		assert.are.same({}, got)
+	end)
+
+	it("passes an error through", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback("HTTP 502", nil)
+		end)
+		local got
+		gh.get_pr_checks(7, function(err, checks)
+			got = { err = err, checks = checks }
+		end)
+		assert.are.same({ err = "HTTP 502" }, got)
 	end)
 end)
 

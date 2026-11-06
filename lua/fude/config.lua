@@ -150,6 +150,10 @@ M.defaults = {
 	-- Callback invoked after review start completes (all data fetched).
 	-- Receives a table: { pr_number, base_ref, head_ref, pr_url }
 	on_review_start = nil,
+	-- Callback invoked once the :FudeReviewOverview data of a starting review
+	-- is ready (usually with the PR lookup, before on_review_start), so
+	-- require("fude.overview").show() opens at once. Receives { pr_number, pr_url }
+	on_overview_ready = nil,
 	-- Local on-disk drafts for in-progress (unsubmitted) comment input.
 	-- Persisted under stdpath("state")/fude/drafts.json so input can be paused
 	-- and resumed later, including across PR switches and Neovim restarts.
@@ -209,6 +213,7 @@ M.state = {
 	reload_timer = nil, -- vim.uv.new_timer() handle for auto-reload
 	reloading = false, -- Guard flag to prevent concurrent reloads
 	resolving_thread = false, -- Guard flag: a GitHub thread resolve toggle (mutation + refresh) is in flight
+	overview_cache = nil, -- Overview data prefetched at review start / reload: { pr_info, pr_comments } (overview.lua)
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
 	sidepanel = nil, -- { win, buf, scope_entries, file_entries, section_map, augroup }
 }
@@ -270,6 +275,8 @@ function M.reset_state()
 		reload_timer = nil,
 		reloading = false,
 		resolving_thread = false,
+		-- Overview data prefetched at review start / reload ({ pr_info, pr_comments })
+		overview_cache = nil,
 		gitsigns_reset = false,
 		sidepanel = nil,
 	}
