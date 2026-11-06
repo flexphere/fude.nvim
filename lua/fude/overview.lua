@@ -151,7 +151,10 @@ function M.edit_reviewers(pr_info)
 			table.insert(items, {
 				text = "@" .. entry.login,
 				on = entry.requested,
-				-- Rendered from item.on, so it follows a toggle in place
+				-- Both rendered from item.on, so they follow a toggle in place
+				mark = function(item)
+					return format.format_reviewer_mark(item.on, entry.review_state)
+				end,
 				detail = function(item)
 					return format.format_reviewer_detail(item.on, entry.review_state)
 				end,

@@ -25,6 +25,7 @@ M.build_re_request_candidates = format.build_re_request_candidates
 M.build_reviewer_entries = format.build_reviewer_entries
 M.build_label_entries = format.build_label_entries
 M.format_toggle_entry = format.format_toggle_entry
+M.format_reviewer_mark = format.format_reviewer_mark
 M.build_reviewers_summary = format.build_reviewers_summary
 M.calculate_overview_layout = format.calculate_overview_layout
 M.calculate_comments_height = format.calculate_comments_height

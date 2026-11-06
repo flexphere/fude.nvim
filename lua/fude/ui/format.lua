@@ -554,14 +554,34 @@ function M.format_toggle_mark(on)
 	return "○", "Comment"
 end
 
+--- Mark and highlight groups for a reviewer picker row, following the
+--- GitHub web UI: a pending request (review in progress) wins over the
+--- user's previous review, since it is what the reviewer owes now.
+--- @param requested boolean
+--- @param review_state string|nil latest review state (APPROVED, DISMISSED, ...)
+--- @return string mark, string mark_hl, string|nil text_hl highlight for the name
+function M.format_reviewer_mark(requested, review_state)
+	if requested then
+		return "●", "DiagnosticWarn", nil
+	elseif review_state == "APPROVED" then
+		return "✓", "DiagnosticOk", "DiagnosticOk"
+	elseif review_state == "CHANGES_REQUESTED" then
+		return "✗", "DiagnosticError", nil
+	elseif review_state == "COMMENTED" then
+		return "💬", "DiagnosticInfo", nil
+	elseif review_state == "DISMISSED" then
+		return "↻", "Comment", nil
+	end
+	return "○", "Comment", nil
+end
+
 --- Format one toggle picker row as plain text (`● name  (detail)`), used by
---- vim.ui.select and as the filter text of Telescope / snacks.
+--- vim.ui.select and as the display text of Telescope.
 --- @param text string item name
---- @param on boolean
+--- @param mark string row mark (from format_toggle_mark / format_reviewer_mark)
 --- @param detail string|nil extra information shown in parentheses
 --- @return string
-function M.format_toggle_entry(text, on, detail)
-	local mark = M.format_toggle_mark(on)
+function M.format_toggle_entry(text, mark, detail)
 	local line = mark .. " " .. text
 	if detail and detail ~= "" then
 		line = line .. "  (" .. detail .. ")"

@@ -12,6 +12,8 @@ local format = require("fude.ui.format")
 --- @field on boolean whether the item is applied / requested
 --- @field detail string|fun(item: fude.TogglePickerItem): string|nil extra information shown in
 ---   parentheses; a function is re-evaluated on every render, so it can follow `on`
+--- @field mark (fun(item: fude.TogglePickerItem): string, string, string|nil)|nil
+---   returns mark, mark highlight and name highlight; re-evaluated on every render
 --- @field value any caller data passed back to on_toggle
 
 --- @class fude.TogglePickerOpts
@@ -30,6 +32,18 @@ function M.resolve_detail(item)
 		return item.detail(item)
 	end
 	return item.detail
+end
+
+--- Resolve an item's mark for the current render: `item.mark(item)` when
+--- given, else the plain applied / not-applied mark from `item.on`.
+--- @param item fude.TogglePickerItem
+--- @return string mark, string mark_hl, string|nil text_hl
+function M.resolve_mark(item)
+	if type(item.mark) == "function" then
+		return item.mark(item)
+	end
+	local mark, hl = format.format_toggle_mark(item.on)
+	return mark, hl, nil
 end
 
 --- Per-picker state shared by every close path: the items whose request is
@@ -98,7 +112,7 @@ function M.show_vim_select(opts, session)
 	vim.ui.select(opts.items, {
 		prompt = opts.title .. " (select to toggle):",
 		format_item = function(item)
-			return format.format_toggle_entry(item.text, item.on, M.resolve_detail(item))
+			return format.format_toggle_entry(item.text, (M.resolve_mark(item)), M.resolve_detail(item))
 		end,
 	}, function(choice)
 		if not choice then
@@ -147,9 +161,14 @@ function M.show_telescope(opts)
 					ordinal = item.text,
 					-- A function, so a refresh re-reads item.on
 					display = function(entry)
-						local mark, hl = format.format_toggle_mark(entry.value.on)
-						return format.format_toggle_entry(entry.value.text, entry.value.on, M.resolve_detail(entry.value)),
-							{ { { 0, #mark }, hl } }
+						local value = entry.value
+						local mark, mark_hl, text_hl = M.resolve_mark(value)
+						local hls = { { { 0, #mark }, mark_hl } }
+						if text_hl then
+							local start = #mark + 1
+							table.insert(hls, { { start, start + #value.text }, text_hl })
+						end
+						return format.format_toggle_entry(value.text, mark, M.resolve_detail(value)), hls
 					end,
 				}
 			end,
@@ -218,8 +237,8 @@ function M.show_snacks(opts)
 		items = opts.items,
 		layout = { preset = "select" },
 		format = function(item, _)
-			local mark, hl = format.format_toggle_mark(item.on)
-			local chunks = { { mark .. " ", hl }, { item.text } }
+			local mark, mark_hl, text_hl = M.resolve_mark(item)
+			local chunks = { { mark .. " ", mark_hl }, { item.text, text_hl } }
 			local detail = M.resolve_detail(item)
 			if detail and detail ~= "" then
 				table.insert(chunks, { "  (" .. detail .. ")", "Comment" })
