@@ -139,7 +139,7 @@ M.defaults = {
 			prev_entry = "k", -- Jump to the previous entry or commit message row
 			change_base = "b", -- Local review only: pick a new base branch
 			toggle_commit_message = "m", -- Expand/collapse a commit message longer than max_lines
-			copy_path = "y", -- Pick the file name, relative path, or absolute path to copy
+			copy_path = "y", -- Copy a file name/path, a commit hash/title/message, or a branch
 			help = "?", -- Show the side panel's configured keymaps
 		},
 	},

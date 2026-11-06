@@ -108,6 +108,8 @@ function M.build_scope_entries(commit_entries, base_ref, head_ref, reviewed_comm
 			value = c.sha,
 			display_text = string.format("[%d/%d] %s %s (%s)", i, total, c.short_sha, c.message, c.author_name),
 			sha = c.sha,
+			short_sha = c.short_sha,
+			subject = c.message,
 			is_full_pr = false,
 			reviewed = is_reviewed,
 			reviewed_icon = r_icon,
@@ -126,7 +128,10 @@ end
 --- Availability and labels are decided by the caller (`local/session` via
 --- `scope_specs`), so only the scopes valid for the current git state appear.
 --- Commit scopes carry the target SHA, since they all share the scope name.
---- @param specs table[] { { scope = string, label = string, is_current = boolean, commit_sha = string|nil } }
+--- @param specs table[] { { scope = string, label = string, is_current = boolean, commit_sha = string|nil,
+---   short_sha = string|nil, subject = string|nil, branch = string|nil } }
+--- `branch` is the ref a non-commit scope compares against (base branch, upstream),
+--- copied by the side panel's `copy_path` key.
 --- @param reviewed_commits table<string, boolean>|nil { [sha] = true } reviewed commit map
 --- @return table[] entries with a `local_scope` value field
 function M.build_local_scope_entries(specs, reviewed_commits)
@@ -140,6 +145,9 @@ function M.build_local_scope_entries(specs, reviewed_commits)
 			local_scope = s.scope,
 			display_text = s.label,
 			sha = s.commit_sha,
+			short_sha = s.short_sha,
+			subject = s.subject,
+			branch = s.branch,
 			is_full_pr = false,
 			reviewed = is_reviewed,
 			reviewed_icon = r_icon,
