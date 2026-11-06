@@ -1286,6 +1286,142 @@ describe("show_overview_float CI STATUS", function()
 	end)
 end)
 
+describe("parse_hex_color", function()
+	it("parses a colour with or without #", function()
+		assert.are.same({ 215, 58, 74 }, { format.parse_hex_color("d73a4a") })
+		assert.are.same({ 215, 58, 74 }, { format.parse_hex_color("#D73A4A") })
+	end)
+
+	it("returns nil for anything but a 6-digit hex colour", function()
+		assert.is_nil(format.parse_hex_color(nil))
+		assert.is_nil(format.parse_hex_color(""))
+		assert.is_nil(format.parse_hex_color("fff"))
+		assert.is_nil(format.parse_hex_color("gggggg"))
+		assert.is_nil(format.parse_hex_color(vim.NIL))
+	end)
+end)
+
+describe("blend_colors", function()
+	it("mixes the colour over the background by alpha", function()
+		assert.are.equal("#ffffff", format.blend_colors("#ffffff", "#000000", 1))
+		assert.are.equal("#000000", format.blend_colors("#ffffff", "#000000", 0))
+		assert.are.equal("#808080", format.blend_colors("#ffffff", "#000000", 0.5))
+	end)
+
+	it("returns nil when a colour is invalid", function()
+		assert.is_nil(format.blend_colors("nope", "#000000", 0.5))
+		assert.is_nil(format.blend_colors("#ffffff", nil, 0.5))
+	end)
+end)
+
+describe("calculate_label_colors", function()
+	it("dark: fills with the label colour at LABEL_FILL_ALPHA and whitens GitHub's text colour", function()
+		-- perceived lightness 0.363: HSL lightness 0.535 is raised by 0.237, then mixed toward white
+		assert.are.same({ fg = "#f5cfd3", bg = "#81232c" }, format.calculate_label_colors("d73a4a", "#000000", "dark"))
+	end)
+
+	it("dark: keeps the lightness of a label already lighter than the threshold", function()
+		-- perceived lightness 0.78: only the mix toward white applies
+		assert.are.same({ fg = "#fde582", bg = "#977902" }, format.calculate_label_colors("fbca04", "#000000", "dark"))
+	end)
+
+	it("dark: blends the fill over the given base colour", function()
+		local colors = format.calculate_label_colors("ffffff", "#0d1117", "dark")
+		assert.are.equal(format.blend_colors("#ffffff", "#0d1117", format.LABEL_FILL_ALPHA), colors.bg)
+	end)
+
+	it("light: fills with the label colour and picks black or white text", function()
+		assert.are.same({ fg = "#ffffff", bg = "#d73a4a" }, format.calculate_label_colors("d73a4a", "#ffffff", "light"))
+		assert.are.same({ fg = "#000000", bg = "#fbca04" }, format.calculate_label_colors("fbca04", "#ffffff", "light"))
+	end)
+
+	it("returns nil for an invalid colour", function()
+		assert.is_nil(format.calculate_label_colors(nil, "#000000", "dark"))
+		assert.is_nil(format.calculate_label_colors("xyz", "#000000", "light"))
+	end)
+end)
+
+describe("build_label_hl_names", function()
+	it("names the groups by the normalized colour", function()
+		assert.are.same({ "ReviewLabel_d73a4a", "ReviewLabelCap_d73a4a" }, { format.build_label_hl_names("#D73A4A") })
+	end)
+
+	it("returns nil for an invalid colour", function()
+		assert.is_nil(format.build_label_hl_names("red"))
+	end)
+end)
+
+describe("build_label_pill", function()
+	local left, right = format.LABEL_PILL_LEFT, format.LABEL_PILL_RIGHT
+
+	it("pads the name between the rounded ends and highlights each part", function()
+		local pill = format.build_label_pill("bug", "N", "C", vim.fn.strdisplaywidth)
+		assert.are.equal(left .. " bug " .. right, pill.text)
+		assert.are.equal(7, pill.width)
+		local body_end = #left + 5
+		assert.are.same({
+			{ col_start = 0, col_end = #left, hl = "C" },
+			{ col_start = body_end, col_end = body_end + #right, hl = "C" },
+			{ col_start = #left, col_end = body_end, hl = "N" },
+		}, pill.ranges)
+	end)
+
+	it("measures the width in display cells", function()
+		-- "é" is 2 bytes but 1 cell
+		assert.are.equal(5, format.build_label_pill("é", nil, nil, vim.fn.strdisplaywidth).width)
+	end)
+
+	it("has no highlights without groups (a label without a colour)", function()
+		assert.are.same({}, format.build_label_pill("bug", nil, nil).ranges)
+	end)
+
+	describe("pack_label_pills", function()
+		local function pill(name)
+			return format.build_label_pill(name, "N", "C", vim.fn.strdisplaywidth)
+		end
+		local function texts(lines)
+			return vim.tbl_map(function(l)
+				return l.text
+			end, lines)
+		end
+
+		it("puts every pill on one row without a width", function()
+			local lines = format.pack_label_pills({ pill("a"), pill("b") })
+			assert.are.same({ pill("a").text .. " " .. pill("b").text }, texts(lines))
+			-- the second pill's ranges are shifted past the first pill and the gap
+			local offset = #pill("a").text + 1
+			assert.are.same({ col_start = offset, col_end = offset + #left, hl = "C" }, lines[1].ranges[4])
+		end)
+
+		it("starts a new row when the next pill would exceed the width", function()
+			local lines = format.pack_label_pills({ pill("a"), pill("b"), pill("c") }, 11)
+			assert.are.same({ pill("a").text .. " " .. pill("b").text, pill("c").text }, texts(lines))
+		end)
+
+		it("gives a pill wider than the width a row of its own", function()
+			local lines = format.pack_label_pills({ pill("abcdef"), pill("g") }, 3)
+			assert.are.same({ pill("abcdef").text, pill("g").text }, texts(lines))
+		end)
+
+		it("returns no lines for no pills", function()
+			assert.are.same({}, format.pack_label_pills({}, 10))
+		end)
+	end)
+end)
+
+describe("define_label_hls", function()
+	it("defines a bold filled name group and a cap group in the fill colour", function()
+		ui._define_label_hls({ "d73a4a" })
+		local name = vim.api.nvim_get_hl(0, { name = "ReviewLabel_d73a4a" })
+		local cap = vim.api.nvim_get_hl(0, { name = "ReviewLabelCap_d73a4a" })
+		assert.is_not_nil(name.fg)
+		assert.is_not_nil(name.bg)
+		assert.is_true(name.bold)
+		assert.are.equal(name.bg, cap.fg)
+		assert.is_nil(cap.bg)
+	end)
+end)
+
 describe("build_overview_right_lines", function()
 	it("shows REVIEWERS section with reviewers", function()
 		local pr = {
@@ -1376,26 +1512,82 @@ describe("build_overview_right_lines", function()
 			title = "T",
 			state = "OPEN",
 			url = "",
-			labels = { { name = "bug" }, { name = "urgent" } },
+			-- gh lists labels in the reverse of the PR page order
+			labels = { { name = "urgent" }, { name = "bug" } },
 		}
-		local result = ui.build_overview_right_lines(pr)
-		local found_header = false
-		local found_bug = false
-		local found_urgent = false
-		for _, line in ipairs(result.lines) do
-			if line == "## LABELS" then
-				found_header = true
-			end
-			if line == "bug" then
-				found_bug = true
-			end
-			if line == "urgent" then
-				found_urgent = true
+		local result = ui.build_overview_right_lines(pr, { display_width = vim.fn.strdisplaywidth })
+		assert.is_true(vim.tbl_contains(result.lines, "## LABELS"))
+		-- labels without a colour are pills too, side by side
+		local bug = format.build_label_pill("bug").text
+		local urgent = format.build_label_pill("urgent").text
+		assert.is_true(vim.tbl_contains(result.lines, bug .. format.LABEL_PILL_GAP .. urgent))
+	end)
+
+	it("draws labels in the PR page order as pills highlighted with their colour's groups", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			labels = {
+				{ name = "docs", color = "not-a-colour" },
+				{ name = "urgent", color = "d73a4a" },
+				{ name = "bug", color = "D73A4A" },
+			},
+		}
+		local result = ui.build_overview_right_lines(pr, { display_width = vim.fn.strdisplaywidth })
+		-- side by side; an invalid colour gives a pill without highlights
+		local gap = format.LABEL_PILL_GAP
+		local expected = format.build_label_pill("bug").text
+			.. gap
+			.. format.build_label_pill("urgent").text
+			.. gap
+			.. format.build_label_pill("docs").text
+		local row
+		for i, line in ipairs(result.lines) do
+			if line == expected then
+				row = i - 1
 			end
 		end
-		assert.is_true(found_header)
-		assert.is_true(found_bug)
-		assert.is_true(found_urgent)
+		assert.is_not_nil(row)
+		assert.are.equal("## LABELS", result.lines[row])
+		local groups = {}
+		for _, hl in ipairs(result.hl_ranges) do
+			if hl.line == row then
+				groups[hl.hl] = (groups[hl.hl] or 0) + 1
+			end
+		end
+		-- two coloured pills: both ends and the padded name each
+		assert.are.same({ ReviewLabelCap_d73a4a = 4, ReviewLabel_d73a4a = 2 }, groups)
+		-- one entry per colour, however it is spelled
+		assert.are.same({ "d73a4a" }, result.label_colors)
+	end)
+
+	it("wraps the pills at labels_width", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			labels = { { name = "cc" }, { name = "bb" }, { name = "aa" } },
+		}
+		local result = ui.build_overview_right_lines(pr, { labels_width = 13, display_width = vim.fn.strdisplaywidth })
+		local function pill(name)
+			return format.build_label_pill(name).text
+		end
+		local first
+		for i, line in ipairs(result.lines) do
+			if line == pill("aa") .. format.LABEL_PILL_GAP .. pill("bb") then
+				first = i
+			end
+		end
+		assert.is_not_nil(first)
+		assert.are.equal(pill("cc"), result.lines[first + 1])
+	end)
+
+	it("returns no label colours when no label has one", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", labels = { { name = "bug" } } }
+		assert.are.same({}, ui.build_overview_right_lines(pr).label_colors)
 	end)
 
 	it("shows no labels placeholder when empty", function()

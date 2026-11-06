@@ -701,6 +701,39 @@ function M.open_overview_loading()
 	return handle
 end
 
+--- Background colour the overview floats are drawn on: NormalFloat, else
+--- Normal, else black / white by 'background' (a transparent colour scheme).
+--- @return string hex colour
+local function overview_base_bg()
+	for _, name in ipairs({ "NormalFloat", "Normal" }) do
+		local hl = vim.api.nvim_get_hl(0, { name = name, link = false })
+		if hl.bg then
+			return string.format("#%06x", hl.bg)
+		end
+	end
+	return vim.o.background == "light" and "#ffffff" or "#000000"
+end
+
+--- Define the highlight groups of the overview's label pills (see
+--- format.calculate_label_colors). Redefined on every render, since a
+--- colour scheme change clears them.
+--- @param label_colors string[] normalized `rrggbb` label colours
+local function define_label_hls(label_colors)
+	if not label_colors or #label_colors == 0 then
+		return
+	end
+	local base_bg = overview_base_bg()
+	for _, hex in ipairs(label_colors) do
+		local colors = format.calculate_label_colors(hex, base_bg, vim.o.background)
+		local name_hl, cap_hl = format.build_label_hl_names(hex)
+		if colors and name_hl then
+			vim.api.nvim_set_hl(0, name_hl, { fg = colors.fg, bg = colors.bg, bold = true })
+			vim.api.nvim_set_hl(0, cap_hl, { fg = colors.bg })
+		end
+	end
+end
+M._define_label_hls = define_label_hls
+
 --- Show PR overview in a split-pane floating window.
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
@@ -724,6 +757,8 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			loading_mark = loading_opts.loading_mark,
 			loading_hl = loading_opts.loading_hl,
 			checks_failed = pr_info.checks_failed == true,
+			labels_width = overview_layout().right.width,
+			display_width = vim.fn.strdisplaywidth,
 		})
 	end
 	-- Rebuilt by set_comments / set_reviewers / set_checks as the parts that
@@ -800,6 +835,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
 	local url_hl = vim.api.nvim_get_hl(0, { name = "Underlined", link = false })
 	vim.api.nvim_set_hl(0, "ReviewFileCount", { fg = url_hl.fg })
+	define_label_hls(right_result.label_colors)
 	for _, hl in ipairs(left_result.hl_ranges) do
 		pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, hl.hl, hl.line, hl.col_start or 0, hl.col_end or -1)
 	end
@@ -1074,6 +1110,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		if handle.is_open() then
 			right_result = build_right()
 			set_lines(right_buf, 0, right_result.lines)
+			define_label_hls(right_result.label_colors)
 			highlight_right(right_result.hl_ranges)
 			avatars.clear(right_buf)
 			avatars.place(right_buf, right_result.avatar_positions)
