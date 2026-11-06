@@ -1411,7 +1411,10 @@ Options:
                     pick the full hash, short hash, title (the first line
                     of the message), or full message instead; the picker
                     shows a multi-line message as its first line and line
-                    count, and copies all of it; other scope rows such
+                    count, and copies all of it; on a local Base branch
+                    or Unpushed row, copy that branch name at once
+                    without a picker — the remote is dropped, so
+                    `origin/feat/x` copies `feat/x`; other scope rows such
                     as Entire PR copy nothing. The picker is opened
                     through |vim.ui.select()| with
                     `kind = "fude_copy_path"` for paths and
