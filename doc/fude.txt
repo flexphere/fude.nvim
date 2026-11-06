@@ -487,11 +487,14 @@ File opening position                                 *fude-file-position*
     |vim.ui.select()| is used instead: choosing a row toggles it and
     the select reopens; cancelling closes it.
     The reviewer picker lists repository collaborators with write
-    access, users with a pending request, and collaborators who already
-    reviewed, excluding
-    the PR author and bots. Rows are ordered approved, changes
+    access, users with a pending request, collaborators who already
+    reviewed, and always Copilot (`@copilot`, GitHub's Copilot code
+    review: its request, review state and re-request work like a
+    user's; in a repository where Copilot code review is not enabled
+    GitHub refuses the request, reported as an error), excluding
+    the PR author and other bots. Rows are ordered approved, changes
     requested, commented, dismissed, review requested, then the rest
-    (by login within each). The mark follows the GitHub web UI:
+    (by name within each). The mark follows the GitHub web UI:
       `●` (yellow)  review requested (in progress), whatever the
                     previous review was
       `✓` (green)   approved; the name is green too
@@ -514,8 +517,8 @@ File opening position                                 *fude-file-position*
     every repository label, applied (`●`) first. The order is fixed
     when the picker opens: toggling a row does not move it.
     Re-requesting picks a reviewer via |vim.ui.select()| and excludes
-    reviewers with a pending request, the PR author, and bots. Team
-    reviewers are not supported by either picker.
+    reviewers with a pending request, the PR author, and bots other
+    than Copilot. Team reviewers are not supported by either picker.
 
 :FudeReviewSuggest                                  *:FudeReviewSuggest*
     Suggest a code change on the current line (normal mode) or
