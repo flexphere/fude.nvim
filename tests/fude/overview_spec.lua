@@ -504,6 +504,47 @@ describe("overview menu and toggle editors", function()
 		assert.are.same({ "repos/octo/fude/labels", "repos/octo/fude/issues/42/labels" }, paths)
 	end)
 
+	it("Reviewer passes the avatar fetch as the picker's row images only when avatars are enabled", function()
+		local avatars = require("fude.ui.avatars")
+		local captured_opts
+		helpers.mock(require("fude.ui.toggle_picker"), "open", function(opts)
+			captured_opts = opts
+		end)
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/collaborators"] = { { login = "alice" } },
+		})
+		helpers.mock(avatars, "is_enabled", function()
+			return true
+		end)
+		local fetched = {}
+		helpers.mock(avatars, "fetch", function(login, cb)
+			table.insert(fetched, login)
+			cb("/cache/" .. login .. ".png")
+		end)
+
+		overview.edit_reviewers(make_pr_info())
+		assert.is_true(helpers.wait_for(function()
+			return captured_opts ~= nil
+		end))
+		assert.are.equal("function", type(captured_opts.images))
+		local got
+		captured_opts.images(captured_opts.items[1], function(path)
+			got = path
+		end)
+		assert.are.same({ captured_opts.items[1].value }, fetched)
+		assert.are.equal("/cache/" .. captured_opts.items[1].value .. ".png", got)
+
+		captured_opts = nil
+		helpers.mock(avatars, "is_enabled", function()
+			return false
+		end)
+		overview.edit_reviewers(make_pr_info())
+		assert.is_true(helpers.wait_for(function()
+			return captured_opts ~= nil
+		end))
+		assert.is_nil(captured_opts.images)
+	end)
+
 	it("Reviewer offers <C-e> re-request only for users who reviewed and are not requested", function()
 		local captured_opts
 		helpers.mock(require("fude.ui.toggle_picker"), "open", function(opts)

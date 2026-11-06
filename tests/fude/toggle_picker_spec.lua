@@ -539,6 +539,231 @@ describe("toggle_picker loading re-render", function()
 	end)
 end)
 
+describe("toggle_picker row images", function()
+	local config = require("fude.config")
+	local restore_fakes
+	local placed, cleaned
+
+	--- A fake snacks image module recording placements.
+	local function fake_snacks_image()
+		placed, cleaned = {}, {}
+		return {
+			image = {
+				supports_terminal = function()
+					return true
+				end,
+				placement = {
+					new = function(buf, file, opts)
+						table.insert(placed, { buf = buf, file = file, opts = opts })
+					end,
+					clean = function(buf)
+						table.insert(cleaned, buf)
+					end,
+				},
+			},
+		}
+	end
+
+	after_each(function()
+		if restore_fakes then
+			restore_fakes()
+			restore_fakes = nil
+		end
+		helpers.cleanup()
+	end)
+
+	it("place_row_images drops the buffer's placements and places one per row with a known file", function()
+		restore_fakes = install_fakes({ ["snacks"] = fake_snacks_image() })
+		local buf = helpers.create_buf({ "a", "b", "c" })
+		local a, b, c = { text = "a" }, { text = "b" }, { text = "c" }
+		local session = toggle_picker.new_session({})
+		session.images[a] = "/cache/a.png"
+		session.images[b] = false
+		toggle_picker.place_row_images(
+			buf,
+			{ { row = 1, item = a }, { row = 2, item = b }, { row = 3, item = c } },
+			session
+		)
+		assert.are.same({ buf }, cleaned)
+		assert.are.equal(1, #placed)
+		assert.are.same(
+			{ buf = buf, file = "/cache/a.png", opts = { pos = { 1, 0 }, inline = true, height = 1, width = 2 } },
+			placed[1]
+		)
+		-- Without snacks nothing happens
+		restore_fakes()
+		restore_fakes = install_fakes({ ["snacks"] = nil })
+		toggle_picker.place_row_images(buf, { { row = 1, item = a } }, session)
+		assert.are.equal(1, #placed)
+	end)
+
+	it("load_images asks once per item and re-renders once per batch of answers", function()
+		local asked = {}
+		local answers = {}
+		local items = { { text = "a" }, { text = "b" } }
+		local opts = {
+			items = items,
+			images = function(item, cb)
+				table.insert(asked, item.text)
+				answers[item.text] = cb
+			end,
+		}
+		local session = toggle_picker.new_session(opts)
+		local renders = 0
+		session.rerender = function()
+			renders = renders + 1
+		end
+		session.load_images()
+		assert.are.same({ "a", "b" }, asked)
+		answers.a("/cache/a.png")
+		answers.b(nil)
+		assert.are.equal("/cache/a.png", session.images[items[1]])
+		assert.is_false(session.images[items[2]])
+		assert.is_true(helpers.wait_for(function()
+			return renders == 1
+		end))
+		vim.wait(50)
+		assert.are.equal(1, renders)
+	end)
+
+	it("snacks: places the rows' images after each dirty render", function()
+		config.setup({ file_list_mode = "snacks" })
+		local snacks = fake_snacks_image()
+		local list_buf = helpers.create_buf({ "", "" })
+		local items = { { text = "a" }, { text = "b" } }
+		local list = { dirty = true, win = { buf = list_buf }, renders = 0 }
+		function list.render(self)
+			self.renders = self.renders + 1
+			self.dirty = false
+		end
+		function list.height()
+			return 2
+		end
+		function list.row2idx(_, row)
+			return row
+		end
+		function list.get(_, idx)
+			return items[idx]
+		end
+		function list.update(self)
+			self.dirty = true
+			self:render()
+		end
+		local picker = { list = list, closed = false }
+		local picked
+		snacks.picker = {
+			pick = function(popts)
+				picked = popts
+				return picker
+			end,
+		}
+		restore_fakes = install_fakes({ ["snacks"] = snacks, ["snacks.picker"] = snacks.picker })
+		local answers = {}
+		toggle_picker.open({
+			title = "Reviewers",
+			items = items,
+			on_toggle = function() end,
+			images = function(item, cb)
+				answers[item.text] = cb
+			end,
+		})
+		assert.is_not_nil(picked)
+		-- The wrapped render places nothing until a file is known
+		list:render()
+		assert.are.equal(0, #placed)
+		answers.a("/cache/a.png")
+		assert.is_true(helpers.wait_for(function()
+			return #placed == 1
+		end))
+		assert.are.same({ list_buf, list_buf }, cleaned)
+		assert.are.same({ 1, 0 }, placed[1].opts.pos)
+		-- A render that is not dirty leaves the placements alone
+		list:render()
+		assert.are.equal(1, #placed)
+	end)
+
+	it("telescope: places the rows' images once a refresh completed", function()
+		config.setup({ file_list_mode = "telescope" })
+		local prompt_buf = helpers.create_buf()
+		local results_buf = helpers.create_buf({ "x", "y" })
+		local items = { { text = "a" }, { text = "b" } }
+		local entries = { { value = items[1] }, { value = items[2] } }
+		local picker = { results_bufnr = results_buf, refreshes = 0, maps = {}, completion = nil }
+		picker.manager = {
+			get_entry = function(_, index)
+				return entries[index]
+			end,
+		}
+		function picker.get_index(_, row)
+			return row + 1
+		end
+		function picker.refresh(self)
+			self.refreshes = self.refreshes + 1
+			if self.completion then
+				self.completion(self)
+			end
+		end
+		function picker.register_completion_callback(self, cb)
+			self.completion = cb
+		end
+		function picker.find(self)
+			self.opts.attach_mappings(prompt_buf, function(mode, lhs, fn)
+				self.maps[mode .. lhs] = fn
+			end)
+			self.completion(self)
+		end
+		local snacks = fake_snacks_image()
+		restore_fakes = install_fakes({
+			["snacks"] = snacks,
+			["telescope.pickers"] = {
+				new = function(_, popts)
+					picker.opts = popts
+					return picker
+				end,
+			},
+			["telescope.finders"] = {
+				new_table = function(o)
+					return o
+				end,
+			},
+			["telescope.config"] = { values = { generic_sorter = function() end } },
+			["telescope.actions"] = { select_default = { replace = function() end }, close = function() end },
+			["telescope.actions.state"] = {
+				get_selected_entry = function()
+					return nil
+				end,
+				get_current_picker = function()
+					return picker
+				end,
+			},
+			["telescope.themes"] = {
+				get_dropdown = function(o)
+					return o
+				end,
+			},
+		})
+		local answers = {}
+		toggle_picker.open({
+			title = "Reviewers",
+			items = items,
+			on_toggle = function() end,
+			images = function(item, cb)
+				answers[item.text] = cb
+			end,
+		})
+		-- The first render placed nothing (no file known yet) but cleaned
+		assert.are.equal(0, #placed)
+		assert.are.same({ results_buf }, cleaned)
+		answers.b("/cache/b.png")
+		assert.is_true(helpers.wait_for(function()
+			return #placed == 1
+		end))
+		assert.are.equal(1, picker.refreshes)
+		assert.are.same({ buf = results_buf, file = "/cache/b.png" }, { buf = placed[1].buf, file = placed[1].file })
+		assert.are.same({ 2, 0 }, placed[1].opts.pos)
+	end)
+end)
+
 describe("toggle_picker extra action", function()
 	local notified
 	local function make_opts(available, run)
