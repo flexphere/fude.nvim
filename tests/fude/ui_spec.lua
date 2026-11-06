@@ -1512,7 +1512,8 @@ describe("build_overview_right_lines", function()
 			title = "T",
 			state = "OPEN",
 			url = "",
-			labels = { { name = "bug" }, { name = "urgent" } },
+			-- gh lists labels in the reverse of the PR page order
+			labels = { { name = "urgent" }, { name = "bug" } },
 		}
 		local result = ui.build_overview_right_lines(pr, { display_width = vim.fn.strdisplaywidth })
 		assert.is_true(vim.tbl_contains(result.lines, "## LABELS"))
@@ -1522,16 +1523,16 @@ describe("build_overview_right_lines", function()
 		assert.is_true(vim.tbl_contains(result.lines, bug .. format.LABEL_PILL_GAP .. urgent))
 	end)
 
-	it("draws a label with a colour as a pill highlighted with that colour's groups", function()
+	it("draws labels in the PR page order as pills highlighted with their colour's groups", function()
 		local pr = {
 			number = 1,
 			title = "T",
 			state = "OPEN",
 			url = "",
 			labels = {
-				{ name = "bug", color = "D73A4A" },
-				{ name = "urgent", color = "d73a4a" },
 				{ name = "docs", color = "not-a-colour" },
+				{ name = "urgent", color = "d73a4a" },
+				{ name = "bug", color = "D73A4A" },
 			},
 		}
 		local result = ui.build_overview_right_lines(pr, { display_width = vim.fn.strdisplaywidth })
@@ -1568,7 +1569,7 @@ describe("build_overview_right_lines", function()
 			title = "T",
 			state = "OPEN",
 			url = "",
-			labels = { { name = "aa" }, { name = "bb" }, { name = "cc" } },
+			labels = { { name = "cc" }, { name = "bb" }, { name = "aa" } },
 		}
 		local result = ui.build_overview_right_lines(pr, { labels_width = 13, display_width = vim.fn.strdisplaywidth })
 		local function pill(name)
