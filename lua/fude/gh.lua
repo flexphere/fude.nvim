@@ -1041,6 +1041,26 @@ local function resolve_pr_number(pr_number, callback)
 	callback(nil, nil)
 end
 
+--- Run `gh pr view --json <fields>` on the PR `resolve_pr_number` picks (an
+--- explicit number, the current branch's PR, or the commit's on a detached
+--- HEAD, so `gh pr view` never runs bare without a branch). The callback gets
+--- the raw decoded JSON; callers normalize the nulls of their own fields.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param fields string comma-separated `--json` fields
+--- @param callback fun(err: string|nil, data: table|nil)
+local function view_pr(pr_number, fields, callback)
+	resolve_pr_number(pr_number, function(resolve_err, num)
+		if resolve_err then
+			return callback(resolve_err, nil)
+		end
+		local args = { "pr", "view", "--json", fields }
+		if num then
+			table.insert(args, 3, tostring(num))
+		end
+		M.run_json(args, callback)
+	end)
+end
+
 --- Get PR title and body for editing.
 --- When pr_number is nil, detects detached HEAD and resolves PR number first
 --- to avoid `gh pr view` hanging without a branch.
@@ -1049,30 +1069,17 @@ end
 --- @param pr_number number|nil PR number (nil to use current branch's PR)
 --- @param callback fun(err: string|nil, data: table|nil) data = { title, body, url }
 function M.get_pr_title_body(pr_number, callback)
-	local function fetch(num)
-		local args = { "pr", "view", "--json", "title,body,url" }
-		if num then
-			table.insert(args, 3, tostring(num))
-		end
-		M.run_json(args, function(err, data)
-			if err then
-				return callback(err, nil)
-			end
-			-- JSON null decodes to vim.NIL (truthy userdata), which would slip
-			-- through `or ""` and crash string consumers (repo_slug, vim.split)
-			callback(nil, {
-				title = util.null_to(data.title, ""),
-				body = util.null_to(data.body, ""),
-				url = util.null_to(data.url),
-			})
-		end)
-	end
-
-	resolve_pr_number(pr_number, function(err, num)
+	view_pr(pr_number, "title,body,url", function(err, data)
 		if err then
 			return callback(err, nil)
 		end
-		fetch(num)
+		-- JSON null decodes to vim.NIL (truthy userdata), which would slip
+		-- through `or ""` and crash string consumers (repo_slug, vim.split)
+		callback(nil, {
+			title = util.null_to(data.title, ""),
+			body = util.null_to(data.body, ""),
+			url = util.null_to(data.url),
+		})
 	end)
 end
 
@@ -1080,57 +1087,38 @@ end
 --- @param pr_number number|nil PR number (nil to use current branch's PR)
 --- @param callback fun(err: string|nil, data: table|nil) data = { number, state, is_draft, url }
 function M.get_pr_state(pr_number, callback)
-	resolve_pr_number(pr_number, function(resolve_err, num)
-		if resolve_err then
-			return callback(resolve_err, nil)
+	view_pr(pr_number, "number,state,isDraft,url", function(err, data)
+		if err then
+			return callback(err, nil)
 		end
-		local args = { "pr", "view", "--json", "number,state,isDraft,url" }
-		if num then
-			table.insert(args, 3, tostring(num))
-		end
-		M.run_json(args, function(err, data)
-			if err then
-				return callback(err, nil)
-			end
-			callback(nil, {
-				number = util.null_to(data.number),
-				state = util.null_to(data.state, ""),
-				is_draft = data.isDraft == true,
-				url = util.null_to(data.url),
-			})
-		end)
+		callback(nil, {
+			number = util.null_to(data.number),
+			state = util.null_to(data.state, ""),
+			is_draft = data.isDraft == true,
+			url = util.null_to(data.url),
+		})
 	end)
 end
 
 --- Get the PR fields the reviewer / label editors act on, for the
 --- `:FudeEditReviewers` / `:FudeEditLabels` commands, which run without an
---- overview (and without a review session). Resolves the PR like
---- `get_pr_state`, so a detached HEAD never runs `gh pr view` bare.
+--- overview (and without a review session).
 --- @param pr_number number|nil PR number (nil to use current branch's PR)
 --- @param callback fun(err: string|nil, data: table|nil)
 ---   data = { number, url, author, reviewRequests, latestReviews, labels } (JSON nulls normalized)
 function M.get_pr_edit_info(pr_number, callback)
-	resolve_pr_number(pr_number, function(resolve_err, num)
-		if resolve_err then
-			return callback(resolve_err, nil)
+	view_pr(pr_number, "number,url,author,reviewRequests,latestReviews,labels", function(err, data)
+		if err then
+			return callback(err, nil)
 		end
-		local args = { "pr", "view", "--json", "number,url,author,reviewRequests,latestReviews,labels" }
-		if num then
-			table.insert(args, 3, tostring(num))
-		end
-		M.run_json(args, function(err, data)
-			if err then
-				return callback(err, nil)
-			end
-			callback(nil, {
-				number = util.null_to(data.number),
-				url = util.null_to(data.url),
-				author = util.null_to(data.author),
-				reviewRequests = util.null_to(data.reviewRequests, {}),
-				latestReviews = util.null_to(data.latestReviews, {}),
-				labels = util.null_to(data.labels, {}),
-			})
-		end)
+		callback(nil, {
+			number = util.null_to(data.number),
+			url = util.null_to(data.url),
+			author = util.null_to(data.author),
+			reviewRequests = util.null_to(data.reviewRequests, {}),
+			latestReviews = util.null_to(data.latestReviews, {}),
+			labels = util.null_to(data.labels, {}),
+		})
 	end)
 end
 
