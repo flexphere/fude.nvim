@@ -501,7 +501,8 @@ File opening position                                 *fude-file-position*
     on a reviewed user re-requests too). Telescope and snacks only. When
     collaborators cannot be listed (it needs push access), only
     requested and reviewed users are shown. The label picker lists
-    every repository label, applied (`●`) first.
+    every repository label, applied (`●`) first. The order is fixed
+    when the picker opens: toggling a row does not move it.
     Re-requesting picks a reviewer via |vim.ui.select()| and excludes
     reviewers with a pending request, the PR author, and bots. Team
     reviewers are not supported by either picker.

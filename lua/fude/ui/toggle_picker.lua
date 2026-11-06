@@ -295,6 +295,13 @@ function M.show_telescope(opts)
 		-- a remembered row from a completion callback breaks when refreshes
 		-- overlap, which the spinner makes common.
 		selection_strategy = "follow",
+		-- Keep the caller's order among rows of the same score (every row with
+		-- an empty prompt), so the applied labels / requested reviewers stay on
+		-- top and toggling never reorders the rows. Telescope's default breaks
+		-- ties by the ordinal's length, which shuffles the list by name length.
+		tiebreak = function()
+			return false
+		end,
 		finder = finders.new_table({
 			results = opts.items,
 			entry_maker = function(item)
@@ -427,6 +434,9 @@ function M.show_snacks(opts)
 		title = opts.title .. " (<Tab> toggle)",
 		items = opts.items,
 		layout = { preset = "select" },
+		-- Same as Telescope's tiebreak above: snacks breaks ties by text
+		-- length before the item order by default
+		sort = { fields = { "score:desc", "idx" } },
 		format = function(item, _)
 			local mark, mark_hl, text_hl = M.resolve_mark(item, session)
 			local chunks = { { mark .. " ", mark_hl }, { item.text, text_hl } }

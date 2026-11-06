@@ -427,6 +427,8 @@ describe("toggle_picker loading re-render", function()
 				finish = done
 			end,
 		})
+		-- Ties are broken by the item order, not by the text length
+		assert.are.same({ "score:desc", "idx" }, picked.sort.fields)
 		local updates = 0
 		local picker = {
 			closed = false,
@@ -512,6 +514,9 @@ describe("toggle_picker loading re-render", function()
 		-- Telescope keeps the selected entry across the refreshes below
 		-- instead of moving the cursor back to the first row
 		assert.are.equal("follow", picker.opts.selection_strategy)
+		-- Rows of the same score keep the order they were given in (applied
+		-- labels first), instead of Telescope's shortest-name-first default
+		assert.is_false(picker.opts.tiebreak({ ordinal = "a" }, { ordinal = "longer" }, ""))
 
 		picker.maps["i<Tab>"]()
 		assert.are.equal(1, picker.refreshes)
