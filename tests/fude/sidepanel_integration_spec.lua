@@ -901,6 +901,79 @@ describe("sidepanel integration", function()
 		end
 	end)
 
+	describe("open_in_browser", function()
+		local opened, notified
+		before_each(function()
+			opened, notified = {}, {}
+			config.state.pr_url = "https://github.com/o/r/pull/1"
+			config.state.pr_commits = {
+				{ sha = "c1sha00000", commit = { message = "feat: first", author = { name = "a", date = "" } } },
+			}
+			helpers.mock(vim.ui, "open", function(url)
+				table.insert(opened, url)
+				return {}, nil
+			end)
+			helpers.mock(vim, "notify", function(msg)
+				table.insert(notified, msg)
+			end)
+		end)
+
+		local function press_on(panel, predicate)
+			for line = 1, vim.api.nvim_buf_line_count(panel.buf) do
+				vim.api.nvim_win_set_cursor(panel.win, { line, 0 })
+				local info = sidepanel.get_current_entry(panel)
+				if predicate(info) then
+					buf_keymap(panel.buf, "o").callback()
+					return
+				end
+			end
+			error("no matching row")
+		end
+
+		it("o opens the commit inside the PR on a commit row and the PR on the Entire PR row", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			press_on(panel, function(info)
+				return info and info.type == "scope" and info.entry.sha == "c1sha00000"
+			end)
+			press_on(panel, function(info)
+				return info and info.type == "scope" and info.entry.is_full_pr
+			end)
+			assert.are.same({ "https://github.com/o/r/pull/1/commits/c1sha00000", "https://github.com/o/r/pull/1" }, opened)
+		end)
+
+		it("o on a file row opens nothing and says why", function()
+			sidepanel.open()
+			press_on(config.state.sidepanel, function(info)
+				return info and info.type == "file"
+			end)
+			assert.are.same({}, opened)
+			assert.are.same({ "fude.nvim: No commit under cursor" }, notified)
+		end)
+
+		it("is not mapped in local review, whose scopes are not on GitHub", function()
+			config.state.review_mode = "local"
+			config.state.local_session =
+				{ scope = "uncommitted", branch = "feat/x", worktree_root = "/mock/repo", commits = {} }
+			helpers.mock(require("fude.diff"), "get_upstream_ref", function()
+				return nil
+			end)
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			assert.is_nil(buf_keymap(panel.buf, "o"))
+			for _, mapping in ipairs(panel.help_mappings) do
+				assert.are_not.equal("open_in_browser", mapping.action)
+			end
+		end)
+
+		it("a user mapping of o to another action keeps o", function()
+			config.opts.sidepanel.keymaps.copy_path = "o"
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			assert.are.equal("Copy file path, commit hash/title/message, or branch", buf_keymap_desc(panel.buf, "o"))
+		end)
+	end)
+
 	describe("copy_path", function()
 		local picked
 		before_each(function()

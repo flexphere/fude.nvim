@@ -457,7 +457,9 @@ File opening position                                 *fude-file-position*
     `]s`/`[s` navigate between the body start and comments heading.
     Frontmatter rendering depends on the Markdown preview plugin.
     Press `C` to write a new comment, `r` to re-request a review
-    from a reviewer who has already reviewed, `R` to refresh,
+    from a reviewer who has already reviewed, `o` to open the comment
+    under the cursor on GitHub (the PR elsewhere, and in the right
+    pane), `R` to refresh,
     `<Tab>` to switch between panes, `]c`/`[c` to navigate
     review comments, `q` to close.
     Re-requesting picks a reviewer via |vim.ui.select()| and excludes
@@ -498,6 +500,9 @@ File opening position                                 *fude-file-position*
       cannot be edited or deleted here.
 
     Cursor movement in the left pane auto-updates the right side.
+    `o` opens on GitHub the thread's first comment (the PR on the
+    PR-level row) from the left pane, and the comment under the cursor
+    from the right upper pane.
 
     Keymaps (left pane):~
       `<CR>`    Jump to file at comment line (review comments)
@@ -1023,6 +1028,11 @@ command). Suggested mappings:
   `e`           Edit comment (in |:FudeReviewViewComment| float, own comments only)
   `d`           Delete comment (in |:FudeReviewViewComment| float, own comments only)
   `R`           Resolve/unresolve thread (in |:FudeReviewViewComment| float)
+  `o`           Open on GitHub (in floats): the comment under the cursor
+                (|:FudeReviewViewComment|, |:FudeReviewListComments|,
+                |:FudeReviewOverview|), the PR elsewhere in the overview.
+                Nothing opens on a separator line, or for comments of a
+                local review or of your pending review (not on GitHub)
   `gx`          Open GitHub reference or URL under cursor (in floats)
   `r`           Re-request review (in |:FudeReviewOverview|)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
@@ -1133,6 +1143,7 @@ Default configuration: >lua
         change_base = "b",
         toggle_commit_message = "m",
         copy_path = "y",
+        open_in_browser = "o",
         help = "?",
       },
     },
@@ -1421,6 +1432,11 @@ Options:
                     `kind = "fude_copy_commit"` for commits, so a provider
                     such as dressing.nvim can be configured to open it in
                     normal mode)
+                  - `open_in_browser`: "o" (GitHub review only: on a
+                    commit row in Review Scope, open the commit inside
+                    the PR on GitHub, `<pr_url>/commits/<sha>`; on Entire
+                    PR, open the PR. Not mapped in local review, whose
+                    scopes are not on GitHub)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
                   Set an action to `false` or an empty string to disable its

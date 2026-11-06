@@ -1,6 +1,8 @@
 local M = {}
 local config = require("fude.config")
 
+local util = require("fude.util")
+
 -- Lazy requires
 local function get_scope()
 	return require("fude.scope")
@@ -1317,6 +1319,15 @@ function M.setup_keymaps(panel)
 		M.pick_path_to_copy(panel)
 	end, "Copy file path, commit hash/title/message, or branch")
 
+	-- Local review scopes are not on GitHub, so only the GitHub review maps it
+	-- (the reverse of `change_base`), leaving `o` free in a local panel.
+	if config.state.review_mode ~= "local" then
+		map("open_in_browser", function()
+			local state = config.state
+			util.open_url(M.build_scope_url(M.get_current_entry(panel), state.pr_url, state.review_mode))
+		end, "Open commit or PR on GitHub")
+	end
+
 	map("help", function()
 		M.toggle_help(panel)
 	end, "Show panel keymaps")
@@ -1573,6 +1584,36 @@ function M.build_copy_choices(rel_path, root)
 	})
 end
 
+--- Find the GitHub page the `open_in_browser` key opens for the entry under
+--- the cursor: the PR for the Entire PR row, the commit inside the PR
+--- (`<pr_url>/commits/<sha>`, the PR's Commits tab view) for a commit row.
+--- Returns nil and the message explaining why for anything else: local review
+--- scopes (not on GitHub), file rows, or no PR URL. Pure.
+--- @param entry_info table|nil from get_current_entry ({ type, entry })
+--- @param pr_url string|nil
+--- @param review_mode string|nil "github" | "local"
+--- @return string|nil url
+--- @return string|nil reason message when url is nil
+function M.build_scope_url(entry_info, pr_url, review_mode)
+	if not entry_info or entry_info.type ~= "scope" then
+		return nil, "No commit under cursor"
+	end
+	if review_mode == "local" then
+		return nil, "Local review scopes are not on GitHub"
+	end
+	if type(pr_url) ~= "string" or pr_url == "" then
+		return nil, "No PR URL to open"
+	end
+	local entry = entry_info.entry
+	if entry.is_full_pr then
+		return pr_url
+	end
+	if type(entry.sha) == "string" and entry.sha ~= "" then
+		return (pr_url:gsub("/+$", "")) .. "/commits/" .. entry.sha
+	end
+	return nil, "No commit under cursor"
+end
+
 --- Build the choices of the `copy_path` picker for a Review Scope commit entry.
 --- `short_hash` falls back to the first 7 characters of `sha`, and `title` /
 --- `full_message` are left out when unknown, so a choice never copies an empty
@@ -1608,7 +1649,7 @@ end
 --- @param shown string|nil
 local function copy_text(text, shown)
 	shown = shown or text
-	if require("fude.util").copy_to_clipboard(text) then
+	if util.copy_to_clipboard(text) then
 		vim.notify("fude.nvim: Copied " .. shown, vim.log.levels.INFO)
 	else
 		vim.notify("fude.nvim: Copied " .. shown .. " to the unnamed register (clipboard unavailable)", vim.log.levels.WARN)

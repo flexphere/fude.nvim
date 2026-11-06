@@ -68,4 +68,24 @@ function M.copy_to_clipboard(text)
 	return vim.fn.has("clipboard") == 1 and pcall(vim.fn.setreg, "+", text) or false
 end
 
+--- Open a URL in the browser through `vim.ui.open`. With no URL, `reason`
+--- (why there is nothing to open) is shown as an INFO instead, so callers can
+--- pass a `url, reason` pair from a `find_*_url` helper straight through.
+--- @param url string|nil
+--- @param reason string|nil message shown when url is nil
+--- @return boolean opened whether vim.ui.open was started
+function M.open_url(url, reason)
+	if type(url) ~= "string" or url == "" then
+		vim.notify("fude.nvim: " .. (reason or "Nothing to open in the browser"), vim.log.levels.INFO)
+		return false
+	end
+	local ok, cmd_or_err, err = pcall(vim.ui.open, url)
+	if not ok or not cmd_or_err then
+		local msg = not ok and cmd_or_err or err
+		vim.notify("fude.nvim: Failed to open " .. url .. ": " .. tostring(msg), vim.log.levels.ERROR)
+		return false
+	end
+	return true
+end
+
 return M

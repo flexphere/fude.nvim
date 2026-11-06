@@ -2002,3 +2002,58 @@ describe("find_editable_comment", function()
 		assert.is_nil(data.find_editable_comment({}, "me"))
 	end)
 end)
+
+describe("build_pr_level_comments html_url", function()
+	it("keeps the review's html_url on the review-summary comment", function()
+		local reviews = {
+			{
+				id = 7,
+				state = "APPROVED",
+				body = "LGTM",
+				html_url = "https://github.com/o/r/pull/1#pullrequestreview-7",
+				submitted_at = "2024-01-01T00:00:00Z",
+			},
+			{ id = 8, state = "COMMENTED", body = "x", html_url = vim.NIL, submitted_at = "2024-01-02T00:00:00Z" },
+		}
+		local out = data.build_pr_level_comments({}, reviews)
+		assert.are.equal("https://github.com/o/r/pull/1#pullrequestreview-7", out[1].html_url)
+		assert.is_nil(out[2].html_url)
+	end)
+end)
+
+describe("find_comment_url", function()
+	local url = "https://github.com/o/r/pull/1#discussion_r10"
+
+	it("returns the html_url of a published comment", function()
+		assert.are.equal(url, data.find_comment_url({ id = 10, html_url = url, pull_request_review_id = 3 }, 9, false))
+	end)
+
+	it("returns the html_url when there is no pending review", function()
+		assert.are.equal(url, data.find_comment_url({ id = 10, html_url = url, pull_request_review_id = 3 }, nil))
+	end)
+
+	it("refuses a comment of the pending review even when it has an html_url", function()
+		local got, reason = data.find_comment_url({ html_url = url, pull_request_review_id = 9 }, 9, false)
+		assert.is_nil(got)
+		assert.are.equal("Pending comments are not published on GitHub until the review is submitted", reason)
+	end)
+
+	it("refuses a local review comment", function()
+		local got, reason = data.find_comment_url({ id = "abc", body = "x" }, nil, true)
+		assert.is_nil(got)
+		assert.are.equal("Local review comments are not on GitHub", reason)
+	end)
+
+	it("explains a missing comment and a missing or non-string html_url", function()
+		assert.are.same({ nil, "No comment under cursor" }, { data.find_comment_url(nil, nil, false) })
+		assert.are.same({ nil, "This comment has no GitHub URL" }, { data.find_comment_url({ id = 1 }, nil, false) })
+		assert.are.same(
+			{ nil, "This comment has no GitHub URL" },
+			{ data.find_comment_url({ id = 1, html_url = vim.NIL }, nil, false) }
+		)
+		assert.are.same(
+			{ nil, "This comment has no GitHub URL" },
+			{ data.find_comment_url({ id = 1, html_url = "" }, nil, false) }
+		)
+	end)
+end)
