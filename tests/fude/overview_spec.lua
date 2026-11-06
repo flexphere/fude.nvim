@@ -752,6 +752,47 @@ describe("overview show loading state", function()
 		assert.are.equal(2, fetches)
 		assert.are.equal(2, #loadings)
 	end)
+
+	it("replaces the placeholder of a stopped session instead of dropping the new session's show()", function()
+		local fetches = 0
+		local pendings = {}
+		helpers.mock_gh({
+			["pr:view"] = function(_, callback)
+				fetches = fetches + 1
+				table.insert(pendings, callback)
+			end,
+			["api:repos/{owner}/{repo}/issues/7/comments"] = {},
+			["api:repos/{owner}/{repo}/pulls/7/reviews"] = {},
+		})
+		overview.show()
+		assert.are.equal(1, #loadings)
+		-- stop → start of another session while the first fetch is pending
+		config.reset_state()
+		config.state.active = true
+		config.state.review_mode = "github"
+
+		overview.show()
+		assert.are.equal(2, fetches)
+		assert.are.equal(2, #loadings)
+		-- The old session's placeholder is gone, the new one is up
+		assert.is_false(loadings[1].is_open())
+		assert.is_true(loadings[2].is_open())
+
+		-- The stale response shows nothing and leaves the new placeholder alone
+		pendings[1](nil, { number = 7, title = "old" })
+		vim.wait(100, function()
+			return shown_with ~= nil
+		end)
+		assert.is_nil(shown_with)
+		assert.is_true(loadings[2].is_open())
+
+		pendings[2](nil, { number = 7, title = "new" })
+		assert.is_true(helpers.wait_for(function()
+			return shown_with ~= nil
+		end))
+		assert.are.equal("new", shown_with.pr_info.title)
+		assert.is_false(loadings[2].is_open())
+	end)
 end)
 
 describe("overview edit commands (:FudeEditReviewers / :FudeEditLabels)", function()
