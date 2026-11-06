@@ -279,7 +279,7 @@ end
 
 --- Build the commit-scope specs from a commit list (pure).
 --- @param commits table[] { sha, short_sha, subject } oldest first
---- @return table[] specs { { scope = "commit", commit_sha, commit_index, label } }
+--- @return table[] specs { { scope = "commit", commit_sha, short_sha, subject, commit_index, label } }
 function M.build_commit_specs(commits)
 	local specs = {}
 	local total = #(commits or {})
@@ -287,6 +287,8 @@ function M.build_commit_specs(commits)
 		table.insert(specs, {
 			scope = "commit",
 			commit_sha = c.sha,
+			short_sha = c.short_sha,
+			subject = c.subject,
 			commit_index = i,
 			label = string.format("Commit [%d/%d] %s %s", i, total, c.short_sha, c.subject),
 		})
