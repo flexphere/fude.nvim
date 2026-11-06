@@ -429,7 +429,18 @@ File opening position                                 *fude-file-position*
     review mode).
 
 :FudeReviewOverview                                *:FudeReviewOverview*
-    Show PR overview in a split-pane floating window. While the PR
+    Show PR overview in a split-pane floating window. The overview
+    data (the PR and its PR-level comments) is fetched in the
+    background when |:FudeReviewStart| starts a GitHub review and
+    again on every |:FudeReviewReload| (and auto-reload), so the
+    overview normally opens at once from that data. A failure of this
+    background fetch is silent; the command then fetches the data
+    itself and reports errors. If the command runs while the
+    background fetch is still in flight, it waits for that fetch
+    instead of starting another one. `R` in the overview and the
+    reopen after posting a comment with `C` → Comment always fetch
+    fresh data, as does the first |:FudeReviewOverview| after a
+    reviewer or label change. While the PR
     data is being fetched, the two panes are shown at the overview's
     position and size, the left one titled `PR Overview` with a
     spinner and `Loading PR overview…` in its middle; `q` or `<Esc>`
@@ -480,7 +491,7 @@ File opening position                                 *fude-file-position*
     reviewer who has already reviewed (the overview is not reopened
     afterwards, as with Reviewer and Label), `o` opens the comment under the
     cursor on GitHub (the PR elsewhere, and in the right pane), `R`
-    refreshes, `<Tab>` switches between panes, `]c`/`[c` navigate
+    refreshes (refetching rather than reusing the prefetched data), `<Tab>` switches between panes, `]c`/`[c` navigate
     review comments, and `q` closes.
     Reviewer and Label open a picker (routed by `file_list_mode`) in
     which `<Tab>` toggles the row under the cursor: it requests a
