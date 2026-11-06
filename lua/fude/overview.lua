@@ -397,8 +397,9 @@ function M.re_request_review(pr_info, captured_state)
 end
 
 --- Open a reviewer / label editor on the current PR from a command, without
---- the overview: the GitHub review session's PR when one is active, else the
---- current branch's (on a detached HEAD, the commit's), like pr.change_state.
+--- the overview: the GitHub review session's PR (by URL) when one is active,
+--- else the current branch's (on a detached HEAD, the commit's), like
+--- pr.change_state.
 --- The editor is tied to no session (captured_state nil): the PR it edits is
 --- fixed by the fetched pr_info, so a later :FudeReviewStop / Start cannot
 --- make it stale.
@@ -416,9 +417,13 @@ local function edit_current_pr(what, open)
 		return
 	end
 	local gh = require("fude.gh")
-	local pr_number = config.state.active and config.state.pr_number or nil
+	-- The session's PR by URL, not number: gh resolves a bare number against
+	-- the cwd's repository, so after a `:cd` into another repository the same
+	-- number would name that repository's PR.
+	local state = config.state
+	local pr = state.active and (state.pr_url or state.pr_number) or nil
 
-	gh.get_pr_edit_info(pr_number, function(err, pr_info)
+	gh.get_pr_edit_info(pr, function(err, pr_info)
 		if gh.is_no_pr_error(err) then
 			vim.notify("fude.nvim: " .. vim.trim(err), vim.log.levels.WARN)
 			return

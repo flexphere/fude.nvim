@@ -1016,11 +1016,13 @@ function M.update_comment(comment_id, body, callback)
 end
 
 --- Resolve which PR a `gh pr view`-style command should target.
---- An explicit number is used as is. On a detached HEAD the number is looked up
+--- An explicit number (or PR URL, which also pins the repository — `gh`
+--- resolves a bare number against the cwd's repository, so a `:cd` elsewhere
+--- would retarget it) is used as is. On a detached HEAD the number is looked up
 --- from the commit, since `gh pr view` without a branch may hang. Otherwise nil
 --- is passed on, letting gh pick the current branch's PR.
---- @param pr_number number|nil
---- @param callback fun(err: string|nil, pr_number: number|nil)
+--- @param pr_number number|string|nil PR number or URL
+--- @param callback fun(err: string|nil, pr_number: number|string|nil)
 local function resolve_pr_number(pr_number, callback)
 	if pr_number then
 		return callback(nil, pr_number)
@@ -1042,10 +1044,11 @@ local function resolve_pr_number(pr_number, callback)
 end
 
 --- Run `gh pr view --json <fields>` on the PR `resolve_pr_number` picks (an
---- explicit number, the current branch's PR, or the commit's on a detached
---- HEAD, so `gh pr view` never runs bare without a branch). The callback gets
---- the raw decoded JSON; callers normalize the nulls of their own fields.
---- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- explicit number or URL, the current branch's PR, or the commit's on a
+--- detached HEAD, so `gh pr view` never runs bare without a branch). The
+--- callback gets the raw decoded JSON; callers normalize the nulls of their
+--- own fields.
+--- @param pr_number number|string|nil PR number or URL (nil to use current branch's PR)
 --- @param fields string comma-separated `--json` fields
 --- @param callback fun(err: string|nil, data: table|nil)
 local function view_pr(pr_number, fields, callback)
@@ -1102,8 +1105,10 @@ end
 
 --- Get the PR fields the reviewer / label editors act on, for the
 --- `:FudeEditReviewers` / `:FudeEditLabels` commands, which run without an
---- overview (and without a review session).
---- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- overview (and without a review session). A review session passes its PR
+--- URL, so a `:cd` into another repository cannot retarget the lookup to that
+--- repository's PR of the same number.
+--- @param pr_number number|string|nil PR number or URL (nil to use current branch's PR)
 --- @param callback fun(err: string|nil, data: table|nil)
 ---   data = { number, url, author, reviewRequests, latestReviews, labels } (JSON nulls normalized)
 function M.get_pr_edit_info(pr_number, callback)

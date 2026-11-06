@@ -1066,6 +1066,16 @@ describe("get_pr_edit_info", function()
 		assert.are.same(raw, result.data)
 	end)
 
+	it("passes a PR URL to gh pr view as is, so the repository is pinned", function()
+		local captured_args
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, { number = 7 })
+		end)
+		gh.get_pr_edit_info("https://github.com/o/r/pull/7", function() end)
+		assert.are.same({ "pr", "view", "https://github.com/o/r/pull/7", "--json", FIELDS }, captured_args)
+	end)
+
 	it("normalizes JSON nulls: lists become empty, scalars absent", function()
 		helpers.mock(gh, "run_json", function(_, callback)
 			callback(nil, {
