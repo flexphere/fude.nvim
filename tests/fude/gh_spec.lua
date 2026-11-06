@@ -1166,3 +1166,84 @@ describe("re_request_review", function()
 		assert.truthy(got_err)
 	end)
 end)
+
+describe("build_path_segment", function()
+	it("keeps RFC 3986 unreserved characters as they are", function()
+		assert.are.equal("bug-fix_1.2~x", gh.build_path_segment("bug-fix_1.2~x"))
+	end)
+
+	it("percent-encodes spaces, slashes, colons and percent signs", function()
+		assert.are.equal("good%20first%20issue", gh.build_path_segment("good first issue"))
+		assert.are.equal("area%2Fui", gh.build_path_segment("area/ui"))
+		assert.are.equal("type%3Abug", gh.build_path_segment("type:bug"))
+		assert.are.equal("100%25", gh.build_path_segment("100%"))
+	end)
+
+	it("percent-encodes each byte of a multibyte character", function()
+		assert.are.equal("%E3%83%90%E3%82%B0", gh.build_path_segment("バグ"))
+	end)
+end)
+
+describe("reviewer and label requests", function()
+	local helpers = require("tests.helpers")
+	local captured
+
+	before_each(function()
+		captured = nil
+		helpers.mock(gh, "run_json", function(args, callback, stdin)
+			captured = { args = args, stdin = stdin }
+			callback(nil, {})
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("remove_review_request sends DELETE with the logins as JSON", function()
+		gh.remove_review_request(42, { "alice" }, function() end)
+		assert.are.equal("repos/{owner}/{repo}/pulls/42/requested_reviewers", captured.args[2])
+		assert.is_truthy(table.concat(captured.args, " "):find("--method DELETE --input -", 1, true))
+		assert.are.same({ reviewers = { "alice" } }, vim.json.decode(captured.stdin))
+	end)
+
+	it("remove_review_request errors without calling the API when reviewers is empty", function()
+		local got_err
+		gh.remove_review_request(42, {}, function(err)
+			got_err = err
+		end)
+		assert.is_nil(captured)
+		assert.truthy(got_err)
+	end)
+
+	it("get_repo_labels lists every page of the repository labels", function()
+		gh.get_repo_labels(function() end)
+		assert.are.same({ "api", "repos/{owner}/{repo}/labels", "--paginate" }, captured.args)
+	end)
+
+	it("add_labels sends POST with the label names as JSON", function()
+		gh.add_labels(42, { "bug" }, function() end)
+		assert.are.equal("repos/{owner}/{repo}/issues/42/labels", captured.args[2])
+		assert.is_truthy(table.concat(captured.args, " "):find("--method POST --input -", 1, true))
+		assert.are.same({ labels = { "bug" } }, vim.json.decode(captured.stdin))
+	end)
+
+	it("add_labels errors without calling the API when names is empty", function()
+		local got_err
+		gh.add_labels(42, {}, function(err)
+			got_err = err
+		end)
+		assert.is_nil(captured)
+		assert.truthy(got_err)
+	end)
+
+	it("remove_label sends DELETE to the encoded label path", function()
+		gh.remove_label(42, "good first issue", function() end)
+		assert.are.same({
+			"api",
+			"repos/{owner}/{repo}/issues/42/labels/good%20first%20issue",
+			"--method",
+			"DELETE",
+		}, captured.args)
+	end)
+end)
