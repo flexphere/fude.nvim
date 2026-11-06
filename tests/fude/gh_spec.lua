@@ -1035,6 +1035,58 @@ describe("get_pr_state", function()
 	end)
 end)
 
+describe("get_pr_overview / get_pr_checks", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("leaves the slow statusCheckRollup out of the overview request", function()
+		local captured
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured = args
+			callback(nil, {})
+		end)
+		gh.get_pr_overview(function() end, 7)
+		assert.are.same({ "pr", "view", "7", "--json" }, vim.list_slice(captured, 1, 4))
+		assert.is_false(vim.tbl_contains(vim.split(captured[5], ","), "statusCheckRollup"))
+	end)
+
+	it("requests only statusCheckRollup and hands over the list, JSON null as empty", function()
+		local captured
+		local answer = { statusCheckRollup = { { name = "ci" } } }
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured = args
+			callback(nil, answer)
+		end)
+		local got
+		gh.get_pr_checks(7, function(err, checks)
+			got = { err = err, checks = checks }
+		end)
+		assert.are.same({ "pr", "view", "7", "--json", "statusCheckRollup" }, captured)
+		assert.are.same({ err = nil, checks = { { name = "ci" } } }, got)
+
+		answer = { statusCheckRollup = vim.NIL }
+		gh.get_pr_checks(nil, function(_, checks)
+			got = checks
+		end)
+		assert.are.same({ "pr", "view", "--json", "statusCheckRollup" }, captured)
+		assert.are.same({}, got)
+	end)
+
+	it("passes an error through", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback("HTTP 502", nil)
+		end)
+		local got
+		gh.get_pr_checks(7, function(err, checks)
+			got = { err = err, checks = checks }
+		end)
+		assert.are.same({ err = "HTTP 502" }, got)
+	end)
+end)
+
 describe("get_pr_edit_info", function()
 	local helpers = require("tests.helpers")
 	local FIELDS = "number,url,author,reviewRequests,latestReviews,labels"

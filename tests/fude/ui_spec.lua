@@ -694,7 +694,17 @@ describe("open_overview_loading", function()
 		local text = "⣾ " .. ui.OVERVIEW_LOADING_TEXT
 		local expected = ui.build_centered_lines(text, vim.fn.strdisplaywidth(text), lc.width, lc.height)
 		assert.are.same(expected, vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(left), 0, -1, false))
-		assert.are.same({ "" }, vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(right), 0, -1, false))
+		-- The right pane spins too, its loading text on its middle row
+		local right_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(right), 0, -1, false)
+		local text_rows = {}
+		for i, line in ipairs(right_lines) do
+			if vim.trim(line) ~= "" then
+				table.insert(text_rows, i)
+			end
+		end
+		assert.are.equal(1, #text_rows)
+		assert.is_truthy(right_lines[text_rows[1]]:find(ui.OVERVIEW_LOADING_RIGHT_TEXT, 1, true))
+		assert.are.equal(math.max(0, math.floor((layout.right.height - 1) / 2)) + 1, text_rows[1])
 		handle.close()
 	end)
 
@@ -1128,6 +1138,92 @@ describe("overview avatar positions", function()
 	end)
 end)
 
+describe("build_overview_ci_lines", function()
+	it("builds the heading and a row per check with absolute line numbers", function()
+		local ci = ui.build_overview_ci_lines({
+			{ name = "lint", status = "COMPLETED", conclusion = "SUCCESS", detailsUrl = "https://ci/lint" },
+		}, 10)
+		assert.are.same({ "", "## CI STATUS (1/1 passed)", "✓ lint  success" }, ci.lines)
+		assert.are.same({ [12] = "https://ci/lint" }, ci.check_urls)
+		assert.are.equal(12, ci.hl_ranges[1].line)
+		assert.is_nil(ci.loading_row)
+		assert.are.same({ "", "## CI STATUS", "(no checks)" }, ui.build_overview_ci_lines({}, 0).lines)
+	end)
+
+	it("shows the spinner row while loading and the failure row after a failed fetch", function()
+		local loading = ui.build_overview_ci_lines(nil, 4, { loading_mark = "⣾", loading_hl = "DiagnosticInfo" })
+		assert.are.same({ "", "## CI STATUS", "⣾ Loading checks…" }, loading.lines)
+		assert.are.equal(6, loading.loading_row)
+		assert.are.same({ line = 6, col_start = 0, col_end = #"⣾", hl = "DiagnosticInfo" }, loading.hl_ranges[1])
+		assert.are.same({ line = 6, col_start = #"⣾", hl = "Comment" }, loading.hl_ranges[2])
+
+		local failed = ui.build_overview_ci_lines(nil, 4, { loading_mark = "⣾", checks_failed = true })
+		assert.are.same({ "", "## CI STATUS", "(could not load checks)" }, failed.lines)
+		assert.is_nil(failed.loading_row)
+	end)
+end)
+
+describe("show_overview_float CI STATUS", function()
+	local helpers = require("tests.helpers")
+
+	before_each(function()
+		require("fude.config").setup({})
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	--- The right pane's buffer: the float window that is not the focused left one.
+	local function right_buf()
+		local left = vim.api.nvim_get_current_win()
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if win ~= left and vim.api.nvim_win_get_config(win).relative == "editor" then
+				return vim.api.nvim_win_get_buf(win)
+			end
+		end
+	end
+
+	local function tail(buf, n)
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		return vim.list_slice(lines, #lines - n + 1, #lines)
+	end
+
+	it("spins in CI STATUS until set_checks rewrites the section in place", function()
+		local handle = ui.show_overview_float({ number = 1, title = "T", labels = { { name = "bug" } } }, {}, {})
+		local buf = right_buf()
+		assert.are.same({ "## CI STATUS", "⣾ Loading checks…" }, tail(buf, 2))
+		local before = vim.api.nvim_buf_get_lines(buf, 0, -3, false)
+
+		handle.set_checks({ { name = "lint", status = "COMPLETED", conclusion = "FAILURE" } }, false)
+		assert.are.same({ "## CI STATUS (0/1 passed)", "✗ lint  failure" }, tail(buf, 2))
+		-- Everything above the section is left as it was
+		assert.are.same(before, vim.api.nvim_buf_get_lines(buf, 0, -3, false))
+		-- The spinner stopped: the row stays as set
+		vim.wait(3 * require("fude.ui.toggle_picker").LOADING_INTERVAL_MS)
+		assert.are.same({ "## CI STATUS (0/1 passed)", "✗ lint  failure" }, tail(buf, 2))
+	end)
+
+	it("shows the failure row via set_checks, and at once for a pr_info already marked failed", function()
+		local handle = ui.show_overview_float({ number = 1, title = "T" }, {}, {})
+		handle.set_checks(nil, true)
+		assert.are.same({ "## CI STATUS", "(could not load checks)" }, tail(right_buf(), 2))
+		helpers.cleanup()
+
+		require("fude.config").setup({})
+		ui.show_overview_float({ number = 1, title = "T", checks_failed = true }, {}, {})
+		assert.are.same({ "## CI STATUS", "(could not load checks)" }, tail(right_buf(), 2))
+	end)
+
+	it("does not spin when the checks are already known", function()
+		local handle = ui.show_overview_float({ number = 1, title = "T", statusCheckRollup = {} }, {}, {})
+		assert.are.same({ "## CI STATUS", "(no checks)" }, tail(right_buf(), 2))
+		-- A late set_checks changes nothing
+		handle.set_checks({ { name = "x", status = "COMPLETED", conclusion = "SUCCESS" } }, false)
+		assert.are.same({ "## CI STATUS", "(no checks)" }, tail(right_buf(), 2))
+	end)
+end)
+
 describe("build_overview_right_lines", function()
 	it("shows REVIEWERS section with reviewers", function()
 		local pr = {
@@ -1297,17 +1393,14 @@ describe("build_overview_right_lines", function()
 		assert.is_true(found)
 	end)
 
-	it("shows no checks placeholder when statusCheckRollup is nil", function()
+	it("shows a loading row in CI STATUS while statusCheckRollup is nil (checks still being fetched)", function()
 		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
-		local result = ui.build_overview_right_lines(pr)
-		local found = false
-		for _, line in ipairs(result.lines) do
-			if line:find("%(no checks%)") then
-				found = true
-				break
-			end
-		end
-		assert.is_true(found)
+		local result = ui.build_overview_right_lines(pr, { loading_mark = "⣾", loading_hl = "DiagnosticInfo" })
+		assert.are.equal("", result.lines[result.ci_start + 1])
+		assert.are.equal("## CI STATUS", result.lines[result.ci_start + 2])
+		assert.are.equal("⣾ Loading checks…", result.lines[result.ci_start + 3])
+		assert.are.equal(result.ci_start + 3, #result.lines)
+		assert.are.equal(result.ci_start + 2, result.loading_row)
 	end)
 
 	it("highlights check lines with correct groups", function()

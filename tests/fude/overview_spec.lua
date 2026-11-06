@@ -1,6 +1,19 @@
 --- Integration tests for overview re-request review flow.
 local helpers = require("tests.helpers")
 
+--- Whether a mocked gh call is the overview's separate CI checks request
+--- (`gh pr view --json statusCheckRollup`), as opposed to its PR info request.
+local function is_checks_request(args)
+	return vim.tbl_contains(args, "statusCheckRollup")
+end
+
+--- Answer a CI checks request at once with no checks.
+local function answer_checks(callback)
+	vim.schedule(function()
+		callback(nil, { statusCheckRollup = {} })
+	end)
+end
+
 describe("overview re_request_review", function()
 	local config = require("fude.config")
 	local overview = require("fude.overview")
@@ -738,7 +751,10 @@ describe("overview show loading state", function()
 	local function mock_pending_pr_view()
 		local pending
 		helpers.mock_gh({
-			["pr:view"] = function(_, callback)
+			["pr:view"] = function(args, callback)
+				if is_checks_request(args) then
+					return answer_checks(callback)
+				end
 				pending = callback
 			end,
 			["api:repos/{owner}/{repo}/issues/7/comments"] = {},
@@ -809,7 +825,10 @@ describe("overview show loading state", function()
 		local fetches = 0
 		local pending
 		helpers.mock_gh({
-			["pr:view"] = function(_, callback)
+			["pr:view"] = function(args, callback)
+				if is_checks_request(args) then
+					return answer_checks(callback)
+				end
 				fetches = fetches + 1
 				pending = callback
 			end,
@@ -836,7 +855,10 @@ describe("overview show loading state", function()
 		local fetches = 0
 		local pendings = {}
 		helpers.mock_gh({
-			["pr:view"] = function(_, callback)
+			["pr:view"] = function(args, callback)
+				if is_checks_request(args) then
+					return answer_checks(callback)
+				end
 				fetches = fetches + 1
 				table.insert(pendings, callback)
 			end,
@@ -885,11 +907,17 @@ describe("overview prefetch and cache", function()
 	local loadings
 	-- gh pr view calls, each { args, callback }; answered by respond()
 	local pr_views
+	-- The separate CI checks requests, each { args, callback }
+	local check_views
 	local comment_fetches
 
 	local function gh_responses(extra)
 		local responses = {
 			["pr:view"] = function(args, callback)
+				if is_checks_request(args) then
+					table.insert(check_views, { args = args, callback = callback })
+					return
+				end
 				table.insert(pr_views, { args = args, callback = callback })
 			end,
 			["api:repos/{owner}/{repo}/issues/7/comments"] = function(_, callback)
@@ -912,6 +940,7 @@ describe("overview prefetch and cache", function()
 		shown = {}
 		loadings = {}
 		pr_views = {}
+		check_views = {}
 		comment_fetches = 0
 		helpers.mock(vim, "notify", function(msg, level)
 			table.insert(notifications, { msg = msg, level = level })
@@ -988,8 +1017,9 @@ describe("overview prefetch and cache", function()
 		assert.is_nil(config.state.overview_cache)
 		assert.is_nil(old_state.overview_cache)
 		assert.is_nil(new_state.overview_cache)
-		-- The old PR's comments are not fetched once its session is gone
-		assert.are.equal(0, comment_fetches)
+		-- With the PR number known the comments go out in parallel with the PR
+		-- info, so both sessions fetched them; neither result is kept
+		assert.are.equal(2, comment_fetches)
 		assert.are.same({}, notifications)
 		assert.are.same({}, shown)
 	end)
@@ -1071,6 +1101,66 @@ describe("overview prefetch and cache", function()
 		assert.are.equal(vim.log.levels.ERROR, notifications[1].level)
 		assert.is_false(loadings[1].is_open())
 		assert.are.same({}, shown)
+	end)
+
+	it("requests the PR info, the comments and the checks in parallel, and opens before the checks", function()
+		overview.show()
+		-- All three went out before anything answered
+		assert.are.equal(1, #pr_views)
+		assert.are.equal(1, #check_views)
+		assert.are.same({ "pr", "view", "7", "--json", "statusCheckRollup" }, check_views[1].args)
+		assert.is_true(helpers.wait_for(function()
+			return comment_fetches == 1
+		end))
+
+		local set = {}
+		helpers.mock(ui, "show_overview_float", function(pr_info, comments, opts)
+			table.insert(shown, { pr_info = pr_info, comments = comments, opts = opts })
+			return {
+				is_open = function()
+					return true
+				end,
+				set_checks = function(checks, failed)
+					table.insert(set, { checks = checks, failed = failed })
+				end,
+			}
+		end)
+		respond(1, nil, { number = 7, title = "T" })
+		assert.is_true(helpers.wait_for(function()
+			return #shown == 1
+		end))
+		-- Opened without the checks; CI STATUS fills in when they land
+		assert.is_nil(shown[1].pr_info.statusCheckRollup)
+		assert.are.same({}, set)
+		check_views[1].callback(nil, { statusCheckRollup = { { name = "ci" } } })
+		assert.are.same({ { checks = { { name = "ci" } }, failed = false } }, set)
+		-- The cache has them too, so the next show() opens complete
+		assert.are.same({ { name = "ci" } }, config.state.overview_cache.pr_info.statusCheckRollup)
+		overview.show()
+		assert.are.same({ { name = "ci" } }, shown[2].pr_info.statusCheckRollup)
+		assert.are.equal(1, #check_views)
+	end)
+
+	it("hands over checks that landed before the PR info, and marks a failed checks fetch", function()
+		overview.prefetch()
+		check_views[1].callback(nil, { statusCheckRollup = { { name = "early" } } })
+		respond(1, nil, { number = 7, title = "T" })
+		assert.is_true(helpers.wait_for(function()
+			return config.state.overview_cache ~= nil
+		end))
+		assert.are.same({ { name = "early" } }, config.state.overview_cache.pr_info.statusCheckRollup)
+
+		overview.show({ fresh = true })
+		assert.are.equal(2, #check_views)
+		check_views[2].callback("HTTP 502", nil)
+		respond(2, nil, { number = 7, title = "T2" })
+		assert.is_true(helpers.wait_for(function()
+			return #shown == 1
+		end))
+		assert.is_true(shown[1].pr_info.checks_failed)
+		assert.is_nil(shown[1].pr_info.statusCheckRollup)
+		-- A failed checks fetch is not reported: CI STATUS says so
+		assert.are.same({}, notifications)
 	end)
 
 	it("does nothing outside a GitHub review session", function()
