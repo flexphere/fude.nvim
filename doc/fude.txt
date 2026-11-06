@@ -1344,7 +1344,9 @@ Options:
                   `allow-passthrough`) and `curl`; the images are cached
                   in `stdpath("cache")/fude/avatars` and cut into
                   circles with ImageMagick (`magick` or `convert`),
-                  square without it. Bots (Copilot included) have no
+                  each centered on a transparent canvas so the circle
+                  takes 80% of the cell height; square and full-size
+                  without ImageMagick. Bots (Copilot included) have no
                   avatar. A no-op when snacks.nvim is missing or the
                   terminal is unsupported.
 
