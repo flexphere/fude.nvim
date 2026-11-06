@@ -210,9 +210,9 @@ function M.show_telescope(opts)
 	local themes = require("telescope.themes")
 
 	local session = M.new_session(opts)
-	-- Row to restore after a refresh: Telescope's refresh moves the
-	-- selection back to the first row.
-	local restore_row
+	-- Row to restore after a refresh, with the prompt it was read under:
+	-- Telescope's refresh moves the selection back to the first row.
+	local restore
 
 	local picker = pickers.new(themes.get_dropdown({}), {
 		prompt_title = opts.title .. " (<Tab> toggle)",
@@ -274,7 +274,7 @@ function M.show_telescope(opts)
 						-- The row the cursor is on now, not when the key was
 						-- pressed: the user may have moved on while the request
 						-- was in flight, and the refresh must leave them there.
-						restore_row = current:get_selection_row()
+						restore = { row = current:get_selection_row(), prompt = current:_get_prompt() }
 						current:refresh(nil, { reset_prompt = false })
 					end)
 				end
@@ -289,10 +289,14 @@ function M.show_telescope(opts)
 		end,
 	})
 	picker:register_completion_callback(function(self)
-		if restore_row then
-			local row = restore_row
-			restore_row = nil
-			pcall(self.set_selection, self, row)
+		if restore then
+			local saved = restore
+			restore = nil
+			-- A row index names the same item only under the same filter;
+			-- the prompt may have changed between refresh() and now.
+			if self:_get_prompt() == saved.prompt then
+				pcall(self.set_selection, self, saved.row)
+			end
 		end
 	end)
 	picker:find()
