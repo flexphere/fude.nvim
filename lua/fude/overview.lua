@@ -58,6 +58,8 @@ end
 --- Build a function that reopens the overview, guarded like re_request_review:
 --- the overview float is closed before the flows below run, and a stop()
 --- (or stop + start of another session) while they wait must not reopen it.
+--- Used by the menu's cancel and by `r`; the reviewer / label editors do not
+--- reopen it (closing their picker ends the flow).
 --- @param captured_state table
 --- @return fun()
 local function make_reopen(captured_state)
@@ -152,6 +154,7 @@ end
 
 --- Edit the PR's requested reviewers in a toggle picker: `<Tab>` requests a
 --- review from the user under the cursor, or removes their pending request.
+--- Closing the picker ends the flow; the overview is not reopened.
 --- @param pr_info table PR data from gh pr view (number, url, author, reviewRequests, latestReviews)
 --- @param captured_state table|nil config.state the overview was opened in (default: the current one)
 function M.edit_reviewers(pr_info, captured_state)
@@ -162,7 +165,6 @@ function M.edit_reviewers(pr_info, captured_state)
 		return
 	end
 	local repo = pr_repo(pr_info)
-	local reopen = make_reopen(captured_state)
 	-- author can be JSON null, which decodes to truthy vim.NIL
 	local author = type(pr_info.author) == "table" and pr_info.author.login or nil
 
@@ -184,7 +186,6 @@ function M.edit_reviewers(pr_info, captured_state)
 			format.build_reviewer_entries(collaborators, pr_info.reviewRequests or {}, pr_info.latestReviews or {}, author)
 		if #entries == 0 then
 			vim.notify("fude.nvim: No reviewers to choose from", vim.log.levels.INFO)
-			reopen()
 			return
 		end
 
@@ -235,7 +236,6 @@ function M.edit_reviewers(pr_info, captured_state)
 					return item.review_state == "APPROVED" and "Comment" or nil
 				end,
 			},
-			on_close = reopen,
 			is_alive = function()
 				return is_current(captured_state)
 			end,
@@ -260,7 +260,8 @@ function M.edit_reviewers(pr_info, captured_state)
 end
 
 --- Edit the PR's labels in a toggle picker: `<Tab>` adds the label under the
---- cursor, or removes it when the PR already has it.
+--- cursor, or removes it when the PR already has it. Closing the picker ends
+--- the flow; the overview is not reopened.
 --- @param pr_info table PR data from gh pr view (number, url, labels)
 --- @param captured_state table|nil config.state the overview was opened in (default: the current one)
 function M.edit_labels(pr_info, captured_state)
@@ -271,7 +272,6 @@ function M.edit_labels(pr_info, captured_state)
 		return
 	end
 	local repo = pr_repo(pr_info)
-	local reopen = make_reopen(captured_state)
 
 	gh.get_repo_labels(function(err, repo_labels)
 		if not is_current(captured_state) then
@@ -289,7 +289,6 @@ function M.edit_labels(pr_info, captured_state)
 		local entries = format.build_label_entries(repo_labels, pr_info.labels or {})
 		if #entries == 0 then
 			vim.notify("fude.nvim: No labels to choose from", vim.log.levels.INFO)
-			reopen()
 			return
 		end
 
@@ -301,7 +300,6 @@ function M.edit_labels(pr_info, captured_state)
 		require("fude.ui.toggle_picker").open({
 			title = "Labels",
 			items = items,
-			on_close = reopen,
 			is_alive = function()
 				return is_current(captured_state)
 			end,
