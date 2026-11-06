@@ -240,7 +240,8 @@ function M.edit_reviewers(pr_info, captured_state)
 		local items = {}
 		for _, entry in ipairs(entries) do
 			table.insert(items, {
-				text = "@" .. entry.login,
+				-- Copilot's API login is shown as @copilot
+				text = "@" .. format.reviewer_display_name(entry.login),
 				on = entry.requested,
 				-- Both rendered from item.on, so they follow a toggle in place
 				mark = function(item)
@@ -276,7 +277,7 @@ function M.edit_reviewers(pr_info, captured_state)
 					local login = item.value
 					run_toggle(captured_state, function(cb)
 						gh.re_request_review(pr_info.number, { login }, cb, repo)
-					end, "Re-requested review from @" .. login, "Failed to re-request review from @" .. login, done)
+					end, "Re-requested review from " .. item.text, "Failed to re-request review from " .. item.text, done)
 				end,
 				result_on = true,
 				-- An approver is rarely asked again, so their hint stays quiet
@@ -288,11 +289,11 @@ function M.edit_reviewers(pr_info, captured_state)
 				return is_current(captured_state)
 			end,
 			on_toggle = function(item, done)
-				local login = item.value
+				local login, name = item.value, item.text
 				if item.on then
 					run_toggle(captured_state, function(cb)
 						gh.remove_review_request(pr_info.number, { login }, cb, repo)
-					end, "Removed review request from @" .. login, "Failed to remove review request from @" .. login, done)
+					end, "Removed review request from " .. name, "Failed to remove review request from " .. name, done)
 				else
 					-- The same endpoint requests a first review or re-requests
 					-- one from a user who already reviewed; say which it was.
@@ -300,7 +301,7 @@ function M.edit_reviewers(pr_info, captured_state)
 					local done_verb = item.review_state and "Re-requested" or "Requested"
 					run_toggle(captured_state, function(cb)
 						gh.re_request_review(pr_info.number, { login }, cb, repo)
-					end, done_verb .. " review from @" .. login, "Failed to " .. verb .. " review from @" .. login, done)
+					end, done_verb .. " review from " .. name, "Failed to " .. verb .. " review from " .. name, done)
 				end
 			end,
 		})
@@ -372,6 +373,7 @@ end
 function M.re_request_review(pr_info, captured_state)
 	local ui = require("fude.ui")
 	local gh = require("fude.gh")
+	local format = require("fude.ui.format")
 
 	if not ensure_current(captured_state) then
 		return
@@ -395,7 +397,7 @@ function M.re_request_review(pr_info, captured_state)
 	vim.ui.select(candidates, {
 		prompt = "Re-request review from:",
 		format_item = function(candidate)
-			return "@" .. candidate.login .. "  (" .. candidate.state:lower() .. ")"
+			return "@" .. format.reviewer_display_name(candidate.login) .. "  (" .. candidate.state:lower() .. ")"
 		end,
 	}, function(choice)
 		if not choice then
@@ -406,13 +408,14 @@ function M.re_request_review(pr_info, captured_state)
 		if not ensure_current(captured_state) then
 			return
 		end
+		local name = "@" .. format.reviewer_display_name(choice.login)
 		gh.re_request_review(pr_info.number, { choice.login }, function(err, _)
 			if err then
-				notify_request_failure("Failed to re-request review from @" .. choice.login, err)
+				notify_request_failure("Failed to re-request review from " .. name, err)
 				reopen()
 				return
 			end
-			vim.notify("fude.nvim: Re-requested review from @" .. choice.login, vim.log.levels.INFO)
+			vim.notify("fude.nvim: Re-requested review from " .. name, vim.log.levels.INFO)
 			reopen()
 		end, pr_repo(pr_info))
 	end)
