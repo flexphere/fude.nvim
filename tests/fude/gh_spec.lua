@@ -1035,6 +1035,104 @@ describe("get_pr_state", function()
 	end)
 end)
 
+describe("get_pr_edit_info", function()
+	local helpers = require("tests.helpers")
+	local FIELDS = "number,url,author,reviewRequests,latestReviews,labels"
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("requests the editor fields for an explicit PR number and passes them through", function()
+		local captured_args
+		local raw = {
+			number = 7,
+			url = "https://github.com/o/r/pull/7",
+			author = { login = "me" },
+			reviewRequests = { { login = "alice" } },
+			latestReviews = { { author = { login = "bob" }, state = "APPROVED" } },
+			labels = { { name = "bug" } },
+		}
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, raw)
+		end)
+		local result
+		gh.get_pr_edit_info(7, function(err, data)
+			result = { err = err, data = data }
+		end)
+		assert.are.same({ "pr", "view", "7", "--json", FIELDS }, captured_args)
+		assert.is_nil(result.err)
+		assert.are.same(raw, result.data)
+	end)
+
+	it("passes a PR URL to gh pr view as is, so the repository is pinned", function()
+		local captured_args
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, { number = 7 })
+		end)
+		gh.get_pr_edit_info("https://github.com/o/r/pull/7", function() end)
+		assert.are.same({ "pr", "view", "https://github.com/o/r/pull/7", "--json", FIELDS }, captured_args)
+	end)
+
+	it("normalizes JSON nulls: lists become empty, scalars absent", function()
+		helpers.mock(gh, "run_json", function(_, callback)
+			callback(nil, {
+				number = vim.NIL,
+				url = vim.NIL,
+				author = vim.NIL,
+				reviewRequests = vim.NIL,
+				latestReviews = vim.NIL,
+				labels = vim.NIL,
+			})
+		end)
+		local result
+		gh.get_pr_edit_info(7, function(_, data)
+			result = data
+		end)
+		assert.are.same({ reviewRequests = {}, latestReviews = {}, labels = {} }, result)
+	end)
+
+	it("resolves the PR from the commit on a detached HEAD instead of running gh pr view bare", function()
+		helpers.mock(vim, "system", function()
+			return {
+				wait = function()
+					return { code = 1, stdout = "", stderr = "" }
+				end,
+			}
+		end)
+		helpers.mock(gh, "get_head_sha", function()
+			return "abc123"
+		end)
+		helpers.mock(gh, "get_pr_by_commit", function(_, callback)
+			callback(nil, { number = 12 })
+		end)
+		local captured_args
+		helpers.mock(gh, "run_json", function(args, callback)
+			captured_args = args
+			callback(nil, { number = 12 })
+		end)
+		gh.get_pr_edit_info(nil, function() end)
+		assert.are.same({ "pr", "view", "12", "--json", FIELDS }, captured_args)
+	end)
+
+	it("passes a gh pr view failure through as the error", function()
+		local called_run = false
+		helpers.mock(gh, "run_json", function(_, callback)
+			called_run = true
+			callback("HTTP 401: Bad credentials", nil)
+		end)
+		local result, result_err
+		gh.get_pr_edit_info(3, function(err, data)
+			result_err, result = err, data
+		end)
+		assert.is_true(called_run)
+		assert.are.equal("HTTP 401: Bad credentials", result_err)
+		assert.is_nil(result)
+	end)
+end)
+
 describe("is_no_pr_error", function()
 	local helpers_for_no_pr = require("tests.helpers")
 

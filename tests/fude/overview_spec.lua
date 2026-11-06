@@ -177,7 +177,7 @@ describe("overview re_request_review", function()
 		})
 		config.state.active = false
 
-		overview.re_request_review(make_pr_info())
+		overview.re_request_review(make_pr_info(), config.state)
 
 		assert.is_true(has_notification("Not active", vim.log.levels.WARN))
 		vim.wait(100, function()
@@ -466,7 +466,7 @@ describe("overview menu and toggle editors", function()
 			config.state.active = true
 			return pick("Label")(items, opts)
 		end)
-		overview.open_menu(make_pr_info())
+		overview.open_menu(make_pr_info(), config.state)
 		assert.is_true(has_notification("Not active", vim.log.levels.WARN))
 		assert.is_false(requested)
 	end)
@@ -576,11 +576,208 @@ describe("overview menu and toggle editors", function()
 			return items[2]
 		end)
 
-		overview.edit_labels(make_pr_info())
+		overview.edit_labels(make_pr_info(), config.state)
 
 		assert.is_true(helpers.wait_for(function()
 			return has_notification("Not active", vim.log.levels.WARN)
 		end))
 		assert.is_false(posted)
+	end)
+
+	it("an editor tied to no session (nil) keeps working after the session was stopped", function()
+		local posted = false
+		helpers.mock_gh({
+			["api:repos/{owner}/{repo}/labels"] = { { name = "docs" } },
+			["api:repos/{owner}/{repo}/issues/42/labels"] = function(_, callback)
+				posted = true
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end,
+		})
+		table.insert(responders, function(items)
+			config.reset_state()
+			return items[2]
+		end)
+
+		overview.edit_labels(make_pr_info(), nil)
+
+		assert.is_true(helpers.wait_for(function()
+			return has_notification("Added label docs", vim.log.levels.INFO)
+		end))
+		assert.is_true(posted)
+		assert.is_false(has_notification("Not active"))
+	end)
+end)
+
+describe("overview edit commands (:FudeEditReviewers / :FudeEditLabels)", function()
+	local config = require("fude.config")
+	local overview = require("fude.overview")
+	local gh = require("fude.gh")
+	local toggle_picker = require("fude.ui.toggle_picker")
+
+	local notifications
+	local opened
+
+	local function has_notification(pattern, level)
+		for _, n in ipairs(notifications) do
+			if n.msg:find(pattern, 1, true) and (level == nil or n.level == level) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local function make_pr_info()
+		return {
+			number = 42,
+			url = "https://github.com/octo/fude/pull/42",
+			author = { login = "author" },
+			reviewRequests = { { login = "carol" } },
+			latestReviews = {},
+			labels = { { name = "bug" } },
+		}
+	end
+
+	--- Mock gh.get_pr_edit_info; `seen.num` records the number it was asked for.
+	local function mock_edit_info(err, data, seen)
+		helpers.mock(gh, "get_pr_edit_info", function(num, callback)
+			if seen then
+				seen.num = num
+			end
+			callback(err, data)
+		end)
+	end
+
+	before_each(function()
+		config.setup({ file_list_mode = "quickfix" })
+		notifications = {}
+		opened = nil
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notifications, { msg = msg, level = level })
+		end)
+		helpers.mock(toggle_picker, "open", function(opts)
+			opened = opts
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("FudeEditLabels opens the label picker of the current branch's PR outside a review", function()
+		local seen = { num = "unset" }
+		mock_edit_info(nil, make_pr_info(), seen)
+		helpers.mock_gh({
+			["api:repos/octo/fude/labels"] = { { name = "bug" }, { name = "docs" } },
+		})
+
+		overview.edit_current_labels()
+
+		assert.is_true(helpers.wait_for(function()
+			return opened ~= nil
+		end))
+		assert.is_nil(seen.num)
+		assert.are.equal("Labels", opened.title)
+		assert.are.same({ "bug", "docs" }, { opened.items[1].text, opened.items[2].text })
+		assert.is_true(opened.items[1].on)
+		assert.is_false(opened.items[2].on)
+	end)
+
+	it("FudeEditReviewers looks the review session's PR up by URL and edits in the PR's repository", function()
+		config.state.active = true
+		config.state.review_mode = "github"
+		config.state.pr_number = 42
+		-- The URL pins the repository: a bare number would be resolved against
+		-- the cwd, which a `:cd` may have moved to another repository
+		config.state.pr_url = "https://github.com/octo/fude/pull/42"
+		local seen = {}
+		mock_edit_info(nil, make_pr_info(), seen)
+		local paths = {}
+		helpers.mock_gh({
+			["api:repos/octo/fude/collaborators"] = function(args, callback)
+				table.insert(paths, args[2])
+				vim.schedule(function()
+					callback(nil, { { login = "alice" } })
+				end)
+			end,
+		})
+
+		overview.edit_current_reviewers()
+
+		assert.is_true(helpers.wait_for(function()
+			return opened ~= nil
+		end))
+		assert.are.equal("https://github.com/octo/fude/pull/42", seen.num)
+		assert.are.same({ "repos/octo/fude/collaborators" }, paths)
+		assert.are.equal("Reviewers", opened.title)
+		assert.are.same({ "@carol", "@alice" }, { opened.items[1].text, opened.items[2].text })
+	end)
+
+	it("ties the editor to no session: a toggle still runs after the session was stopped", function()
+		config.state.active = true
+		config.state.review_mode = "github"
+		config.state.pr_number = 42
+		mock_edit_info(nil, make_pr_info())
+		local posted = false
+		helpers.mock_gh({
+			["api:repos/octo/fude/labels"] = { { name = "docs" } },
+			["api:repos/octo/fude/issues/42/labels"] = function(_, callback)
+				posted = true
+				vim.schedule(function()
+					callback(nil, {})
+				end)
+			end,
+		})
+
+		overview.edit_current_labels()
+
+		assert.is_true(helpers.wait_for(function()
+			return opened ~= nil
+		end))
+		config.reset_state()
+		assert.is_true(opened.is_alive())
+		local ok_seen
+		opened.on_toggle(opened.items[2], function(ok)
+			ok_seen = ok
+		end)
+		assert.is_true(helpers.wait_for(function()
+			return ok_seen ~= nil
+		end))
+		assert.is_true(ok_seen)
+		assert.is_true(posted)
+		assert.is_false(has_notification("Not active"))
+	end)
+
+	it("refuses in the local commit scope without looking the PR up", function()
+		helpers.mock(require("fude.local.session"), "in_commit_scope", function()
+			return true
+		end)
+		local looked_up = false
+		helpers.mock(gh, "get_pr_edit_info", function()
+			looked_up = true
+		end)
+
+		overview.edit_current_reviewers()
+
+		assert.is_false(looked_up)
+		assert.is_true(has_notification("commit scope", vim.log.levels.WARN))
+		assert.is_nil(opened)
+	end)
+
+	it("reports a branch without a PR as a WARN and any other lookup failure as an ERROR", function()
+		mock_edit_info('no pull requests found for branch "feat/x"\n', nil)
+		overview.edit_current_labels()
+		assert.is_true(has_notification('no pull requests found for branch "feat/x"', vim.log.levels.WARN))
+
+		mock_edit_info("HTTP 401: Bad credentials\n", nil)
+		overview.edit_current_labels()
+		assert.is_true(has_notification("HTTP 401: Bad credentials", vim.log.levels.ERROR))
+
+		mock_edit_info(nil, { number = nil })
+		overview.edit_current_labels()
+		assert.is_true(has_notification("No PR found for current branch", vim.log.levels.WARN))
+
+		assert.is_nil(opened)
 	end)
 end)

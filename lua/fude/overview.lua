@@ -49,9 +49,15 @@ function M.show()
 end
 
 --- Whether the session captured before an async step is still the active one.
---- @param captured_state table config.state at the time the flow started
+--- A flow started by a command rather than from the overview (`:FudeEditReviewers`,
+--- `:FudeEditLabels`) captures no session: it acts on the `pr_info` it was
+--- given, which no session change can make stale, so nil is always current.
+--- @param captured_state table|nil config.state at the time the flow started, or nil
 --- @return boolean
 local function is_current(captured_state)
+	if captured_state == nil then
+		return true
+	end
 	return config.state == captured_state and config.state.active == true
 end
 
@@ -73,7 +79,7 @@ end
 --- Refuse a flow started from an overview of a session that is gone: the
 --- float can stay open across :FudeReviewStop (and a new :FudeReviewStart),
 --- and its pr_info belongs to the old session's PR.
---- @param captured_state table
+--- @param captured_state table|nil see is_current
 --- @return boolean current
 local function ensure_current(captured_state)
 	if is_current(captured_state) then
@@ -101,9 +107,8 @@ M.MENU_ITEMS = {
 
 --- Open the overview's `C` menu: new PR comment, reviewers, or labels.
 --- @param pr_info table PR data from gh pr view
---- @param captured_state table|nil config.state the overview was opened in (default: the current one)
+--- @param captured_state table|nil config.state the overview was opened in; nil ties the flow to no session
 function M.open_menu(pr_info, captured_state)
-	captured_state = captured_state or config.state
 	if not ensure_current(captured_state) then
 		return
 	end
@@ -130,7 +135,7 @@ end
 
 --- Run one toggle request from a toggle picker, refusing when the session it
 --- was opened in is gone (the picker can outlive a :FudeReviewStop).
---- @param captured_state table
+--- @param captured_state table|nil see is_current
 --- @param request fun(cb: fun(err: string|nil)) sends the request
 --- @param success_msg string
 --- @param failure_msg string
@@ -156,11 +161,10 @@ end
 --- review from the user under the cursor, or removes their pending request.
 --- Closing the picker ends the flow; the overview is not reopened.
 --- @param pr_info table PR data from gh pr view (number, url, author, reviewRequests, latestReviews)
---- @param captured_state table|nil config.state the overview was opened in (default: the current one)
+--- @param captured_state table|nil config.state the overview was opened in; nil ties the flow to no session
 function M.edit_reviewers(pr_info, captured_state)
 	local gh = require("fude.gh")
 	local format = require("fude.ui.format")
-	captured_state = captured_state or config.state
 	if not ensure_current(captured_state) then
 		return
 	end
@@ -263,11 +267,10 @@ end
 --- cursor, or removes it when the PR already has it. Closing the picker ends
 --- the flow; the overview is not reopened.
 --- @param pr_info table PR data from gh pr view (number, url, labels)
---- @param captured_state table|nil config.state the overview was opened in (default: the current one)
+--- @param captured_state table|nil config.state the overview was opened in; nil ties the flow to no session
 function M.edit_labels(pr_info, captured_state)
 	local gh = require("fude.gh")
 	local format = require("fude.ui.format")
-	captured_state = captured_state or config.state
 	if not ensure_current(captured_state) then
 		return
 	end
@@ -321,12 +324,11 @@ end
 
 --- Re-request a review from a reviewer who has already reviewed.
 --- @param pr_info table PR data from gh pr view (number, url, author, reviewRequests, latestReviews)
---- @param captured_state table|nil config.state the overview was opened in (default: the current one)
+--- @param captured_state table|nil config.state the overview was opened in; nil ties the flow to no session
 function M.re_request_review(pr_info, captured_state)
 	local ui = require("fude.ui")
 	local gh = require("fude.gh")
 
-	captured_state = captured_state or config.state
 	if not ensure_current(captured_state) then
 		return
 	end
@@ -366,6 +368,60 @@ function M.re_request_review(pr_info, captured_state)
 			vim.notify("fude.nvim: Re-requested review from @" .. choice.login, vim.log.levels.INFO)
 		end, pr_repo(pr_info))
 	end)
+end
+
+--- Open a reviewer / label editor on the current PR from a command, without
+--- the overview: the GitHub review session's PR (by URL) when one is active,
+--- else the current branch's (on a detached HEAD, the commit's), like
+--- pr.change_state.
+--- The editor is tied to no session (captured_state nil): the PR it edits is
+--- fixed by the fetched pr_info, so a later :FudeReviewStop / Start cannot
+--- make it stale.
+--- @param what string "reviewers" | "labels", for the messages
+--- @param open fun(pr_info: table, captured_state: nil) M.edit_reviewers / M.edit_labels
+local function edit_current_pr(what, open)
+	-- The local commit scope detaches HEAD onto a past commit, so the
+	-- commit-based lookup could find another PR that contains it rather than
+	-- the session branch's PR.
+	if require("fude.local.session").in_commit_scope() then
+		vim.notify(
+			"fude.nvim: Cannot edit the PR " .. what .. " in the commit scope — switch scope first",
+			vim.log.levels.WARN
+		)
+		return
+	end
+	local gh = require("fude.gh")
+	-- The session's PR by URL, not number: gh resolves a bare number against
+	-- the cwd's repository, so after a `:cd` into another repository the same
+	-- number would name that repository's PR.
+	local state = config.state
+	local pr = state.active and (state.pr_url or state.pr_number) or nil
+
+	gh.get_pr_edit_info(pr, function(err, pr_info)
+		if gh.is_no_pr_error(err) then
+			vim.notify("fude.nvim: " .. vim.trim(err), vim.log.levels.WARN)
+			return
+		end
+		if err then
+			vim.notify("fude.nvim: " .. vim.trim(err), vim.log.levels.ERROR)
+			return
+		end
+		if not pr_info.number then
+			vim.notify("fude.nvim: No PR found for current branch", vim.log.levels.WARN)
+			return
+		end
+		open(pr_info, nil)
+	end)
+end
+
+--- `:FudeEditReviewers`: request or remove reviewers of the current PR.
+function M.edit_current_reviewers()
+	edit_current_pr("reviewers", M.edit_reviewers)
+end
+
+--- `:FudeEditLabels`: add or remove labels of the current PR.
+function M.edit_current_labels()
+	edit_current_pr("labels", M.edit_labels)
 end
 
 --- Create a new issue-level comment on the PR.
