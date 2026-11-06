@@ -631,6 +631,115 @@ describe("overview menu and toggle editors", function()
 	end)
 end)
 
+describe("overview show loading state", function()
+	local config = require("fude.config")
+	local overview = require("fude.overview")
+	local ui = require("fude.ui")
+
+	local notifications
+	local shown_with
+
+	--- The loading placeholder window, if one is open.
+	local function loading_win()
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if vim.b[vim.api.nvim_win_get_buf(win)].fude_overview_loading then
+				return win
+			end
+		end
+		return nil
+	end
+
+	before_each(function()
+		config.setup({})
+		config.state.active = true
+		config.state.review_mode = "github"
+		notifications = {}
+		shown_with = nil
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notifications, { msg = msg, level = level })
+		end)
+		helpers.mock(ui, "show_overview_float", function(pr_info, comments)
+			shown_with = { pr_info = pr_info, comments = comments }
+		end)
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	--- Mock gh so that `pr view` answers only when `respond` is called.
+	--- @return fun(err: string|nil, data: table|nil) respond
+	local function mock_pending_pr_view()
+		local pending
+		helpers.mock_gh({
+			["pr:view"] = function(_, callback)
+				pending = callback
+			end,
+			["api:repos/{owner}/{repo}/issues/7/comments"] = {},
+			["api:repos/{owner}/{repo}/pulls/7/reviews"] = {},
+		})
+		return function(err, data)
+			pending(err, data)
+		end
+	end
+
+	it("shows the placeholder while fetching and replaces it with the overview", function()
+		local respond = mock_pending_pr_view()
+		overview.show()
+		local win = loading_win()
+		assert.is_not_nil(win)
+		assert.are.equal(win, vim.api.nvim_get_current_win())
+
+		respond(nil, { number = 7, title = "T" })
+		assert.is_true(helpers.wait_for(function()
+			return shown_with ~= nil
+		end))
+		assert.are.equal(7, shown_with.pr_info.number)
+		assert.is_nil(loading_win())
+	end)
+
+	it("closes the placeholder and notifies when the PR cannot be fetched", function()
+		local respond = mock_pending_pr_view()
+		overview.show()
+		assert.is_not_nil(loading_win())
+
+		respond("gh: not found", nil)
+		assert.is_true(helpers.wait_for(function()
+			return #notifications > 0
+		end))
+		assert.are.equal(vim.log.levels.ERROR, notifications[1].level)
+		assert.is_nil(loading_win())
+		assert.is_nil(shown_with)
+	end)
+
+	it("does not show the overview when the placeholder was closed while fetching", function()
+		local respond = mock_pending_pr_view()
+		overview.show()
+		vim.api.nvim_win_close(loading_win(), true)
+
+		respond(nil, { number = 7, title = "T" })
+		vim.wait(100, function()
+			return shown_with ~= nil
+		end)
+		assert.is_nil(shown_with)
+		assert.are.same({}, notifications)
+	end)
+
+	it("closes the placeholder when the session was stopped while fetching", function()
+		local respond = mock_pending_pr_view()
+		overview.show()
+		assert.is_not_nil(loading_win())
+		config.reset_state()
+
+		respond(nil, { number = 7, title = "T" })
+		vim.wait(100, function()
+			return shown_with ~= nil
+		end)
+		assert.is_nil(shown_with)
+		assert.is_nil(loading_win())
+	end)
+end)
+
 describe("overview edit commands (:FudeEditReviewers / :FudeEditLabels)", function()
 	local config = require("fude.config")
 	local overview = require("fude.overview")
