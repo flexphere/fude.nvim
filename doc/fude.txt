@@ -456,15 +456,35 @@ File opening position                                 *fude-file-position*
     `'c` (comments). Customizable via `overview.marks`.
     `]s`/`[s` navigate between the body start and comments heading.
     Frontmatter rendering depends on the Markdown preview plugin.
-    Press `C` to write a new comment, `r` to re-request a review
-    from a reviewer who has already reviewed, `o` to open the comment
-    under the cursor on GitHub (the PR elsewhere, and in the right
-    pane), `R` to refresh,
-    `<Tab>` to switch between panes, `]c`/`[c` to navigate
-    review comments, `q` to close.
+    Press `C` (left pane) to choose what to do with the PR: write a
+    new comment (Comment), request or remove a reviewer (Reviewer),
+    or add or remove a label (Label). `r` re-requests a review from a
+    reviewer who has already reviewed, `o` opens the comment under the
+    cursor on GitHub (the PR elsewhere, and in the right pane), `R`
+    refreshes, `<Tab>` switches between panes, `]c`/`[c` navigate
+    review comments, and `q` closes.
+    Reviewer and Label open a picker (routed by `file_list_mode`) in
+    which `<Tab>` toggles the row under the cursor: it requests a
+    review from the user or removes their pending request, and adds or
+    removes the label. The mark changes only after GitHub accepted the
+    change, and the picker stays open; `<CR>`, `q` or `<Esc>` close it
+    and reopen the overview once every pending request finished. With
+    `file_list_mode = "quickfix"` (or without the picker plugin)
+    |vim.ui.select()| is used instead: choosing a row toggles it and
+    the select reopens.
+    The reviewer picker lists repository collaborators with write
+    access, users with a pending request, and collaborators who already
+    reviewed (requested first, then reviewed, then the rest), excluding
+    the PR author and bots. Each row states whether a review is
+    requested and the user's latest review, e.g.
+    `● @alice  (review requested, last review: dismissed)`. `<Tab>` on
+    a user who already reviewed re-requests their review. When
+    collaborators cannot be listed (it needs push access), only
+    requested and reviewed users are shown. The label picker lists
+    every repository label, applied (`●`) first.
     Re-requesting picks a reviewer via |vim.ui.select()| and excludes
     reviewers with a pending request, the PR author, and bots. Team
-    reviewers are not supported.
+    reviewers are not supported by either picker.
 
 :FudeReviewSuggest                                  *:FudeReviewSuggest*
     Suggest a code change on the current line (normal mode) or
@@ -1035,8 +1055,11 @@ command). Suggested mappings:
                 local review or of your pending review (not on GitHub)
   `gx`          Open GitHub reference or URL under cursor (in floats)
   `r`           Re-request review (in |:FudeReviewOverview|)
+  `C`           Write a PR comment or edit reviewers / labels
+                (in |:FudeReviewOverview|)
   `<Tab>`       Toggle viewed state (in |:FudeReviewFiles| Telescope picker)
                 Toggle commit reviewed state (in |:FudeReviewScope| picker)
+                Toggle reviewer / label (in the overview's `C` pickers)
                 Switch between left/right panes (in |:FudeReviewOverview|)
   `'d`/`'c`    Jump to description/comments (overview left pane)
   `za`/`zc`/`zo` Toggle/close/open fold (overview sections and comments)
