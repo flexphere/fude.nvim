@@ -815,7 +815,8 @@ File opening position                                 *fude-file-position*
     (`<C-e>` re-requests a review; see there for the rows, marks and
     the `vim.ui.select` fallback), without opening the overview.
 
-    When a GitHub review session is active, uses its PR. Otherwise,
+    When a GitHub review session is active, uses its PR (by URL, so a
+    `:cd` into another repository does not retarget it). Otherwise,
     detects the PR from the current branch (on a detached HEAD, from
     the commit). Does not require an active review session, and the
     picker is not tied to one: stopping or starting a review while it
