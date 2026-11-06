@@ -855,7 +855,11 @@ File opening position                                 *fude-file-position*
     Closing the focused panel (with this command or `q`) returns focus
     to the window the panel was opened or focused from. When the panel
     lives in another tabpage, this command reopens it in the current
-    tabpage instead of jumping tabs.
+    tabpage instead of jumping tabs. When every other window in the
+    panel's tabpage is closed (e.g. `:bdelete` closes the window showing
+    the deleted buffer), a window showing the most recently used listed
+    buffer opens next to the panel, so files never open in the panel
+    window and inherit its `nonumber`/`signcolumn=no`.
     The panel is a split window that shows these sections:
 
     Review Scope:~

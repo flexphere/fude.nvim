@@ -373,6 +373,68 @@ describe("sidepanel integration", function()
 		assert.are.equal(other, vim.api.nvim_get_current_win())
 	end)
 
+	describe("when every window except the panel is closed", function()
+		local saved_number, saved_signcolumn
+		before_each(function()
+			saved_number, saved_signcolumn = vim.go.number, vim.go.signcolumn
+			vim.go.number = true
+			vim.go.signcolumn = "yes"
+		end)
+		after_each(function()
+			vim.go.number, vim.go.signcolumn = saved_number, saved_signcolumn
+		end)
+
+		local function normal_wins()
+			return vim.tbl_filter(function(w)
+				return vim.api.nvim_win_get_config(w).relative == ""
+			end, vim.api.nvim_tabpage_list_wins(0))
+		end
+
+		it("open keeps the global number and signcolumn values", function()
+			sidepanel.open()
+
+			assert.is_true(vim.go.number)
+			assert.are.equal("yes", vim.go.signcolumn)
+		end)
+
+		it("ensure_editor_window opens a window with the global number and signcolumn after :bdelete", function()
+			local shown = helpers.create_buf({ "shown" }, "/mock/repo/shown.lua")
+			local deleted = helpers.create_buf({ "deleted" }, "/mock/repo/deleted.lua")
+			vim.bo[shown].buflisted = true
+			vim.bo[deleted].buflisted = true
+			vim.api.nvim_set_current_buf(shown)
+			vim.api.nvim_set_current_buf(deleted)
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			vim.cmd("wincmd l")
+
+			-- :bdelete closes the file window because the panel window still remains
+			vim.cmd("bdelete " .. deleted)
+
+			assert.is_true(helpers.wait_for(function()
+				return #normal_wins() == 2
+			end))
+			local new_win = vim.api.nvim_get_current_win()
+			assert.are_not.equal(panel.win, new_win)
+			assert.are.equal(shown, vim.api.nvim_win_get_buf(new_win))
+			assert.is_true(vim.wo[new_win].number)
+			assert.are.equal("yes", vim.wo[new_win].signcolumn)
+			assert.is_false(vim.wo[new_win].winfixwidth)
+			assert.are.equal(new_win, panel.prev_win)
+		end)
+
+		it("ensure_editor_window does nothing while another normal window remains", function()
+			sidepanel.open()
+			vim.cmd("wincmd l")
+			vim.cmd("vsplit")
+
+			vim.cmd("close")
+			vim.wait(50)
+
+			assert.are.equal(2, #normal_wins())
+		end)
+	end)
+
 	it("toggle reopens the panel in the current tab when it lives in another tab", function()
 		sidepanel.open()
 		local first_panel_win = config.state.sidepanel.win
