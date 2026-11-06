@@ -389,6 +389,55 @@ describe("build_review_threads_query", function()
 	end)
 end)
 
+describe("repo owner lookup", function()
+	local helpers = require("tests.helpers")
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("parse_repo_slug splits owner/repo and rejects anything else", function()
+		assert.are.same({ "owner", "repo" }, { gh.parse_repo_slug("owner/repo") })
+		assert.are.same({}, { gh.parse_repo_slug("owner") })
+		assert.are.same({}, { gh.parse_repo_slug("a/b/c") })
+		assert.are.same({}, { gh.parse_repo_slug(nil) })
+	end)
+
+	it("get_repo_owner answers from the slug without gh, else asks gh repo view", function()
+		local calls = {}
+		helpers.mock(gh, "run_json", function(args, cb)
+			table.insert(calls, args)
+			cb(nil, { owner = { login = "cwd-owner" }, name = "cwd-repo" })
+		end)
+		local got
+		gh.get_repo_owner(function(err, owner, repo)
+			got = { err, owner, repo }
+		end, "owner/repo")
+		assert.are.same({ nil, "owner", "repo" }, got)
+		assert.are.equal(0, #calls)
+		gh.get_repo_owner(function(err, owner, repo)
+			got = { err, owner, repo }
+		end)
+		assert.are.same({ nil, "cwd-owner", "cwd-repo" }, got)
+		assert.are.same({ "repo", "view", "--json", "owner,name" }, calls[1])
+	end)
+
+	it("get_review_threads and get_pr_viewed_files query the given repository", function()
+		local queries = {}
+		helpers.mock(gh, "run_json", function(args, cb)
+			assert.are_not.equal("repo", args[1])
+			table.insert(queries, args[#args])
+			cb(nil, {})
+		end)
+		gh.get_review_threads(42, function() end, "owner/repo")
+		gh.get_pr_viewed_files(42, function() end, "owner/repo")
+		assert.are.equal(2, #queries)
+		for _, q in ipairs(queries) do
+			assert.truthy(q:find('owner: "owner"', 1, true))
+			assert.truthy(q:find('name: "repo"', 1, true))
+		end
+	end)
+end)
+
 describe("build_resolve_thread_mutation", function()
 	it("builds resolveReviewThread when resolving", function()
 		local query = gh.build_resolve_thread_mutation(true)

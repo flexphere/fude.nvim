@@ -279,7 +279,7 @@ function M.start()
 				state.pr_node_id = pr_node_id
 			end
 			on_ready()
-		end)
+		end, require("fude.drafts").repo_slug(state.pr_url))
 
 		-- Apply diffopt settings
 		if config.opts.diffopt then
@@ -692,7 +692,7 @@ function M.reload(silent)
 			config.state.pr_node_id = pr_node_id
 		end
 		on_done()
-	end)
+	end, require("fude.drafts").repo_slug(config.state.pr_url))
 
 	-- Reload PR commits
 	gh_mod.get_pr_commits(config.state.pr_number, function(err, commits)

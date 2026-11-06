@@ -47,13 +47,38 @@ local function apply_thread_info(comments, thread_info_map, opts)
 	end
 end
 
+--- Record the viewer's pending review (or its absence) from a reviews listing.
+--- @param state table
+--- @param reviews table[]|nil
+local function apply_pending_review(state, reviews)
+	local pending_review = nil
+	for _, review in ipairs(reviews or {}) do
+		if review.state == "PENDING" then
+			pending_review = review
+			break
+		end
+	end
+	if pending_review then
+		state.pending_review_id = pending_review.id
+		state.pending_review_node_id = pending_review.node_id
+	else
+		state.pending_review_id = nil
+		state.pending_review_node_id = nil
+		state.pending_comments = {}
+	end
+end
+
 --- Fetch all PR review comments and build the lookup map.
 --- GET /pulls/{pr}/comments does not include pending review comments,
 --- so when a pending review exists, also fetches from the review-specific endpoint
 --- and builds pending_comments from the same data.
 --- Also fetches outdated info via GraphQL and merges it into comments.
+--- The requests run in parallel and the result is assembled once all are in.
+--- With `opts.detect_pending`, the reviews listing (which tells whether the
+--- viewer has a pending review) runs alongside them too, and the pending
+--- review's comments are requested as soon as it reports one.
 --- @param callback fun()|nil optional callback invoked after comments are applied
---- @param opts table|nil { silent = boolean } suppress notifications when true
+--- @param opts table|nil { silent = boolean, detect_pending = boolean }
 local function fetch_comments(callback, opts)
 	local state = config.state
 	if not state.pr_number then
@@ -63,8 +88,121 @@ local function fetch_comments(callback, opts)
 		return
 	end
 	local silent = opts and opts.silent
+	local repo = require("fude.drafts").repo_slug(state.pr_url)
 
-	local function apply(comments)
+	-- Review threads are fetched only when needed:
+	--   - outdated info is enabled (thread_info_map needed for display)
+	--   - or resolved info is enabled (thread_info_map needed for display)
+	--   - or pending review exists (thread_map needed for GraphQL reply mutation)
+	-- When none applies, the GraphQL call is skipped entirely. If a reply is later
+	-- attempted, reply_to_comment lazily refreshes thread_map on cache miss.
+	local need_outdated = not (config.opts.outdated and config.opts.outdated.show == false)
+	local need_resolved = not (config.opts.resolved and config.opts.resolved.show == false)
+
+	local results = {}
+	-- One count per request in flight, plus one held while requests are being
+	-- started, so a callback that answers at once cannot finish the barrier early.
+	local remaining = 1
+	local finish
+
+	local function settle()
+		remaining = remaining - 1
+		if remaining == 0 then
+			finish()
+		end
+	end
+
+	local threads_started = false
+	local function start_threads()
+		if threads_started then
+			return
+		end
+		threads_started = true
+		remaining = remaining + 1
+		gh.get_review_threads(state.pr_number, function(err, thread_info_map, thread_map)
+			results.threads = { err = err, info = thread_info_map, map = thread_map }
+			settle()
+		end, repo)
+	end
+
+	local review_comments_started = false
+	local function start_review_comments()
+		if review_comments_started or not state.pending_review_id then
+			return
+		end
+		review_comments_started = true
+		remaining = remaining + 1
+		gh.get_review_comments(state.pr_number, state.pending_review_id, function(err, rev_comments)
+			results.review_comments = { err = err, comments = rev_comments }
+			settle()
+		end)
+	end
+
+	--- Start the requests that depend on whether a pending review exists.
+	local function start_pending_dependent()
+		start_review_comments()
+		if state.pending_review_id ~= nil then
+			start_threads()
+		end
+	end
+
+	function finish()
+		if results.comments_err then
+			vim.notify("fude.nvim: Failed to fetch comments: " .. results.comments_err, vim.log.levels.WARN)
+			if callback then
+				callback()
+			end
+			return
+		end
+		local comments = results.comments or {}
+
+		if state.pending_review_id then
+			local rev = results.review_comments
+			if rev and not rev.err and rev.comments then
+				-- Review-specific endpoint returns `position` instead of `line`.
+				-- Convert to `line` using diff_hunk so build_comment_map can index them.
+				for _, c in ipairs(rev.comments) do
+					if is_null(c.line) and is_null(c.original_line) then
+						c.line = data.line_from_diff_hunk(c.diff_hunk, c.position)
+					end
+				end
+				vim.list_extend(comments, rev.comments)
+				-- Also build pending_comments from the same data
+				state.pending_comments = data.build_pending_comments_from_review(rev.comments)
+			else
+				-- On error, preserve existing state.pending_comments
+				-- (they were synced to GitHub; we just can't fetch them back yet).
+				-- Merge local pending data into comments for display.
+				comments =
+					data.merge_pending_into_comments(comments, state.pending_comments, state.pending_review_id, state.github_user)
+			end
+		else
+			state.pending_comments = {}
+		end
+
+		local need_thread_map = state.pending_review_id ~= nil
+		-- Clear stale thread_map when no longer needed (e.g. after pending review is submitted).
+		if not need_thread_map then
+			state.thread_map = {}
+		end
+		local threads = results.threads
+		if threads then
+			if threads.err then
+				vim.notify("fude.nvim: Failed to fetch review threads: " .. threads.err, vim.log.levels.DEBUG)
+			else
+				if need_thread_map then
+					state.thread_map = threads.map or {}
+				end
+				if (need_outdated or need_resolved) and threads.info then
+					apply_thread_info(comments, threads.info, {
+						apply_outdated = need_outdated,
+						apply_resolved = need_resolved,
+						pending_review_id = state.pending_review_id,
+					})
+				end
+			end
+		end
+
 		state.comments = comments
 		state.comment_map = data.build_comment_map(comments)
 		require("fude.ui").refresh_extmarks()
@@ -76,91 +214,31 @@ local function fetch_comments(callback, opts)
 		end
 	end
 
-	local function fetch_thread_info_and_apply(comments)
-		-- Fetch review threads only when needed:
-		--   - outdated info is enabled (thread_info_map needed for display)
-		--   - or resolved info is enabled (thread_info_map needed for display)
-		--   - or pending review exists (thread_map needed for GraphQL reply mutation)
-		-- When none applies, skip the GraphQL call entirely. If a reply is later
-		-- attempted, reply_to_comment lazily refreshes thread_map on cache miss.
-		local need_outdated = not (config.opts.outdated and config.opts.outdated.show == false)
-		local need_resolved = not (config.opts.resolved and config.opts.resolved.show == false)
-		local need_thread_map = state.pending_review_id ~= nil
-
-		-- Clear stale thread_map when no longer needed (e.g. after pending review is submitted).
-		if not need_thread_map then
-			state.thread_map = {}
-		end
-
-		if not need_outdated and not need_resolved and not need_thread_map then
-			apply(comments)
-			return
-		end
-
-		gh.get_review_threads(state.pr_number, function(threads_err, thread_info_map, thread_map)
-			if threads_err then
-				vim.notify("fude.nvim: Failed to fetch review threads: " .. threads_err, vim.log.levels.DEBUG)
-				apply(comments)
-				return
-			end
-
-			if need_thread_map then
-				state.thread_map = thread_map or {}
-			end
-			if (need_outdated or need_resolved) and thread_info_map then
-				apply_thread_info(comments, thread_info_map, {
-					apply_outdated = need_outdated,
-					apply_resolved = need_resolved,
-					pending_review_id = state.pending_review_id,
-				})
-			end
-			apply(comments)
-		end)
-	end
-
+	remaining = remaining + 1
 	gh.get_pr_comments(state.pr_number, function(err, comments)
-		if err then
-			vim.notify("fude.nvim: Failed to fetch comments: " .. err, vim.log.levels.WARN)
-			if callback then
-				callback()
-			end
-			return
-		end
-
-		comments = comments or {}
-
-		if state.pending_review_id then
-			gh.get_review_comments(state.pr_number, state.pending_review_id, function(rev_err, rev_comments)
-				if not rev_err and rev_comments then
-					-- Review-specific endpoint returns `position` instead of `line`.
-					-- Convert to `line` using diff_hunk so build_comment_map can index them.
-					for _, c in ipairs(rev_comments) do
-						if is_null(c.line) and is_null(c.original_line) then
-							c.line = data.line_from_diff_hunk(c.diff_hunk, c.position)
-						end
-					end
-					vim.list_extend(comments, rev_comments)
-					-- Also build pending_comments from the same data
-					state.pending_comments = data.build_pending_comments_from_review(rev_comments)
-				else
-					-- On error, preserve existing state.pending_comments
-					-- (they were synced to GitHub; we just can't fetch them back yet).
-					-- Merge local pending data into comments for display.
-					local merged = data.merge_pending_into_comments(
-						comments,
-						state.pending_comments,
-						state.pending_review_id,
-						state.github_user
-					)
-					comments = merged
-				end
-				fetch_thread_info_and_apply(comments)
-			end)
-		else
-			state.pending_comments = {}
-			fetch_thread_info_and_apply(comments)
-		end
+		results.comments_err = err
+		results.comments = comments
+		settle()
 	end)
+	if need_outdated or need_resolved then
+		start_threads()
+	end
+	if opts and opts.detect_pending then
+		remaining = remaining + 1
+		gh.get_reviews(state.pr_number, function(err, reviews)
+			if err then
+				-- Still assemble the comments with the pending state already known
+				vim.notify("fude.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
+			else
+				apply_pending_review(state, reviews)
+			end
+			start_pending_dependent()
+			settle()
+		end)
+	else
+		start_pending_dependent()
+	end
+	settle()
 end
 
 --- Fetch the PR-level conversation (issue comments plus submitted review
@@ -267,48 +345,14 @@ function M.submit_as_review(event, body, callback)
 	end)
 end
 
---- Load all comment data: detect pending review, then fetch comments.
+--- Load all comment data: detect the pending review and fetch the comments,
+--- in parallel (see fetch_comments' `detect_pending`).
 --- This is the main entry point for initializing comment state on start.
 --- For refreshing after mutations (submit, reply, sync), use fetch_comments directly.
 --- @param callback fun()|nil optional callback invoked after comments are loaded
 --- @param opts table|nil { silent = boolean } suppress notifications when true
 function M.load_comments(callback, opts)
-	local state = config.state
-	if not state.pr_number then
-		if callback then
-			callback()
-		end
-		return
-	end
-
-	gh.get_reviews(state.pr_number, function(err, reviews)
-		if err then
-			vim.notify("fude.nvim: Failed to fetch reviews: " .. err, vim.log.levels.DEBUG)
-			-- Still fetch comments even if reviews fail
-			fetch_comments(callback, opts)
-			return
-		end
-
-		-- Find pending review for current user
-		local pending_review = nil
-		for _, review in ipairs(reviews or {}) do
-			if review.state == "PENDING" then
-				pending_review = review
-				break
-			end
-		end
-
-		if pending_review then
-			state.pending_review_id = pending_review.id
-			state.pending_review_node_id = pending_review.node_id
-		else
-			state.pending_review_id = nil
-			state.pending_review_node_id = nil
-			state.pending_comments = {}
-		end
-
-		fetch_comments(callback, opts)
-	end)
+	fetch_comments(callback, { silent = opts and opts.silent, detect_pending = true })
 end
 
 --- Sync pending comments to GitHub as a pending review.
@@ -510,7 +554,7 @@ function M.reply_to_comment(comment_id, body, callback)
 				return
 			end
 			reply_via_graphql(resolved)
-		end)
+		end, require("fude.drafts").repo_slug(state.pr_url))
 		return
 	end
 
@@ -585,7 +629,7 @@ function M.toggle_resolved(comment_id, callback)
 				captured_state.resolving_thread = false
 			end, { silent = true })
 		end)
-	end)
+	end, require("fude.drafts").repo_slug(state.pr_url))
 end
 
 --- Edit a submitted review comment on GitHub.

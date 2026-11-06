@@ -196,6 +196,89 @@ describe("sync integration", function()
 			assert.is_true(ok, "Callback should be called even on error")
 		end)
 
+		it("requests the reviews, comments and threads together, and the pending review's comments once known", function()
+			local gh = require("fude.gh")
+			local answer = {}
+			local started = {}
+			local threads_repo
+			helpers.mock(gh, "get_reviews", function(_, callback)
+				table.insert(started, "reviews")
+				answer.reviews = callback
+			end)
+			helpers.mock(gh, "get_pr_comments", function(_, callback)
+				table.insert(started, "comments")
+				answer.comments = callback
+			end)
+			helpers.mock(gh, "get_review_threads", function(_, callback, repo)
+				table.insert(started, "threads")
+				threads_repo = repo
+				answer.threads = callback
+			end)
+			helpers.mock(gh, "get_review_comments", function(_, review_id, callback)
+				table.insert(started, "review_comments:" .. review_id)
+				answer.review_comments = callback
+			end)
+
+			config.state.pr_number = 42
+			config.state.pr_url = "https://github.com/owner/repo/pull/42"
+			config.state.active = true
+			local done = false
+			sync.load_comments(function()
+				done = true
+			end, { silent = true })
+
+			-- All three before any of them answered
+			table.sort(started)
+			assert.are.same({ "comments", "reviews", "threads" }, started)
+			assert.are.equal("owner/repo", threads_repo)
+
+			answer.reviews(nil, { { id = 7, node_id = "R7", state = "PENDING" } })
+			assert.are.equal("review_comments:7", started[#started])
+			answer.threads(nil, {}, { [1] = "THREAD_1" })
+			answer.comments(nil, { { id = 1, path = "a.lua", line = 1, body = "root" } })
+			assert.is_false(done)
+			answer.review_comments(
+				nil,
+				{ { id = 2, path = "a.lua", line = 2, body = "pending", pull_request_review_id = 7 } }
+			)
+			assert.is_true(done)
+			assert.are.equal(7, config.state.pending_review_id)
+			assert.are.equal(2, #config.state.comments)
+			assert.are.same({ [1] = "THREAD_1" }, config.state.thread_map)
+		end)
+
+		it("requests the threads after the reviews when only a pending review needs them", function()
+			config.setup({ outdated = { show = false }, resolved = { show = false } })
+			local gh = require("fude.gh")
+			local threads_called = 0
+			local answer_reviews
+			helpers.mock(gh, "get_reviews", function(_, callback)
+				answer_reviews = callback
+			end)
+			helpers.mock(gh, "get_pr_comments", function(_, callback)
+				callback(nil, {})
+			end)
+			helpers.mock(gh, "get_review_comments", function(_, _, callback)
+				callback(nil, {})
+			end)
+			helpers.mock(gh, "get_review_threads", function(_, callback)
+				threads_called = threads_called + 1
+				callback(nil, {}, { [5] = "THREAD_5" })
+			end)
+
+			config.state.pr_number = 42
+			config.state.active = true
+			local done = false
+			sync.load_comments(function()
+				done = true
+			end, { silent = true })
+			assert.are.equal(0, threads_called)
+			answer_reviews(nil, { { id = 7, node_id = "R7", state = "PENDING" } })
+			assert.are.equal(1, threads_called)
+			assert.is_true(done)
+			assert.are.same({ [5] = "THREAD_5" }, config.state.thread_map)
+		end)
+
 		it("skips get_review_threads when outdated and resolved disabled and no pending review", function()
 			config.setup({ outdated = { show = false }, resolved = { show = false } })
 
@@ -999,11 +1082,11 @@ describe("sync integration", function()
 		end)
 
 		it("refuses a second toggle until the first one's refresh lands, then accepts one again", function()
-			local finish_lookup
+			-- Each lookup is answered by hand: the toggle's own, then the
+			-- refresh's (requested alongside the comments)
+			local answer_lookup
 			helpers.mock(gh, "get_review_threads", function(_, callback)
-				finish_lookup = function()
-					callback(nil, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
-				end
+				answer_lookup = callback
 			end)
 			mock_set(nil)
 			-- Hold the post-mutation refresh so the lock can be observed across it.
@@ -1022,7 +1105,7 @@ describe("sync integration", function()
 			end)
 			assert.are.equal("Another resolve is still in progress", second_err)
 
-			finish_lookup()
+			answer_lookup(nil, { [1] = { is_resolved = false } }, { [1] = "THREAD_1" })
 			helpers.wait_for(function()
 				return first.called
 			end)
@@ -1037,6 +1120,7 @@ describe("sync integration", function()
 			end)
 			assert.are.equal("Another resolve is still in progress", during_refresh_err)
 
+			answer_lookup(nil, { [1] = { is_resolved = true } }, { [1] = "THREAD_1" })
 			mock_threads(nil, { [1] = { is_resolved = true } }, { [1] = "THREAD_1" })
 			local refreshed = { { id = 1, path = "a.lua", line = 1, body = "root" } }
 			finish_refresh(nil, refreshed)

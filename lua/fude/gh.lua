@@ -391,9 +391,28 @@ function M.parse_viewed_files_response(data)
 	return viewed_map, pr.id, page_info.hasNextPage or false, page_info.endCursor
 end
 
---- Get the owner and repo name from gh CLI.
+--- Split an `owner/repo` slug into its owner and repository name.
+--- @param repo string|nil
+--- @return string|nil owner, string|nil name (both nil unless exactly `owner/name`)
+function M.parse_repo_slug(repo)
+	if type(repo) ~= "string" then
+		return nil, nil
+	end
+	local owner, name = repo:match("^([^/%s]+)/([^/%s]+)$")
+	return owner, name
+end
+
+--- Get the owner and repo name: from `repo` (`owner/repo`, e.g. the review
+--- session's PR URL slug) when given, which saves a `gh repo view` round trip,
+--- else from gh CLI (the cwd's repository).
 --- @param callback fun(err: string|nil, owner: string|nil, repo: string|nil)
-function M.get_repo_owner(callback)
+--- @param repo string|nil `owner/repo`
+function M.get_repo_owner(callback, repo)
+	local owner, name = M.parse_repo_slug(repo)
+	if owner then
+		callback(nil, owner, name)
+		return
+	end
 	M.run_json({ "repo", "view", "--json", "owner,name" }, function(err, data)
 		if err then
 			return callback(err)
@@ -405,7 +424,8 @@ end
 --- Fetch viewed state for all changed files in a PR (with pagination).
 --- @param pr_number number
 --- @param callback fun(err: string|nil, viewed_map: table<string, string>|nil, pr_node_id: string|nil)
-function M.get_pr_viewed_files(pr_number, callback)
+--- @param repo_slug string|nil `owner/repo` of the PR (skips the `gh repo view` lookup)
+function M.get_pr_viewed_files(pr_number, callback, repo_slug)
 	M.get_repo_owner(function(owner_err, owner, repo)
 		if owner_err then
 			return callback(owner_err)
@@ -436,7 +456,7 @@ function M.get_pr_viewed_files(pr_number, callback)
 		end
 
 		fetch_page(nil)
-	end)
+	end, repo_slug)
 end
 
 --- Mark a file as viewed in a PR.
@@ -1310,7 +1330,8 @@ end
 --- Returns per-thread info (outdated/resolved) and a comment_id → thread_node_id mapping.
 --- @param pr_number number
 --- @param callback fun(err: string|nil, thread_info_map: table|nil, thread_map: table<number, string>|nil)
-function M.get_review_threads(pr_number, callback)
+--- @param repo_slug string|nil `owner/repo` of the PR (skips the `gh repo view` lookup)
+function M.get_review_threads(pr_number, callback, repo_slug)
 	M.get_repo_owner(function(owner_err, owner, repo)
 		if owner_err then
 			return callback(owner_err, nil, nil)
@@ -1341,7 +1362,7 @@ function M.get_review_threads(pr_number, callback)
 		end
 
 		fetch_page(nil)
-	end)
+	end, repo_slug)
 end
 
 --- Reply to a review thread, attached to an existing pending review.
