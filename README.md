@@ -24,7 +24,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows and PR bodies (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
 - **Create PR** - Create draft PRs from templates with a two-pane float (title + body), picking the base branch from a fuzzy finder (default branch preselected)
-- **Open in browser** - Open the PR in your browser
+- **Open in browser** - Open the PR in your browser, or press `o` on a comment (comment viewer, comment browser, PR overview) to open it, on the PR overview body to open the PR, or on a side panel commit row to open the commit in the PR
 - **Gitsigns integration** - Automatically switches gitsigns diff base to the review base (PR base branch, or the local scope's base)
 
 ## Requirements
@@ -293,6 +293,7 @@ require("fude").setup({
       change_base = "b",         -- local review only: pick a new base branch
       toggle_commit_message = "m", -- expand/collapse a folded commit message
       copy_path = "y",           -- copy a file name / path, a commit hash / message, or a branch
+      open_in_browser = "o",     -- GitHub review only: open the commit (Entire PR: the PR) on GitHub
       help = "?",                -- show configured panel keymaps
     },
   },
