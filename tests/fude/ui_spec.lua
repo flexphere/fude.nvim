@@ -1630,14 +1630,38 @@ describe("format_reviewer_detail", function()
 end)
 
 describe("format_toggle_entry", function()
-	it("marks applied items with a filled circle and others with an open circle", function()
-		assert.are.equal("● bug", ui.format_toggle_entry("bug", true))
-		assert.are.equal("○ bug", ui.format_toggle_entry("bug", false))
+	it("puts the mark before the name", function()
+		assert.are.equal("● bug", ui.format_toggle_entry("bug", "●"))
+		assert.are.equal("○ bug", ui.format_toggle_entry("bug", "○"))
 	end)
 
 	it("appends the detail in parentheses when present", function()
-		assert.are.equal("● @alice  (approved)", ui.format_toggle_entry("@alice", true, "approved"))
-		assert.are.equal("○ docs", ui.format_toggle_entry("docs", false, ""))
+		assert.are.equal(
+			"✓ @alice  (last review: approved)",
+			ui.format_toggle_entry("@alice", "✓", "last review: approved")
+		)
+		assert.are.equal("○ docs", ui.format_toggle_entry("docs", "○", ""))
+	end)
+end)
+
+describe("format_reviewer_mark", function()
+	it("shows a pending request as a yellow dot regardless of the previous review", function()
+		assert.are.same({ "●", "DiagnosticWarn" }, { format.format_reviewer_mark(true, "APPROVED") })
+		assert.are.same({ "●", "DiagnosticWarn" }, { format.format_reviewer_mark(true, nil) })
+	end)
+
+	it("shows an approval as a green check with a green name", function()
+		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { format.format_reviewer_mark(false, "APPROVED") })
+	end)
+
+	it("shows the other review states with their own marks", function()
+		assert.are.same({ "↻", "Comment" }, { format.format_reviewer_mark(false, "DISMISSED") })
+		assert.are.same({ "✗", "DiagnosticError" }, { format.format_reviewer_mark(false, "CHANGES_REQUESTED") })
+		assert.are.same({ "💬", "DiagnosticInfo" }, { format.format_reviewer_mark(false, "COMMENTED") })
+	end)
+
+	it("shows an open circle for a user neither requested nor reviewed", function()
+		assert.are.same({ "○", "Comment" }, { format.format_reviewer_mark(false, nil) })
 	end)
 end)
 
