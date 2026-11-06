@@ -1013,10 +1013,8 @@ M.REVIEWERS_LOADING_TEXT = "Loading reviewers…"
 --- Text of the REVIEWERS row when the reviewers could not be fetched.
 M.REVIEWERS_FAILED_TEXT = "(could not load reviewers)"
 
---- Left / right ends of a label pill (Nerd Font powerline round glyphs, drawn
---- in the pill's background colour so the row looks like GitHub's label).
-M.LABEL_PILL_LEFT = "\u{e0b6}"
-M.LABEL_PILL_RIGHT = "\u{e0b4}"
+--- Border characters of a label box (rounded corners, like GitHub's label).
+M.LABEL_BOX = { tl = "╭", tr = "╮", bl = "╰", br = "╯", h = "─", v = "│" }
 
 --- Parse a `rrggbb` / `#rrggbb` colour.
 --- @param hex string|nil
@@ -1098,18 +1096,24 @@ local function hsl_to_rgb(h, s, l)
 	return hue(p, q, h + 1 / 3) * 255, hue(p, q, h) * 255, hue(p, q, h - 1 / 3) * 255
 end
 
---- Text and background colours of a label, computed the way the GitHub web UI
---- (Primer's label CSS) does from the label's colour.
---- dark: the background is the label colour at 18% opacity over `base_bg`;
---- the text is the label colour, its HSL lightness raised by
+--- Perceived lightness above which a label's colour is darkened for text on
+--- a light background.
+local LIGHT_TEXT_THRESHOLD = 0.6
+
+--- Text and border colours of a label box (no fill: in a terminal the fill
+--- cannot reach a box-drawing border, which sits in the middle of its cell).
+--- dark: as the GitHub web UI (Primer's label CSS) colours a label's text
+--- and border: the text is the label colour, its HSL lightness raised by
 --- `(0.6 - perceived) * 100` points when the perceived lightness
---- (`0.2126r + 0.7152g + 0.0722b`) is below 0.6.
---- light: the background is the label colour; the text is black when the
---- perceived lightness is above 0.453, else white.
+--- (`0.2126r + 0.7152g + 0.0722b`) is below 0.6, and the border is that text
+--- colour at 30% opacity over `base_bg`.
+--- light: text and border are the label colour, darkened by 25 lightness
+--- points when the perceived lightness is above LIGHT_TEXT_THRESHOLD so it
+--- stays readable on a light background.
 --- @param hex string label colour (`rrggbb`, as GitHub returns it)
 --- @param base_bg string hex colour the label is drawn on
 --- @param background string "dark" | "light"
---- @return table|nil { fg: string, bg: string } hex colours, nil for an invalid colour
+--- @return table|nil { fg: string, border: string } hex colours, nil for an invalid colour
 function M.calculate_label_colors(hex, base_bg, background)
 	local r, g, b = M.parse_hex_color(hex)
 	if not r then
@@ -1117,105 +1121,131 @@ function M.calculate_label_colors(hex, base_bg, background)
 	end
 	local perceived = (r * 0.2126 + g * 0.7152 + b * 0.0722) / 255
 	local label = to_hex(r, g, b)
-	if background == "light" then
-		return { fg = perceived > 0.453 and "#000000" or "#ffffff", bg = label }
-	end
-	local bg = M.blend_colors(label, base_bg, 0.18)
-	if not bg then
-		return nil
-	end
 	local h, s, l = rgb_to_hsl(r, g, b)
+	if background == "light" then
+		local fg = label
+		if perceived > LIGHT_TEXT_THRESHOLD then
+			fg = to_hex(hsl_to_rgb(h, s, math.max(0, l - 0.25)))
+		end
+		return { fg = fg, border = fg }
+	end
 	if perceived < 0.6 then
 		l = math.min(1, l + (0.6 - perceived))
 	end
-	return { fg = to_hex(hsl_to_rgb(h, s, l)), bg = bg }
+	local fg = to_hex(hsl_to_rgb(h, s, l))
+	local border = M.blend_colors(fg, base_bg, 0.3)
+	if not border then
+		return nil
+	end
+	return { fg = fg, border = border }
 end
 
---- Highlight group names of a label pill: `name` for the label text, `cap`
---- for the rounded ends.
+--- Highlight group names of a label box: `name` for the padded name,
+--- `border` for the frame.
 --- @param hex string label colour
---- @return string|nil name, string|nil cap (nil for an invalid colour)
+--- @return string|nil name, string|nil border (nil for an invalid colour)
 function M.build_label_hl_names(hex)
 	local r, g, b = M.parse_hex_color(hex)
 	if not r then
 		return nil
 	end
 	local suffix = string.format("%02x%02x%02x", r, g, b)
-	return "ReviewLabel_" .. suffix, "ReviewLabelCap_" .. suffix
+	return "ReviewLabel_" .. suffix, "ReviewLabelBorder_" .. suffix
 end
 
---- Spaces between a label pill's rounded end and its name.
-M.LABEL_PILL_PADDING = " "
---- Spaces between two label pills on one row.
-M.LABEL_PILL_GAP = " "
+--- Spaces between a label box's side and its name.
+M.LABEL_BOX_PADDING = " "
+--- Spaces between two label boxes on one row.
+M.LABEL_BOX_GAP = " "
 
---- Build one label pill: LABEL_PILL_LEFT, the padded name, LABEL_PILL_RIGHT.
---- `ranges` are byte ranges relative to the pill's start.
+local function byte_length(s)
+	return #s
+end
+
+--- Build one label box, three lines tall:
+---   ╭─────╮
+---   │ bug │
+---   ╰─────╯
+--- `ranges[i]` are byte ranges in `lines[i]`: the frame in `border_hl`, the
+--- padded name (the inside of the middle line) in `name_hl`; no ranges when
+--- both are nil (a label without a colour).
 --- @param name string label name
---- @param name_hl string highlight group of the padded name
---- @param cap_hl string highlight group of the rounded ends
---- @return table { text: string, ranges: { col_start, col_end, hl }[] }
-function M.build_label_pill(name, name_hl, cap_hl)
-	local left, right, pad = M.LABEL_PILL_LEFT, M.LABEL_PILL_RIGHT, M.LABEL_PILL_PADDING
-	local body = pad .. name .. pad
-	local body_end = #left + #body
-	return {
-		text = left .. body .. right,
-		ranges = {
-			{ col_start = 0, col_end = #left, hl = cap_hl },
-			{ col_start = #left, col_end = body_end, hl = name_hl },
-			{ col_start = body_end, col_end = body_end + #right, hl = cap_hl },
-		},
-	}
+--- @param name_hl string|nil highlight group of the padded name
+--- @param border_hl string|nil highlight group of the frame
+--- @param display_width fun(s: string): number|nil cell width of a string (default: byte length)
+--- @return table { lines: string[3], ranges: table[3], width: number }
+function M.build_label_box(name, name_hl, border_hl, display_width)
+	display_width = display_width or byte_length
+	local box = M.LABEL_BOX
+	local body = M.LABEL_BOX_PADDING .. name .. M.LABEL_BOX_PADDING
+	local inner = display_width(body)
+	local edge = string.rep(box.h, inner)
+	local lines = { box.tl .. edge .. box.tr, box.v .. body .. box.v, box.bl .. edge .. box.br }
+	local ranges = { {}, {}, {} }
+	if border_hl then
+		ranges[1] = { { col_start = 0, col_end = #lines[1], hl = border_hl } }
+		ranges[3] = { { col_start = 0, col_end = #lines[3], hl = border_hl } }
+		local body_end = #box.v + #body
+		ranges[2] = {
+			{ col_start = 0, col_end = #box.v, hl = border_hl },
+			{ col_start = body_end, col_end = body_end + #box.v, hl = border_hl },
+		}
+	end
+	if name_hl then
+		table.insert(ranges[2], { col_start = #box.v, col_end = #box.v + #body, hl = name_hl })
+	end
+	return { lines = lines, ranges = ranges, width = inner + 2 }
 end
 
---- Lay label pills out side by side, separated by LABEL_PILL_GAP, starting a
---- new row when the next pill would exceed `width` display cells (a pill
---- wider than `width` gets a row of its own). Without `width` every pill is
---- on one row.
---- @param pills table[] { text, ranges } from build_label_pill (or plain `{ text, ranges = {} }`)
+--- Lay label boxes out side by side, separated by LABEL_BOX_GAP, starting a
+--- new row of boxes when the next one would exceed `width` display cells (a
+--- box wider than `width` gets a row of its own). Without `width` every box
+--- is on one row.
+--- @param boxes table[] from build_label_box
 --- @param width number|nil available display cells per row
---- @param display_width fun(s: string): number|nil cell width of a string (default: byte length)
---- @return table[] rows { text: string, ranges: { col_start, col_end, hl }[] } with absolute byte columns
-function M.pack_label_pills(pills, width, display_width)
-	display_width = display_width or function(s)
-		return #s
-	end
-	local gap = M.LABEL_PILL_GAP
-	local rows = {}
+--- @return table[] lines { text: string, ranges: { col_start, col_end, hl }[] }, three per row of boxes
+function M.pack_label_boxes(boxes, width)
+	local gap = M.LABEL_BOX_GAP
+	local out = {}
 	local row, row_width
-	for _, pill in ipairs(pills) do
-		local pill_width = display_width(pill.text)
-		if row and width and row_width + display_width(gap) + pill_width > width then
+	for _, item in ipairs(boxes) do
+		if row and width and row_width + #gap + item.width > width then
 			row = nil
 		end
 		if not row then
-			row = { text = "", ranges = {} }
+			row = {}
+			for i = 1, #item.lines do
+				row[i] = { text = "", ranges = {} }
+				table.insert(out, row[i])
+			end
 			row_width = 0
-			table.insert(rows, row)
 		else
-			row.text = row.text .. gap
-			row_width = row_width + display_width(gap)
+			for _, line in ipairs(row) do
+				line.text = line.text .. gap
+			end
+			row_width = row_width + #gap
 		end
-		local offset = #row.text
-		for _, range in ipairs(pill.ranges) do
-			table.insert(row.ranges, {
-				col_start = offset + range.col_start,
-				col_end = offset + range.col_end,
-				hl = range.hl,
-			})
+		for i, line in ipairs(row) do
+			local offset = #line.text
+			for _, range in ipairs(item.ranges[i] or {}) do
+				table.insert(line.ranges, {
+					col_start = offset + range.col_start,
+					col_end = offset + range.col_end,
+					hl = range.hl,
+				})
+			end
+			line.text = line.text .. (item.lines[i] or "")
 		end
-		row.text = row.text .. pill.text
-		row_width = row_width + pill_width
+		row_width = row_width + item.width
 	end
-	return rows
+	return out
 end
 
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
---- A label with a valid `color` is drawn as a pill (build_label_pill)
---- highlighted with the build_label_hl_names groups, the labels side by side
---- and wrapped at `opts.labels_width` cells (pack_label_pills, measured with
---- `opts.display_width`);
+--- Each label is a three-line box (build_label_box, measured with
+--- `opts.display_width`), the boxes side by side and wrapped at
+--- `opts.labels_width` cells (pack_label_boxes); a label with a valid `color`
+--- is highlighted with the build_label_hl_names groups;
 --- `label_colors` lists those colours once each (normalized `rrggbb`) so the
 --- caller can define the groups (see calculate_label_colors).
 --- `avatar_positions` (`{ line, col, login }`, 0-indexed line, byte column) is
@@ -1299,22 +1329,22 @@ function M.build_overview_right_lines(pr_info, opts)
 		table.insert(lines, "(no labels)")
 	else
 		local seen = {}
-		local pills = {}
+		local boxes = {}
 		for _, label in ipairs(labels) do
 			local name = type(label) == "table" and label.name or label
-			local name_hl, cap_hl = M.build_label_hl_names(type(label) == "table" and label.color or nil)
+			local name_hl, border_hl = M.build_label_hl_names(type(label) == "table" and label.color or nil)
+			if type(name) == "string" then
+				table.insert(boxes, M.build_label_box(name, name_hl, border_hl, opts.display_width))
+			end
 			if name_hl and type(name) == "string" then
-				table.insert(pills, M.build_label_pill(name, name_hl, cap_hl))
 				local suffix = name_hl:sub(#"ReviewLabel_" + 1)
 				if not seen[suffix] then
 					seen[suffix] = true
 					table.insert(label_colors, suffix)
 				end
-			elseif type(name) == "string" then
-				table.insert(pills, { text = name, ranges = {} })
 			end
 		end
-		for _, row in ipairs(M.pack_label_pills(pills, opts.labels_width, opts.display_width)) do
+		for _, row in ipairs(M.pack_label_boxes(boxes, opts.labels_width)) do
 			table.insert(lines, row.text)
 			for _, range in ipairs(row.ranges) do
 				table.insert(
