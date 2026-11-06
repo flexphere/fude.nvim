@@ -484,7 +484,8 @@ File opening position                                 *fude-file-position*
       `↻`           review dismissed
       `○`           neither requested nor reviewed
     The name of a user without a pending request is grey, except an
-    approval (green), and the text in parentheses is always grey. It
+    approval (green) and a dismissed review (normal colour), and the
+    text in parentheses is always grey. It
     states both the request and the latest review, e.g.
     `● @alice  (review requested, last review: dismissed)`. `<Tab>` on
     a user who already reviewed re-requests their review. When

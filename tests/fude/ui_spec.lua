@@ -1654,8 +1654,9 @@ describe("format_reviewer_mark", function()
 		assert.are.same({ "✓", "DiagnosticOk", "DiagnosticOk" }, { format.format_reviewer_mark(false, "APPROVED") })
 	end)
 
-	it("shows the other review states with their own marks and a grey name", function()
-		assert.are.same({ "↻", "Comment", "Comment" }, { format.format_reviewer_mark(false, "DISMISSED") })
+	it("shows the other review states with their own marks and, except dismissed, a grey name", function()
+		-- A dismissed review keeps the normal name colour
+		assert.are.same({ "↻", "Comment" }, { format.format_reviewer_mark(false, "DISMISSED") })
 		assert.are.same(
 			{ "✗", "DiagnosticError", "Comment" },
 			{ format.format_reviewer_mark(false, "CHANGES_REQUESTED") }
