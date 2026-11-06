@@ -440,11 +440,16 @@ File opening position                                 *fude-file-position*
     instead of starting another one. `R` in the overview and the
     reopen after posting a comment with `C` → Comment always fetch
     fresh data, as does the first |:FudeReviewOverview| after a
-    reviewer or label change. While the PR
-    data is being fetched, the two panes are shown at the overview's
-    position and size, the left one titled `PR Overview` with a
-    spinner and `Loading PR overview…` in its middle; `q` or `<Esc>`
-    closes them, and the
+    reviewer or label change. The PR data and the PR-level comments
+    are fetched in parallel, and the CI checks separately: the
+    overview opens as soon as the first two are in, and CI STATUS
+    shows a spinner (`Loading checks…`) until the checks arrive, then
+    fills in without the rest of the window changing (or says
+    `(could not load checks)` when they cannot be fetched). While the
+    PR data is being fetched, the two panes are shown at the
+    overview's position and size, the left one titled `PR Overview`,
+    each with a spinner and a loading text in its middle; `q` or
+    `<Esc>` closes them, and the
     overview is then not shown when the data arrives. The window
     size follows `overview.width` / `overview.height` regardless of
     the content: a short PR does not shrink it. The left pane
