@@ -241,9 +241,15 @@ function M.edit_reviewers(pr_info, captured_state)
 			})
 		end
 
+		-- The avatars of the overview, before each row (snacks.nvim image
+		-- support only; cached files, one download per login)
+		local avatars = require("fude.ui.avatars")
 		require("fude.ui.toggle_picker").open({
 			title = "Reviewers",
 			items = items,
+			images = avatars.is_enabled() and function(item, cb)
+				avatars.fetch(item.value, cb)
+			end or nil,
 			-- A dedicated key, shown at the end of each row it applies to, so
 			-- re-requesting does not depend on knowing that <Tab> on a
 			-- reviewed user also re-requests.
