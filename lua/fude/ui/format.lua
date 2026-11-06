@@ -837,11 +837,19 @@ end
 --- Build display lines for the left pane of PR overview (header, description, comments).
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
+--- `issue_comments` nil means they are still being fetched: the COMMENTS
+--- section then holds a spinner row (`opts.loading_mark` highlighted
+--- `opts.loading_hl`, then COMMENTS_LOADING_TEXT) at `loading_row`. The section
+--- starts at `comments_start` (0-indexed, its blank separator line) and runs to
+--- the end of the pane with the footer, so it can be rebuilt in place.
 --- @param format_date_fn fun(s: string): string
+--- @param opts { loading_mark: string|nil, loading_hl: string|nil }|nil
 --- @return table { lines: string[], hl_ranges: table[], sections: table, comment_positions: number[],
----   comment_ranges: table[] } comment_positions are 1-indexed header lines; comment_ranges
----   ({ start_line, end_line, index } into issue_comments) are 0-indexed like the other format functions
-function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
+---   comment_ranges: table[], comments_start: number, loading_row: number|nil } comment_positions are
+---   1-indexed header lines; comment_ranges ({ start_line, end_line, index } into issue_comments) are
+---   0-indexed like the other format functions
+function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, opts)
+	opts = opts or {}
 	local lines = {}
 	local hl_ranges = {}
 	local sections = {}
@@ -933,14 +941,33 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 		end
 	end
 
-	-- Comments
+	-- Comments: the section runs to the end of the pane (with the footer),
+	-- so it can be rebuilt in place (from comments_start) once they arrive.
+	local comments_start = #lines
+	local loading_row
 	table.insert(lines, "")
-	table.insert(lines, string.format("## COMMENTS (%d)", #issue_comments))
-	sections.comments = #lines -- 1-indexed
-
-	if #issue_comments == 0 then
-		table.insert(lines, "(no comments)")
+	if type(issue_comments) ~= "table" then
+		table.insert(lines, "## COMMENTS")
+		sections.comments = #lines -- 1-indexed
+		local mark = opts.loading_mark or ""
+		table.insert(lines, mark ~= "" and (mark .. " " .. M.COMMENTS_LOADING_TEXT) or M.COMMENTS_LOADING_TEXT)
+		loading_row = #lines - 1
+		if mark ~= "" then
+			table.insert(hl_ranges, { line = loading_row, col_start = 0, col_end = #mark, hl = opts.loading_hl or "Comment" })
+		end
+		table.insert(hl_ranges, { line = loading_row, col_start = mark ~= "" and #mark or 0, hl = "Comment" })
 	else
+		table.insert(lines, string.format("## COMMENTS (%d)", #issue_comments))
+		sections.comments = #lines -- 1-indexed
+	end
+
+	-- Nothing under the heading but the spinner row while they are fetched
+	if loading_row then
+		issue_comments = {}
+	elseif #issue_comments == 0 then
+		table.insert(lines, "(no comments)")
+	end
+	if #issue_comments > 0 then
 		for i, comment in ipairs(issue_comments) do
 			local comment_author = comment.user and comment.user.login or "unknown"
 			local created = format_date_fn(comment.created_at)
@@ -974,8 +1001,17 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 		comment_positions = comment_positions,
 		comment_ranges = comment_ranges,
 		avatar_positions = avatar_positions,
+		comments_start = comments_start,
+		loading_row = loading_row,
 	}
 end
+
+--- Text of the COMMENTS row shown while the PR-level comments are being fetched.
+M.COMMENTS_LOADING_TEXT = "Loading comments…"
+--- Text of the REVIEWERS row shown while the reviewers are being fetched.
+M.REVIEWERS_LOADING_TEXT = "Loading reviewers…"
+--- Text of the REVIEWERS row when the reviewers could not be fetched.
+M.REVIEWERS_FAILED_TEXT = "(could not load reviewers)"
 
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
 --- `avatar_positions` (`{ line, col, login }`, 0-indexed line, byte column) is
@@ -983,35 +1019,55 @@ end
 --- The CI STATUS section comes last and starts at `ci_start` (0-indexed, its
 --- blank separator line); `pr_info.statusCheckRollup` nil means the checks are
 --- still being fetched (see build_overview_ci_lines for `opts`).
+--- `pr_info.reviewers_loading` means the reviewers are still being fetched:
+--- REVIEWERS then holds a spinner row (`opts.loading_mark`) at
+--- `reviewers_loading_row`; `pr_info.reviewers_failed` shows
+--- REVIEWERS_FAILED_TEXT instead.
 --- @param pr_info table PR data from gh pr view
 --- @param opts table|nil passed to build_overview_ci_lines
 --- @return table { lines: string[], hl_ranges: table[], check_urls: table, avatar_positions: table[],
----   ci_start: number, loading_row: number|nil }
+---   ci_start: number, loading_row: number|nil, reviewers_loading_row: number|nil }
 function M.build_overview_right_lines(pr_info, opts)
+	opts = opts or {}
 	local lines = {}
 	local hl_ranges = {}
 	local avatar_positions = {}
+	local reviewers_loading_row
 
-	-- Reviewers
-	local review_requests = pr_info.reviewRequests or {}
-	local latest_reviews = pr_info.latestReviews or {}
-	local reviewers = M.build_reviewers_list(review_requests, latest_reviews)
-
-	local reviewers_summary = M.build_reviewers_summary(reviewers)
-	if reviewers_summary ~= "" then
-		table.insert(lines, string.format("## REVIEWERS (%s)", reviewers_summary))
-	else
+	-- Reviewers: a spinner row while they are being fetched
+	if pr_info.reviewers_failed then
 		table.insert(lines, "## REVIEWERS")
-	end
-
-	if #reviewers == 0 then
-		table.insert(lines, "(no reviewers)")
+		table.insert(lines, M.REVIEWERS_FAILED_TEXT)
+		table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
+	elseif pr_info.reviewers_loading then
+		table.insert(lines, "## REVIEWERS")
+		local mark = opts.loading_mark or ""
+		table.insert(lines, mark ~= "" and (mark .. " " .. M.REVIEWERS_LOADING_TEXT) or M.REVIEWERS_LOADING_TEXT)
+		reviewers_loading_row = #lines - 1
+		if mark ~= "" then
+			table.insert(
+				hl_ranges,
+				{ line = reviewers_loading_row, col_start = 0, col_end = #mark, hl = opts.loading_hl or "Comment" }
+			)
+		end
+		table.insert(hl_ranges, { line = reviewers_loading_row, col_start = mark ~= "" and #mark or 0, hl = "Comment" })
 	else
-		for _, reviewer in ipairs(reviewers) do
-			local symbol, hl = M.format_review_status(reviewer.state)
-			table.insert(lines, string.format("%s @%s  %s", symbol, reviewer.login, reviewer.state:lower()))
-			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
-			table.insert(avatar_positions, { line = #lines - 1, col = #symbol + 1, login = reviewer.login })
+		local reviewers = M.build_reviewers_list(pr_info.reviewRequests or {}, pr_info.latestReviews or {})
+		local reviewers_summary = M.build_reviewers_summary(reviewers)
+		if reviewers_summary ~= "" then
+			table.insert(lines, string.format("## REVIEWERS (%s)", reviewers_summary))
+		else
+			table.insert(lines, "## REVIEWERS")
+		end
+		if #reviewers == 0 then
+			table.insert(lines, "(no reviewers)")
+		else
+			for _, reviewer in ipairs(reviewers) do
+				local symbol, hl = M.format_review_status(reviewer.state)
+				table.insert(lines, string.format("%s @%s  %s", symbol, reviewer.login, reviewer.state:lower()))
+				table.insert(hl_ranges, { line = #lines - 1, hl = hl })
+				table.insert(avatar_positions, { line = #lines - 1, col = #symbol + 1, login = reviewer.login })
+			end
 		end
 	end
 
@@ -1057,6 +1113,7 @@ function M.build_overview_right_lines(pr_info, opts)
 		avatar_positions = avatar_positions,
 		ci_start = ci_start,
 		loading_row = ci.loading_row,
+		reviewers_loading_row = reviewers_loading_row,
 	}
 end
 

@@ -179,6 +179,36 @@ describe("init integration", function()
 			assert.are.equal("https://github.com/owner/repo/pull/42", cb_info.pr_url)
 		end)
 
+		it("calls on_review_start without waiting for the review comments, which load after it", function()
+			local cb_called = false
+			config.setup({
+				on_review_start = function()
+					cb_called = true
+				end,
+			})
+			setup_gh_mocks()
+			local comments_mod = require("fude.comments")
+			local finish_comments
+			helpers.mock(comments_mod, "load_comments", function(callback)
+				finish_comments = callback
+			end)
+			local refreshed = 0
+			helpers.mock(require("fude.ui.sidepanel"), "refresh", function()
+				refreshed = refreshed + 1
+			end)
+
+			init.start()
+
+			assert.is_true(helpers.wait_for(function()
+				return cb_called
+			end))
+			assert.is_not_nil(finish_comments)
+			-- The side panel's comment counts are re-rendered when they land
+			local before = refreshed
+			finish_comments()
+			assert.are.equal(before + 1, refreshed)
+		end)
+
 		it("does not error when on_review_start is nil", function()
 			config.setup({ on_review_start = nil })
 			setup_gh_mocks()

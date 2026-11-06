@@ -698,12 +698,24 @@ end
 ---   the failure row when `pr_info.checks_failed` is already set.
 function M.show_overview_float(pr_info, issue_comments, opts)
 	local toggle_picker = require("fude.ui.toggle_picker")
-	local left_result = format.build_overview_left_lines(pr_info, issue_comments, config.format_date)
-	local right_result = format.build_overview_right_lines(pr_info, {
+	local loading_opts = {
 		loading_mark = toggle_picker.format_loading_mark(1),
 		loading_hl = toggle_picker.LOADING_HL,
-		checks_failed = pr_info.checks_failed == true,
-	})
+	}
+	local function build_left()
+		return format.build_overview_left_lines(pr_info, issue_comments, config.format_date, loading_opts)
+	end
+	local function build_right()
+		return format.build_overview_right_lines(pr_info, {
+			loading_mark = loading_opts.loading_mark,
+			loading_hl = loading_opts.loading_hl,
+			checks_failed = pr_info.checks_failed == true,
+		})
+	end
+	-- Rebuilt by set_comments / set_reviewers / set_checks as the parts that
+	-- load after the body arrive; the mappings below read the current ones.
+	local left_result = build_left()
+	local right_result = build_right()
 	-- Kept as one table: the gx mapping reads it, and set_checks refills it
 	local check_urls = right_result.check_urls
 
@@ -784,30 +796,47 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	end
 	highlight_right(right_result.hl_ranges)
 
-	-- CI STATUS spinner while the checks are still being fetched
-	local stop_checks_spinner = function() end
-	if right_result.loading_row then
-		local loading_row = right_result.loading_row
-		stop_checks_spinner = start_spinner(function(frame)
-			write_spinner_line(
-				right_buf,
-				ns,
-				loading_row,
-				"",
-				toggle_picker.format_loading_mark(frame),
-				format.CHECKS_LOADING_TEXT
-			)
+	-- One spinner for every section still loading (COMMENTS on the left,
+	-- REVIEWERS and CI STATUS on the right); it stops once none is left.
+	local function loading_rows()
+		local rows = {}
+		if left_result.loading_row then
+			table.insert(rows, { left_buf, left_result.loading_row, format.COMMENTS_LOADING_TEXT })
+		end
+		if right_result.reviewers_loading_row then
+			table.insert(rows, { right_buf, right_result.reviewers_loading_row, format.REVIEWERS_LOADING_TEXT })
+		end
+		if right_result.loading_row then
+			table.insert(rows, { right_buf, right_result.loading_row, format.CHECKS_LOADING_TEXT })
+		end
+		return rows
+	end
+	local stop_spinner = function() end
+	local function update_spinner()
+		if #loading_rows() == 0 then
+			stop_spinner()
+			stop_spinner = function() end
+		end
+	end
+	if #loading_rows() > 0 then
+		stop_spinner = start_spinner(function(frame)
+			for _, loading in ipairs(loading_rows()) do
+				write_spinner_line(loading[1], ns, loading[2], "", toggle_picker.format_loading_mark(frame), loading[3])
+			end
 		end)
 	end
 
 	-- Set section marks (left pane only)
 	local marks = ov.marks or { description = "d", comments = "c" }
-	for section, mark in pairs(marks) do
-		local line = left_result.sections[section]
-		if line and mark then
-			vim.api.nvim_buf_set_mark(left_buf, mark, line, 0, {})
+	local function set_marks()
+		for section, mark in pairs(marks) do
+			local line = left_result.sections[section]
+			if line and mark then
+				vim.api.nvim_buf_set_mark(left_buf, mark, line, 0, {})
+			end
 		end
 	end
+	set_marks()
 
 	-- Close both windows helper
 	local closing = false
@@ -816,7 +845,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			return
 		end
 		closing = true
-		stop_checks_spinner()
+		stop_spinner()
 		pcall(vim.api.nvim_win_close, left_win, true)
 		pcall(vim.api.nvim_win_close, right_win, true)
 	end
@@ -869,7 +898,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.keymap.set("n", "o", function()
 		local line = vim.api.nvim_win_get_cursor(left_win)[1] - 1
 		local index = format.find_comment_index_at_line(left_result.comment_ranges, line)
-		if index then
+		if index and issue_comments then
 			M.open_comment_in_browser(issue_comments[index], open_ctx)
 		else
 			open_pr()
@@ -888,10 +917,14 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 
 	-- Section jump keymaps (left pane)
 	local section_lines = {}
-	for _, line in pairs(left_result.sections) do
-		table.insert(section_lines, line)
+	local function collect_sections()
+		section_lines = {}
+		for _, line in pairs(left_result.sections) do
+			table.insert(section_lines, line)
+		end
+		table.sort(section_lines)
 	end
-	table.sort(section_lines)
+	collect_sections()
 
 	vim.keymap.set("n", "]s", function()
 		local cur_line = vim.api.nvim_win_get_cursor(left_win)[1]
@@ -913,11 +946,15 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		end
 	end, { buffer = left_buf, desc = "Previous section" })
 
-	-- Comment navigation keymaps (left pane only — navigate between issue comments)
-	local comment_lines = left_result.comment_positions
+	-- Comment navigation keymaps (left pane only — navigate between issue
+	-- comments, which may still be loading when the overview opens)
 	local km = config.opts.keymaps
-	if km.next_comment and #comment_lines > 0 then
+	if km.next_comment then
 		vim.keymap.set("n", km.next_comment, function()
+			local comment_lines = left_result.comment_positions
+			if #comment_lines == 0 then
+				return
+			end
 			local cur_line = vim.api.nvim_win_get_cursor(left_win)[1]
 			for _, line in ipairs(comment_lines) do
 				if line > cur_line then
@@ -929,8 +966,12 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			vim.api.nvim_win_set_cursor(left_win, { comment_lines[1], 0 })
 		end, { buffer = left_buf, desc = "Next comment" })
 	end
-	if km.prev_comment and #comment_lines > 0 then
+	if km.prev_comment then
 		vim.keymap.set("n", km.prev_comment, function()
+			local comment_lines = left_result.comment_positions
+			if #comment_lines == 0 then
+				return
+			end
 			local cur_line = vim.api.nvim_win_get_cursor(left_win)[1]
 			for i = #comment_lines, 1, -1 do
 				if comment_lines[i] < cur_line then
@@ -968,34 +1009,74 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	function handle.is_open()
 		return vim.api.nvim_win_is_valid(left_win) and vim.api.nvim_buf_is_valid(right_buf)
 	end
-	--- Rewrite the CI STATUS section with the fetched checks (or the failure
-	--- row), stopping its spinner. The section is the end of the right pane,
-	--- so nothing above it moves (avatars, folds of the other sections).
-	--- @param checks table[]|nil
-	--- @param failed boolean|nil
-	function handle.set_checks(checks, failed)
-		stop_checks_spinner()
-		if not handle.is_open() then
-			return
-		end
-		local ci = format.build_overview_ci_lines(checks, right_result.ci_start, { checks_failed = failed })
-		vim.bo[right_buf].modifiable = true
-		vim.api.nvim_buf_set_lines(right_buf, right_result.ci_start, -1, false, ci.lines)
-		vim.bo[right_buf].modifiable = false
-		vim.api.nvim_buf_clear_namespace(right_buf, ns, right_result.ci_start, -1)
-		highlight_right(ci.hl_ranges)
+	local function set_lines(buf, start, lines)
+		vim.bo[buf].modifiable = true
+		vim.api.nvim_buf_set_lines(buf, start, -1, false, lines)
+		vim.bo[buf].modifiable = false
+		vim.api.nvim_buf_clear_namespace(buf, ns, start, -1)
+	end
+	local function refill_check_urls(urls)
 		for line in pairs(check_urls) do
 			check_urls[line] = nil
 		end
-		for line, url in pairs(ci.check_urls) do
+		for line, url in pairs(urls) do
 			check_urls[line] = url
 		end
 		vim.api.nvim_buf_clear_namespace(right_buf, ref_ns, 0, -1)
 		setup_github_refs(right_buf, get_repo_base_url(pr_info.url), check_urls)
 	end
-	-- Checks already known: nothing to wait for
-	if not right_result.loading_row then
-		handle.set_checks = function() end
+
+	--- Fill in the PR-level comments. COMMENTS is the end of the left pane
+	--- (with the footer), so the frontmatter and the body above it — and the
+	--- author's avatar — stay as they are.
+	--- @param comments table[]
+	function handle.set_comments(comments)
+		issue_comments = comments
+		if handle.is_open() then
+			local start = left_result.comments_start
+			left_result = build_left()
+			set_lines(left_buf, start, vim.list_slice(left_result.lines, start + 1))
+			for _, hl in ipairs(left_result.hl_ranges) do
+				if hl.line >= start then
+					pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, hl.hl, hl.line, hl.col_start or 0, hl.col_end or -1)
+				end
+			end
+			set_marks()
+			collect_sections()
+			vim.api.nvim_buf_clear_namespace(left_buf, ref_ns, 0, -1)
+			setup_github_refs(left_buf, get_repo_base_url(pr_info.url))
+		end
+		update_spinner()
+	end
+
+	--- Rebuild the right pane once the reviewers (already on `pr_info`)
+	--- arrived: REVIEWERS is its first section, so everything below moves.
+	function handle.set_reviewers()
+		if handle.is_open() then
+			right_result = build_right()
+			set_lines(right_buf, 0, right_result.lines)
+			highlight_right(right_result.hl_ranges)
+			avatars.clear(right_buf)
+			avatars.place(right_buf, right_result.avatar_positions)
+			refill_check_urls(right_result.check_urls)
+		end
+		update_spinner()
+	end
+
+	--- Rewrite the CI STATUS section with the fetched checks (or the failure
+	--- row). The section is the end of the right pane, so nothing above it
+	--- moves (avatars, folds of the other sections).
+	--- @param checks table[]|nil
+	--- @param failed boolean|nil
+	function handle.set_checks(checks, failed)
+		if handle.is_open() then
+			local ci = format.build_overview_ci_lines(checks, right_result.ci_start, { checks_failed = failed })
+			set_lines(right_buf, right_result.ci_start, ci.lines)
+			highlight_right(ci.hl_ranges)
+			right_result.loading_row = nil
+			refill_check_urls(ci.check_urls)
+		end
+		update_spinner()
 	end
 	return handle
 end

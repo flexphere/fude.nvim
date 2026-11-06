@@ -438,6 +438,47 @@ describe("repo owner lookup", function()
 	end)
 end)
 
+describe("get_pr_reviewers / get_reviews", function()
+	local helpers = require("tests.helpers")
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("get_pr_reviewers asks only for the reviewer fields and normalizes nulls", function()
+		local got_args, result
+		helpers.mock(gh, "run_json", function(args, cb)
+			got_args = args
+			cb(nil, { reviewRequests = vim.NIL, latestReviews = { { state = "APPROVED" } } })
+		end)
+		gh.get_pr_reviewers(7, function(err, reviewers)
+			result = { err, reviewers }
+		end)
+		assert.are.same({ "pr", "view", "7", "--json", "reviewRequests,latestReviews" }, got_args)
+		assert.are.same({ nil, { reviewRequests = {}, latestReviews = { { state = "APPROVED" } } } }, result)
+	end)
+
+	it("get_reviews joins a listing of the same PR in flight instead of requesting it again", function()
+		local requests = {}
+		helpers.mock(gh, "run_json", function(args, cb)
+			table.insert(requests, { args = args, cb = cb })
+		end)
+		local answers = {}
+		gh.get_reviews(7, function(err, reviews)
+			table.insert(answers, { "first", err, reviews })
+		end)
+		gh.get_reviews(7, function(err, reviews)
+			table.insert(answers, { "second", err, reviews })
+		end)
+		gh.get_reviews(8, function() end)
+		assert.are.equal(2, #requests)
+		requests[1].cb(nil, { { id = 1 } })
+		assert.are.same({ { "first", nil, { { id = 1 } } }, { "second", nil, { { id = 1 } } } }, answers)
+		-- Once answered, the next call requests again
+		gh.get_reviews(7, function() end)
+		assert.are.equal(3, #requests)
+	end)
+end)
+
 describe("build_resolve_thread_mutation", function()
 	it("builds resolveReviewThread when resolving", function()
 		local query = gh.build_resolve_thread_mutation(true)

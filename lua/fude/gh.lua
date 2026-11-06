@@ -235,16 +235,40 @@ end
 --- @param pr_number number|nil the PR to view; nil lets gh infer it from the current branch
 ---   (pass it whenever it is known: `gh pr view` without a number may hang on a detached HEAD)
 function M.get_pr_overview(callback, pr_number)
-	-- statusCheckRollup is left out: it is the slow part of the query, so the
-	-- overview opens without it and get_pr_checks fills CI STATUS in later.
+	-- statusCheckRollup and the reviewers are left out, so the overview opens
+	-- with the body as soon as possible: get_pr_checks and get_pr_reviewers
+	-- fill CI STATUS and REVIEWERS in later.
 	local fields = "number,title,body,labels,assignees,state,isDraft,author,"
-		.. "baseRefName,headRefName,url,reviewRequests,latestReviews,additions,deletions,changedFiles"
+		.. "baseRefName,headRefName,url,additions,deletions,changedFiles"
 	local args = { "pr", "view" }
 	if pr_number then
 		table.insert(args, tostring(pr_number))
 	end
 	vim.list_extend(args, { "--json", fields })
 	M.run_json(args, callback)
+end
+
+--- Get the PR's reviewers (`reviewRequests`, `latestReviews`) on their own, so
+--- the overview does not wait for them. JSON nulls are normalized to empty lists.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param callback fun(err: string|nil, reviewers: { reviewRequests: table[], latestReviews: table[] }|nil)
+function M.get_pr_reviewers(pr_number, callback)
+	local args = { "pr", "view" }
+	if pr_number then
+		table.insert(args, tostring(pr_number))
+	end
+	vim.list_extend(args, { "--json", "reviewRequests,latestReviews" })
+	M.run_json(args, function(err, data)
+		if err then
+			return callback(err, nil)
+		end
+		data = type(data) == "table" and data or {}
+		local requests, reviews = data.reviewRequests, data.latestReviews
+		callback(nil, {
+			reviewRequests = type(requests) == "table" and requests or {},
+			latestReviews = type(reviews) == "table" and reviews or {},
+		})
+	end)
 end
 
 --- Get the PR's CI checks (`statusCheckRollup`) on their own, so the overview
@@ -566,19 +590,39 @@ function M.get_head_sha()
 	return nil, "Failed to get HEAD SHA"
 end
 
+--- Callbacks waiting for a reviews listing in flight, by PR number and cwd.
+--- @type table<string, function[]>
+local reviews_in_flight = {}
+
 --- Get all reviews on a PR.
 --- Paginated: the endpoint returns reviews oldest first, 30 per page, and
 --- every standalone review comment creates one COMMENTED review, so on a
 --- long-reviewed PR the viewer's pending review (the newest) sits past the
 --- first page and would otherwise never be detected.
+--- A call while the same listing (same PR, same cwd) is still in flight
+--- joins it instead of sending a second request: a review start asks for it
+--- twice at once (pending review detection and the overview's review bodies).
 --- @param pr_number number
 --- @param callback fun(err: string|nil, reviews: table|nil)
 function M.get_reviews(pr_number, callback)
+	local key = tostring(pr_number) .. "\0" .. vim.fn.getcwd()
+	local waiting = reviews_in_flight[key]
+	if waiting then
+		table.insert(waiting, callback)
+		return
+	end
+	waiting = { callback }
+	reviews_in_flight[key] = waiting
 	M.run_json({
 		"api",
 		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/reviews",
 		"--paginate",
-	}, callback)
+	}, function(err, reviews)
+		reviews_in_flight[key] = nil
+		for _, cb in ipairs(waiting) do
+			cb(err, reviews)
+		end
+	end)
 end
 
 --- Get comments for a specific review (paginated, 30 per page otherwise).

@@ -440,13 +440,16 @@ File opening position                                 *fude-file-position*
     instead of starting another one. `R` in the overview and the
     reopen after posting a comment with `C` → Comment always fetch
     fresh data, as does the first |:FudeReviewOverview| after a
-    reviewer or label change. The PR data and the PR-level comments
-    are fetched in parallel, and the CI checks separately: the
-    overview opens as soon as the first two are in, and CI STATUS
-    shows a spinner (`Loading checks…`) until the checks arrive, then
-    fills in without the rest of the window changing (or says
-    `(could not load checks)` when they cannot be fetched). While the
-    PR data is being fetched, the two panes are shown at the
+    reviewer or label change. The overview opens as soon as the PR
+    itself (title, body, state, branches, labels, assignees) is in;
+    the reviewers, the PR-level comments and the CI checks are
+    fetched alongside it and filled in as they arrive, each section
+    showing a spinner until then (`Loading reviewers…`,
+    `Loading comments…`, `Loading checks…`). The comments and CI
+    STATUS end their pane, so the text above them does not move; a
+    section that cannot be fetched says so (`(could not load
+    reviewers)`, `(could not load checks)`). `C` → Reviewer and `r`
+    wait for the reviewers. While the PR is being fetched, the two panes are shown at the
     overview's position and size, the left one titled `PR Overview`,
     each with a spinner and a loading text in its middle; `q` or
     `<Esc>` closes them, and the
@@ -1642,8 +1645,10 @@ Options:
                   always shows a notification regardless of this setting.
 
 `on_review_start`   Callback function invoked after |:FudeReviewStart|
-                  completes all data fetching (changed files, commits,
-                  viewed files, comments, authenticated user).
+                  completes its data fetching (changed files, commits,
+                  viewed files, authenticated user). The review
+                  comments load alongside without being waited for,
+                  and are drawn when they arrive.
                   Receives a table with PR information:
                   `{ pr_number, base_ref, head_ref, pr_url }`
                   (default: nil). >lua

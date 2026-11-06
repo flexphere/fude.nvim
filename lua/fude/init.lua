@@ -211,8 +211,10 @@ function M.start()
 		require("fude.overview").prefetch()
 
 		-- Completion barrier: fire on_review_start after all async fetches complete
-		-- 5 async fetches: files, get_pr_commits, get_pr_viewed_files, get_authenticated_user, load_comments
-		local remaining = 5
+		-- 4 async fetches: files, get_pr_commits, get_pr_viewed_files, get_authenticated_user.
+		-- The review comments load alongside but outside the barrier (below), so
+		-- on_review_start — and an overview it opens — does not wait for them.
+		local remaining = 4
 		local function on_ready()
 			remaining = remaining - 1
 			if remaining > 0 then
@@ -311,8 +313,13 @@ function M.start()
 			on_ready()
 		end)
 
-		local comments_mod = require("fude.comments")
-		comments_mod.load_comments(on_ready)
+		-- Comments are drawn when they arrive (load_comments refreshes the
+		-- extmarks); the side panel's per-file counts are re-rendered then.
+		require("fude.comments").load_comments(function()
+			if config.state.active and config.state == state then
+				require("fude.ui.sidepanel").refresh()
+			end
+		end)
 
 		M.setup_review_autocmds(state)
 	end)

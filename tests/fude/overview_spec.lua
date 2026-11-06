@@ -7,6 +7,19 @@ local function is_checks_request(args)
 	return vim.tbl_contains(args, "statusCheckRollup")
 end
 
+--- Whether a mocked gh call is the overview's separate reviewers request
+--- (`gh pr view --json reviewRequests,latestReviews`).
+local function is_reviewers_request(args)
+	return vim.tbl_contains(args, "reviewRequests,latestReviews")
+end
+
+--- Answer a reviewers request at once with no reviewers.
+local function answer_reviewers(callback)
+	vim.schedule(function()
+		callback(nil, { reviewRequests = {}, latestReviews = {} })
+	end)
+end
+
 --- Answer a CI checks request at once with no checks.
 local function answer_checks(callback)
 	vim.schedule(function()
@@ -755,6 +768,9 @@ describe("overview show loading state", function()
 				if is_checks_request(args) then
 					return answer_checks(callback)
 				end
+				if is_reviewers_request(args) then
+					return answer_reviewers(callback)
+				end
 				pending = callback
 			end,
 			["api:repos/{owner}/{repo}/issues/7/comments"] = {},
@@ -829,6 +845,9 @@ describe("overview show loading state", function()
 				if is_checks_request(args) then
 					return answer_checks(callback)
 				end
+				if is_reviewers_request(args) then
+					return answer_reviewers(callback)
+				end
 				fetches = fetches + 1
 				pending = callback
 			end,
@@ -858,6 +877,9 @@ describe("overview show loading state", function()
 			["pr:view"] = function(args, callback)
 				if is_checks_request(args) then
 					return answer_checks(callback)
+				end
+				if is_reviewers_request(args) then
+					return answer_reviewers(callback)
 				end
 				fetches = fetches + 1
 				table.insert(pendings, callback)
@@ -909,6 +931,8 @@ describe("overview prefetch and cache", function()
 	local pr_views
 	-- The separate CI checks requests, each { args, callback }
 	local check_views
+	-- The separate reviewers requests, each { args, callback }
+	local reviewer_views
 	local comment_fetches
 
 	local function gh_responses(extra)
@@ -916,6 +940,10 @@ describe("overview prefetch and cache", function()
 			["pr:view"] = function(args, callback)
 				if is_checks_request(args) then
 					table.insert(check_views, { args = args, callback = callback })
+					return
+				end
+				if is_reviewers_request(args) then
+					table.insert(reviewer_views, { args = args, callback = callback })
 					return
 				end
 				table.insert(pr_views, { args = args, callback = callback })
@@ -941,6 +969,7 @@ describe("overview prefetch and cache", function()
 		loadings = {}
 		pr_views = {}
 		check_views = {}
+		reviewer_views = {}
 		comment_fetches = 0
 		helpers.mock(vim, "notify", function(msg, level)
 			table.insert(notifications, { msg = msg, level = level })
@@ -977,8 +1006,9 @@ describe("overview prefetch and cache", function()
 		-- The session's PR number is passed, so gh never infers it from the branch
 		assert.are.equal("7", pr_views[1].args[3])
 		respond(1, nil, { number = 7, title = "T" })
+		-- Cached with the body; the comments land on the same entry later
 		assert.is_true(helpers.wait_for(function()
-			return config.state.overview_cache ~= nil
+			return config.state.overview_cache ~= nil and config.state.overview_cache.pr_comments ~= nil
 		end))
 		assert.are.equal("T", config.state.overview_cache.pr_info.title)
 		assert.are.equal(1, #config.state.overview_cache.pr_comments)
@@ -1139,6 +1169,71 @@ describe("overview prefetch and cache", function()
 		overview.show()
 		assert.are.same({ { name = "ci" } }, shown[2].pr_info.statusCheckRollup)
 		assert.are.equal(1, #check_views)
+	end)
+
+	it("opens with the body before the reviewers and comments, and fills them in as they land", function()
+		-- Comments held until released
+		local release_comments
+		helpers.mock_gh(gh_responses({
+			["api:repos/{owner}/{repo}/issues/7/comments"] = function(_, callback)
+				comment_fetches = comment_fetches + 1
+				release_comments = function()
+					callback(nil, { { id = 1, body = "hi", created_at = "2030-01-01T00:00:00Z" } })
+				end
+			end,
+		}))
+		local calls = {}
+		helpers.mock(ui, "show_overview_float", function(pr_info, comments, opts)
+			table.insert(shown, { pr_info = pr_info, comments = comments, opts = opts })
+			return {
+				is_open = function()
+					return true
+				end,
+				set_checks = function() end,
+				set_reviewers = function()
+					table.insert(calls, "reviewers")
+				end,
+				set_comments = function(comments_now)
+					table.insert(calls, "comments:" .. #comments_now)
+				end,
+			}
+		end)
+		overview.show()
+		assert.are.equal(1, #reviewer_views)
+		assert.are.same({ "pr", "view", "7", "--json", "reviewRequests,latestReviews" }, reviewer_views[1].args)
+		-- The body request asks for neither the reviewers nor the checks
+		local fields = pr_views[1].args[#pr_views[1].args]
+		assert.is_nil(fields:find("reviewRequests", 1, true))
+		assert.is_nil(fields:find("statusCheckRollup", 1, true))
+
+		respond(1, nil, { number = 7, title = "T" })
+		assert.is_true(helpers.wait_for(function()
+			return #shown == 1
+		end))
+		assert.is_true(shown[1].pr_info.reviewers_loading)
+		assert.is_nil(shown[1].comments)
+
+		reviewer_views[1].callback(nil, { reviewRequests = {}, latestReviews = { { author = { login = "a" } } } })
+		assert.are.same({ "reviewers" }, calls)
+		assert.is_nil(shown[1].pr_info.reviewers_loading)
+		assert.are.equal(1, #shown[1].pr_info.latestReviews)
+		release_comments()
+		assert.is_true(helpers.wait_for(function()
+			return #calls == 2
+		end))
+		assert.are.equal("comments:1", calls[2])
+		assert.are.equal(1, #config.state.overview_cache.pr_comments)
+	end)
+
+	it("refuses the reviewer flows while the reviewers are loading or failed to load", function()
+		local pr_info = { number = 7, url = "https://github.com/o/r/pull/7", reviewers_loading = true }
+		overview.re_request_review(pr_info, config.state)
+		overview.edit_reviewers(pr_info, config.state)
+		assert.are.equal(2, #notifications)
+		assert.are.equal("fude.nvim: Reviewers are still loading", notifications[1].msg)
+		pr_info.reviewers_loading, pr_info.reviewers_failed = nil, true
+		overview.re_request_review(pr_info, config.state)
+		assert.are.equal(vim.log.levels.WARN, notifications[3].level)
 	end)
 
 	it("hands over checks that landed before the PR info, and marks a failed checks fetch", function()

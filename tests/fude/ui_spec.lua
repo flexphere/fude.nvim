@@ -1216,11 +1216,58 @@ describe("show_overview_float CI STATUS", function()
 	end)
 
 	it("does not spin when the checks are already known", function()
-		local handle = ui.show_overview_float({ number = 1, title = "T", statusCheckRollup = {} }, {}, {})
+		ui.show_overview_float({ number = 1, title = "T", statusCheckRollup = {} }, {}, {})
 		assert.are.same({ "## CI STATUS", "(no checks)" }, tail(right_buf(), 2))
-		-- A late set_checks changes nothing
-		handle.set_checks({ { name = "x", status = "COMPLETED", conclusion = "SUCCESS" } }, false)
+		vim.wait(3 * require("fude.ui.toggle_picker").LOADING_INTERVAL_MS)
 		assert.are.same({ "## CI STATUS", "(no checks)" }, tail(right_buf(), 2))
+	end)
+
+	it("spins in COMMENTS until set_comments fills them in below the unchanged body", function()
+		local handle = ui.show_overview_float({ number = 1, title = "T", body = "hello", statusCheckRollup = {} }, nil, {})
+		local left = vim.api.nvim_get_current_buf()
+		local lines = vim.api.nvim_buf_get_lines(left, 0, -1, false)
+		local heading
+		for i, line in ipairs(lines) do
+			if line == "## COMMENTS" then
+				heading = i
+			end
+		end
+		assert.is_not_nil(heading)
+		assert.are.equal("⣾ Loading comments…", lines[heading + 1])
+		local body_part = vim.list_slice(lines, 1, heading - 1)
+
+		handle.set_comments({ { user = { login = "alice" }, created_at = "2024-01-01T00:00:00Z", body = "nice" } })
+		lines = vim.api.nvim_buf_get_lines(left, 0, -1, false)
+		assert.are.same(body_part, vim.list_slice(lines, 1, heading - 1))
+		assert.are.equal("## COMMENTS (1)", lines[heading])
+		assert.truthy(lines[heading + 2]:find("@alice", 1, true))
+		assert.are.equal("nice", lines[heading + 3])
+		-- The 'c mark follows the section
+		assert.are.equal(heading, vim.api.nvim_buf_get_mark(left, "c")[1])
+	end)
+
+	it("spins in REVIEWERS until set_reviewers rebuilds the pane, keeping CI STATUS", function()
+		local pr_info = { number = 1, title = "T", reviewers_loading = true, statusCheckRollup = {} }
+		local handle = ui.show_overview_float(pr_info, {}, {})
+		local buf = right_buf()
+		assert.are.same({ "## REVIEWERS", "⣾ Loading reviewers…" }, vim.api.nvim_buf_get_lines(buf, 0, 2, false))
+
+		pr_info.reviewers_loading = nil
+		pr_info.latestReviews = { { author = { login = "alice" }, state = "APPROVED" } }
+		pr_info.reviewRequests = {}
+		handle.set_reviewers()
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		assert.are.equal("## REVIEWERS (1/1 approved)", lines[1])
+		assert.truthy(lines[2]:find("@alice", 1, true))
+		assert.are.same({ "## CI STATUS", "(no checks)" }, tail(buf, 2))
+	end)
+
+	it("shows the reviewers failure row for a pr_info marked failed", function()
+		ui.show_overview_float({ number = 1, title = "T", reviewers_failed = true, statusCheckRollup = {} }, {}, {})
+		assert.are.same(
+			{ "## REVIEWERS", "(could not load reviewers)" },
+			vim.api.nvim_buf_get_lines(right_buf(), 0, 2, false)
+		)
 	end)
 end)
 
