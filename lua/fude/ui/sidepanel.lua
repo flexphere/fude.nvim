@@ -1455,6 +1455,8 @@ function M.pick_path_to_copy(panel)
 	local choices = M.build_copy_choices(entry_info.entry.path, root)
 	vim.ui.select(choices, {
 		prompt = "Copy path",
+		-- Lets vim.ui.select providers (dressing.nvim, snacks.nvim) configure this picker, e.g. open it in normal mode
+		kind = "fude_copy_path",
 		format_item = function(choice)
 			return choice.label
 		end,

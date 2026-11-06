@@ -1394,7 +1394,10 @@ Options:
                     `sidepanel.commit_message.max_lines`)
                   - `copy_path`: "y" (pick the file name, relative path,
                     or absolute path of the file or directory under the
-                    cursor and copy it)
+                    cursor and copy it; the picker is opened through
+                    |vim.ui.select()| with `kind = "fude_copy_path"`, so
+                    a provider such as dressing.nvim can be configured to
+                    open it in normal mode)
                   - `help`: "?" (open floating keymap reference; `q` inside
                     it closes only the help)
                   Set an action to `false` or an empty string to disable its

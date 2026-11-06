@@ -726,6 +726,7 @@ describe("sidepanel integration", function()
 				press_and_choose(panel, index)
 				assert.are.equal(text, vim.fn.getreg('"'))
 			end
+			assert.are.equal("fude_copy_path", picked.opts.kind)
 			local labels = vim.tbl_map(function(item)
 				return picked.opts.format_item(item)
 			end, picked.items)
