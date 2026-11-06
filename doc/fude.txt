@@ -474,7 +474,7 @@ File opening position                                 *fude-file-position*
     the select reopens.
     The reviewer picker lists repository collaborators with write
     access, users with a pending request, and collaborators who already
-    reviewed (requested first, then reviewed, then the rest), excluding
+    reviewed (ordered as the marks below), excluding
     the PR author and bots. The mark follows the GitHub web UI:
       `●` (yellow)  review requested (in progress), whatever the
                     previous review was
