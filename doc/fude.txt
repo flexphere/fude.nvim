@@ -260,7 +260,10 @@ Using lazy.nvim: >lua
     View existing review comments on the current line in a floating
     window. Both submitted and pending review comments are shown.
     Press `r` to reply, `e` to edit, `d` to delete, `R` to resolve or
-    unresolve the thread (see |:FudeReviewResolve|), `q` to close.
+    unresolve the thread (see |:FudeReviewResolve|), `+` to add or
+    remove a reaction on the comment under the cursor (see
+    |fude-reactions|), `q` to close.
+    Each comment's reactions are shown under its body (`👍 2  ❤️ 1`).
     Edit and delete are only available for your own comments.
     Editing opens a two-pane window (thread above, editable comment
     below) pre-filled with the original comment body.
@@ -520,7 +523,9 @@ File opening position                                 *fude-file-position*
     or add or remove a label (Label). `r` re-requests a review from a
     reviewer who has already reviewed (the overview is not reopened
     afterwards, as with Reviewer and Label), `o` opens the comment under the
-    cursor on GitHub (the PR elsewhere, and in the right pane), `R`
+    cursor on GitHub (the PR elsewhere, and in the right pane), `+`
+    adds or removes a reaction on the comment under the cursor (see
+    |fude-reactions|; reactions are shown under each comment), `R`
     refreshes (refetching rather than reusing the prefetched data), `<Tab>` switches between panes, `]c`/`[c` navigate
     review comments, and `q` closes.
     Reviewer and Label open a picker (routed by `file_list_mode`) in
@@ -619,6 +624,8 @@ File opening position                                 *fude-file-position*
     Keymaps (upper pane):~
       `e`       Edit own comment
       `d`       Delete own comment (with confirmation)
+      `+`       Add/remove a reaction on the comment under the cursor
+                (|fude-reactions|)
       `q`       Close browser
       `<Tab>`   Switch to lower pane
 
@@ -1760,6 +1767,22 @@ Example with lualine: >lua
     },
   }
 <
+
+------------------------------------------------------------------------------
+REACTIONS                                              *fude-reactions*
+
+Reactions on review comments and PR-level comments are shown under each
+comment's body (`👍 2  ❤️ 1`, `Comment` highlight) in the comment viewer
+(|:FudeReviewViewComment|), the reply/edit window, the comment browser's
+thread pane (|:FudeReviewListComments|) and the overview's COMMENTS
+(|:FudeReviewOverview|).
+
+`+` in the comment viewer, the comment browser's thread pane and the
+overview's left pane opens a `vim.ui.select` (kind `fude_reaction`) of
+GitHub's eight reactions for the comment under the cursor, with your own
+marked `●` and the current counts. Picking one adds it, or removes it when
+it is yours; the display is redrawn in place. Local review comments,
+comments of your pending review and review summaries cannot be reacted to.
 
 ==============================================================================
 8. COMPLETION                                          *fude-completion*

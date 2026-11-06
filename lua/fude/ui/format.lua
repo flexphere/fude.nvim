@@ -85,6 +85,58 @@ function M.calculate_float_dimensions(columns, screen_lines, pct_w, pct_h)
 	return { width = width, height = height, row = row, col = col }
 end
 
+--- The reactions GitHub offers, in the order its web UI lists them.
+M.REACTIONS = {
+	{ content = "+1", emoji = "👍" },
+	{ content = "-1", emoji = "👎" },
+	{ content = "laugh", emoji = "😄" },
+	{ content = "hooray", emoji = "🎉" },
+	{ content = "confused", emoji = "😕" },
+	{ content = "heart", emoji = "❤️" },
+	{ content = "rocket", emoji = "🚀" },
+	{ content = "eyes", emoji = "👀" },
+}
+
+--- Highlight group of a comment's reactions line.
+M.REACTIONS_HL = "Comment"
+
+--- The summary line of a comment's `reactions` rollup (`{ ["+1"] = 2,
+--- heart = 1, total_count = 3, url = … }` in the REST comment objects):
+--- `👍 2  ❤️ 1`, in M.REACTIONS order. nil when there is no reaction (or no
+--- rollup, e.g. a JSON null). Pure.
+--- @param rollup any
+--- @return string|nil
+function M.format_reactions(rollup)
+	if type(rollup) ~= "table" then
+		return nil
+	end
+	local parts = {}
+	for _, r in ipairs(M.REACTIONS) do
+		local n = rollup[r.content]
+		if type(n) == "number" and n > 0 and n == math.floor(n) then
+			table.insert(parts, string.format("%s %d", r.emoji, n))
+		end
+	end
+	if #parts == 0 then
+		return nil
+	end
+	return table.concat(parts, "  ")
+end
+
+--- Append a comment's reactions line (and its highlight) after its body,
+--- when it has any.
+--- @param lines string[]
+--- @param hl_ranges table[]
+--- @param comment table
+local function append_reactions(lines, hl_ranges, comment)
+	local text = M.format_reactions(comment.reactions)
+	if text then
+		table.insert(lines, "")
+		table.insert(lines, text)
+		table.insert(hl_ranges, { line = #lines - 1, col_start = 0, col_end = #text, hl = M.REACTIONS_HL })
+	end
+end
+
 --- Format comment objects into display lines and highlight ranges.
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
@@ -111,6 +163,7 @@ function M.format_comments_for_display(comments, format_date_fn, separator_width
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
+		append_reactions(lines, hl_ranges, comment)
 		table.insert(comment_ranges, { start_line = start_line, end_line = #lines - 1, index = i })
 		if i < #comments then
 			table.insert(lines, "")
@@ -833,6 +886,7 @@ function M.format_reply_comments_for_display(comments, format_date_fn, separator
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
+		append_reactions(lines, hl_ranges, comment)
 		table.insert(comment_ranges, { start_line = header_line_idx, end_line = #lines - 1, index = i })
 
 		if i < #comments then
@@ -1011,6 +1065,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 			for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 				table.insert(lines, body_line)
 			end
+			append_reactions(lines, hl_ranges, comment)
 			table.insert(comment_ranges, { start_line = start_line, end_line = #lines - 1, index = i })
 		end
 	end
@@ -1019,7 +1074,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 	table.insert(lines, "")
 	table.insert(
 		lines,
-		" ]s/[s: sections  ]c/[c: comments  o: open  C: comment/reviewer/label  r: re-request  za: fold"
+		" ]s/[s: sections  ]c/[c: comments  o: open  +: react  C: comment/reviewer/label  r: re-request  za: fold"
 			.. "  R: refresh  <Tab>: switch  q: close"
 	)
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })

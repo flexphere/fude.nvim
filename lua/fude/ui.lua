@@ -412,7 +412,7 @@ function M.show_comments_float(comments, opts)
 		border = config.opts.float.border,
 		title = format.build_comments_float_title(comments, config.opts.resolved),
 		title_pos = "center",
-		footer = " r reply | e edit | d delete | R resolve | o open | q close ",
+		footer = " r reply | e edit | d delete | R resolve | + react | o open | q close ",
 		footer_pos = "center",
 	})
 
@@ -425,6 +425,29 @@ function M.show_comments_float(comments, opts)
 	local ns = config.state.ns_id
 	for _, hl in ipairs(result.hl_ranges) do
 		pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl.hl, hl.line, 0, -1)
+	end
+
+	-- Redraw the comments in place (after a reaction changed), keeping the
+	-- cursor where it is.
+	local function rerender()
+		if not vim.api.nvim_buf_is_valid(buf) then
+			return
+		end
+		result = format.format_comments_for_display(comments, config.format_date, dim.width)
+		vim.bo[buf].modifiable = true
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, result.lines)
+		vim.bo[buf].modifiable = false
+		if ns then
+			vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+			for _, hl in ipairs(result.hl_ranges) do
+				pcall(vim.api.nvim_buf_add_highlight, buf, ns, hl.hl, hl.line, 0, -1)
+			end
+		end
+		local avatars = require("fude.ui.avatars")
+		avatars.clear(buf)
+		avatars.place(buf, result.avatar_positions)
+		vim.api.nvim_buf_clear_namespace(buf, ref_ns, 0, -1)
+		setup_github_refs(buf, get_repo_base_url())
 	end
 
 	-- Clear highlight when window is closed
@@ -494,6 +517,12 @@ function M.show_comments_float(comments, opts)
 	vim.keymap.set("n", "o", function()
 		M.open_comment_in_browser(comment_on_cursor_line(), open_ctx)
 	end, { buffer = buf, desc = "Open comment on GitHub" })
+
+	-- Like o, only the comment under the cursor: the float stays open and
+	-- shows the new reactions
+	vim.keymap.set("n", "+", function()
+		require("fude.reactions").pick(comment_on_cursor_line(), open_ctx, rerender)
+	end, { buffer = buf, desc = "Add/remove a reaction" })
 
 	local km = config.opts.keymaps
 	if km.next_comment then
@@ -1140,6 +1169,18 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		end
 		update_spinner()
 	end
+
+	-- `+` reacts to the PR-level comment under the cursor (not the body,
+	-- which has no reactions endpoint here) and redraws COMMENTS
+	vim.keymap.set("n", "+", function()
+		local line = vim.api.nvim_win_get_cursor(left_win)[1] - 1
+		local index = format.find_comment_index_at_line(left_result.comment_ranges, line)
+		local comment = index and issue_comments and issue_comments[index] or nil
+		require("fude.reactions").pick(comment, open_ctx, function()
+			handle.set_comments(issue_comments)
+		end)
+	end, { buffer = left_buf, desc = "Add/remove a reaction" })
+
 	return handle
 end
 
