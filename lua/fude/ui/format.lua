@@ -1189,8 +1189,8 @@ end
 
 --- Lay label pills out side by side, separated by LABEL_PILL_GAP, starting a
 --- new row when the next pill would exceed `width` display cells (a pill
---- wider than `width` gets a row of its own), with an empty line between
---- rows. Without `width` every pill is on one row.
+--- wider than `width` gets a row of its own). Without `width` every pill is
+--- on one row.
 --- @param pills table[] from build_label_pill
 --- @param width number|nil available display cells per row
 --- @return table[] lines { text: string, ranges: { col_start, col_end, hl }[] }
@@ -1201,7 +1201,6 @@ function M.pack_label_pills(pills, width)
 	for _, pill in ipairs(pills) do
 		if row and width and row_width + #gap + pill.width > width then
 			row = nil
-			table.insert(out, { text = "", ranges = {} })
 		end
 		if not row then
 			row = { text = "", ranges = {} }
