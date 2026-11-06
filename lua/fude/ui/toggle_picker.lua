@@ -705,6 +705,9 @@ function M.show_telescope(opts)
 			return ret
 		end
 	end
+	-- Typing or deleting in the prompt starts again from the first row; the
+	-- "follow" strategy above only applies to this picker's own refreshes.
+	require("fude.util").reset_selection_on_prompt_change(picker)
 	picker:find()
 	if opts.images then
 		-- The image conceals its slot (the snacks list sets this itself)

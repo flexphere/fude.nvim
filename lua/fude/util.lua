@@ -88,4 +88,40 @@ function M.open_url(url, reason)
 	return true
 end
 
+--- Whether a Telescope refresh for `prompt` should move the selection back to
+--- the first row: when the prompt changed since the last refresh (the user typed
+--- or deleted), not when the picker refreshed itself with the same prompt.
+--- @param prompt string|nil
+--- @param last_prompt string|nil
+--- @return boolean
+function M.should_reset_selection(prompt, last_prompt)
+	return prompt ~= last_prompt
+end
+
+--- Make a Telescope picker select its first row whenever the prompt changes,
+--- whatever `selection_strategy` the picker or the user's config uses; a
+--- refresh with the same prompt (e.g. after a `<Tab>` toggle) keeps the
+--- picker's own strategy. Wraps the picker's `_do_selection`, which Telescope
+--- calls with the prompt once a refresh completed; a picker without one is
+--- returned unchanged.
+--- @param picker table
+--- @return table picker
+function M.reset_selection_on_prompt_change(picker)
+	local do_selection = type(picker) == "table" and picker._do_selection or nil
+	if type(do_selection) ~= "function" then
+		return picker
+	end
+	local last_prompt
+	local seen = false
+	picker._do_selection = function(self, prompt, ...)
+		local reset = seen and M.should_reset_selection(prompt, last_prompt)
+		seen, last_prompt = true, prompt
+		if reset and type(self.get_reset_row) == "function" then
+			return self:set_selection(self:get_reset_row())
+		end
+		return do_selection(self, prompt, ...)
+	end
+	return picker
+end
+
 return M

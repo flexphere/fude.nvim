@@ -251,112 +251,112 @@ function M.show_telescope(scope_entries)
 	local inflight = {}
 	local preview_ns = vim.api.nvim_create_namespace("fude_scope_preview")
 
-	pickers
-		.new({}, {
-			prompt_title = "Review Scope",
-			finder = finders.new_table({
-				results = entries,
-				entry_maker = function(entry)
-					return entry
-				end,
-			}),
-			sorter = conf.generic_sorter({}),
-			previewer = previewers.new_buffer_previewer({
-				title = "Changed Files",
-				define_preview = function(self, entry)
-					local bufnr = self.state.bufnr
-
-					local function apply_preview(files)
-						if not vim.api.nvim_buf_is_valid(bufnr) then
-							return
-						end
-						local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons, config.format_path)
-						vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-						vim.api.nvim_buf_clear_namespace(bufnr, preview_ns, 0, -1)
-						for _, hl in ipairs(hls) do
-							vim.api.nvim_buf_add_highlight(bufnr, preview_ns, hl[4], hl[1], hl[2], hl[3])
-						end
-					end
-
-					if entry.is_full_pr then
-						self.state.current_sha = nil
-						local files = {}
-						for _, f in ipairs(state.changed_files) do
-							table.insert(files, {
-								filename = f.path,
-								status = f.status,
-								additions = f.additions,
-								deletions = f.deletions,
-							})
-						end
-						apply_preview(files)
-						return
-					end
-
-					local sha = entry.sha
-					if not sha then
-						return
-					end
-
-					self.state.current_sha = sha
-
-					if preview_cache[sha] then
-						apply_preview(preview_cache[sha])
-						return
-					end
-
-					vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Loading..." })
-					vim.api.nvim_buf_clear_namespace(bufnr, preview_ns, 0, -1)
-
-					if inflight[sha] then
-						return
-					end
-					inflight[sha] = true
-
-					gh_mod.get_commit_files(sha, function(err, raw_files)
-						inflight[sha] = nil
-						if err then
-							if vim.api.nvim_buf_is_valid(bufnr) and self.state.current_sha == sha then
-								vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Error: " .. err })
-							end
-							return
-						end
-						local files = {}
-						for _, f in ipairs(raw_files or {}) do
-							table.insert(files, {
-								filename = f.filename,
-								status = f.status,
-								additions = f.additions,
-								deletions = f.deletions,
-							})
-						end
-						preview_cache[sha] = files
-						if self.state.current_sha == sha then
-							apply_preview(files)
-						end
-					end)
-				end,
-			}),
-			attach_mappings = function(prompt_bufnr, map)
-				actions.select_default:replace(function()
-					actions.close(prompt_bufnr)
-					local selection = action_state.get_selected_entry()
-					if selection then
-						M.apply_scope(selection)
-					end
-				end)
-
-				map("i", "<Tab>", function()
-					M.toggle_reviewed_in_telescope(prompt_bufnr)
-				end)
-				map("n", "<Tab>", function()
-					M.toggle_reviewed_in_telescope(prompt_bufnr)
-				end)
-
-				return true
+	local picker = pickers.new({}, {
+		prompt_title = "Review Scope",
+		finder = finders.new_table({
+			results = entries,
+			entry_maker = function(entry)
+				return entry
 			end,
-		})
-		:find()
+		}),
+		sorter = conf.generic_sorter({}),
+		previewer = previewers.new_buffer_previewer({
+			title = "Changed Files",
+			define_preview = function(self, entry)
+				local bufnr = self.state.bufnr
+
+				local function apply_preview(files)
+					if not vim.api.nvim_buf_is_valid(bufnr) then
+						return
+					end
+					local lines, hls = M.format_scope_preview_lines(files, files_mod.status_icons, config.format_path)
+					vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+					vim.api.nvim_buf_clear_namespace(bufnr, preview_ns, 0, -1)
+					for _, hl in ipairs(hls) do
+						vim.api.nvim_buf_add_highlight(bufnr, preview_ns, hl[4], hl[1], hl[2], hl[3])
+					end
+				end
+
+				if entry.is_full_pr then
+					self.state.current_sha = nil
+					local files = {}
+					for _, f in ipairs(state.changed_files) do
+						table.insert(files, {
+							filename = f.path,
+							status = f.status,
+							additions = f.additions,
+							deletions = f.deletions,
+						})
+					end
+					apply_preview(files)
+					return
+				end
+
+				local sha = entry.sha
+				if not sha then
+					return
+				end
+
+				self.state.current_sha = sha
+
+				if preview_cache[sha] then
+					apply_preview(preview_cache[sha])
+					return
+				end
+
+				vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Loading..." })
+				vim.api.nvim_buf_clear_namespace(bufnr, preview_ns, 0, -1)
+
+				if inflight[sha] then
+					return
+				end
+				inflight[sha] = true
+
+				gh_mod.get_commit_files(sha, function(err, raw_files)
+					inflight[sha] = nil
+					if err then
+						if vim.api.nvim_buf_is_valid(bufnr) and self.state.current_sha == sha then
+							vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "Error: " .. err })
+						end
+						return
+					end
+					local files = {}
+					for _, f in ipairs(raw_files or {}) do
+						table.insert(files, {
+							filename = f.filename,
+							status = f.status,
+							additions = f.additions,
+							deletions = f.deletions,
+						})
+					end
+					preview_cache[sha] = files
+					if self.state.current_sha == sha then
+						apply_preview(files)
+					end
+				end)
+			end,
+		}),
+		attach_mappings = function(prompt_bufnr, map)
+			actions.select_default:replace(function()
+				actions.close(prompt_bufnr)
+				local selection = action_state.get_selected_entry()
+				if selection then
+					M.apply_scope(selection)
+				end
+			end)
+
+			map("i", "<Tab>", function()
+				M.toggle_reviewed_in_telescope(prompt_bufnr)
+			end)
+			map("n", "<Tab>", function()
+				M.toggle_reviewed_in_telescope(prompt_bufnr)
+			end)
+
+			return true
+		end,
+	})
+	require("fude.util").reset_selection_on_prompt_change(picker)
+	picker:find()
 end
 
 --- Show scope selection in a snacks.picker.

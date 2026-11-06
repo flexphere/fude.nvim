@@ -332,28 +332,28 @@ function M.show_telescope(entries, ctx)
 		layout_config = { width = layout.width, height = layout.height },
 	})
 
-	pickers
-		.new(theme, {
-			prompt_title = "Fude Command Palette",
-			finder = finders.new_table({
-				results = results,
-				entry_maker = function(entry)
-					return entry
-				end,
-			}),
-			sorter = conf.generic_sorter({}),
-			attach_mappings = function(prompt_bufnr)
-				actions.select_default:replace(function()
-					actions.close(prompt_bufnr)
-					local selection = action_state.get_selected_entry()
-					if selection then
-						M.execute(selection, ctx)
-					end
-				end)
-				return true
+	local picker = pickers.new(theme, {
+		prompt_title = "Fude Command Palette",
+		finder = finders.new_table({
+			results = results,
+			entry_maker = function(entry)
+				return entry
 			end,
-		})
-		:find()
+		}),
+		sorter = conf.generic_sorter({}),
+		attach_mappings = function(prompt_bufnr)
+			actions.select_default:replace(function()
+				actions.close(prompt_bufnr)
+				local selection = action_state.get_selected_entry()
+				if selection then
+					M.execute(selection, ctx)
+				end
+			end)
+			return true
+		end,
+	})
+	require("fude.util").reset_selection_on_prompt_change(picker)
+	picker:find()
 end
 
 --- Show the palette in a snacks.picker.
