@@ -460,7 +460,8 @@ File opening position                                 *fude-file-position*
     the `author:` line and each reviewer's before their login, cut
     into a circle like the GitHub web UI (see `overview.avatars`);
     the reviewer picker (Telescope and snacks) draws the same avatar
-    before each row.
+    before each row, loading them once the picker is shown: the first
+    rows at once, the rest a few at a time.
     Requires an active review session.
     The PR title, body headings, and comments use Markdown headings
     and are foldable with
