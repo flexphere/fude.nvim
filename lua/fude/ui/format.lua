@@ -317,20 +317,62 @@ function M.build_reviewers_list(review_requests, latest_reviews)
 	return reviewers
 end
 
+--- GitHub's Copilot code reviewer. The GraphQL side (`gh pr view`'s
+--- reviewRequests and latestReviews) names it by its bare login, the REST
+--- side (`requested_reviewers`) by the `[bot]` form; the pickers show it as
+--- `@copilot`, as the GitHub UI does. Unlike other bots it can be requested,
+--- so it is exempt from the bot / non-collaborator exclusions below and is
+--- always offered, since nothing tells in advance whether Copilot code
+--- review is enabled for the repository (GitHub refuses the request if not).
+M.COPILOT_REVIEWER = {
+	login = "copilot-pull-request-reviewer",
+	api_login = "copilot-pull-request-reviewer[bot]",
+	display = "copilot",
+}
+
+--- Whether a reviewer login (GraphQL or REST form) is Copilot.
+--- @param login any
+--- @return boolean
+function M.is_copilot_login(login)
+	return login == M.COPILOT_REVIEWER.login or login == M.COPILOT_REVIEWER.api_login
+end
+
+--- The login the REST API wants for a reviewer: Copilot's `[bot]` form, else
+--- the login as given.
+--- @param login string
+--- @return string
+local function api_login(login)
+	if M.is_copilot_login(login) then
+		return M.COPILOT_REVIEWER.api_login
+	end
+	return login
+end
+
+--- The name a reviewer is shown under (`@copilot` for Copilot).
+--- @param login string
+--- @return string
+function M.reviewer_display_name(login)
+	if M.is_copilot_login(login) then
+		return M.COPILOT_REVIEWER.display
+	end
+	return login
+end
+
 --- Build candidates for review re-request: users who already submitted a review,
 --- excluding users with a pending re-request, unsubmitted (PENDING) reviews,
---- the PR author, bots, and non-collaborators (the API only accepts
---- re-requests for repository collaborators).
+--- the PR author, bots other than Copilot, and non-collaborators (the API only
+--- accepts re-requests for repository collaborators, and Copilot).
 --- @param review_requests table[] reviewRequests from gh pr view (each has login)
 --- @param latest_reviews table[] latestReviews from gh pr view (each has author.login, authorAssociation, state)
 --- @param author_login string|nil PR author login (re-requesting from the author is rejected by the API)
---- @return table[] list of { login: string, state: string } sorted by login
+--- @return table[] list of { login: string, state: string } sorted by login; `login` is what the API
+---   takes (Copilot's `[bot]` form), shown through `reviewer_display_name`
 function M.build_re_request_candidates(review_requests, latest_reviews, author_login)
 	local requested = {}
 	for _, req in ipairs(review_requests) do
 		-- Team review requests have no login; re-requesting teams is out of scope
 		if req.login then
-			requested[req.login] = true
+			requested[api_login(req.login)] = true
 		end
 	end
 
@@ -340,22 +382,27 @@ function M.build_re_request_candidates(review_requests, latest_reviews, author_l
 		-- author can be JSON null, which decodes to truthy vim.NIL
 		local author = type(review.author) == "table" and review.author or nil
 		local login = author and author.login
-		local is_bot = author and author.is_bot
+		local copilot = M.is_copilot_login(login)
+		local is_bot = author and author.is_bot and not copilot
 		-- PENDING means the review has not been submitted yet; only
 		-- submitted reviews qualify for a re-request
 		local state = review.state or "COMMENTED"
 		local submitted = state ~= "PENDING"
-		-- The API only accepts re-requests for collaborators; gh's
-		-- latestReviews.author does not export is_bot, so authorAssociation
-		-- is the practical signal (Copilot reviews show as CONTRIBUTOR).
+		-- The API only accepts re-requests for collaborators (and Copilot);
+		-- gh's latestReviews.author does not export is_bot, so
+		-- authorAssociation is the practical signal for other bots.
 		-- A missing/non-string association is kept so an unexpected gh
 		-- output change degrades to the API's own 422 instead of silently
 		-- emptying the candidate list.
 		local association = review.authorAssociation
-		local non_collaborator = type(association) == "string"
+		local non_collaborator = not copilot
+			and type(association) == "string"
 			and association ~= "OWNER"
 			and association ~= "MEMBER"
 			and association ~= "COLLABORATOR"
+		if login then
+			login = api_login(login)
+		end
 		if
 			login
 			and submitted
@@ -371,7 +418,7 @@ function M.build_re_request_candidates(review_requests, latest_reviews, author_l
 	end
 
 	table.sort(candidates, function(a, b)
-		return a.login < b.login
+		return M.reviewer_display_name(a.login) < M.reviewer_display_name(b.login)
 	end)
 
 	return candidates
@@ -407,19 +454,20 @@ local function reviewer_rank(entry)
 end
 
 --- Build the entries of the overview's reviewer picker: repository
---- collaborators with write access, users with a pending review request, and
---- collaborators who already reviewed. The PR author (GitHub rejects
---- requesting the author), bots, teams (no login) and collaborators without
---- write access are left out; a user with a pending request is always kept,
---- so the request can be removed. Rows are ordered approved, changes
---- requested, commented, dismissed, requested, then the rest, each group
---- sorted by login.
+--- collaborators with write access, users with a pending review request,
+--- collaborators who already reviewed, and always Copilot (see
+--- COPILOT_REVIEWER). The PR author (GitHub rejects requesting the author),
+--- other bots, teams (no login) and collaborators without write access are
+--- left out; a user with a pending request is always kept, so the request
+--- can be removed. Rows are ordered approved, changes requested, commented,
+--- dismissed, requested, then the rest, each group sorted by the name shown.
 --- @param collaborators table[] `repos/{owner}/{repo}/collaborators` items ({ login, type, permissions });
 ---   empty when listing failed
 --- @param review_requests table[] reviewRequests from gh pr view (users have login, teams do not)
 --- @param latest_reviews table[] latestReviews from gh pr view (author.login, authorAssociation, state)
 --- @param author_login string|nil PR author login
---- @return table[] list of { login: string, requested: boolean, review_state: string|nil }
+--- @return table[] list of { login: string, requested: boolean, review_state: string|nil }; `login` is
+---   what the API takes (Copilot's `[bot]` form), shown through `reviewer_display_name`
 function M.build_reviewer_entries(collaborators, review_requests, latest_reviews, author_login)
 	-- GitHub accepts review requests only from users with write access.
 	-- Indexed first so a read-only member is excluded whichever list names
@@ -439,6 +487,7 @@ function M.build_reviewer_entries(collaborators, review_requests, latest_reviews
 		if type(login) ~= "string" or login == "" or login == author_login then
 			return nil
 		end
+		login = api_login(login)
 		if read_only[login] and not requested and not by_login[login] then
 			return nil
 		end
@@ -461,14 +510,16 @@ function M.build_reviewer_entries(collaborators, review_requests, latest_reviews
 		local author = type(review) == "table" and type(review.author) == "table" and review.author or nil
 		if author then
 			-- Same rule as build_re_request_candidates: requesting a
-			-- non-collaborator is rejected by the API.
+			-- non-collaborator is rejected by the API, Copilot excepted.
+			local copilot = M.is_copilot_login(author.login)
 			local association = review.authorAssociation
-			local non_collaborator = type(association) == "string"
+			local non_collaborator = not copilot
+				and type(association) == "string"
 				and association ~= "OWNER"
 				and association ~= "MEMBER"
 				and association ~= "COLLABORATOR"
 			local state = type(review.state) == "string" and review.state or "COMMENTED"
-			if not author.is_bot and not non_collaborator and state ~= "PENDING" then
+			if (copilot or not author.is_bot) and not non_collaborator and state ~= "PENDING" then
 				local entry = add(author.login)
 				if entry then
 					entry.review_state = state
@@ -482,17 +533,20 @@ function M.build_reviewer_entries(collaborators, review_requests, latest_reviews
 			add(user.login)
 		end
 	end
+	-- Copilot is offered whether or not it has been involved yet
+	add(M.COPILOT_REVIEWER.api_login)
 
 	table.sort(entries, function(a, b)
 		local ra, rb = reviewer_rank(a), reviewer_rank(b)
 		if ra ~= rb then
 			return ra < rb
 		end
-		local la, lb = a.login:lower(), b.login:lower()
+		local na, nb = M.reviewer_display_name(a.login), M.reviewer_display_name(b.login)
+		local la, lb = na:lower(), nb:lower()
 		if la ~= lb then
 			return la < lb
 		end
-		return a.login < b.login
+		return na < nb
 	end)
 	return entries
 end
