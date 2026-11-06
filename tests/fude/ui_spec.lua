@@ -690,11 +690,28 @@ describe("open_overview_loading", function()
 			{ layout.right.width, layout.right.height, layout.right.row, layout.right.col },
 			{ rc.width, rc.height, rc.row, rc.col }
 		)
-		assert.are.same(
-			{ ui.OVERVIEW_LOADING_TEXT },
-			vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(left), 0, -1, false)
-		)
+		-- The spinner and the text sit in the middle of the left pane
+		local text = "⣾ " .. ui.OVERVIEW_LOADING_TEXT
+		local expected = ui.build_centered_lines(text, vim.fn.strdisplaywidth(text), lc.width, lc.height)
+		assert.are.same(expected, vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(left), 0, -1, false))
 		assert.are.same({ "" }, vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(right), 0, -1, false))
+		handle.close()
+	end)
+
+	it("advances the spinner in place until closed", function()
+		local handle = ui.open_overview_loading()
+		local buf = vim.api.nvim_win_get_buf((placeholder_wins()))
+		local last = vim.api.nvim_buf_line_count(buf)
+		local first = vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1]
+		assert.is_true(handle.is_spinning())
+		assert.is_true(vim.wait(1000, function()
+			return vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1] ~= first
+		end))
+		local now = vim.api.nvim_buf_get_lines(buf, last - 1, last, false)[1]
+		assert.are.equal(#first, #now)
+		assert.is_truthy(now:find("⣽ " .. ui.OVERVIEW_LOADING_TEXT, 1, true))
+		handle.close()
+		assert.is_false(handle.is_spinning())
 	end)
 
 	it("the overview opens at the same position and size as the placeholder, whatever its content", function()
@@ -743,6 +760,27 @@ describe("open_overview_loading", function()
 		assert.is_false(vim.api.nvim_win_is_valid(left))
 		assert.is_false(vim.api.nvim_win_is_valid(right))
 		assert.is_false(handle.is_open())
+	end)
+end)
+
+describe("build_centered_lines", function()
+	it("centres one line of text left / right and top / bottom", function()
+		local lines, row, col = ui.build_centered_lines("abcd", 4, 10, 5)
+		assert.are.same({ "", "", "   abcd" }, lines)
+		assert.are.equal(2, row)
+		assert.are.equal(3, col)
+	end)
+
+	it("puts the text on the first line and column when the window is too small", function()
+		local lines, row, col = ui.build_centered_lines("abcdef", 6, 4, 1)
+		assert.are.same({ "abcdef" }, lines)
+		assert.are.same({ 0, 0 }, { row, col })
+	end)
+
+	it("measures the text by the given display width, not its bytes", function()
+		local lines, _, col = ui.build_centered_lines("⣾ x", 3, 7, 1)
+		assert.are.equal(2, col)
+		assert.are.same({ "  ⣾ x" }, lines)
 	end)
 end)
 

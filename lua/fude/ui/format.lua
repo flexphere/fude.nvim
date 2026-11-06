@@ -629,6 +629,26 @@ function M.build_reviewers_summary(reviewers)
 	return string.format("%d/%d approved", approved, #reviewers)
 end
 
+--- Lines that put one line of text in the middle of a `width` x `height`
+--- window, left / right and top / bottom (blank lines above, spaces before).
+--- @param text string
+--- @param text_width number display width of `text` (the caller measures it)
+--- @param width number window width
+--- @param height number window height
+--- @return string[] lines
+--- @return number row 0-based line of the text
+--- @return number col byte column where the text starts
+function M.build_centered_lines(text, text_width, width, height)
+	local row = math.max(0, math.floor((height - 1) / 2))
+	local col = math.max(0, math.floor((width - text_width) / 2))
+	local lines = {}
+	for _ = 1, row do
+		table.insert(lines, "")
+	end
+	table.insert(lines, string.rep(" ", col) .. text)
+	return lines, row, col
+end
+
 --- Calculate layout for split-pane overview windows.
 --- @param columns number screen width
 --- @param screen_lines number screen height

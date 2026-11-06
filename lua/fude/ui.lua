@@ -21,6 +21,7 @@ M.sort_checks = format.sort_checks
 M.build_checks_summary = format.build_checks_summary
 M.format_review_status = format.format_review_status
 M.build_reviewers_list = format.build_reviewers_list
+M.build_centered_lines = format.build_centered_lines
 M.build_re_request_candidates = format.build_re_request_candidates
 M.build_reviewer_entries = format.build_reviewer_entries
 M.build_label_entries = format.build_label_entries
@@ -524,11 +525,13 @@ M.OVERVIEW_LOADING_TEXT = "Loading PR overview…"
 --- Open the placeholder shown while the overview's PR data is being fetched
 --- (two gh calls, which can take a while): the overview's two panes at the
 --- same position and size as the overview itself, the left one titled like
---- it and holding the loading text. `q` / `<Esc>` close both, which overview.show
---- reads as "do not show the overview after all"; closing either pane by
---- other means closes the other too.
+--- it and holding the loading text in its middle, after the toggle picker's
+--- spinner, which a timer advances until the placeholder closes. `q` /
+--- `<Esc>` close both, which overview.show reads as "do not show the overview
+--- after all"; closing either pane by other means closes the other too.
 --- @return table handle { close: fun(), is_open: fun(): boolean }
 function M.open_overview_loading()
+	local toggle_picker = require("fude.ui.toggle_picker")
 	local layout = overview_layout()
 	local border = config.opts.float.border
 
@@ -540,7 +543,14 @@ function M.open_overview_loading()
 		vim.bo[buf].bufhidden = "wipe"
 		return buf
 	end
-	local left_buf = scratch_buf({ M.OVERVIEW_LOADING_TEXT })
+	-- Every spinner frame is one cell wide, so the centred text never moves
+	local function loading_text(frame)
+		return toggle_picker.format_loading_mark(frame) .. " " .. M.OVERVIEW_LOADING_TEXT
+	end
+	local text = loading_text(1)
+	local lines, text_row, text_col =
+		format.build_centered_lines(text, vim.fn.strdisplaywidth(text), layout.left.width, layout.left.height)
+	local left_buf = scratch_buf(lines)
 	local right_buf = scratch_buf({})
 
 	local left_win = vim.api.nvim_open_win(left_buf, true, {
@@ -564,11 +574,41 @@ function M.open_overview_loading()
 		border = border,
 	})
 	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
-	pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, "Comment", 0, 0, -1)
+	local frame = 1
+	-- Write the current frame and colour it like the toggle picker's spinner
+	local function render()
+		if not vim.api.nvim_buf_is_valid(left_buf) then
+			return
+		end
+		local line = string.rep(" ", text_col) .. loading_text(frame)
+		vim.bo[left_buf].modifiable = true
+		vim.api.nvim_buf_set_lines(left_buf, text_row, text_row + 1, false, { line })
+		vim.bo[left_buf].modifiable = false
+		vim.api.nvim_buf_clear_namespace(left_buf, ns, 0, -1)
+		local mark_end = text_col + #toggle_picker.format_loading_mark(frame)
+		pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, toggle_picker.LOADING_HL, text_row, text_col, mark_end)
+		pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, "Comment", text_row, mark_end, -1)
+	end
+	render()
+	local timer = vim.uv.new_timer()
+	if timer then
+		timer:start(
+			toggle_picker.LOADING_INTERVAL_MS,
+			toggle_picker.LOADING_INTERVAL_MS,
+			vim.schedule_wrap(function()
+				frame = frame % #toggle_picker.LOADING_FRAMES + 1
+				render()
+			end)
+		)
+	end
 
 	local handle = {}
 	function handle.is_open()
 		return vim.api.nvim_win_is_valid(left_win)
+	end
+	--- Whether the spinner timer is still running (false once closed).
+	function handle.is_spinning()
+		return timer ~= nil
 	end
 	local closing = false
 	function handle.close()
@@ -576,6 +616,11 @@ function M.open_overview_loading()
 			return
 		end
 		closing = true
+		if timer then
+			timer:stop()
+			timer:close()
+			timer = nil
+		end
 		pcall(vim.api.nvim_win_close, left_win, true)
 		pcall(vim.api.nvim_win_close, right_win, true)
 	end

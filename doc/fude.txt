@@ -428,8 +428,9 @@ File opening position                                 *fude-file-position*
 :FudeReviewOverview                                *:FudeReviewOverview*
     Show PR overview in a split-pane floating window. While the PR
     data is being fetched, the two panes are shown at the overview's
-    position and size, the left one titled `PR Overview` with
-    `Loading PR overview…`; `q` or `<Esc>` closes them, and the
+    position and size, the left one titled `PR Overview` with a
+    spinner and `Loading PR overview…` in its middle; `q` or `<Esc>`
+    closes them, and the
     overview is then not shown when the data arrives. The window
     size follows `overview.width` / `overview.height` regardless of
     the content: a short PR does not shrink it. The left pane
