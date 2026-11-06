@@ -1124,7 +1124,7 @@ describe("overview avatar positions", function()
 			-- The column sits right after the symbol and its space
 			assert.are.equal("@" .. p.login, result.lines[p.line + 1]:sub(p.col + 1, p.col + #p.login + 1))
 		end
-		assert.are.same({ "✓ @alice  approved", "○ @carol  pending" }, lines)
+		assert.are.same({ "✓ @alice  approved", "● @carol  pending" }, lines)
 	end)
 end)
 
