@@ -504,6 +504,21 @@ function M.show_comments_float(comments, opts)
 	setup_github_refs(buf, get_repo_base_url())
 end
 
+--- The overview's split-pane layout for the current screen and
+--- `config.opts.overview`, shared by the overview and its loading placeholder
+--- so the two are placed alike.
+--- @return table from format.calculate_overview_layout
+local function overview_layout()
+	local ov = config.opts.overview or {}
+	return format.calculate_overview_layout(
+		vim.o.columns,
+		vim.o.lines,
+		ov.width or 80,
+		ov.height or 80,
+		ov.right_width or 30
+	)
+end
+
 --- Text of the overview's loading placeholder.
 M.OVERVIEW_LOADING_TEXT = "Loading PR overview…"
 
@@ -518,12 +533,8 @@ function M.open_overview_loading()
 	vim.bo[buf].modifiable = false
 	vim.bo[buf].buftype = "nofile"
 	vim.bo[buf].bufhidden = "wipe"
-	vim.b[buf].fude_overview_loading = true
 
-	local ov = config.opts.overview or {}
-	local layout =
-		format.calculate_overview_layout(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80, ov.right_width or 30)
-	local dims = format.calculate_overview_loading_layout(layout, vim.o.lines)
+	local dims = format.calculate_overview_loading_layout(overview_layout(), vim.o.lines)
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
 		row = dims.row,
@@ -579,8 +590,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 
 	-- Calculate split-pane layout
 	local ov = config.opts.overview or {}
-	local layout =
-		format.calculate_overview_layout(vim.o.columns, vim.o.lines, ov.width or 80, ov.height or 80, ov.right_width or 30)
+	local layout = overview_layout()
 
 	-- Use the taller content, capped at max layout height
 	local content_height = math.min(math.max(#left_result.lines, #right_result.lines) + 2, layout.left.height)
