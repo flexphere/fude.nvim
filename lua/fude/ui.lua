@@ -28,7 +28,6 @@ M.format_toggle_entry = format.format_toggle_entry
 M.format_reviewer_mark = format.format_reviewer_mark
 M.build_reviewers_summary = format.build_reviewers_summary
 M.calculate_overview_layout = format.calculate_overview_layout
-M.calculate_overview_loading_layout = format.calculate_overview_loading_layout
 M.calculate_comments_height = format.calculate_comments_height
 M.calculate_reply_window_dimensions = format.calculate_reply_window_dimensions
 M.format_reply_comments_for_display = format.format_reply_comments_for_display
@@ -522,44 +521,79 @@ end
 --- Text of the overview's loading placeholder.
 M.OVERVIEW_LOADING_TEXT = "Loading PR overview…"
 
---- Open the placeholder float shown while the overview's PR data is being
---- fetched (two gh calls, which can take a while): a one-line float where
---- the overview will open, titled like it. `q` / `<Esc>` close it, which
---- overview.show reads as "do not show the overview after all".
+--- Open the placeholder shown while the overview's PR data is being fetched
+--- (two gh calls, which can take a while): the overview's two panes at the
+--- layout's full height — the overview itself is as tall once its content
+--- fills that height, shorter otherwise — the left one titled like it and
+--- holding the loading text. `q` / `<Esc>` close both, which overview.show
+--- reads as "do not show the overview after all"; closing either pane by
+--- other means closes the other too.
 --- @return table handle { close: fun(), is_open: fun(): boolean }
 function M.open_overview_loading()
-	local buf = vim.api.nvim_create_buf(false, true)
-	vim.api.nvim_buf_set_lines(buf, 0, -1, false, { M.OVERVIEW_LOADING_TEXT })
-	vim.bo[buf].modifiable = false
-	vim.bo[buf].buftype = "nofile"
-	vim.bo[buf].bufhidden = "wipe"
+	local layout = overview_layout()
+	local border = config.opts.float.border
 
-	local dims = format.calculate_overview_loading_layout(overview_layout(), vim.o.lines)
-	local win = vim.api.nvim_open_win(buf, true, {
+	local function scratch_buf(lines)
+		local buf = vim.api.nvim_create_buf(false, true)
+		vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+		vim.bo[buf].modifiable = false
+		vim.bo[buf].buftype = "nofile"
+		vim.bo[buf].bufhidden = "wipe"
+		return buf
+	end
+	local left_buf = scratch_buf({ M.OVERVIEW_LOADING_TEXT })
+	local right_buf = scratch_buf({})
+
+	local left_win = vim.api.nvim_open_win(left_buf, true, {
 		relative = "editor",
-		row = dims.row,
-		col = dims.col,
-		width = dims.width,
-		height = dims.height,
+		row = layout.left.row,
+		col = layout.left.col,
+		width = layout.left.width,
+		height = layout.left.height,
 		style = "minimal",
-		border = config.opts.float.border,
+		border = border,
 		title = " PR Overview ",
 		title_pos = "center",
 	})
+	local right_win = vim.api.nvim_open_win(right_buf, false, {
+		relative = "editor",
+		row = layout.right.row,
+		col = layout.right.col,
+		width = layout.right.width,
+		height = layout.right.height,
+		style = "minimal",
+		border = border,
+	})
 	local ns = config.state.ns_id or vim.api.nvim_create_namespace("fude")
-	pcall(vim.api.nvim_buf_add_highlight, buf, ns, "Comment", 0, 0, -1)
+	pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, "Comment", 0, 0, -1)
 
 	local handle = {}
 	function handle.is_open()
-		return vim.api.nvim_win_is_valid(win)
+		return vim.api.nvim_win_is_valid(left_win)
 	end
+	local closing = false
 	function handle.close()
-		if handle.is_open() then
-			vim.api.nvim_win_close(win, true)
+		if closing then
+			return
 		end
+		closing = true
+		pcall(vim.api.nvim_win_close, left_win, true)
+		pcall(vim.api.nvim_win_close, right_win, true)
 	end
-	vim.keymap.set("n", "q", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
-	vim.keymap.set("n", "<Esc>", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
+	-- Closing one pane (q, :q, :only) closes the other
+	local augroup = vim.api.nvim_create_augroup("fude_overview_loading_" .. left_win, { clear = true })
+	vim.api.nvim_create_autocmd("WinClosed", {
+		group = augroup,
+		pattern = { tostring(left_win), tostring(right_win) },
+		callback = function()
+			handle.close()
+			vim.api.nvim_del_augroup_by_id(augroup)
+		end,
+	})
+	for _, buf in ipairs({ left_buf, right_buf }) do
+		vim.keymap.set("n", "q", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
+		vim.keymap.set("n", "<Esc>", handle.close, { buffer = buf, desc = "Cancel the PR overview" })
+	end
 	return handle
 end
 
