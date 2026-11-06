@@ -3,6 +3,8 @@ local config = require("fude.config")
 local format = require("fude.ui.format")
 local inline = require("fude.ui.inline")
 local extmarks = require("fude.ui.extmarks")
+local data = require("fude.comments.data")
+local util = require("fude.util")
 
 local ref_ns = vim.api.nvim_create_namespace("fude_refs")
 
@@ -30,6 +32,7 @@ M.build_overview_right_lines = format.build_overview_right_lines
 M.calculate_comment_browser_layout = format.calculate_comment_browser_layout
 M.format_comment_browser_list = format.format_comment_browser_list
 M.format_comment_browser_thread = format.format_comment_browser_thread
+M.find_comment_index_at_line = format.find_comment_index_at_line
 M.format_comments_for_inline = inline.format_comments_for_inline
 M.parse_markdown_line = format.parse_markdown_line
 M.build_highlighted_chunks = format.build_highlighted_chunks
@@ -219,6 +222,14 @@ local function setup_github_refs(buf, repo_url, line_urls)
 	end, { buffer = buf, desc = "Open GitHub reference" })
 end
 
+--- Open a comment's GitHub page, or explain why it has none (local review,
+--- pending review, no comment under the cursor).
+--- @param comment table|nil
+function M.open_comment_in_browser(comment)
+	local state = config.state
+	util.open_url(data.find_comment_url(comment, state.pending_review_id, state.review_mode == "local"))
+end
+
 --- Select review event type using vim.ui.select.
 --- @param callback fun(event: string|nil) called with "COMMENT", "APPROVE", "REQUEST_CHANGES", or nil if cancelled
 function M.select_review_event(callback)
@@ -373,7 +384,7 @@ function M.show_comments_float(comments, opts)
 		border = config.opts.float.border,
 		title = format.build_comments_float_title(comments, config.opts.resolved),
 		title_pos = "center",
-		footer = " r reply | e edit | d delete | R resolve | q close ",
+		footer = " r reply | e edit | d delete | R resolve | o open | q close ",
 		footer_pos = "center",
 	})
 
@@ -409,17 +420,16 @@ function M.show_comments_float(comments, opts)
 		end
 	end, { buffer = buf })
 
-	local function find_comment_at_cursor()
-		if #comments == 0 then
-			return nil
-		end
+	-- The comment on the cursor line, or nil on a separator / blank line
+	local function comment_on_cursor_line()
 		local cursor_line = vim.api.nvim_win_get_cursor(win)[1] - 1 -- 0-indexed
-		for _, range in ipairs(result.comment_ranges or {}) do
-			if cursor_line >= range.start_line and cursor_line <= range.end_line then
-				return comments[range.index]
-			end
-		end
-		return comments[#comments]
+		local index = format.find_comment_index_at_line(result.comment_ranges, cursor_line)
+		return index and comments[index] or nil
+	end
+
+	-- e/d/R fall back to the last comment off any comment's lines
+	local function find_comment_at_cursor()
+		return comment_on_cursor_line() or comments[#comments]
 	end
 
 	vim.keymap.set("n", "e", function()
@@ -447,6 +457,14 @@ function M.show_comments_float(comments, opts)
 			require("fude.comments").toggle_resolve(target.id)
 		end
 	end, { buffer = buf, desc = "Toggle thread resolved" })
+
+	-- The float stays open: the browser takes focus, and the comment is still
+	-- here to act on when the user comes back. Unlike e/d/R there is no
+	-- fallback to the last comment, so a separator line opens nothing rather
+	-- than another comment's page (same as the comment browser and overview).
+	vim.keymap.set("n", "o", function()
+		M.open_comment_in_browser(comment_on_cursor_line())
+	end, { buffer = buf, desc = "Open comment on GitHub" })
 
 	local km = config.opts.keymaps
 	if km.next_comment then
@@ -599,6 +617,22 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			opts.on_re_request()
 		end
 	end, { buffer = left_buf, desc = "Re-request review" })
+
+	-- `o` opens the comment under the cursor, or the PR anywhere else (body,
+	-- frontmatter, headings). The overview stays open.
+	local function open_pr()
+		util.open_url(pr_info.url, "No PR URL to open")
+	end
+	vim.keymap.set("n", "o", function()
+		local line = vim.api.nvim_win_get_cursor(left_win)[1] - 1
+		local index = format.find_comment_index_at_line(left_result.comment_ranges, line)
+		if index then
+			M.open_comment_in_browser(issue_comments[index])
+		else
+			open_pr()
+		end
+	end, { buffer = left_buf, desc = "Open comment or PR on GitHub" })
+	vim.keymap.set("n", "o", open_pr, { buffer = right_buf, desc = "Open PR on GitHub" })
 
 	-- Tab to switch between panes
 	vim.keymap.set("n", "<Tab>", function()

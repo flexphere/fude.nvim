@@ -669,6 +669,8 @@ function M.build_pr_level_comments(issue_comments, reviews)
 				body = r.body,
 				created_at = type(r.submitted_at) == "string" and r.submitted_at or "",
 				review_state = type(r.state) == "string" and r.state or nil,
+				-- `#pullrequestreview-<id>` on the PR page, opened by the `o` key
+				html_url = type(r.html_url) == "string" and r.html_url or nil,
 				is_review_summary = true,
 			})
 		end
@@ -707,6 +709,31 @@ function M.find_editable_comment(comments, github_user)
 		end
 	end
 	return nil
+end
+
+--- Find the GitHub page of a comment (its `html_url`) for the `o` key, or nil
+--- and the message explaining why it has none: comments of a local review
+--- live only in the worktree, and a comment of the viewer's pending review is
+--- not published until the review is submitted. Pure.
+--- @param comment table|nil review comment, issue comment or review summary
+--- @param pending_review_id number|nil the viewer's pending review
+--- @param is_local boolean|nil whether the comment comes from a local review
+--- @return string|nil url
+--- @return string|nil reason message when url is nil
+function M.find_comment_url(comment, pending_review_id, is_local)
+	if type(comment) ~= "table" then
+		return nil, "No comment under cursor"
+	end
+	if is_local then
+		return nil, "Local review comments are not on GitHub"
+	end
+	if pending_review_id ~= nil and comment.pull_request_review_id == pending_review_id then
+		return nil, "Pending comments are not published on GitHub until the review is submitted"
+	end
+	if type(comment.html_url) == "string" and comment.html_url ~= "" then
+		return comment.html_url
+	end
+	return nil, "This comment has no GitHub URL"
 end
 
 --- Merge local draft descriptors into comment browser entries. Pure.

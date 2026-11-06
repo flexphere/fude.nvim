@@ -3,6 +3,7 @@ local config = require("fude.config")
 local format = require("fude.ui.format")
 local data = require("fude.comments.data")
 local drafts = require("fude.drafts")
+local util = require("fude.util")
 
 -- Lazy requires (circular dependency prevention)
 local function get_ui()
@@ -51,6 +52,44 @@ local function lower_key_for_entry(entry, mode, edit_target)
 		return drafts.current_key("reply", entry.comments[1].id)
 	end
 	return nil
+end
+
+--- The comments the upper pane lists for an entry, in display order (the
+--- list `format_comment_browser_thread` formats): the thread of a review
+--- entry, every PR-level comment for the PR-level entry, none for a draft. Pure.
+--- @param entry table|nil browser entry
+--- @param all_issue_comments table[]|nil PR-level comments
+--- @return table[]
+function M.find_thread_comments(entry, all_issue_comments)
+	if type(entry) ~= "table" or entry.type == "draft" then
+		return {}
+	end
+	if entry.type == "issue" then
+		return all_issue_comments or {}
+	end
+	return entry.comments or {}
+end
+
+--- What `o` in the list pane opens for an entry: the thread's first comment
+--- for a review thread, the PR for the PR-level entry. Returns the comment or
+--- URL, or nil and the reason for a draft row. Pure.
+--- @param entry table|nil browser entry
+--- @param pr_url string|nil
+--- @return table|nil comment
+--- @return string|nil url
+--- @return string|nil reason
+function M.find_entry_open_target(entry, pr_url)
+	if type(entry) ~= "table" then
+		return nil, nil, "No thread under cursor"
+	end
+	if entry.type == "draft" then
+		return nil, nil, "Drafts are not on GitHub until they are submitted"
+	end
+	if entry.type == "issue" then
+		return nil, pr_url, pr_url == nil and "No PR URL to open" or nil
+	end
+	local first = (entry.comments or {})[1]
+	return first, nil, first == nil and "No comment under cursor" or nil
 end
 
 --- Close the comment browser and clean up all windows.
@@ -106,6 +145,9 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 		or nil
 	local result =
 		format.format_comment_browser_thread(entry, all_comments, all_issue_comments, config.format_date, separator_width)
+	-- What the upper pane shows, for `o` to map the cursor line back to a comment
+	browser.thread_comment_ranges = result.comment_ranges
+	browser.thread_comments = M.find_thread_comments(entry, all_issue_comments)
 
 	-- Update upper buffer
 	if vim.api.nvim_buf_is_valid(browser.upper_buf) then
@@ -241,7 +283,7 @@ local function create_browser(entries, issue_comments)
 		border = border,
 		title = string.format(" Threads (%d) ", #entries),
 		title_pos = "center",
-		footer = " <CR> jump | R refresh | <Tab> switch | q close ",
+		footer = " <CR> jump | o open | R refresh | <Tab> switch | q close ",
 		footer_pos = "center",
 	})
 	vim.wo[left_win].cursorline = true
@@ -258,7 +300,7 @@ local function create_browser(entries, issue_comments)
 		border = border,
 		title = " Comments ",
 		title_pos = "center",
-		footer = " e edit | d delete | <Tab> switch | q close ",
+		footer = " e edit | d delete | o open | <Tab> switch | q close ",
 		footer_pos = "center",
 	})
 	vim.wo[upper_win].wrap = true
@@ -522,7 +564,7 @@ local function create_browser(entries, issue_comments)
 				-- The first surviving reply may have no line and thus no entry in
 				-- comment_map. Resolve from the selected thread, not the inline map.
 				local first = entry.comments[1]
-				local reply_target_id = require("fude.util").null_to(first.in_reply_to_id, first.id)
+				local reply_target_id = util.null_to(first.in_reply_to_id, first.id)
 				get_sync().reply_to_comment(reply_target_id, body, function(err)
 					if err then
 						vim.notify("fude.nvim: Reply failed: " .. err, vim.log.levels.ERROR)
@@ -719,6 +761,15 @@ local function create_browser(entries, issue_comments)
 		refresh()
 	end, { buffer = left_buf, desc = "Refresh" })
 
+	vim.keymap.set("n", "o", function()
+		local comment, url, reason = M.find_entry_open_target(current_entry(), state.pr_url)
+		if comment then
+			get_ui().open_comment_in_browser(comment)
+		else
+			util.open_url(url, reason)
+		end
+	end, { buffer = left_buf, desc = "Open thread on GitHub" })
+
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(upper_win) then
 			vim.api.nvim_set_current_win(upper_win)
@@ -740,6 +791,19 @@ local function create_browser(entries, issue_comments)
 			vim.api.nvim_set_current_win(left_win)
 		end
 	end, { buffer = upper_buf, desc = "Go to list pane" })
+
+	vim.keymap.set("n", "o", function()
+		local entry = current_entry()
+		if entry and entry.type == "draft" then
+			-- The pane previews the draft body, which has no GitHub page
+			local _, _, reason = M.find_entry_open_target(entry, state.pr_url)
+			util.open_url(nil, reason)
+			return
+		end
+		local line = vim.api.nvim_win_get_cursor(upper_win)[1] - 1
+		local index = format.find_comment_index_at_line(browser.thread_comment_ranges, line)
+		get_ui().open_comment_in_browser(index and (browser.thread_comments or {})[index] or nil)
+	end, { buffer = upper_buf, desc = "Open comment on GitHub" })
 
 	vim.keymap.set("n", "e", function()
 		local entry = current_entry()

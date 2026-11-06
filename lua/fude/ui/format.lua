@@ -466,10 +466,12 @@ end
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
 --- @param separator_width number|nil width of the separator between comments (see build_comment_separator)
---- @return table { lines: string[], hl_ranges: table[] }
+--- @return table { lines: string[], hl_ranges: table[], comment_ranges: table[] }
+---   comment_ranges: { start_line, end_line (0-indexed, header to last body line), index }
 function M.format_reply_comments_for_display(comments, format_date_fn, separator_width)
 	local lines = {}
 	local hl_ranges = {}
+	local comment_ranges = {}
 	for i, comment in ipairs(comments) do
 		local author = comment.user and comment.user.login or "unknown"
 		local created = format_date_fn(comment.created_at)
@@ -491,6 +493,7 @@ function M.format_reply_comments_for_display(comments, format_date_fn, separator
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
+		table.insert(comment_ranges, { start_line = header_line_idx, end_line = #lines - 1, index = i })
 
 		if i < #comments then
 			table.insert(lines, "")
@@ -498,19 +501,37 @@ function M.format_reply_comments_for_display(comments, format_date_fn, separator
 			table.insert(lines, "")
 		end
 	end
-	return { lines = lines, hl_ranges = hl_ranges }
+	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges }
+end
+
+--- Find the comment shown on a buffer line from the `comment_ranges` the
+--- format functions return. Lines outside every range (separators, headings,
+--- footers) belong to no comment. Pure.
+--- @param comment_ranges table[]|nil { start_line, end_line, index }, 0-indexed lines
+--- @param line number 0-indexed buffer line
+--- @return number|nil index into the formatted comment list
+function M.find_comment_index_at_line(comment_ranges, line)
+	for _, range in ipairs(comment_ranges or {}) do
+		if line >= range.start_line and line <= range.end_line then
+			return range.index
+		end
+	end
+	return nil
 end
 
 --- Build display lines for the left pane of PR overview (header, description, comments).
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
 --- @param format_date_fn fun(s: string): string
---- @return table { lines: string[], hl_ranges: table[], sections: table, comment_positions: number[] }
+--- @return table { lines: string[], hl_ranges: table[], sections: table, comment_positions: number[],
+---   comment_ranges: table[] } comment_positions are 1-indexed header lines; comment_ranges
+---   ({ start_line, end_line, index } into issue_comments) are 0-indexed like the other format functions
 function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	local lines = {}
 	local hl_ranges = {}
 	local sections = {}
 	local comment_positions = {}
+	local comment_ranges = {}
 
 	-- author can be JSON null, which decodes to truthy vim.NIL
 	local author = type(pr_info.author) == "table" and pr_info.author.login or nil
@@ -599,7 +620,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	if #issue_comments == 0 then
 		table.insert(lines, "(no comments)")
 	else
-		for _, comment in ipairs(issue_comments) do
+		for i, comment in ipairs(issue_comments) do
 			local comment_author = comment.user and comment.user.login or "unknown"
 			local created = format_date_fn(comment.created_at)
 			table.insert(lines, "")
@@ -607,10 +628,12 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 			table.insert(lines, header)
 			table.insert(comment_positions, #lines) -- 1-indexed header line
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
+			local start_line = #lines - 1
 			local comment_body = M.normalize_newlines(comment.body)
 			for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 				table.insert(lines, body_line)
 			end
+			table.insert(comment_ranges, { start_line = start_line, end_line = #lines - 1, index = i })
 		end
 	end
 
@@ -618,11 +641,17 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn)
 	table.insert(lines, "")
 	table.insert(
 		lines,
-		" ]s/[s: sections  ]c/[c: comments  C: comment  r: re-request  za: fold  R: refresh  <Tab>: switch  q: close"
+		" ]s/[s: sections  ]c/[c: comments  o: open  C: comment  r: re-request  za: fold  R: refresh  <Tab>: switch  q: close"
 	)
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
-	return { lines = lines, hl_ranges = hl_ranges, sections = sections, comment_positions = comment_positions }
+	return {
+		lines = lines,
+		hl_ranges = hl_ranges,
+		sections = sections,
+		comment_positions = comment_positions,
+		comment_ranges = comment_ranges,
+	}
 end
 
 --- Build display lines for the right pane of PR overview (reviewers, assignees, labels, CI status).
