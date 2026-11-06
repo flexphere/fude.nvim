@@ -1347,8 +1347,10 @@ Options:
                   circles with ImageMagick (`magick` or `convert`),
                   each centered on a transparent canvas so the circle
                   takes 80% of the cell height; square and full-size
-                  without ImageMagick. Copilot code review shows its
-                  GitHub App icon; other bots have no avatar. A no-op when snacks.nvim is missing or the
+                  without ImageMagick. Bots (Copilot code review,
+                  devin-ai-integration, …) show their GitHub App
+                  icon, looked up once through `gh api
+                  users/<name>[bot]`. A no-op when snacks.nvim is missing or the
                   terminal is unsupported.
 
 `overview.marks`    Table mapping section names to mark characters

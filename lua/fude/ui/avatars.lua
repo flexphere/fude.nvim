@@ -27,35 +27,84 @@ M._dir = nil
 --- the icon of its GitHub App, which `github.com/<login>.png` does not serve.
 M.COPILOT_AVATAR_URL = "https://avatars.githubusercontent.com/in/946600?v=4&s=" .. M.SIZE
 
---- The avatar URL of a user login: GitHub serves `github.com/<login>.png`
---- for users, and Copilot (either login form) has its App's icon. Other bots
---- (`[bot]` logins) and anything that is not a plain login get nil, since no
---- image lives at that address.
+--- Split a login as the GitHub data spells it into the account name and
+--- whether it is a bot: REST spells bots `<name>[bot]`, gh's `author` field
+--- `app/<name>`, and GraphQL review authors the bare `<name>` (which cannot be
+--- told from a user's login, so it counts as a user until its image is
+--- looked up). Pure.
+--- @param login any
+--- @return string|nil name nil when not a login
+--- @return boolean is_bot
+function M.parse_login(login)
+	if type(login) ~= "string" then
+		return nil, false
+	end
+	local name, is_bot = login, false
+	local app = name:match("^app/(.+)$")
+	if app then
+		name, is_bot = app, true
+	end
+	local bot = name:match("^(.+)%[bot%]$")
+	if bot then
+		name, is_bot = bot, true
+	end
+	if not name:match("^[%w%-]+$") then
+		return nil, false
+	end
+	return name, is_bot
+end
+
+--- The avatar URL of a login that needs no lookup: Copilot (either login
+--- form) has its App's icon, and a user's image is served at
+--- `github.com/<login>.png`. Other bots get nil: their image lives at their
+--- App's address, which `user_api_path` looks up.
 --- @param login any
 --- @return string|nil
 function M.build_avatar_url(login)
-	if type(login) ~= "string" then
+	local name, is_bot = M.parse_login(login)
+	if not name then
 		return nil
 	end
-	if require("fude.ui.format").is_copilot_login(login) then
+	if require("fude.ui.format").is_copilot_login(name) then
 		return M.COPILOT_AVATAR_URL
 	end
-	if not login:match("^[%w%-]+$") then
+	if is_bot then
 		return nil
 	end
-	return "https://github.com/" .. login .. ".png?size=" .. M.SIZE
+	return "https://github.com/" .. name .. ".png?size=" .. M.SIZE
+end
+
+--- The REST path (`users/<name>[bot]`, brackets encoded) whose `avatar_url`
+--- is the image of the bot named like `login`. Pure.
+--- @param login any
+--- @return string|nil
+function M.bot_api_path(login)
+	local name = M.parse_login(login)
+	if not name then
+		return nil
+	end
+	return "users/" .. name .. "%5Bbot%5D"
+end
+
+--- `avatar_url` from the API at the size the other avatars use. Pure.
+--- @param url string
+--- @return string
+function M.sized_avatar_url(url)
+	return url .. (url:find("?", 1, true) and "&" or "?") .. "s=" .. M.SIZE
 end
 
 --- File name (without extension) a login's avatar is cached under: the
---- login, or `copilot` for either Copilot login form, so the GraphQL and REST
---- logins share one file and no `[bot]` brackets reach the file system.
+--- account name, so every spelling of one account (`<name>`, `<name>[bot]`,
+--- `app/<name>`) shares one file and no brackets or slashes reach the file
+--- system; `copilot` for Copilot.
 --- @param login string
 --- @return string
 function M.cache_name(login)
-	if require("fude.ui.format").is_copilot_login(login) then
+	local name = M.parse_login(login) or login
+	if require("fude.ui.format").is_copilot_login(name) then
 		return "copilot"
 	end
-	return login
+	return name
 end
 
 --- @return string
@@ -169,6 +218,29 @@ end
 -- Callbacks waiting for a login whose download is in flight, so one avatar
 -- shown several times (author and reviewer) is fetched once.
 local in_flight = {}
+-- Accounts with no image found this session, so they are not looked up on
+-- every overview.
+local missing = {}
+
+--- Forget the accounts found without an image (tests).
+function M._reset_missing()
+	missing = {}
+end
+
+--- Look the image URL of the bot named like `login` up through the API
+--- (`gh api users/<name>[bot]`). `cb` gets nil when there is none.
+--- @param login string
+--- @param cb fun(url: string|nil)
+function M.lookup_bot_avatar(login, cb)
+	local path = M.bot_api_path(login)
+	if not path then
+		return cb(nil)
+	end
+	require("fude.gh").run({ "api", path, "--jq", ".avatar_url" }, function(err, out)
+		local url = not err and type(out) == "string" and vim.trim(out) or ""
+		cb(url:match("^https://") and M.sized_avatar_url(url) or nil)
+	end)
+end
 
 --- Get the local file of a login's avatar, downloading and rounding it when
 --- it is not cached yet. `cb` gets nil when there is no avatar (a bot) or the
@@ -176,10 +248,11 @@ local in_flight = {}
 --- @param login string
 --- @param cb fun(path: string|nil)
 function M.fetch(login, cb)
-	local url = M.build_avatar_url(login)
-	if not url then
+	local name, is_bot = M.parse_login(login)
+	if not name then
 		return cb(nil)
 	end
+	local url = M.build_avatar_url(login)
 	local exe = M.find_magick()
 	local square, round = M.cache_path(login, false), M.cache_path(login, true)
 	if exe and exists(round) then
@@ -189,12 +262,18 @@ function M.fetch(login, cb)
 		return cb(square)
 	end
 	local key = M.cache_name(login)
+	if missing[key] then
+		return cb(nil)
+	end
 	if in_flight[key] then
 		table.insert(in_flight[key], cb)
 		return
 	end
 	in_flight[key] = { cb }
 	local function finish(path)
+		if not path then
+			missing[key] = true
+		end
 		local callbacks = in_flight[key]
 		in_flight[key] = nil
 		for _, f in ipairs(callbacks) do
@@ -217,12 +296,37 @@ function M.fetch(login, cb)
 	-- Downloaded next to its final name, so a cut-off transfer never passes
 	-- for a cached avatar.
 	local part = square .. ".part"
-	M.run({ "curl", "-fsSL", "--max-time", "15", "-o", part, url }, function(ok)
-		if not ok or not os.rename(part, square) then
-			os.remove(part)
+	local function download(from, on_fail)
+		M.run({ "curl", "-fsSL", "--max-time", "15", "-o", part, from }, function(ok)
+			if not ok or not os.rename(part, square) then
+				os.remove(part)
+				return on_fail()
+			end
+			round_it()
+		end)
+	end
+	local function from_bot_lookup()
+		M.lookup_bot_avatar(login, function(bot_url)
+			if not bot_url then
+				return finish(nil)
+			end
+			download(bot_url, function()
+				finish(nil)
+			end)
+		end)
+	end
+	if not url then
+		-- A bot: its image is at its App's address
+		return from_bot_lookup()
+	end
+	download(url, function()
+		-- A bare name with nothing at github.com/<name>.png is a bot as
+		-- GraphQL spells it (`devin-ai-integration`); Copilot has nothing to
+		-- fall back to.
+		if is_bot or url == M.COPILOT_AVATAR_URL then
 			return finish(nil)
 		end
-		round_it()
+		from_bot_lookup()
 	end)
 end
 

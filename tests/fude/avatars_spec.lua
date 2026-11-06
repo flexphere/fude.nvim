@@ -20,8 +20,26 @@ describe("avatars.build_avatar_url", function()
 		)
 	end)
 
-	it("has none for other bots and anything but a plain login", function()
+	it("parses every spelling of a bot login to its name", function()
+		assert.are.same({ "devin-ai-integration", true }, { avatars.parse_login("devin-ai-integration[bot]") })
+		assert.are.same({ "devin-ai-integration", true }, { avatars.parse_login("app/devin-ai-integration") })
+		-- GraphQL's bare bot name cannot be told from a user's login
+		assert.are.same({ "devin-ai-integration", false }, { avatars.parse_login("devin-ai-integration") })
+		assert.are.same({ nil, false }, { avatars.parse_login("a b") })
+		assert.are.equal("devin-ai-integration", avatars.cache_name("app/devin-ai-integration"))
+		assert.are.equal("devin-ai-integration", avatars.cache_name("devin-ai-integration[bot]"))
+		assert.are.equal("users/devin-ai-integration%5Bbot%5D", avatars.bot_api_path("devin-ai-integration"))
+		assert.are.equal("users/devin-ai-integration%5Bbot%5D", avatars.bot_api_path("app/devin-ai-integration"))
+		assert.are.equal(
+			"https://avatars.githubusercontent.com/in/1?v=4&s=" .. avatars.SIZE,
+			avatars.sized_avatar_url("https://avatars.githubusercontent.com/in/1?v=4")
+		)
+		assert.are.equal("https://x/a?s=" .. avatars.SIZE, avatars.sized_avatar_url("https://x/a"))
+	end)
+
+	it("leaves a bot's URL to the API lookup, and has none for anything but a login", function()
 		assert.is_nil(avatars.build_avatar_url("dependabot[bot]"))
+		assert.is_nil(avatars.build_avatar_url("app/dependabot"))
 		assert.is_nil(avatars.build_avatar_url("a b"))
 		assert.is_nil(avatars.build_avatar_url("../etc"))
 		assert.is_nil(avatars.build_avatar_url(""))
@@ -139,6 +157,7 @@ describe("avatars.fetch", function()
 		tmp = vim.fn.tempname()
 		vim.fn.mkdir(tmp, "p")
 		avatars._dir = tmp
+		avatars._reset_missing()
 		helpers.mock(avatars, "find_magick", function()
 			return "magick"
 		end)
@@ -148,6 +167,78 @@ describe("avatars.fetch", function()
 		avatars._dir = nil
 		vim.fn.delete(tmp, "rf")
 		helpers.cleanup()
+	end)
+
+	it("downloads a bot's image from the URL the API gives", function()
+		local looked_up = {}
+		helpers.mock(avatars, "lookup_bot_avatar", function(login, cb)
+			table.insert(looked_up, login)
+			cb("https://avatars.githubusercontent.com/in/1?v=4&s=64")
+		end)
+		local write = function(cmd)
+			vim.fn.writefile({ "png" }, output_of(cmd))
+			return true
+		end
+		mock_run({ write, write })
+		local got
+		avatars.fetch("devin-ai-integration[bot]", function(path)
+			got = path
+		end)
+		assert.is_true(helpers.wait_for(function()
+			return got ~= nil
+		end))
+		assert.are.same({ "devin-ai-integration[bot]" }, looked_up)
+		assert.are.equal("https://avatars.githubusercontent.com/in/1?v=4&s=64", runs[1][#runs[1]])
+		assert.are.equal(avatars.cache_path("devin-ai-integration", true), got)
+	end)
+
+	it("falls back to the bot lookup when a bare name has no user image, once per session", function()
+		local looked_up = 0
+		helpers.mock(avatars, "lookup_bot_avatar", function(_, cb)
+			looked_up = looked_up + 1
+			cb("https://avatars.githubusercontent.com/in/2?v=4&s=64")
+		end)
+		local write = function(cmd)
+			vim.fn.writefile({ "png" }, output_of(cmd))
+			return true
+		end
+		-- github.com/<name>.png fails, the App image succeeds
+		mock_run({
+			function()
+				return false
+			end,
+			write,
+			write,
+		})
+		local got
+		avatars.fetch("devin-ai-integration", function(path)
+			got = path
+		end)
+		assert.is_true(helpers.wait_for(function()
+			return got ~= nil
+		end))
+		assert.are.equal(1, looked_up)
+		assert.truthy(runs[1][#runs[1]]:find("github.com/devin-ai-integration.png", 1, true))
+		assert.are.equal("https://avatars.githubusercontent.com/in/2?v=4&s=64", runs[2][#runs[2]])
+
+		-- An account with no image at all is not looked up again
+		helpers.mock(avatars, "lookup_bot_avatar", function(_, cb)
+			looked_up = looked_up + 1
+			cb(nil)
+		end)
+		mock_run({})
+		local done = 0
+		for _ = 1, 2 do
+			avatars.fetch("ghost-account", function(path)
+				assert.is_nil(path)
+				done = done + 1
+			end)
+			assert.is_true(helpers.wait_for(function()
+				return done > 0
+			end))
+		end
+		assert.are.equal(2, looked_up)
+		assert.are.equal(1, #runs)
 	end)
 
 	it("downloads with curl, rounds with ImageMagick, and caches the round file", function()
@@ -226,7 +317,12 @@ describe("avatars.fetch", function()
 		assert.are.equal(1, #runs)
 	end)
 
-	it("answers nil for a failed download, a bot, and never leaves a partial file", function()
+	it("answers nil for a failed download, a bot without an image, and never leaves a partial file", function()
+		local looked_up = {}
+		helpers.mock(avatars, "lookup_bot_avatar", function(login, cb)
+			table.insert(looked_up, login)
+			cb(nil)
+		end)
 		mock_run({
 			function()
 				return false
@@ -249,6 +345,8 @@ describe("avatars.fetch", function()
 		end)
 		assert.is_true(bot_done)
 		assert.is_nil(bot_got)
+		-- Nothing downloaded for either once the lookups found no image
+		assert.are.same({ "alice", "dependabot[bot]" }, looked_up)
 		assert.are.equal(1, #runs)
 	end)
 

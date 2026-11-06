@@ -1124,7 +1124,7 @@ describe("overview avatar positions", function()
 			-- The column sits right after the symbol and its space
 			assert.are.equal("@" .. p.login, result.lines[p.line + 1]:sub(p.col + 1, p.col + #p.login + 1))
 		end
-		assert.are.same({ "✓ @alice  approved", "● @carol  pending" }, lines)
+		assert.are.same({ "✓  @alice  approved", "●  @carol  pending" }, lines)
 	end)
 end)
 
@@ -1882,6 +1882,33 @@ describe("format_toggle_entry", function()
 			ui.format_toggle_entry("@alice", "✓", "last review: approved")
 		)
 		assert.are.equal("○ docs", ui.format_toggle_entry("docs", "○", ""))
+	end)
+end)
+
+describe("pad_status_mark", function()
+	it("pads every reviewer status mark to two cells", function()
+		assert.are.equal("💬", ui.pad_status_mark("💬"))
+		for _, mark in ipairs({ "●", "✓", "✗", "-", "↻", "○", "?" }) do
+			assert.are.equal(mark .. " ", ui.pad_status_mark(mark))
+			assert.are.equal(ui.STATUS_MARK_WIDTH, vim.fn.strdisplaywidth(ui.pad_status_mark(mark)))
+		end
+		assert.are.equal(ui.STATUS_MARK_WIDTH, vim.fn.strdisplaywidth("💬"))
+	end)
+
+	it("lines the reviewer names up in the overview's right pane", function()
+		local result = ui.build_overview_right_lines({
+			reviewRequests = { { login = "bob" } },
+			latestReviews = { { author = { login = "alice" }, state = "COMMENTED" } },
+		})
+		local cols = {}
+		for _, line in ipairs(result.lines) do
+			local at = line:find("@", 1, true)
+			if at then
+				table.insert(cols, vim.fn.strdisplaywidth(line:sub(1, at - 1)))
+			end
+		end
+		assert.are.equal(2, #cols)
+		assert.are.equal(cols[1], cols[2])
 	end)
 end)
 

@@ -281,6 +281,22 @@ function M.format_review_status(state)
 	return "?", "Comment"
 end
 
+--- Display width (cells) every reviewer status mark is padded to, so the
+--- names after the marks line up: `💬` takes two cells, the others one.
+M.STATUS_MARK_WIDTH = 2
+local WIDE_STATUS_MARKS = { ["💬"] = true }
+
+--- Pad a reviewer status mark (`format_review_status`, `format_reviewer_mark`)
+--- with spaces to STATUS_MARK_WIDTH cells. Pure.
+--- @param mark string
+--- @return string
+function M.pad_status_mark(mark)
+	if WIDE_STATUS_MARKS[mark] then
+		return mark
+	end
+	return mark .. string.rep(" ", M.STATUS_MARK_WIDTH - 1)
+end
+
 --- Build a unified list of reviewers from review requests and latest reviews.
 --- Reviewers who appear in both lists use the latestReviews state.
 --- @param review_requests table[] reviewRequests from gh pr view (each has login)
@@ -999,6 +1015,7 @@ function M.build_overview_right_lines(pr_info)
 	else
 		for _, reviewer in ipairs(reviewers) do
 			local symbol, hl = M.format_review_status(reviewer.state)
+			symbol = M.pad_status_mark(symbol)
 			table.insert(lines, string.format("%s @%s  %s", symbol, reviewer.login, reviewer.state:lower()))
 			table.insert(hl_ranges, { line = #lines - 1, hl = hl })
 			table.insert(avatar_positions, { line = #lines - 1, col = #symbol + 1, login = reviewer.login })
