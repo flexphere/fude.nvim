@@ -473,7 +473,8 @@ File opening position                                 *fude-file-position*
     state, e.g. `### @alice  2024-01-01 [approved]`.
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
-    pass/fail indicators and a summary count. Labels are laid out side
+    pass/fail indicators and a summary count. Labels, in the order the
+    GitHub PR page shows them, are laid out side
     by side, wrapped at the pane width, each as a pill filled with its
     repository colour, with
     rounded ends (Nerd Font glyphs) and its name in bold. With a dark
