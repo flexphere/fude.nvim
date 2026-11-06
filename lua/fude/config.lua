@@ -140,6 +140,7 @@ M.defaults = {
 			change_base = "b", -- Local review only: pick a new base branch
 			toggle_commit_message = "m", -- Expand/collapse a commit message longer than max_lines
 			copy_path = "y", -- Copy a file name/path, a commit hash/title/message, or a branch
+			open_in_browser = "o", -- GitHub review only: open the commit (or the PR, on Entire PR) on GitHub
 			help = "?", -- Show the side panel's configured keymaps
 		},
 	},
