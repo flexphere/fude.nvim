@@ -3093,3 +3093,174 @@ describe("comment_badges review_state", function()
 		assert.are.equal("@alice (2024-01-01): [approved]", result.lines[1])
 	end)
 end)
+
+describe("comment_ranges for the o key", function()
+	local identity = function(s)
+		return s or ""
+	end
+
+	it("format_reply_comments_for_display covers each header and body, not the separator", function()
+		local comments = {
+			{ user = { login = "a" }, created_at = "t", body = "one\ntwo" },
+			{ user = { login = "b" }, created_at = "t", body = "three" },
+		}
+		local result = format.format_reply_comments_for_display(comments, identity)
+		-- lines: 0 header a, 1 one, 2 two, 3 "", 4 separator, 5 "", 6 header b, 7 three
+		assert.are.same({
+			{ start_line = 0, end_line = 2, index = 1 },
+			{ start_line = 6, end_line = 7, index = 2 },
+		}, result.comment_ranges)
+	end)
+
+	it("build_overview_left_lines covers each comment block and nothing in the body or footer", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "u", body = "body" }
+		local issue_comments = {
+			{ user = { login = "a" }, created_at = "t", body = "c1\nc1b" },
+			{ user = { login = "b" }, created_at = "t", body = "c2" },
+		}
+		local result = format.build_overview_left_lines(pr, issue_comments, identity)
+		assert.are.equal(2, #result.comment_ranges)
+		for i, range in ipairs(result.comment_ranges) do
+			assert.are.equal(i, range.index)
+			-- start_line is the header, which comment_positions reports 1-indexed
+			assert.are.equal(result.comment_positions[i] - 1, range.start_line)
+		end
+		assert.are.equal("c1b", result.lines[result.comment_ranges[1].end_line + 1])
+		assert.are.equal("c2", result.lines[result.comment_ranges[2].end_line + 1])
+		local body_line = result.sections.description - 1
+		assert.is_nil(format.find_comment_index_at_line(result.comment_ranges, body_line))
+		assert.is_nil(format.find_comment_index_at_line(result.comment_ranges, #result.lines - 1))
+	end)
+
+	it("build_overview_left_lines returns no ranges without comments", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "u" }
+		assert.are.same({}, format.build_overview_left_lines(pr, {}, identity).comment_ranges)
+	end)
+
+	it("find_comment_index_at_line maps lines inside a range and nil elsewhere", function()
+		local ranges = { { start_line = 0, end_line = 2, index = 1 }, { start_line = 6, end_line = 7, index = 2 } }
+		assert.are.equal(1, format.find_comment_index_at_line(ranges, 0))
+		assert.are.equal(1, format.find_comment_index_at_line(ranges, 2))
+		assert.is_nil(format.find_comment_index_at_line(ranges, 4))
+		assert.are.equal(2, format.find_comment_index_at_line(ranges, 7))
+		assert.is_nil(format.find_comment_index_at_line(ranges, 8))
+		assert.is_nil(format.find_comment_index_at_line(nil, 0))
+	end)
+end)
+
+describe("o key in the comment viewer and PR overview", function()
+	local helpers = require("tests.helpers")
+	local config = require("fude.config")
+	local opened, notified
+
+	local function press(buf, key)
+		for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+			if map.lhs == key then
+				map.callback()
+				return
+			end
+		end
+		error("Missing mapping: " .. key)
+	end
+
+	before_each(function()
+		config.setup({})
+		opened, notified = {}, {}
+		helpers.mock(vim.ui, "open", function(url)
+			table.insert(opened, url)
+			return {}, nil
+		end)
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(notified, msg)
+		end)
+	end)
+
+	after_each(function()
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			-- Closing one overview pane closes its partner through WinClosed
+			if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative ~= "" then
+				pcall(vim.api.nvim_win_close, win, true)
+			end
+		end
+		helpers.cleanup()
+	end)
+
+	it("viewer opens the comment under the cursor and keeps the float open", function()
+		local comments = {
+			{ id = 1, user = { login = "a" }, created_at = "", body = "first", html_url = "https://gh/1" },
+			{ id = 2, user = { login = "b" }, created_at = "", body = "second", html_url = "https://gh/2" },
+		}
+		ui.show_comments_float(comments)
+		local win = vim.api.nvim_get_current_win()
+		local buf = vim.api.nvim_win_get_buf(win)
+		vim.api.nvim_win_set_cursor(win, { 1, 0 })
+		press(buf, "o")
+		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+		vim.api.nvim_win_set_cursor(win, { #lines, 0 })
+		press(buf, "o")
+		assert.are.same({ "https://gh/1", "https://gh/2" }, opened)
+		assert.is_true(vim.api.nvim_win_is_valid(win))
+		-- the separator between the comments belongs to neither (e/d/R would
+		-- fall back to the last comment; o must not open its page)
+		local sep
+		for i, l in ipairs(lines) do
+			if l:match("^%-%-%-") then
+				sep = i
+			end
+		end
+		vim.api.nvim_win_set_cursor(win, { sep, 0 })
+		press(buf, "o")
+		assert.are.same({ "https://gh/1", "https://gh/2" }, opened)
+		assert.are.same({ "fude.nvim: No comment under cursor" }, notified)
+	end)
+
+	it("viewer refuses a pending comment and a local review comment", function()
+		config.state.pending_review_id = 9
+		ui.show_comments_float({
+			{
+				id = 1,
+				user = { login = "a" },
+				created_at = "",
+				body = "p",
+				html_url = "https://gh/1",
+				pull_request_review_id = 9,
+			},
+		})
+		press(vim.api.nvim_get_current_buf(), "o")
+		config.state.pending_review_id = nil
+		config.state.review_mode = "local"
+		ui.show_comments_float({ { id = "x", user = { login = "a" }, created_at = "", body = "l" } })
+		press(vim.api.nvim_get_current_buf(), "o")
+		assert.are.same({}, opened)
+		assert.are.same({
+			"fude.nvim: Pending comments are not published on GitHub until the review is submitted",
+			"fude.nvim: Local review comments are not on GitHub",
+		}, notified)
+	end)
+
+	it("overview opens a comment on its lines, the PR elsewhere, and the PR from the right pane", function()
+		local pr_info = { number = 1, title = "T", state = "OPEN", url = "https://gh/pull/1", body = "body text" }
+		local issue_comments = {
+			{ id = 5, user = { login = "a" }, created_at = "", body = "conv", html_url = "https://gh/pull/1#c5" },
+		}
+		ui.show_overview_float(pr_info, issue_comments, {})
+		local left_win = vim.api.nvim_get_current_win()
+		local left_buf = vim.api.nvim_win_get_buf(left_win)
+		local lines = vim.api.nvim_buf_get_lines(left_buf, 0, -1, false)
+		local function line_of(text)
+			for i, l in ipairs(lines) do
+				if l == text then
+					return i
+				end
+			end
+			error("no line " .. text)
+		end
+		vim.api.nvim_win_set_cursor(left_win, { line_of("body text"), 0 })
+		press(left_buf, "o")
+		vim.api.nvim_win_set_cursor(left_win, { line_of("conv"), 0 })
+		press(left_buf, "o")
+		press(left_buf, "<Tab>")
+		press(vim.api.nvim_get_current_buf(), "o")
+		assert.are.same({ "https://gh/pull/1", "https://gh/pull/1#c5", "https://gh/pull/1" }, opened)
+	end)
+end)

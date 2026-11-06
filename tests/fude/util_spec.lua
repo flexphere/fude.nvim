@@ -109,3 +109,55 @@ describe("all_comments_resolved", function()
 		assert.is_false(util.all_comments_resolved({ {}, {} }))
 	end)
 end)
+
+describe("open_url", function()
+	local helpers = require("tests.helpers")
+	local opened, notified
+	before_each(function()
+		opened, notified = {}, {}
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notified, { msg = msg, level = level })
+		end)
+	end)
+	after_each(function()
+		helpers.restore_all()
+	end)
+
+	it("opens the URL with vim.ui.open", function()
+		helpers.mock(vim.ui, "open", function(url)
+			table.insert(opened, url)
+			return {}, nil
+		end)
+		assert.is_true(util.open_url("https://github.com/o/r/pull/1"))
+		assert.are.same({ "https://github.com/o/r/pull/1" }, opened)
+		assert.are.same({}, notified)
+	end)
+
+	it("shows the reason as INFO and opens nothing without a URL", function()
+		helpers.mock(vim.ui, "open", function(url)
+			table.insert(opened, url)
+		end)
+		assert.is_false(util.open_url(nil, "Local review comments are not on GitHub"))
+		assert.is_false(util.open_url(""))
+		assert.are.same({}, opened)
+		assert.are.same({
+			{ msg = "fude.nvim: Local review comments are not on GitHub", level = vim.log.levels.INFO },
+			{ msg = "fude.nvim: Nothing to open in the browser", level = vim.log.levels.INFO },
+		}, notified)
+	end)
+
+	it("reports an ERROR when vim.ui.open returns an error or throws", function()
+		helpers.mock(vim.ui, "open", function()
+			return nil, "no handler"
+		end)
+		assert.is_false(util.open_url("https://x"))
+		helpers.mock(vim.ui, "open", function()
+			error("boom")
+		end)
+		assert.is_false(util.open_url("https://y"))
+		assert.are.equal(2, #notified)
+		assert.are.equal("fude.nvim: Failed to open https://x: no handler", notified[1].msg)
+		assert.are.equal(vim.log.levels.ERROR, notified[1].level)
+		assert.truthy(notified[2].msg:find("Failed to open https://y: .*boom"))
+	end)
+end)

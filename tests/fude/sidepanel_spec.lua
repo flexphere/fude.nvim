@@ -1116,3 +1116,40 @@ describe("build_split_config", function()
 		assert.are.equal(50, sidepanel.build_split_config("left", 50, 20, 3).win_config.width)
 	end)
 end)
+
+describe("build_scope_url", function()
+	local pr_url = "https://github.com/o/r/pull/1"
+	local function scope(entry)
+		return { type = "scope", entry = entry }
+	end
+
+	it("opens the PR on the Entire PR row", function()
+		assert.are.equal(pr_url, sidepanel.build_scope_url(scope({ is_full_pr = true }), pr_url, "github"))
+	end)
+
+	it("opens the commit inside the PR on a commit row, without a doubled slash", function()
+		local entry = scope({ is_full_pr = false, sha = "abc123" })
+		assert.are.equal(pr_url .. "/commits/abc123", sidepanel.build_scope_url(entry, pr_url, "github"))
+		assert.are.equal(pr_url .. "/commits/abc123", sidepanel.build_scope_url(entry, pr_url .. "/", "github"))
+	end)
+
+	it("refuses local review scopes", function()
+		local got, reason = sidepanel.build_scope_url(scope({ sha = "abc123", local_scope = "commit" }), pr_url, "local")
+		assert.is_nil(got)
+		assert.are.equal("Local review scopes are not on GitHub", reason)
+	end)
+
+	it("refuses without a PR URL", function()
+		assert.are.same(
+			{ nil, "No PR URL to open" },
+			{ sidepanel.build_scope_url(scope({ is_full_pr = true }), nil, "github") }
+		)
+	end)
+
+	it("refuses file rows, no entry, and a scope row without a sha", function()
+		local reason = "No commit under cursor"
+		assert.are.same({ nil, reason }, { sidepanel.build_scope_url({ type = "file", entry = {} }, pr_url, "github") })
+		assert.are.same({ nil, reason }, { sidepanel.build_scope_url(nil, pr_url, "github") })
+		assert.are.same({ nil, reason }, { sidepanel.build_scope_url(scope({ is_full_pr = false }), pr_url, "github") })
+	end)
+end)

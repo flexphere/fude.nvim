@@ -112,3 +112,133 @@ describe("comment browser independent threads", function()
 		end)
 	end
 end)
+
+describe("comment browser o key", function()
+	local opened, notified
+	before_each(function()
+		config.setup({ drafts = { enabled = false } })
+		config.state.active = true
+		config.state.review_mode = "github"
+		config.state.pr_number = 42
+		config.state.pr_url = "https://gh/pull/42"
+		config.state.comments = {
+			{ id = 1, path = "a.lua", line = 3, body = "root", created_at = "2026-01-01", html_url = "https://gh/r1" },
+			{
+				id = 2,
+				in_reply_to_id = 1,
+				path = "a.lua",
+				line = 3,
+				body = "reply",
+				created_at = "2026-01-02",
+				html_url = "https://gh/r2",
+			},
+		}
+		config.state.comment_map = data.build_comment_map(config.state.comments)
+		opened, notified = {}, {}
+		helpers.mock(require("fude.diff"), "get_repo_root", function()
+			return "/repo"
+		end)
+		helpers.mock(require("fude.comments.sync"), "fetch_pr_level_comments", function(_, cb)
+			cb({ { id = 9, body = "issue", created_at = "2025-12-01", html_url = "https://gh/i9" } })
+		end)
+		helpers.mock(vim.ui, "open", function(url)
+			table.insert(opened, url)
+			return {}, nil
+		end)
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(notified, msg)
+		end)
+	end)
+
+	after_each(function()
+		browser_mod.close()
+		helpers.cleanup()
+	end)
+
+	it("opens the thread root from the list and the comment under the cursor from the thread pane", function()
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		assert.are.equal("review", browser.entries[1].type)
+		press(browser.left_buf, "o")
+		local lines = vim.api.nvim_buf_get_lines(browser.upper_buf, 0, -1, false)
+		vim.api.nvim_win_set_cursor(browser.upper_win, { #lines, 0 })
+		press(browser.upper_buf, "o")
+		-- the separator between the two comments belongs to neither
+		vim.api.nvim_win_set_cursor(browser.upper_win, { #lines - 2, 0 })
+		press(browser.upper_buf, "o")
+		assert.are.same({ "https://gh/r1", "https://gh/r2" }, opened)
+		assert.are.same({ "fude.nvim: No comment under cursor" }, notified)
+	end)
+
+	it("opens the PR from the PR-level row and the PR-level comment from the thread pane", function()
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		vim.api.nvim_set_current_win(browser.left_win)
+		vim.api.nvim_win_set_cursor(browser.left_win, { 2, 0 })
+		vim.api.nvim_exec_autocmds("CursorMoved", { buffer = browser.left_buf })
+		assert.are.equal("issue", browser.entries[2].type)
+		press(browser.left_buf, "o")
+		vim.api.nvim_win_set_cursor(browser.upper_win, { 1, 0 })
+		press(browser.upper_buf, "o")
+		assert.are.same({ "https://gh/pull/42", "https://gh/i9" }, opened)
+	end)
+
+	it("opens nothing for a draft row from either pane and says why", function()
+		helpers.mock(require("fude.drafts"), "list_drafts", function()
+			return {
+				{
+					key = "k",
+					kind = "line",
+					body = "draft body",
+					saved_at = "2027-01-01T00:00:00Z",
+					path = "b.lua",
+					end_line = 1,
+				},
+			}
+		end)
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		local idx
+		for i, e in ipairs(browser.entries) do
+			if e.type == "draft" then
+				idx = i
+			end
+		end
+		vim.api.nvim_set_current_win(browser.left_win)
+		vim.api.nvim_win_set_cursor(browser.left_win, { idx, 0 })
+		vim.api.nvim_exec_autocmds("CursorMoved", { buffer = browser.left_buf })
+		press(browser.left_buf, "o")
+		vim.api.nvim_win_set_cursor(browser.upper_win, { 3, 0 })
+		press(browser.upper_buf, "o")
+		assert.are.same({}, opened)
+		local reason = "fude.nvim: Drafts are not on GitHub until they are submitted"
+		assert.are.same({ reason, reason }, notified)
+	end)
+end)
+
+describe("comment browser open helpers", function()
+	it("find_entry_open_target picks the thread root, the PR, or explains a draft", function()
+		local root = { id = 1 }
+		assert.are.equal(root, (browser_mod.find_entry_open_target({ type = "review", comments = { root, { id = 2 } } })))
+		assert.are.same({ nil, "u", nil }, { browser_mod.find_entry_open_target({ type = "issue" }, "u") })
+		assert.are.same({ nil, nil, "No PR URL to open" }, { browser_mod.find_entry_open_target({ type = "issue" }, nil) })
+		assert.are.same(
+			{ nil, nil, "Drafts are not on GitHub until they are submitted" },
+			{ browser_mod.find_entry_open_target({ type = "draft", kind = "line" }, "u") }
+		)
+		assert.are.same({ nil, nil, "No thread under cursor" }, { browser_mod.find_entry_open_target(nil, "u") })
+		assert.are.same(
+			{ nil, nil, "No comment under cursor" },
+			{ browser_mod.find_entry_open_target({ type = "review", comments = {} }, "u") }
+		)
+	end)
+
+	it("find_thread_comments lists what the thread pane shows", function()
+		local c = { { id = 1 } }
+		local issues = { { id = 9 } }
+		assert.are.equal(c, browser_mod.find_thread_comments({ type = "review", comments = c }, issues))
+		assert.are.equal(issues, browser_mod.find_thread_comments({ type = "issue" }, issues))
+		assert.are.same({}, browser_mod.find_thread_comments({ type = "draft" }, issues))
+		assert.are.same({}, browser_mod.find_thread_comments(nil, issues))
+	end)
+end)
