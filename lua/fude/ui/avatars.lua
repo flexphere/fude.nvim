@@ -180,8 +180,10 @@ end
 
 --- The kinds of avatars `overview.avatars` turns on one by one: the PR
 --- author (frontmatter), the reviewers (right pane and reviewer picker), the
---- assignees (right pane) and the authors of the PR-level comments.
-M.KINDS = { "author", "reviewers", "assignees", "comments" }
+--- assignees (right pane), the authors of the PR-level comments, and the
+--- comment authors of the comment viewer, the reply/edit window and the
+--- comment browser's thread pane.
+M.KINDS = { "author", "reviewers", "assignees", "comments", "comment_threads" }
 
 --- Whether the `overview.avatars` setting turns on the avatars of `kind`:
 --- `true` turns on every kind, a table each kind whose key is `true`;

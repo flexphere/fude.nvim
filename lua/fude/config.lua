@@ -46,6 +46,9 @@ M.defaults = {
 			reviewers = false, -- reviewers (right pane and reviewer picker)
 			assignees = false, -- assignees (right pane)
 			comments = false, -- authors of the PR-level comments
+			-- comment authors in the comment viewer, reply/edit window and
+			-- comment browser thread pane
+			comment_threads = false,
 		},
 	},
 	-- Flash highlight when navigating to a comment line

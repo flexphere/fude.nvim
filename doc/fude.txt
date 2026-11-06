@@ -1207,6 +1207,8 @@ Default configuration: >lua
         reviewers = false, -- reviewers (right pane and reviewer picker)
         assignees = false, -- assignees (right pane)
         comments = false, -- authors of the PR-level comments
+        -- comment authors in the comment viewer, reply/edit window and comment browser thread pane
+        comment_threads = false,
       },
       -- Section marks (jump with 'd, 'c in left pane)
       marks = { description = "d", comments = "c" },
@@ -1385,6 +1387,11 @@ Options:
                                  reviewer picker)
                     `assignees`  each assignee (right pane)
                     `comments`   each PR comment author (`###` heading)
+                    `comment_threads`
+                                 each comment author in the comment
+                                 viewer, the reply/edit window and
+                                 the comment browser's thread pane
+                                 (before `@login` on the header)
                   `true` turns on every kind, `false` none. Needs a
                   terminal snacks supports (kitty graphics protocol:
                   kitty, ghostty, wezterm; tmux with

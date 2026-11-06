@@ -13,6 +13,7 @@ M.calculate_float_dimensions = format.calculate_float_dimensions
 M.format_line_range = format.format_line_range
 M.build_range_start_marker = format.build_range_start_marker
 M.format_comments_for_display = format.format_comments_for_display
+M.build_comment_avatar_position = format.build_comment_avatar_position
 M.build_comments_float_title = format.build_comments_float_title
 M.normalize_check = format.normalize_check
 M.format_check_status = format.format_check_status
@@ -398,6 +399,8 @@ function M.show_comments_float(comments, opts)
 	-- Lets `close_comment_ui` find viewer floats: they show working-tree
 	-- comments, which the local commit scope must not keep on screen.
 	vim.b[buf].fude_comment_view = true
+	-- Comment authors' avatars (overview.avatars.comment_threads)
+	require("fude.ui.avatars").place(buf, result.avatar_positions)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -1298,6 +1301,7 @@ function M.open_edit_window(thread, comment, opts)
 	vim.bo[upper_buf].buftype = "nofile"
 	vim.bo[upper_buf].bufhidden = "wipe"
 	vim.bo[upper_buf].filetype = "markdown"
+	require("fude.ui.avatars").place(upper_buf, result.avatar_positions)
 
 	-- Create lower buffer (editable, pre-filled with comment body)
 	local lower_buf = vim.api.nvim_create_buf(false, true)
@@ -1487,6 +1491,7 @@ function M.open_reply_window(comments, opts)
 	vim.bo[upper_buf].buftype = "nofile"
 	vim.bo[upper_buf].bufhidden = "wipe"
 	vim.bo[upper_buf].filetype = opts.filetype or "markdown"
+	require("fude.ui.avatars").place(upper_buf, result.avatar_positions)
 
 	-- Create lower buffer (editable input)
 	local lower_buf = vim.api.nvim_create_buf(false, true)

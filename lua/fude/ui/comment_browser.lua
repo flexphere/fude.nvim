@@ -165,6 +165,10 @@ local function update_right_panes(browser, entry, all_comments, all_issue_commen
 				pcall(vim.api.nvim_buf_add_highlight, browser.upper_buf, ns, hl.hl, hl.line, 0, -1)
 			end
 		end
+		-- Comment authors' avatars of the shown thread (overview.avatars.comment_threads)
+		local avatars = require("fude.ui.avatars")
+		avatars.clear(browser.upper_buf)
+		avatars.place(browser.upper_buf, result.avatar_positions)
 	end
 
 	-- Set lower pane mode and title based on entry type

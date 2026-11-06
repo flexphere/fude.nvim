@@ -1117,6 +1117,42 @@ describe("build_overview_left_lines", function()
 	end)
 end)
 
+describe("comment thread avatar positions", function()
+	local identity = function(s)
+		return s
+	end
+	local comments = {
+		{ user = { login = "alice" }, body = "a\nb", created_at = "t1" },
+		{ body = "no user", created_at = "t2" },
+		{ user = { login = "bot[bot]" }, body = "c", created_at = "t3" },
+	}
+
+	it("build_comment_avatar_position: start of the header line, kind comment_threads", function()
+		assert.are.same(
+			{ line = 3, col = 0, login = "alice", kind = "comment_threads" },
+			ui.build_comment_avatar_position(3, "alice")
+		)
+		assert.is_nil(ui.build_comment_avatar_position(0, "unknown"))
+		assert.is_nil(ui.build_comment_avatar_position(0, ""))
+		assert.is_nil(ui.build_comment_avatar_position(0, vim.NIL))
+		assert.is_nil(ui.build_comment_avatar_position(0, nil))
+	end)
+
+	for _, name in ipairs({ "format_comments_for_display", "format_reply_comments_for_display" }) do
+		it(name .. " puts each known author's avatar before `@login` on the header", function()
+			local result = ui[name](comments, identity)
+			local logins = {}
+			for _, p in ipairs(result.avatar_positions) do
+				table.insert(logins, p.login)
+				assert.are.equal(0, p.col)
+				assert.are.equal("comment_threads", p.kind)
+				assert.are.equal("@" .. p.login, result.lines[p.line + 1]:sub(1, #p.login + 1))
+			end
+			assert.are.same({ "alice", "bot[bot]" }, logins)
+		end)
+	end
+end)
+
 describe("overview avatar positions", function()
 	local identity = function(s)
 		return s
@@ -4101,5 +4137,39 @@ describe("o key in the comment viewer and PR overview", function()
 		press(left_buf, "<Tab>")
 		press(vim.api.nvim_get_current_buf(), "o")
 		assert.are.same({ "https://gh/pull/1", "https://gh/pull/1#c5", "https://gh/pull/1" }, opened)
+	end)
+end)
+
+describe("comment thread avatars in the comment viewer", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative ~= "" then
+				pcall(vim.api.nvim_win_close, win, true)
+			end
+		end
+		helpers.cleanup()
+	end)
+
+	it("hands the authors' header positions to ui/avatars.place for the viewer buffer", function()
+		local avatars = require("fude.ui.avatars")
+		local calls = {}
+		helpers.mock(avatars, "place", function(buf, positions)
+			table.insert(calls, { buf = buf, positions = positions })
+		end)
+		ui.show_comments_float({
+			{ id = 1, user = { login = "a" }, created_at = "", body = "first" },
+			{ id = 2, user = { login = "b" }, created_at = "", body = "second" },
+		})
+		local buf = vim.api.nvim_get_current_buf()
+		assert.are.equal(1, #calls)
+		assert.are.equal(buf, calls[1].buf)
+		assert.are.same(
+			{ "a", "b" },
+			vim.tbl_map(function(p)
+				return p.login
+			end, calls[1].positions)
+		)
 	end)
 end)
