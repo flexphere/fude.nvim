@@ -466,8 +466,12 @@ File opening position                                 *fude-file-position*
     Reviewer and Label open a picker (routed by `file_list_mode`) in
     which `<Tab>` toggles the row under the cursor: it requests a
     review from the user or removes their pending request, and adds or
-    removes the label. The mark changes only after GitHub accepted the
-    change, and the picker stays open; `<CR>`, `q` or `<Esc>` close it
+    removes the label. While the request is in flight the row shows a
+    spinner (`⣾⣽⣻⢿⡿⣟⣯⣷`, as the gh CLI; DiagnosticInfo) in place of
+    its mark, padded to the mark's width so the name stays put
+    (Telescope and snacks); the mark changes only after
+    GitHub accepted the change (after a failure the old mark comes
+    back), and the picker stays open; `<CR>`, `q` or `<Esc>` close it
     and reopen the overview once every pending request finished. With
     `file_list_mode = "quickfix"` (or without the picker plugin)
     |vim.ui.select()| is used instead: choosing a row toggles it and
@@ -497,7 +501,8 @@ File opening position                                 *fude-file-position*
     on a reviewed user re-requests too). Telescope and snacks only. When
     collaborators cannot be listed (it needs push access), only
     requested and reviewed users are shown. The label picker lists
-    every repository label, applied (`●`) first.
+    every repository label, applied (`●`) first. The order is fixed
+    when the picker opens: toggling a row does not move it.
     Re-requesting picks a reviewer via |vim.ui.select()| and excludes
     reviewers with a pending request, the PR author, and bots. Team
     reviewers are not supported by either picker.
