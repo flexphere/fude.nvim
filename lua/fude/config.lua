@@ -38,6 +38,9 @@ M.defaults = {
 		height = 80,
 		-- Right pane width as percentage of total overview width (1-100)
 		right_width = 30,
+		-- Draw the author's and reviewers' avatars (off by default; needs
+		-- snacks.nvim with image support, curl, and ImageMagick for the round cut)
+		avatars = false,
 	},
 	-- Flash highlight when navigating to a comment line
 	flash = {

@@ -576,7 +576,7 @@ describe("overview menu and toggle editors", function()
 			return captured ~= nil
 		end))
 		-- Reviewed (commented) ranks before requested
-		assert.are.same({ "💬 @copilot  (last review: commented)", "● @carol  (review requested)" }, shown[1])
+		assert.are.same({ " @copilot  (last review: commented)", "● @carol  (review requested)" }, shown[1])
 		assert.is_truthy(table.concat(captured.args, " "):find("--method POST", 1, true))
 		assert.are.same({ reviewers = { "copilot-pull-request-reviewer[bot]" } }, vim.json.decode(captured.stdin))
 		assert.is_true(helpers.wait_for(function()

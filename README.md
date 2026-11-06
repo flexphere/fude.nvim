@@ -19,7 +19,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Comment navigation** - Jump between comments with `]c` / `[c`
 - **Review scope** - Review the entire PR or focus on a specific commit, navigate scopes with next/prev, mark commits as reviewed, statusline integration
 - **Changed files** - Browse PR changed files with Telescope (diff preview) or quickfix
-- **PR overview** - Split-pane view (a `Loading PR overview…` placeholder with a spinner is shown while the PR is fetched; `q` cancels) with YAML frontmatter (state, author, branches, URL, PR-wide `file_changed: 10` and `line_changed: 70/6` counts), PR title, body, and comments (left), and reviewers, assignees, labels, CI status (right). File counts, additions, and deletions are highlighted blue, green, and red respectively. Markdown headings are foldable with standard Neovim fold commands. Press `C` to write a new PR comment, request or remove reviewers, or add or remove labels: Reviewer and Label open a picker where `<Tab>` requests or removes a reviewer and adds or removes a label in place (the row's mark turns into a spinner while GitHub is being updated), and `<C-e>` re-requests a review from a reviewer who already reviewed. Copilot code review is listed as `@copilot`. Press `r` to re-request a review from a reviewer who has already reviewed
+- **PR overview** - Split-pane view (a `Loading PR overview…` placeholder with a spinner is shown while the PR is fetched; `q` cancels) with YAML frontmatter (state, author, branches, URL, PR-wide `file_changed: 10` and `line_changed: 70/6` counts), PR title, body, and comments (left), and reviewers, assignees, labels, CI status (right). With `overview.avatars = true` (off by default) and snacks.nvim image support the author's and reviewers' avatars are drawn inline, cut into circles with ImageMagick like the GitHub web UI. File counts, additions, and deletions are highlighted blue, green, and red respectively. Markdown headings are foldable with standard Neovim fold commands. Press `C` to write a new PR comment, request or remove reviewers, or add or remove labels: Reviewer and Label open a picker where `<Tab>` requests or removes a reviewer and adds or removes a label in place (the row's mark turns into a spinner while GitHub is being updated), and `<C-e>` re-requests a review from a reviewer who already reviewed. Copilot code review is listed as `@copilot`. Press `r` to re-request a review from a reviewer who has already reviewed
 - **GitHub references** - `#123` and URLs are highlighted and openable with `gx`
 - **GitHub completion** - `@user`, `#issue`, and `_commit` completion in comment windows and PR bodies (blink.cmp / nvim-cmp)
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
@@ -33,6 +33,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated (gh >= 2.99.0 for PR body attachments via `--attach`)
 - Optional: [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) for picker UI (changed files and review scope)
 - Optional: [snacks.nvim](https://github.com/folke/snacks.nvim) for picker UI (alternative to telescope, used when `file_list_mode = "snacks"` for changed files, review scope, and the PR stack picker)
+- Optional: snacks.nvim's image module (kitty graphics protocol: kitty, ghostty, wezterm; tmux with passthrough) plus `curl` for the author and reviewer avatars in the PR overview, and [ImageMagick](https://imagemagick.org/) (`magick` or `convert`) to cut them into circles
 - Optional: [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim) for diff base switching
 - Optional: [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) and a Nerd Font for side panel file and folder icons
 - Optional: [blink.cmp](https://github.com/saghen/blink.cmp) or [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) for `@user` / `#issue` / `_commit` completion
@@ -204,6 +205,8 @@ require("fude").setup({
     height = 80,
     -- Right pane width as percentage of total overview width
     right_width = 30,
+    -- Draw the author's and reviewers' avatars (snacks.nvim image support, curl, ImageMagick)
+    avatars = false,
   },
   -- Flash highlight when navigating to a comment line (]c/[c)
   flash = {

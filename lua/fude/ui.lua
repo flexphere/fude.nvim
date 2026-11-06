@@ -20,6 +20,7 @@ M.deduplicate_checks = format.deduplicate_checks
 M.sort_checks = format.sort_checks
 M.build_checks_summary = format.build_checks_summary
 M.format_review_status = format.format_review_status
+M.COMMENTED_MARK = format.COMMENTED_MARK
 M.build_reviewers_list = format.build_reviewers_list
 M.build_centered_lines = format.build_centered_lines
 M.build_re_request_candidates = format.build_re_request_candidates
@@ -668,6 +669,12 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.bo[right_buf].buftype = "nofile"
 	vim.bo[right_buf].bufhidden = "wipe"
 	vim.bo[right_buf].filetype = "markdown"
+
+	-- Author and reviewer avatars, drawn as their downloads finish (a no-op
+	-- without snacks.nvim image support or with overview.avatars = false)
+	local avatars = require("fude.ui.avatars")
+	avatars.place(left_buf, left_result.avatar_positions)
+	avatars.place(right_buf, right_result.avatar_positions)
 
 	-- Calculate split-pane layout. The panes always take the layout's full
 	-- height, not the content's: a short PR must not shrink the window that
