@@ -575,7 +575,8 @@ function M.create_pending_review(pr_number, commit_id, review_comments, callback
 	}, callback, json_payload)
 end
 
---- Re-request a review from users who have already reviewed.
+--- Request a review from users. For a user who has already reviewed, this is
+--- a re-request; the endpoint is the same.
 --- @param pr_number number
 --- @param reviewers string[] logins to re-request; an empty list yields an error callback
 --- @param callback fun(err: string|nil, data: table|nil)
@@ -597,6 +598,82 @@ function M.re_request_review(pr_number, reviewers, callback)
 		"--input",
 		"-",
 	}, callback, json_payload)
+end
+
+--- Remove users from a PR's requested reviewers.
+--- @param pr_number number
+--- @param reviewers string[] logins to remove; an empty list yields an error callback
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.remove_review_request(pr_number, reviewers, callback)
+	-- Same guard as re_request_review: an empty table encodes as `{}`.
+	if #reviewers == 0 then
+		callback("reviewers must be non-empty", nil)
+		return
+	end
+
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/pulls/" .. pr_number .. "/requested_reviewers",
+		"--method",
+		"DELETE",
+		"--input",
+		"-",
+	}, callback, vim.json.encode({ reviewers = reviewers }))
+end
+
+--- Percent-encode a string for use as one URL path segment (RFC 3986
+--- unreserved characters are kept). Label names may contain spaces, `/`,
+--- `:` or multibyte characters, which would otherwise break the path.
+--- @param s string
+--- @return string
+function M.build_path_segment(s)
+	-- Explicit ASCII class rather than %w, whose meaning follows the C locale.
+	return (s:gsub("[^A-Za-z0-9%-%._~]", function(c)
+		return string.format("%%%02X", string.byte(c))
+	end))
+end
+
+--- Get every label defined in the repository.
+--- @param callback fun(err: string|nil, labels: table[]|nil)
+function M.get_repo_labels(callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/labels",
+		"--paginate",
+	}, callback)
+end
+
+--- Add labels to a PR (labels already on it are kept).
+--- @param pr_number number
+--- @param names string[] label names; an empty list yields an error callback
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.add_labels(pr_number, names, callback)
+	if #names == 0 then
+		callback("labels must be non-empty", nil)
+		return
+	end
+
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/issues/" .. pr_number .. "/labels",
+		"--method",
+		"POST",
+		"--input",
+		"-",
+	}, callback, vim.json.encode({ labels = names }))
+end
+
+--- Remove one label from a PR.
+--- @param pr_number number
+--- @param name string label name
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.remove_label(pr_number, name, callback)
+	M.run_json({
+		"api",
+		"repos/{owner}/{repo}/issues/" .. pr_number .. "/labels/" .. M.build_path_segment(name),
+		"--method",
+		"DELETE",
+	}, callback)
 end
 
 --- Submit an existing pending review.
