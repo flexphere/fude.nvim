@@ -420,6 +420,25 @@ describe("init integration", function()
 			assert.are.equal(2, #config.state.pr_commits)
 		end)
 
+		it("prefetches the overview data on start and on reload", function()
+			local calls = {}
+			helpers.mock(require("fude.overview"), "prefetch", function()
+				table.insert(calls, { active = config.state.active, review_mode = config.state.review_mode })
+			end)
+			init.start()
+			assert.is_true(helpers.wait_for(function()
+				return config.state.active and #config.state.changed_files > 0
+			end))
+			-- Started with the session already set up, so it targets the GitHub session
+			assert.are.same({ { active = true, review_mode = "github" } }, calls)
+
+			init.reload(true)
+			assert.is_true(helpers.wait_for(function()
+				return not config.state.reloading
+			end))
+			assert.are.equal(2, #calls)
+		end)
+
 		it("prevents concurrent reloads", function()
 			init.start()
 			helpers.wait_for(function()
