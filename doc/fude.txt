@@ -474,8 +474,8 @@ File opening position                                 *fude-file-position*
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count. Labels are laid out side
-    by side, wrapped at the pane width with an empty line between
-    rows, each as a pill filled with its repository colour, with
+    by side, wrapped at the pane width, each as a pill filled with its
+    repository colour, with
     rounded ends (Nerd Font glyphs) and its name in bold. With a dark
     'background' the fill is the label colour at 60% over the float's
     `NormalFloat` colour and the text is GitHub's label text colour
