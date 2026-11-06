@@ -522,6 +522,24 @@ M.list = {
 		end,
 	},
 	{
+		name = "FudeEditReviewers",
+		desc = "Request or remove reviewers of the PR",
+		category = "PR",
+		available = always,
+		run = function()
+			require("fude.overview").edit_current_reviewers()
+		end,
+	},
+	{
+		name = "FudeEditLabels",
+		desc = "Add or remove labels of the PR",
+		category = "PR",
+		available = always,
+		run = function()
+			require("fude.overview").edit_current_labels()
+		end,
+	},
+	{
 		name = "FudeChangePRState",
 		desc = "Change PR state (ready for review / draft / close / reopen)",
 		category = "PR",
