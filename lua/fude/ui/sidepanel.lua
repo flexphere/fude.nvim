@@ -924,6 +924,72 @@ function M.reveal_file(path)
 end
 
 local SPLIT_DIRECTIONS = { left = "left", right = "right", top = "above", bottom = "below" }
+local OPPOSITE_SPLIT = { left = "right", right = "left", above = "below", below = "above" }
+
+-- Window-local options of the panel window. The winfix option is set separately
+-- because it depends on the panel position.
+local PANEL_WIN_OPTIONS = {
+	number = false,
+	relativenumber = false,
+	signcolumn = "no",
+	cursorline = true,
+	wrap = false,
+	foldcolumn = "0",
+	spell = false,
+	list = false,
+}
+
+--- Whether `win` is the only non-floating window in its tabpage.
+--- @param win number
+--- @return boolean
+function M.is_last_normal_window(win)
+	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(vim.api.nvim_win_get_tabpage(win))) do
+		if w ~= win and vim.api.nvim_win_get_config(w).relative == "" then
+			return false
+		end
+	end
+	return true
+end
+
+--- Return the most recently used listed normal buffer (`buftype == ""`), or nil
+--- when there is none. Special buffers such as terminals are skipped: pickers
+--- like snacks.picker open files only in a window showing a normal buffer, so a
+--- window holding a terminal would leave the panel as their fallback target.
+--- @return number|nil
+local function last_used_listed_buf()
+	local infos = vim.tbl_filter(function(info)
+		return vim.bo[info.bufnr].buftype == ""
+	end, vim.fn.getbufinfo({ buflisted = 1 }))
+	table.sort(infos, function(a, b)
+		return a.lastused > b.lastused
+	end)
+	return infos[1] and infos[1].bufnr or nil
+end
+
+--- Open a normal window next to the panel when the panel is the only one left in its tabpage.
+--- Without it, the next buffer opened (e.g. from a picker) lands in the panel window and
+--- inherits the panel's window-local options, so it has no number or sign column.
+--- @param panel table state.sidepanel
+function M.ensure_editor_window(panel)
+	if not (panel.win and vim.api.nvim_win_is_valid(panel.win)) or not M.is_last_normal_window(panel.win) then
+		return
+	end
+	local buf = last_used_listed_buf() or vim.api.nvim_create_buf(true, false)
+	local enter = vim.api.nvim_get_current_win() == panel.win
+	-- A split opened from the panel copies the panel's window options; reset them
+	-- to the global values so the new window looks like any other editor window.
+	local new_win = vim.api.nvim_open_win(buf, enter, { split = OPPOSITE_SPLIT[panel.split] or "right", win = panel.win })
+	for name in pairs(PANEL_WIN_OPTIONS) do
+		vim.api.nvim_set_option_value(name, vim.api.nvim_get_option_value(name, { scope = "global" }), {
+			scope = "local",
+			win = new_win,
+		})
+	end
+	for _, name in ipairs({ "winfixwidth", "winfixheight" }) do
+		vim.api.nvim_set_option_value(name, false, { scope = "local", win = new_win })
+	end
+	panel.prev_win = new_win
+end
 
 --- Build the nvim_open_win config for the panel split.
 --- Left/right panels are sized by width, top/bottom panels by height; the
@@ -976,15 +1042,12 @@ function M.open()
 
 	local win = vim.api.nvim_open_win(buf, true, split.win_config)
 
-	vim.wo[win].number = false
-	vim.wo[win].relativenumber = false
-	vim.wo[win].signcolumn = "no"
-	vim.wo[win][split.fix_option] = true
-	vim.wo[win].cursorline = true
-	vim.wo[win].wrap = false
-	vim.wo[win].foldcolumn = "0"
-	vim.wo[win].spell = false
-	vim.wo[win].list = false
+	-- scope = "local": the panel window is current here, and vim.wo[win] would also
+	-- change the global values (like :set), leaking `nonumber` into later windows.
+	for name, value in pairs(PANEL_WIN_OPTIONS) do
+		vim.api.nvim_set_option_value(name, value, { scope = "local", win = win })
+	end
+	vim.api.nvim_set_option_value(split.fix_option, true, { scope = "local", win = win })
 
 	pcall(vim.api.nvim_buf_set_name, buf, "[fude] Panel")
 
@@ -1001,6 +1064,7 @@ function M.open()
 		file_tree_mode = sp_opts.file_tree or "flat",
 		repo_root = get_diff().get_repo_root(),
 		prev_win = prev_win,
+		split = split.win_config.split,
 	}
 	state.sidepanel = panel
 
@@ -1015,6 +1079,14 @@ function M.open()
 				M.close()
 			elseif closed_win == panel.help_win then
 				panel.help_win = nil
+			else
+				-- WinClosed fires before the window is removed, so check after it is gone.
+				-- e.g. :bdelete closes every window showing the buffer and can leave only the panel.
+				vim.schedule(function()
+					if config.state.sidepanel == panel then
+						M.ensure_editor_window(panel)
+					end
+				end)
 			end
 		end,
 	})
