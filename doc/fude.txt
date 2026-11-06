@@ -475,8 +475,15 @@ File opening position                                 *fude-file-position*
     The reviewer picker lists repository collaborators with write
     access, users with a pending request, and collaborators who already
     reviewed (requested first, then reviewed, then the rest), excluding
-    the PR author and bots. Each row states whether a review is
-    requested and the user's latest review, e.g.
+    the PR author and bots. The mark follows the GitHub web UI:
+      `●` (yellow)  review requested (in progress), whatever the
+                    previous review was
+      `✓` (green)   approved; the name is green too
+      `✗` (red)     changes requested
+      `💬`          commented
+      `↻`           review dismissed
+      `○`           neither requested nor reviewed
+    The text in parentheses states both, e.g.
     `● @alice  (review requested, last review: dismissed)`. `<Tab>` on
     a user who already reviewed re-requests their review. When
     collaborators cannot be listed (it needs push access), only
