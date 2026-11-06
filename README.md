@@ -57,7 +57,8 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
     "FudeReviewToggleFileTree", "FudeReviewToggleCommentStyle", "FudeReviewToggleResolved",
-    "FudeReviewToggleGitsigns", "FudeCreatePR", "FudeEditPR", "FudeChangePRState",
+    "FudeReviewToggleGitsigns", "FudeCreatePR", "FudeEditPR", "FudeEditReviewers", "FudeEditLabels",
+    "FudeChangePRState",
   },
   keys = {
     { "<leader>et", "<cmd>FudeReviewToggle<cr>", desc = "Review: Toggle" },
@@ -146,6 +147,8 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
 | `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`, which joins the base PR's stack or starts a new one; failed preflight checks abort creation, and a later link failure shows an error float with the PR URL and `q close | c copy | o open PR` without closing the PR; body `file://` images/videos are uploaded via `gh --attach`; a branch whose HEAD is not on the remote yet is pushed with `git push --set-upstream` first when `pr.push_before_create = true`, and a failed push shows the error in a float and keeps the input as a draft) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
+| `:FudeEditReviewers` | Request or remove reviewers of the current PR in the same `<Tab>`-toggle picker as the overview's `C` → Reviewer (`<C-e>` re-requests) |
+| `:FudeEditLabels` | Add or remove labels of the current PR in the same `<Tab>`-toggle picker as the overview's `C` → Label |
 | `:FudeChangePRState` | Change the current PR's state from a picker that lists only the transitions available now (ready for review / convert to draft / close / reopen) |
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
