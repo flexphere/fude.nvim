@@ -288,14 +288,19 @@ function M.resolve_action_hint(item, opts)
 	return nil, nil
 end
 
---- Draw the row images of a rendered list into `buf`: the buffer's earlier
---- placements are dropped (a re-render moved or replaced the rows) and one
---- is placed at the start of each row of `rows` (`{ row (1-based), item }`)
---- whose file is known. Needs snacks.nvim's image module; a no-op without.
+--- Draw the row images of a rendered list into `buf`: one placement at the
+--- start of each row of `rows` (`{ row (1-based), item }`) whose file is
+--- known. By default the buffer's earlier placements are dropped first (a
+--- re-render moved or replaced every row); with `opts.only` just the given
+--- rows are redrawn — the placement each held is closed and made again —
+--- for a picker that rewrote only those rows (Telescope's selection caret).
+--- Placements are tracked per buffer and row in `session.placed`. Needs
+--- snacks.nvim's image module; a no-op without.
 --- @param buf number
 --- @param rows table[]
 --- @param session table from new_session
-function M.place_row_images(buf, rows, session)
+--- @param opts { only: boolean|nil }|nil
+function M.place_row_images(buf, rows, session, opts)
 	local ok, snacks = pcall(require, "snacks")
 	if not ok or type(snacks) ~= "table" or type(snacks.image) ~= "table" then
 		return
@@ -303,18 +308,35 @@ function M.place_row_images(buf, rows, session)
 	if not vim.api.nvim_buf_is_valid(buf) then
 		return
 	end
-	pcall(snacks.image.placement.clean, buf)
+	session.placed = session.placed or {}
+	local by_row = session.placed[buf] or {}
+	if opts and opts.only then
+		for _, entry in ipairs(rows) do
+			local old = by_row[entry.row]
+			if old then
+				pcall(function()
+					old:close()
+				end)
+				by_row[entry.row] = nil
+			end
+		end
+	else
+		pcall(snacks.image.placement.clean, buf)
+		by_row = {}
+	end
 	for _, entry in ipairs(rows) do
 		local path = session.images[entry.item]
 		if path then
-			pcall(snacks.image.placement.new, buf, path, {
+			local placed, placement = pcall(snacks.image.placement.new, buf, path, {
 				pos = { entry.row, 0 },
 				inline = true,
 				height = M.IMAGE_HEIGHT,
 				width = M.IMAGE_WIDTH,
 			})
+			by_row[entry.row] = placed and placement or nil
 		end
 	end
+	session.placed[buf] = by_row
 end
 
 --- Show the picker with vim.ui.select. Choosing a row toggles it and reopens
@@ -466,23 +488,55 @@ function M.show_telescope(opts)
 		end,
 	})
 	if opts.images then
-		-- Telescope redraws the results on every refresh; put the images back
-		-- once it is done, row by row through the entry each row shows.
-		picker:register_completion_callback(function(self)
-			local bufnr = self.results_bufnr
+		-- The `{ row, item }` of the given 0-based results rows (all of them
+		-- when nil), through the entry each row shows.
+		local function result_rows(current, which)
+			local bufnr = current.results_bufnr
 			if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
-				return
+				return nil, {}
+			end
+			if not which then
+				which = {}
+				for row = 0, vim.api.nvim_buf_line_count(bufnr) - 1 do
+					table.insert(which, row)
+				end
 			end
 			local rows = {}
-			for row = 0, vim.api.nvim_buf_line_count(bufnr) - 1 do
-				local ok, index = pcall(self.get_index, self, row)
-				local entry = ok and index and self.manager and self.manager:get_entry(index) or nil
+			for _, row in ipairs(which) do
+				local ok, index = pcall(current.get_index, current, row)
+				local entry = ok and index and current.manager and current.manager:get_entry(index) or nil
 				if type(entry) == "table" and entry.value then
 					table.insert(rows, { row = row + 1, item = entry.value })
 				end
 			end
-			M.place_row_images(bufnr, rows, session)
+			return bufnr, rows
+		end
+		-- Telescope redraws the results on every refresh; put the images back
+		-- once it is done.
+		picker:register_completion_callback(function(self)
+			local bufnr, rows = result_rows(self)
+			if bufnr then
+				M.place_row_images(bufnr, rows, session)
+			end
 		end)
+		-- Moving the selection rewrites the old and the new row (the caret
+		-- moves), which drops their placements: draw those two again.
+		local set_selection = picker.set_selection
+		picker.set_selection = function(self, row)
+			local ok_old, old = pcall(self.get_selection_row, self)
+			set_selection(self, row)
+			local which = {}
+			if ok_old and type(old) == "number" then
+				table.insert(which, old)
+			end
+			if type(row) == "number" and row ~= old then
+				table.insert(which, row)
+			end
+			local bufnr, rows = result_rows(self, which)
+			if bufnr and #rows > 0 then
+				M.place_row_images(bufnr, rows, session, { only = true })
+			end
+		end
 	end
 	picker:find()
 end
