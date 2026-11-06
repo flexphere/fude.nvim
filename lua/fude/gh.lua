@@ -1102,6 +1102,38 @@ function M.get_pr_state(pr_number, callback)
 	end)
 end
 
+--- Get the PR fields the reviewer / label editors act on, for the
+--- `:FudeEditReviewers` / `:FudeEditLabels` commands, which run without an
+--- overview (and without a review session). Resolves the PR like
+--- `get_pr_state`, so a detached HEAD never runs `gh pr view` bare.
+--- @param pr_number number|nil PR number (nil to use current branch's PR)
+--- @param callback fun(err: string|nil, data: table|nil)
+---   data = { number, url, author, reviewRequests, latestReviews, labels } (JSON nulls normalized)
+function M.get_pr_edit_info(pr_number, callback)
+	resolve_pr_number(pr_number, function(resolve_err, num)
+		if resolve_err then
+			return callback(resolve_err, nil)
+		end
+		local args = { "pr", "view", "--json", "number,url,author,reviewRequests,latestReviews,labels" }
+		if num then
+			table.insert(args, 3, tostring(num))
+		end
+		M.run_json(args, function(err, data)
+			if err then
+				return callback(err, nil)
+			end
+			callback(nil, {
+				number = util.null_to(data.number),
+				url = util.null_to(data.url),
+				author = util.null_to(data.author),
+				reviewRequests = util.null_to(data.reviewRequests, {}),
+				latestReviews = util.null_to(data.latestReviews, {}),
+				labels = util.null_to(data.labels, {}),
+			})
+		end)
+	end)
+end
+
 --- Whether a PR lookup error means there simply is no PR, as opposed to an
 --- auth or network failure, which also exits non-zero. Covers both lookups
 --- `resolve_pr_number` can make: `gh pr view` on a branch and, on a detached
