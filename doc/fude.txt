@@ -474,14 +474,14 @@ File opening position                                 *fude-file-position*
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count. Labels are laid out side
-    by side, wrapped at the pane width, each in a three-line box with
-    rounded corners (`╭─╮`) in its repository colour. With a dark
-    'background' the text and border colours are the ones the GitHub
-    web UI computes from it (the translucent border blended over the
-    float's `NormalFloat` colour); with a light one both use the label
-    colour, darkened for a light label. The box is not filled, since a
-    fill cannot reach a box-drawing border. The colours need
-    'termguicolors'.
+    by side, wrapped at the pane width with an empty line between
+    rows, each as a pill filled with its repository colour, with
+    rounded ends (Nerd Font glyphs) and its name in bold. With a dark
+    'background' the fill is the label colour at 60% over the float's
+    `NormalFloat` colour and the text is GitHub's label text colour
+    mixed toward white; with a light one the fill is the label colour
+    and the text black or white, as in the GitHub web UI. The colours
+    need 'termguicolors'.
     With `overview.avatars = true` (off by default) and snacks.nvim
     image support, the author's avatar is drawn on
     the `author:` line and each reviewer's before their login, cut
