@@ -45,16 +45,30 @@ function M.resolve_detail(item)
 	return item.detail
 end
 
+--- Mark shown in place of a row's own mark while its request is in flight,
+--- and its highlight. The row's `on` is still the state before the request,
+--- which the mark would otherwise show as if nothing were happening.
+M.LOADING_MARK = "…"
+M.LOADING_HL = "DiagnosticInfo"
+
 --- Resolve an item's mark for the current render: `item.mark(item)` when
---- given, else the plain applied / not-applied mark from `item.on`.
+--- given, else the plain applied / not-applied mark from `item.on`. While the
+--- item's request is in flight (`session.pending[item]`) the loading mark
+--- replaces it; the name highlight stays the item's own.
 --- @param item fude.TogglePickerItem
+--- @param session table|nil from new_session; nil never shows the loading mark
 --- @return string mark, string mark_hl, string|nil text_hl
-function M.resolve_mark(item)
+function M.resolve_mark(item, session)
+	local mark, mark_hl, text_hl
 	if type(item.mark) == "function" then
-		return item.mark(item)
+		mark, mark_hl, text_hl = item.mark(item)
+	else
+		mark, mark_hl = format.format_toggle_mark(item.on)
 	end
-	local mark, hl = format.format_toggle_mark(item.on)
-	return mark, hl, nil
+	if session and session.pending[item] then
+		return M.LOADING_MARK, M.LOADING_HL, text_hl
+	end
+	return mark, mark_hl, text_hl
 end
 
 --- Per-picker state shared by every close path: the items whose request is
@@ -84,7 +98,10 @@ end
 --- request reports success, so a failed request never leaves the row showing
 --- a state GitHub does not have. A request for an item whose previous request
 --- is still in flight is ignored, so a repeated key cannot send the opposite
---- request before the first one lands.
+--- request before the first one lands. While it is in flight
+--- `session.pending[item]` is set, which `resolve_mark` renders as the loading
+--- mark, so the picker re-renders on start and again once settled, whatever
+--- the result.
 --- @param item fude.TogglePickerItem|nil
 --- @param session table from new_session
 --- @param request fun(done: fun(ok: boolean))
@@ -175,7 +192,9 @@ function M.show_vim_select(opts, session)
 	vim.ui.select(opts.items, {
 		prompt = opts.title .. " (select to toggle):",
 		format_item = function(item)
-			return format.format_toggle_entry(item.text, (M.resolve_mark(item)), M.resolve_detail(item))
+			-- The select is closed while a request is in flight and reopens
+			-- once it settled, so no row is ever rendered as loading here.
+			return format.format_toggle_entry(item.text, (M.resolve_mark(item, session)), M.resolve_detail(item))
 		end,
 	}, function(choice)
 		if not choice then
@@ -225,7 +244,7 @@ function M.show_telescope(opts)
 					-- A function, so a refresh re-reads item.on
 					display = function(entry)
 						local value = entry.value
-						local mark, mark_hl, text_hl = M.resolve_mark(value)
+						local mark, mark_hl, text_hl = M.resolve_mark(value, session)
 						local line = format.format_toggle_entry(value.text, mark, M.resolve_detail(value))
 						local name_start = #mark + 1
 						local name_end = name_start + #value.text
@@ -261,22 +280,31 @@ function M.show_telescope(opts)
 			actions.select_default:replace(function()
 				actions.close(prompt_bufnr)
 			end)
-			-- Run `fn(item, opts, session, on_done)` on the selected row and
-			-- re-render once it succeeded.
+			-- Re-render the rows (loading mark, flipped mark) keeping the
+			-- selection where it is.
+			local function rerender(current)
+				if not vim.api.nvim_buf_is_valid(prompt_bufnr) or not current then
+					return
+				end
+				-- The row the cursor is on now, not when the key was pressed:
+				-- the user may have moved on while the request was in flight,
+				-- and the refresh must leave them there.
+				restore = { row = current:get_selection_row(), prompt = current:_get_prompt() }
+				current:refresh(nil, { reset_prompt = false })
+			end
+			-- Run `fn(item, opts, session, on_done)` on the selected row,
+			-- re-rendering when the request starts (loading mark) and once it
+			-- settled (the new mark, or the old one back after a failure).
 			local function on_selected(fn)
 				return function()
 					local selection = action_state.get_selected_entry()
 					local current = action_state.get_current_picker(prompt_bufnr)
-					fn(selection and selection.value, opts, session, function(ok)
-						if not ok or not vim.api.nvim_buf_is_valid(prompt_bufnr) or not current then
-							return
-						end
-						-- The row the cursor is on now, not when the key was
-						-- pressed: the user may have moved on while the request
-						-- was in flight, and the refresh must leave them there.
-						restore = { row = current:get_selection_row(), prompt = current:_get_prompt() }
-						current:refresh(nil, { reset_prompt = false })
+					local started = fn(selection and selection.value, opts, session, function()
+						rerender(current)
 					end)
+					if started then
+						rerender(current)
+					end
 				end
 			end
 			map("i", "<Tab>", on_selected(M.toggle_item))
@@ -314,12 +342,21 @@ function M.show_snacks(opts)
 
 	local session = M.new_session(opts)
 
-	-- Re-render with the new mark once a request succeeded; the cursor stays put.
+	-- Re-render the rows (loading mark, then the new mark or the old one back
+	-- after a failure); the cursor stays put.
 	local function rerender(picker)
-		return function(ok)
-			if ok and not picker.closed and picker.list then
-				pcall(picker.list.update, picker.list, { force = true })
-			end
+		if not picker.closed and picker.list then
+			pcall(picker.list.update, picker.list, { force = true })
+		end
+	end
+	-- Run `fn(item, opts, session, on_done)` on `item`, re-rendering when the
+	-- request starts and once it settled.
+	local function run(fn, picker, item)
+		local started = fn(item, opts, session, function()
+			rerender(picker)
+		end)
+		if started then
+			rerender(picker)
 		end
 	end
 	local input_keys = { ["<Tab>"] = { "fude_toggle", mode = { "i", "n" } } }
@@ -336,7 +373,7 @@ function M.show_snacks(opts)
 		items = opts.items,
 		layout = { preset = "select" },
 		format = function(item, _)
-			local mark, mark_hl, text_hl = M.resolve_mark(item)
+			local mark, mark_hl, text_hl = M.resolve_mark(item, session)
 			local chunks = { { mark .. " ", mark_hl }, { item.text, text_hl } }
 			local detail = M.resolve_detail(item)
 			if detail and detail ~= "" then
@@ -356,10 +393,10 @@ function M.show_snacks(opts)
 		end,
 		actions = {
 			fude_toggle = function(picker, item)
-				M.toggle_item(item, opts, session, rerender(picker))
+				run(M.toggle_item, picker, item)
 			end,
 			fude_extra = function(picker, item)
-				M.run_extra_action(item, opts, session, rerender(picker))
+				run(M.run_extra_action, picker, item)
 			end,
 		},
 		win = { input = { keys = input_keys }, list = { keys = list_keys } },
