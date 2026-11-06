@@ -1286,6 +1286,82 @@ describe("show_overview_float CI STATUS", function()
 	end)
 end)
 
+describe("parse_hex_color", function()
+	it("parses a colour with or without #", function()
+		assert.are.same({ 215, 58, 74 }, { format.parse_hex_color("d73a4a") })
+		assert.are.same({ 215, 58, 74 }, { format.parse_hex_color("#D73A4A") })
+	end)
+
+	it("returns nil for anything but a 6-digit hex colour", function()
+		assert.is_nil(format.parse_hex_color(nil))
+		assert.is_nil(format.parse_hex_color(""))
+		assert.is_nil(format.parse_hex_color("fff"))
+		assert.is_nil(format.parse_hex_color("gggggg"))
+		assert.is_nil(format.parse_hex_color(vim.NIL))
+	end)
+end)
+
+describe("blend_colors", function()
+	it("mixes the colour over the background by alpha", function()
+		assert.are.equal("#ffffff", format.blend_colors("#ffffff", "#000000", 1))
+		assert.are.equal("#000000", format.blend_colors("#ffffff", "#000000", 0))
+		assert.are.equal("#808080", format.blend_colors("#ffffff", "#000000", 0.5))
+	end)
+
+	it("returns nil when a colour is invalid", function()
+		assert.is_nil(format.blend_colors("nope", "#000000", 0.5))
+		assert.is_nil(format.blend_colors("#ffffff", nil, 0.5))
+	end)
+end)
+
+describe("calculate_label_colors", function()
+	it("dark: lightens the text of a dark label and draws its colour at 18% as background", function()
+		-- perceived lightness 0.363: HSL lightness 0.535 is raised by 0.237
+		assert.are.same({ fg = "#eb9fa6", bg = "#270a0d" }, format.calculate_label_colors("d73a4a", "#000000", "dark"))
+	end)
+
+	it("dark: keeps the colour of a label already lighter than the threshold", function()
+		-- perceived lightness 0.78
+		assert.are.same({ fg = "#fbca04", bg = "#2d2401" }, format.calculate_label_colors("fbca04", "#000000", "dark"))
+	end)
+
+	it("dark: blends the background over the given base colour", function()
+		local colors = format.calculate_label_colors("ffffff", "#0d1117", "dark")
+		assert.are.equal(format.blend_colors("#ffffff", "#0d1117", 0.18), colors.bg)
+	end)
+
+	it("light: draws the label colour as background with black or white text", function()
+		assert.are.same({ fg = "#ffffff", bg = "#d73a4a" }, format.calculate_label_colors("d73a4a", "#ffffff", "light"))
+		assert.are.same({ fg = "#000000", bg = "#fbca04" }, format.calculate_label_colors("fbca04", "#ffffff", "light"))
+	end)
+
+	it("returns nil for an invalid colour", function()
+		assert.is_nil(format.calculate_label_colors(nil, "#000000", "dark"))
+		assert.is_nil(format.calculate_label_colors("xyz", "#000000", "light"))
+	end)
+end)
+
+describe("build_label_hl_names", function()
+	it("names the groups by the normalized colour", function()
+		assert.are.same({ "ReviewLabel_d73a4a", "ReviewLabelCap_d73a4a" }, { format.build_label_hl_names("#D73A4A") })
+	end)
+
+	it("returns nil for an invalid colour", function()
+		assert.is_nil(format.build_label_hl_names("red"))
+	end)
+end)
+
+describe("define_label_hls", function()
+	it("defines the pill groups from the colour and the float background", function()
+		ui._define_label_hls({ "d73a4a" })
+		local name = vim.api.nvim_get_hl(0, { name = "ReviewLabel_d73a4a" })
+		local cap = vim.api.nvim_get_hl(0, { name = "ReviewLabelCap_d73a4a" })
+		assert.is_not_nil(name.fg)
+		assert.is_not_nil(name.bg)
+		assert.are.equal(name.bg, cap.fg)
+	end)
+end)
+
 describe("build_overview_right_lines", function()
 	it("shows REVIEWERS section with reviewers", function()
 		local pr = {
@@ -1396,6 +1472,50 @@ describe("build_overview_right_lines", function()
 		assert.is_true(found_header)
 		assert.is_true(found_bug)
 		assert.is_true(found_urgent)
+	end)
+
+	it("draws a label with a colour as a pill highlighted with that colour's groups", function()
+		local pr = {
+			number = 1,
+			title = "T",
+			state = "OPEN",
+			url = "",
+			labels = {
+				{ name = "bug", color = "D73A4A" },
+				{ name = "urgent", color = "d73a4a" },
+				{ name = "docs", color = "not-a-colour" },
+			},
+		}
+		local result = ui.build_overview_right_lines(pr)
+		local left, right = format.LABEL_PILL_LEFT, format.LABEL_PILL_RIGHT
+		local row
+		for i, line in ipairs(result.lines) do
+			if line == left .. "bug" .. right then
+				row = i - 1
+			end
+		end
+		assert.is_not_nil(row)
+		local ranges = {}
+		for _, hl in ipairs(result.hl_ranges) do
+			if hl.line == row then
+				table.insert(ranges, { hl.col_start, hl.col_end, hl.hl })
+			end
+		end
+		assert.are.same({
+			{ 0, #left, "ReviewLabelCap_d73a4a" },
+			{ #left, #left + 3, "ReviewLabel_d73a4a" },
+			{ #left + 3, #left + 3 + #right, "ReviewLabelCap_d73a4a" },
+		}, ranges)
+		assert.is_true(vim.tbl_contains(result.lines, left .. "urgent" .. right))
+		-- an invalid colour falls back to the plain name
+		assert.is_true(vim.tbl_contains(result.lines, "docs"))
+		-- one entry per colour, however it is spelled
+		assert.are.same({ "d73a4a" }, result.label_colors)
+	end)
+
+	it("returns no label colours when no label has one", function()
+		local pr = { number = 1, title = "T", state = "OPEN", url = "", labels = { { name = "bug" } } }
+		assert.are.same({}, ui.build_overview_right_lines(pr).label_colors)
 	end)
 
 	it("shows no labels placeholder when empty", function()
