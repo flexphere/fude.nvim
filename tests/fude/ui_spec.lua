@@ -649,50 +649,78 @@ describe("calculate_overview_layout", function()
 	end)
 end)
 
-describe("calculate_overview_loading_layout", function()
-	it("spans both panes at the overview's column, one line high, centered", function()
-		local layout = ui.calculate_overview_layout(200, 50, 50, 50, 30)
-		-- total_width = 100: inner 96 = left 68 + right 28, start_col = 50
-		local dims = ui.calculate_overview_loading_layout(layout, 50)
-		assert.are.same({ width = 98, height = 1, row = 23, col = 50 }, dims)
-	end)
-
-	it("never places the float above the screen", function()
-		local layout = ui.calculate_overview_layout(40, 2, 10, 50, 30)
-		assert.are.equal(0, ui.calculate_overview_loading_layout(layout, 2).row)
-	end)
-end)
-
 describe("open_overview_loading", function()
 	local helpers = require("tests.helpers")
+	local config = require("fude.config")
 
 	before_each(function()
-		require("fude.config").setup({})
+		config.setup({})
 	end)
 
 	after_each(function()
 		helpers.cleanup()
 	end)
 
-	it("opens a focused one-line float with the loading text that q closes", function()
+	--- The two placeholder floats: the focused left one and the other one.
+	local function placeholder_wins()
+		local left = vim.api.nvim_get_current_win()
+		local right
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if win ~= left and vim.api.nvim_win_get_config(win).relative == "editor" then
+				right = win
+			end
+		end
+		return left, right
+	end
+
+	it("opens the overview's two panes at the layout size, with the loading text on the left", function()
 		local handle = ui.open_overview_loading()
-		local win = vim.api.nvim_get_current_win()
-		local buf = vim.api.nvim_win_get_buf(win)
+		local left, right = placeholder_wins()
 		assert.is_true(handle.is_open())
-		assert.are.equal("editor", vim.api.nvim_win_get_config(win).relative)
-		assert.are.same({ ui.OVERVIEW_LOADING_TEXT }, vim.api.nvim_buf_get_lines(buf, 0, -1, false))
+		assert.is_not_nil(right)
+		local ov = config.opts.overview
+		local layout = ui.calculate_overview_layout(vim.o.columns, vim.o.lines, ov.width, ov.height, ov.right_width)
+		local lc = vim.api.nvim_win_get_config(left)
+		local rc = vim.api.nvim_win_get_config(right)
+		assert.are.same(
+			{ layout.left.width, layout.left.height, layout.left.row, layout.left.col },
+			{ lc.width, lc.height, lc.row, lc.col }
+		)
+		assert.are.same(
+			{ layout.right.width, layout.right.height, layout.right.row, layout.right.col },
+			{ rc.width, rc.height, rc.row, rc.col }
+		)
+		assert.are.same(
+			{ ui.OVERVIEW_LOADING_TEXT },
+			vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(left), 0, -1, false)
+		)
+		assert.are.same({ "" }, vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(right), 0, -1, false))
+	end)
+
+	it("q closes both panes, and closing again is a no-op", function()
+		local handle = ui.open_overview_loading()
+		local left, right = placeholder_wins()
 		vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("q", true, false, true), "x", false)
 		assert.is_false(handle.is_open())
-		assert.is_false(vim.api.nvim_win_is_valid(win))
-		-- Closing again is a no-op
+		assert.is_false(vim.api.nvim_win_is_valid(left))
+		assert.is_false(vim.api.nvim_win_is_valid(right))
 		handle.close()
 	end)
 
-	it("close() closes the float from outside", function()
+	it("closing the right pane by other means closes the left one too", function()
 		local handle = ui.open_overview_loading()
-		local win = vim.api.nvim_get_current_win()
+		local left, right = placeholder_wins()
+		vim.api.nvim_win_close(right, true)
+		assert.is_false(vim.api.nvim_win_is_valid(left))
+		assert.is_false(handle.is_open())
+	end)
+
+	it("close() closes both panes from outside", function()
+		local handle = ui.open_overview_loading()
+		local left, right = placeholder_wins()
 		handle.close()
-		assert.is_false(vim.api.nvim_win_is_valid(win))
+		assert.is_false(vim.api.nvim_win_is_valid(left))
+		assert.is_false(vim.api.nvim_win_is_valid(right))
 		assert.is_false(handle.is_open())
 	end)
 end)
