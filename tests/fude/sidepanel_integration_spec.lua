@@ -525,6 +525,49 @@ describe("sidepanel integration", function()
 			assert.are.equal(panel, config.state.sidepanel)
 			vim.api.nvim_buf_delete(buf, { force = true })
 		end)
+
+		it("a refused :quit in the panel notifies and reopens a window, keeping the panel", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			vim.cmd("wincmd l")
+			-- A real refusal (hidden modified buffers) would need the panel to be the last window
+			-- of the last tabpage, where a quit that is not refused exits the test runner.
+			-- So let the editor window's :quit through and refuse the panel's one.
+			local original_cmd = vim.cmd
+			local quit_calls = 0
+			helpers.mock(
+				vim,
+				"cmd",
+				setmetatable({}, {
+					__call = function(_, arg)
+						if arg == "quit" then
+							quit_calls = quit_calls + 1
+							if quit_calls > 1 then
+								error("E37: No write since last change (add ! to override)")
+							end
+						end
+						return original_cmd(arg)
+					end,
+					__index = original_cmd,
+				})
+			)
+			local notified
+			helpers.mock(vim, "notify", function(msg, level)
+				notified = { msg = msg, level = level }
+			end)
+
+			vim.cmd("quit")
+
+			assert.is_true(helpers.wait_for(function()
+				return #normal_wins() == 2
+			end))
+			assert.are.equal(2, quit_calls)
+			assert.are.equal(vim.log.levels.ERROR, notified.level)
+			assert.truthy(notified.msg:find("E37", 1, true))
+			assert.are.equal(panel, config.state.sidepanel)
+			assert.is_true(vim.api.nvim_win_is_valid(panel.win))
+			assert.are_not.equal(panel.win, panel.prev_win)
+		end)
 	end)
 
 	it("toggle reopens the panel in the current tab when it lives in another tab", function()
