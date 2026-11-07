@@ -102,7 +102,7 @@ M.PR_INFO_FIELDS = "number,baseRefName,baseRefOid,headRefName,url,state"
 --- reviewers and the CI checks are fetched on their own (get_pr_reviewers,
 --- get_pr_checks), so the body arrives as soon as possible.
 M.PR_OVERVIEW_FIELDS = "number,title,body,labels,assignees,state,isDraft,author,"
-	.. "baseRefName,headRefName,url,additions,deletions,changedFiles"
+	.. "baseRefName,headRefName,url,additions,deletions,changedFiles,reactionGroups"
 
 --- Union of two comma-separated `--json` field lists, in order, without
 --- duplicates. Pure.
@@ -815,6 +815,33 @@ function M.remove_label(pr_number, name, callback, repo)
 		"--method",
 		"DELETE",
 	}, callback)
+end
+
+--- List the reactions of a comment (`<comment path>/reactions`, from
+--- `reactions.find_reaction_target`).
+--- @param path string REST path of the comment's reactions
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.get_reactions(path, callback)
+	M.run_json({ "api", path, "--paginate" }, callback)
+end
+
+--- Add the viewer's reaction `content` (`+1`, `heart`, …) to a comment.
+--- @param path string REST path of the comment's reactions
+--- @param content string
+--- @param callback fun(err: string|nil, data: table|nil)
+function M.add_reaction(path, content, callback)
+	M.run_json({ "api", path, "--method", "POST", "-f", "content=" .. content }, callback)
+end
+
+--- Remove one of the viewer's reactions (DELETE answers 204 without a body,
+--- so the output is not parsed).
+--- @param path string REST path of the comment's reactions
+--- @param reaction_id number
+--- @param callback fun(err: string|nil)
+function M.remove_reaction(path, reaction_id, callback)
+	M.run({ "api", path .. "/" .. string.format("%d", reaction_id), "--method", "DELETE" }, function(err)
+		callback(err)
+	end)
 end
 
 --- Submit an existing pending review.

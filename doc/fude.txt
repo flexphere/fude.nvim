@@ -260,7 +260,10 @@ Using lazy.nvim: >lua
     View existing review comments on the current line in a floating
     window. Both submitted and pending review comments are shown.
     Press `r` to reply, `e` to edit, `d` to delete, `R` to resolve or
-    unresolve the thread (see |:FudeReviewResolve|), `q` to close.
+    unresolve the thread (see |:FudeReviewResolve|), `+` to add or
+    remove a reaction on the comment under the cursor (see
+    |fude-reactions|), `q` to close.
+    Each comment's reactions are shown under its body (`👍 2  ❤️ 1`).
     Edit and delete are only available for your own comments.
     Editing opens a two-pane window (thread above, editable comment
     below) pre-filled with the original comment body.
@@ -520,7 +523,10 @@ File opening position                                 *fude-file-position*
     or add or remove a label (Label). `r` re-requests a review from a
     reviewer who has already reviewed (the overview is not reopened
     afterwards, as with Reviewer and Label), `o` opens the comment under the
-    cursor on GitHub (the PR elsewhere, and in the right pane), `R`
+    cursor on GitHub (the PR elsewhere, and in the right pane), `+`
+    adds or removes a reaction on the comment under the cursor, or on
+    the PR itself elsewhere and in the right pane (see |fude-reactions|;
+    reactions are shown under the body and each comment), `R`
     refreshes (refetching rather than reusing the prefetched data), `<Tab>` switches between panes, `]c`/`[c` navigate
     review comments, and `q` closes.
     Reviewer and Label open a picker (routed by `file_list_mode`) in
@@ -619,6 +625,8 @@ File opening position                                 *fude-file-position*
     Keymaps (upper pane):~
       `e`       Edit own comment
       `d`       Delete own comment (with confirmation)
+      `+`       Add/remove a reaction on the comment under the cursor
+                (|fude-reactions|)
       `q`       Close browser
       `<Tab>`   Switch to lower pane
 
@@ -1758,6 +1766,40 @@ Example with lualine: >lua
     },
   }
 <
+
+------------------------------------------------------------------------------
+REACTIONS                                              *fude-reactions*
+
+Reactions on review comments and PR-level comments are shown under each
+comment's body (`👍 2  ❤️ 1`, `Comment` highlight) in the comment viewer
+(|:FudeReviewViewComment|), the reply/edit window, the comment browser's
+thread pane (|:FudeReviewListComments|) and the overview's COMMENTS
+(|:FudeReviewOverview|). The overview also shows the PR's own reactions
+under its body.
+
+`+` in the comment viewer, the comment browser's thread pane and the
+overview's left pane opens a picker of GitHub's eight reactions for the
+comment under the cursor (in the overview: the PR itself anywhere off a
+comment — the body, frontmatter, headings — and everywhere in the right
+pane) (titled `Reactions (<Tab> toggle, <CR> who reacted)`; routed by
+`file_list_mode` like the reviewer and label editors), with your own
+marked `●` and each row ending in its count, who reacted (the first
+three, then `+N`) and what `<Tab>` does there
+(`2 · @you, @alice · <Tab>: remove`, `<Tab>: add`). `<Tab>` adds the reaction under the
+cursor, or removes it when it is yours, and the picker stays open; while
+GitHub is being updated the row's mark turns into a spinner (as in the
+reviewer and label editors). The comment's display is redrawn in place
+after each change. `<CR>` on a row lists the users who reacted with it
+— even a single one — in a picker routed by `file_list_mode` like the
+reaction picker (Telescope / snacks.picker, else `vim.ui.select` with
+kind `fude_reaction_people`; title
+`👍 +1 reacted by 2 (<CR> copy username, <Esc> back to reactions):`):
+choosing a user copies the login (unnamed register, and `+` when a
+clipboard is available); `<Esc>` returns to the reaction picker, as
+does a reaction nobody has used yet. With the `vim.ui.select` fallback
+(no Telescope / snacks), choosing a row toggles it and the select
+reopens; the list of users is not available there. Local review comments,
+comments of your pending review and review summaries cannot be reacted to.
 
 ==============================================================================
 8. COMPLETION                                          *fude-completion*

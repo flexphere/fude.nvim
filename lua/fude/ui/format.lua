@@ -85,6 +85,105 @@ function M.calculate_float_dimensions(columns, screen_lines, pct_w, pct_h)
 	return { width = width, height = height, row = row, col = col }
 end
 
+--- The reactions GitHub offers, in the order its web UI lists them.
+M.REACTIONS = {
+	{ content = "+1", emoji = "👍" },
+	{ content = "-1", emoji = "👎" },
+	{ content = "laugh", emoji = "😄" },
+	{ content = "hooray", emoji = "🎉" },
+	{ content = "confused", emoji = "😕" },
+	{ content = "heart", emoji = "❤️" },
+	{ content = "rocket", emoji = "🚀" },
+	{ content = "eyes", emoji = "👀" },
+}
+
+--- Highlight group of a comment's reactions line.
+M.REACTIONS_HL = "Comment"
+
+--- The summary line of a comment's `reactions` rollup (`{ ["+1"] = 2,
+--- heart = 1, total_count = 3, url = … }` in the REST comment objects):
+--- `👍 2  ❤️ 1`, in M.REACTIONS order. nil when there is no reaction (or no
+--- rollup, e.g. a JSON null). Pure.
+--- @param rollup any
+--- @return string|nil
+function M.format_reactions(rollup)
+	if type(rollup) ~= "table" then
+		return nil
+	end
+	local parts = {}
+	for _, r in ipairs(M.REACTIONS) do
+		local n = rollup[r.content]
+		if type(n) == "number" and n > 0 and n == math.floor(n) then
+			table.insert(parts, string.format("%s %d", r.emoji, n))
+		end
+	end
+	if #parts == 0 then
+		return nil
+	end
+	return table.concat(parts, "  ")
+end
+
+--- GraphQL reaction contents (`gh pr view --json reactionGroups`) → the REST
+--- names M.REACTIONS uses.
+M.REACTION_GROUP_CONTENTS = {
+	THUMBS_UP = "+1",
+	THUMBS_DOWN = "-1",
+	LAUGH = "laugh",
+	HOORAY = "hooray",
+	CONFUSED = "confused",
+	HEART = "heart",
+	ROCKET = "rocket",
+	EYES = "eyes",
+}
+
+--- The REST `reactions` rollup shape (`{ ["+1"] = 2, total_count = 2 }`)
+--- from gh's `reactionGroups` (`{ { content = "THUMBS_UP", users = {
+--- totalCount = 2 } } }`). Unknown contents and malformed groups are
+--- skipped; nil without a list. Pure.
+--- @param groups any
+--- @return table|nil
+function M.build_rollup_from_reaction_groups(groups)
+	if type(groups) ~= "table" then
+		return nil
+	end
+	local rollup = { total_count = 0 }
+	for _, group in ipairs(groups) do
+		local content = type(group) == "table" and M.REACTION_GROUP_CONTENTS[group.content] or nil
+		local users = content and group.users
+		local n = type(users) == "table" and users.totalCount or nil
+		if type(n) == "number" and n > 0 then
+			rollup[content] = (rollup[content] or 0) + n
+			rollup.total_count = rollup.total_count + n
+		end
+	end
+	return rollup
+end
+
+--- The PR's own reactions rollup: `pr_info.reactions` once fude changed them
+--- (reactions.pick_pr), else the one from `pr_info.reactionGroups`. Pure.
+--- @param pr_info table
+--- @return table|nil
+function M.find_pr_reactions(pr_info)
+	if type(pr_info.reactions) == "table" then
+		return pr_info.reactions
+	end
+	return M.build_rollup_from_reaction_groups(pr_info.reactionGroups)
+end
+
+--- Append a comment's reactions line (and its highlight) after its body,
+--- when it has any.
+--- @param lines string[]
+--- @param hl_ranges table[]
+--- @param comment table
+local function append_reactions(lines, hl_ranges, comment)
+	local text = M.format_reactions(comment.reactions)
+	if text then
+		table.insert(lines, "")
+		table.insert(lines, text)
+		table.insert(hl_ranges, { line = #lines - 1, col_start = 0, col_end = #text, hl = M.REACTIONS_HL })
+	end
+end
+
 --- Format comment objects into display lines and highlight ranges.
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
@@ -111,6 +210,7 @@ function M.format_comments_for_display(comments, format_date_fn, separator_width
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
+		append_reactions(lines, hl_ranges, comment)
 		table.insert(comment_ranges, { start_line = start_line, end_line = #lines - 1, index = i })
 		if i < #comments then
 			table.insert(lines, "")
@@ -833,6 +933,7 @@ function M.format_reply_comments_for_display(comments, format_date_fn, separator
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
 		end
+		append_reactions(lines, hl_ranges, comment)
 		table.insert(comment_ranges, { start_line = header_line_idx, end_line = #lines - 1, index = i })
 
 		if i < #comments then
@@ -966,6 +1067,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 			table.insert(lines, body_line)
 		end
 	end
+	-- The PR's own reactions, under its body
+	append_reactions(lines, hl_ranges, { reactions = M.find_pr_reactions(pr_info) })
 
 	-- Comments: the section runs to the end of the pane (with the footer),
 	-- so it can be rebuilt in place (from comments_start) once they arrive.
@@ -1011,6 +1114,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 			for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 				table.insert(lines, body_line)
 			end
+			append_reactions(lines, hl_ranges, comment)
 			table.insert(comment_ranges, { start_line = start_line, end_line = #lines - 1, index = i })
 		end
 	end
@@ -1019,7 +1123,7 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 	table.insert(lines, "")
 	table.insert(
 		lines,
-		" ]s/[s: sections  ]c/[c: comments  o: open  C: comment/reviewer/label  r: re-request  za: fold"
+		" ]s/[s: sections  ]c/[c: comments  o: open  +: react  C: comment/reviewer/label  r: re-request  za: fold"
 			.. "  R: refresh  <Tab>: switch  q: close"
 	)
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })

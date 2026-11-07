@@ -304,7 +304,7 @@ local function create_browser(entries, issue_comments)
 		border = border,
 		title = " Comments ",
 		title_pos = "center",
-		footer = " e edit | d delete | o open | <Tab> switch | q close ",
+		footer = " e edit | d delete | + react | o open | <Tab> switch | q close ",
 		footer_pos = "center",
 	})
 	vim.wo[upper_win].wrap = true
@@ -812,6 +812,24 @@ local function create_browser(entries, issue_comments)
 		local index = format.find_comment_index_at_line(browser.thread_comment_ranges, line)
 		get_ui().open_comment_in_browser(index and (browser.thread_comments or {})[index] or nil, browser.open_ctx)
 	end, { buffer = upper_buf, desc = "Open comment on GitHub" })
+
+	-- React to the comment under the cursor; the thread pane is redrawn with
+	-- the new reactions (the comment objects are updated in place)
+	vim.keymap.set("n", "+", function()
+		local entry = current_entry()
+		if entry and entry.type == "draft" then
+			vim.notify("fude.nvim: Drafts are not on GitHub yet", vim.log.levels.INFO)
+			return
+		end
+		local line = vim.api.nvim_win_get_cursor(upper_win)[1] - 1
+		local index = format.find_comment_index_at_line(browser.thread_comment_ranges, line)
+		local comment = index and (browser.thread_comments or {})[index] or nil
+		require("fude.reactions").pick(comment, browser.open_ctx, function()
+			if not browser.closing and current_entry() == entry then
+				update_right_panes(browser, entry, state.comments or {}, issue_comments)
+			end
+		end)
+	end, { buffer = upper_buf, desc = "Add/remove a reaction" })
 
 	vim.keymap.set("n", "e", function()
 		local entry = current_entry()
