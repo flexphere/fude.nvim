@@ -51,8 +51,8 @@ Optional:
 - telescope.nvim for picker UI with diff preview (changed files and review scope)
 - snacks.nvim with image support (kitty graphics protocol: kitty, ghostty,
   wezterm; tmux with passthrough), curl, and ImageMagick (`magick` or
-  `convert`) for author / reviewer / assignee / comment author
-  avatars in the overview
+  `convert`) for the avatars in the overview and comment windows
+  (`images`)
 - gitsigns.nvim for automatic diff base switching
 - blink.cmp or nvim-cmp for @user / #issue / _commit completion
 
@@ -495,11 +495,11 @@ File opening position                                 *fude-file-position*
     mixed toward white; with a light one the fill is the label colour
     and the text black or white, as in the GitHub web UI. The colours
     need 'termguicolors'.
-    With `overview.avatars` (each kind off by default) and snacks.nvim
+    With `images.overview = true` (off by default) and snacks.nvim
     image support, the author's avatar is drawn on the `author:`
     line, each reviewer's and assignee's before their login, and each
     PR comment author's in the comment heading, cut into a circle like
-    the GitHub web UI (see `overview.avatars`);
+    the GitHub web UI (see `images`);
     the reviewer picker (Telescope and snacks) draws the same avatar
     between each row's mark and name, loading them once the picker is
     shown: the first rows at once, the rest a few at a time. Space is
@@ -1211,18 +1211,16 @@ Default configuration: >lua
       height = 80,
       -- Right pane width as percentage of total overview width
       right_width = 30,
-      -- Avatars to draw, per kind (snacks.nvim image support, curl, ImageMagick).
-      -- `avatars = true` turns on every kind.
-      avatars = {
-        author = false, -- PR author (frontmatter `author:`)
-        reviewers = false, -- reviewers (right pane and reviewer picker)
-        assignees = false, -- assignees (right pane)
-        comments = false, -- authors of the PR-level comments
-        -- comment authors in the comment viewer, reply/edit window and comment browser thread pane
-        comment_threads = false,
-      },
       -- Section marks (jump with 'd, 'c in left pane)
       marks = { description = "d", comments = "c" },
+    },
+    -- Avatar images (snacks.nvim image support, curl, ImageMagick).
+    -- `images = true` / `false` sets every place at once.
+    images = {
+      -- PR overview: author, reviewers (also the reviewer picker), assignees, PR comment authors
+      overview = false,
+      -- Comment authors in the comment viewer, reply/edit window and comment browser thread pane
+      comment = false,
     },
     -- Flash highlight when navigating to a comment line (]c/[c)
     flash = {
@@ -1390,22 +1388,29 @@ Options:
                   Right pane width as % of total overview width
                   (default: 30). Minimum effective width is 15 columns.
 
-`overview.avatars`  Which avatars to draw inline with snacks.nvim's
-                  image module, per kind (each `false` by default):
-                    `author`     the PR author (frontmatter `author:`)
-                    `reviewers`  each reviewer (right pane, and before
-                                 each row of the Telescope / snacks
-                                 reviewer picker)
-                    `assignees`  each assignee (right pane)
-                    `comments`   each PR comment author (`###` heading)
-                    `comment_threads`
-                                 each comment author in the comment
-                                 viewer, the reply/edit window and
-                                 the comment browser's thread pane
-                                 (before `@login` on the header)
-                  `true` turns on every kind, `false` none. Needs a
-                  terminal snacks supports (kitty graphics protocol:
-                  kitty, ghostty, wezterm; tmux with
+`overview.marks`    Table mapping section names to mark characters
+                  for the left pane.
+                  Sections: "description", "comments".
+                  Use `'d`, `'c` to jump to each section.
+                  (default: { description = "d",
+                  comments = "c" }).
+
+`images`            Avatar images drawn inline with snacks.nvim's image
+                  module, per place (each `false` by default):
+                    `overview`  the PR overview: the author (frontmatter
+                                `author:`), each reviewer (right pane,
+                                and before each row of the Telescope /
+                                snacks reviewer picker), each assignee
+                                (right pane) and each PR comment author
+                                (`###` heading)
+                    `comment`   each comment author in the comment
+                                viewer, the reply/edit window and the
+                                comment browser's thread pane (before
+                                `@login` on the header)
+                  `images = true` turns on both, `images = false` none.
+                  The earlier `overview.avatars = true` still turns on
+                  `overview`. Needs a terminal snacks supports (kitty
+                  graphics protocol: kitty, ghostty, wezterm; tmux with
                   `allow-passthrough`) and `curl`; the images are cached
                   in `stdpath("cache")/fude/avatars` and cut into
                   circles with ImageMagick (`magick` or `convert`),
@@ -1416,13 +1421,6 @@ Options:
                   icon, looked up once through `gh api
                   users/<name>[bot]`. A no-op when snacks.nvim is missing or the
                   terminal is unsupported.
-
-`overview.marks`    Table mapping section names to mark characters
-                  for the left pane.
-                  Sections: "description", "comments".
-                  Use `'d`, `'c` to jump to each section.
-                  (default: { description = "d",
-                  comments = "c" }).
 
 `flash.duration`    Duration in milliseconds for the flash highlight
                   when navigating to a comment line (default: 200).

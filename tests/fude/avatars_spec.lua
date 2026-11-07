@@ -91,16 +91,36 @@ describe("avatars.should_draw", function()
 		assert.is_false(avatars.should_draw(false))
 	end)
 
-	it("a table turns on each kind whose key is true", function()
-		local setting = { author = true, reviewers = false, comments = "yes" }
-		assert.is_true(avatars.should_draw(setting, "author"))
-		assert.is_false(avatars.should_draw(setting, "reviewers"))
-		assert.is_false(avatars.should_draw(setting, "assignees"))
-		assert.is_false(avatars.should_draw(setting, "comments"))
-		-- Without a kind: whether any kind is on
-		assert.is_true(avatars.should_draw(setting))
-		assert.is_false(avatars.should_draw({ author = false }))
+	it("a table turns on the kinds of each group whose key is true", function()
+		local overview_only = { overview = true, comment = false }
+		for _, kind in ipairs({ "author", "reviewers", "assignees", "comments" }) do
+			assert.is_true(avatars.should_draw(overview_only, kind))
+		end
+		assert.is_false(avatars.should_draw(overview_only, "comment_threads"))
+		local comment_only = { comment = true }
+		assert.is_true(avatars.should_draw(comment_only, "comment_threads"))
+		assert.is_false(avatars.should_draw(comment_only, "author"))
+		assert.is_false(avatars.should_draw({ overview = "yes" }, "author"))
+		assert.is_false(avatars.should_draw(overview_only, "unknown"))
+		-- Without a kind: whether any group is on
+		assert.is_true(avatars.should_draw(comment_only))
+		assert.is_false(avatars.should_draw({ overview = false, comment = false }))
 		assert.is_false(avatars.should_draw({}))
+	end)
+end)
+
+describe("avatars.resolve_setting", function()
+	it("returns images as given, with the earlier overview.avatars = true turning on the overview", function()
+		assert.is_true(avatars.resolve_setting({ images = true }))
+		assert.is_false(avatars.resolve_setting({ images = false }))
+		assert.are.same({ comment = true }, avatars.resolve_setting({ images = { comment = true } }))
+		assert.are.same(
+			{ overview = true, comment = true },
+			avatars.resolve_setting({ images = { overview = false, comment = true }, overview = { avatars = true } })
+		)
+		assert.are.same({ overview = true }, avatars.resolve_setting({ images = false, overview = { avatars = true } }))
+		assert.is_true(avatars.resolve_setting({ images = true, overview = { avatars = true } }))
+		assert.are.same({ comment = false }, avatars.resolve_setting({ images = { comment = false }, overview = {} }))
 	end)
 end)
 
@@ -109,7 +129,7 @@ describe("avatars.is_enabled", function()
 	local saved_snacks
 
 	before_each(function()
-		config.setup({ overview = { avatars = true } })
+		config.setup({ images = true })
 		saved_snacks = package.loaded["snacks"]
 	end)
 
@@ -118,7 +138,7 @@ describe("avatars.is_enabled", function()
 		helpers.cleanup()
 	end)
 
-	it("needs overview.avatars = true and snacks.nvim with image support", function()
+	it("needs images turned on and snacks.nvim with image support", function()
 		package.loaded["snacks"] = nil
 		local real_require = _G.require
 		-- Without snacks on the runtime path, require fails
@@ -138,7 +158,7 @@ describe("avatars.is_enabled", function()
 		package.loaded["snacks"].image.supports_terminal = function()
 			return true
 		end
-		config.setup({ overview = { avatars = false } })
+		config.setup({ images = false })
 		assert.is_false(avatars.is_enabled())
 		-- Off by default
 		config.setup({})
@@ -146,12 +166,19 @@ describe("avatars.is_enabled", function()
 		for _, kind in ipairs(avatars.KINDS) do
 			assert.is_false(avatars.is_enabled(kind))
 		end
-		-- Per kind: the other kinds stay off
-		config.setup({ overview = { avatars = { assignees = true } } })
-		assert.is_true(avatars.is_enabled("assignees"))
+		-- Per group: the other group stays off
+		config.setup({ images = { comment = true } })
+		assert.is_true(avatars.is_enabled("comment_threads"))
 		assert.is_true(avatars.is_enabled())
 		assert.is_false(avatars.is_enabled("author"))
-		assert.is_false(avatars.is_enabled("comments"))
+		assert.is_false(avatars.is_enabled("reviewers"))
+		config.setup({ images = { overview = true } })
+		assert.is_true(avatars.is_enabled("reviewers"))
+		assert.is_false(avatars.is_enabled("comment_threads"))
+		-- The earlier overview.avatars = true still turns on the overview
+		config.setup({ overview = { avatars = true } })
+		assert.is_true(avatars.is_enabled("author"))
+		assert.is_false(avatars.is_enabled("comment_threads"))
 		assert.are.equal(real_require, _G.require)
 	end)
 end)
@@ -415,7 +442,7 @@ describe("avatars.place", function()
 	local placed
 
 	before_each(function()
-		config.setup({ overview = { avatars = true } })
+		config.setup({ images = true })
 		saved_snacks = package.loaded["snacks"]
 		placed = {}
 		package.loaded["snacks"] = {
@@ -461,16 +488,16 @@ describe("avatars.place", function()
 	end)
 
 	it("places only the positions whose kind is turned on", function()
-		config.setup({ overview = { avatars = { assignees = true, comments = true } } })
+		config.setup({ images = { comment = true } })
 		local buf = helpers.create_buf({ "a", "b", "c", "d" })
 		avatars.place(buf, {
 			{ line = 0, col = 0, login = "author1", kind = "author" },
 			{ line = 1, col = 0, login = "rev", kind = "reviewers" },
-			{ line = 2, col = 0, login = "asg", kind = "assignees" },
+			{ line = 2, col = 0, login = "thr", kind = "comment_threads" },
 			{ line = 3, col = 4, login = "com", kind = "comments" },
 		})
 		assert.are.same(
-			{ "/cache/asg.round80.png", "/cache/com.round80.png" },
+			{ "/cache/thr.round80.png" },
 			vim.tbl_map(function(p)
 				return p.file
 			end, placed)
@@ -478,12 +505,12 @@ describe("avatars.place", function()
 	end)
 
 	it("does nothing when disabled, and skips a buffer gone before the file arrived", function()
-		config.setup({ overview = { avatars = false } })
+		config.setup({ images = false })
 		local buf = helpers.create_buf({ "a" })
 		avatars.place(buf, { { line = 0, col = 0, login = "kyu08" } })
 		assert.are.equal(0, #placed)
 
-		config.setup({ overview = { avatars = true } })
+		config.setup({ images = true })
 		local pending
 		helpers.mock(avatars, "fetch", function(_, cb)
 			pending = cb
