@@ -1785,8 +1785,9 @@ comment under the cursor (in the overview: the PR itself anywhere off a
 comment — the body, frontmatter, headings — and everywhere in the right
 pane) (titled `Reactions (<Tab> toggle, <CR> who reacted)`; routed by
 `file_list_mode` like the reviewer and label editors), with your own
-marked `●` and each row ending in its count and what `<Tab>` does there
-(`2 · <Tab>: remove`, `<Tab>: add`). `<Tab>` adds the reaction under the
+marked `●` and each row ending in its count, who reacted (the first
+three, then `+N`) and what `<Tab>` does there
+(`2 · @you, @alice · <Tab>: remove`, `<Tab>: add`). `<Tab>` adds the reaction under the
 cursor, or removes it when it is yours, and the picker stays open; while
 GitHub is being updated the row's mark turns into a spinner (as in the
 reviewer and label editors). The comment's display is redrawn in place

@@ -128,27 +128,70 @@ function M.find_user_reactions(list, login)
 	return mine
 end
 
---- The detail of a reaction row in the picker: its count and what `<Tab>`
---- does on it (`2 · <Tab>: remove`, `<Tab>: add`), so the key is visible on
---- every row. Pure.
+--- How many of the users who reacted a picker row names before `+N more`.
+M.DETAIL_USERS = 3
+
+--- Who reacted, as a picker row shows it: `@a, @b, @c +2`. nil for nobody.
+--- Pure.
+--- @param logins string[]|nil
+--- @param limit number|nil default M.DETAIL_USERS
+--- @return string|nil
+function M.format_reaction_users(logins, limit)
+	if type(logins) ~= "table" or #logins == 0 then
+		return nil
+	end
+	limit = limit or M.DETAIL_USERS
+	local shown = {}
+	for i = 1, math.min(limit, #logins) do
+		table.insert(shown, "@" .. logins[i])
+	end
+	local text = table.concat(shown, ", ")
+	if #logins > limit then
+		text = string.format("%s +%d", text, #logins - limit)
+	end
+	return text
+end
+
+--- The detail of a reaction row in the picker: its count, who reacted and
+--- what `<Tab>` does on it (`2 · @me, @alice · <Tab>: remove`, `<Tab>: add`),
+--- so the key is visible on every row. Pure.
 --- @param count number|nil
 --- @param on boolean whether the viewer gave this reaction
+--- @param logins string[]|nil who reacted (find_reaction_users)
 --- @return string
-function M.format_reaction_detail(count, on)
-	local hint = "<Tab>: " .. (on and "remove" or "add")
+function M.format_reaction_detail(count, on, logins)
+	local parts = {}
 	if type(count) == "number" and count > 0 then
-		return string.format("%d · %s", count, hint)
+		table.insert(parts, tostring(count))
 	end
-	return hint
+	local users = M.format_reaction_users(logins)
+	if users then
+		table.insert(parts, users)
+	end
+	table.insert(parts, "<Tab>: " .. (on and "remove" or "add"))
+	return table.concat(parts, " · ")
+end
+
+--- Who reacted with each content in a listing: content → logins
+--- (find_reaction_users), for every content in M.CONTENTS. Pure.
+--- @param list any
+--- @return table<string, string[]>
+function M.build_reaction_users(list)
+	local users = {}
+	for _, c in ipairs(M.CONTENTS) do
+		users[c.content] = M.find_reaction_users(list, c.content)
+	end
+	return users
 end
 
 --- The picker rows (ui/toggle_picker items): every reaction in M.CONTENTS
---- order, `on` when the viewer gave it, its detail re-read from `counts` (a
---- content → count table the caller keeps current) on every render. Pure.
+--- order, `on` when the viewer gave it, its detail re-read from `counts` and
+--- `users` (tables the caller keeps current) on every render. Pure.
 --- @param counts table<string, number> the rollup's counts
 --- @param mine table<string, number> from find_user_reactions
+--- @param users table<string, string[]>|nil from build_reaction_users
 --- @return table[] items { text, on, value = content, detail }
-function M.build_reaction_items(counts, mine)
+function M.build_reaction_items(counts, mine, users)
 	local items = {}
 	for _, c in ipairs(M.CONTENTS) do
 		table.insert(items, {
@@ -156,7 +199,7 @@ function M.build_reaction_items(counts, mine)
 			on = mine[c.content] ~= nil,
 			value = c.content,
 			detail = function(item)
-				return M.format_reaction_detail(counts[c.content], item.on)
+				return M.format_reaction_detail(counts[c.content], item.on, users and users[c.content])
 			end,
 		})
 	end
@@ -192,7 +235,8 @@ local function open_picker(path, target, on_done)
 		end
 		local mine = M.find_user_reactions(list, login)
 		local counts = M.build_rollup(list)
-		local items = M.build_reaction_items(counts, mine)
+		local users = M.build_reaction_users(list)
+		local items = M.build_reaction_items(counts, mine, users)
 		-- The latest listing, for the people picker
 		local current_list = list
 
@@ -207,6 +251,9 @@ local function open_picker(path, target, on_done)
 					return
 				end
 				current_list = new_list
+				for k, v in pairs(M.build_reaction_users(new_list)) do
+					users[k] = v
+				end
 				local rollup = M.build_rollup(new_list)
 				for k, v in pairs(rollup) do
 					counts[k] = v
