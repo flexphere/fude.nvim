@@ -814,8 +814,9 @@ local function create_browser(entries, issue_comments)
 	end, { buffer = upper_buf, desc = "Open comment on GitHub" })
 
 	-- React to the comment under the cursor; the thread pane is redrawn with
-	-- the new reactions (the comment objects are updated in place)
-	vim.keymap.set("n", "+", function()
+	-- the new reactions (the comment objects are updated in place).
+	-- :FudeReviewReact in the thread pane does the same.
+	local function react()
 		local entry = current_entry()
 		if entry and entry.type == "draft" then
 			vim.notify("fude.nvim: Drafts are not on GitHub yet", vim.log.levels.INFO)
@@ -829,7 +830,9 @@ local function create_browser(entries, issue_comments)
 				update_right_panes(browser, entry, state.comments or {}, issue_comments)
 			end
 		end)
-	end, { buffer = upper_buf, desc = "Add/remove a reaction" })
+	end
+	vim.keymap.set("n", "+", react, { buffer = upper_buf, desc = "Add/remove a reaction" })
+	require("fude.reactions").set_buffer_handler(upper_buf, react)
 
 	vim.keymap.set("n", "e", function()
 		local entry = current_entry()

@@ -519,10 +519,13 @@ function M.show_comments_float(comments, opts)
 	end, { buffer = buf, desc = "Open comment on GitHub" })
 
 	-- Like o, only the comment under the cursor: the float stays open and
-	-- shows the new reactions
-	vim.keymap.set("n", "+", function()
-		require("fude.reactions").pick(comment_on_cursor_line(), open_ctx, rerender)
-	end, { buffer = buf, desc = "Add/remove a reaction" })
+	-- shows the new reactions. :FudeReviewReact runs the same here.
+	local reactions = require("fude.reactions")
+	local function react()
+		reactions.pick(comment_on_cursor_line(), open_ctx, rerender)
+	end
+	vim.keymap.set("n", "+", react, { buffer = buf, desc = "Add/remove a reaction" })
+	reactions.set_buffer_handler(buf, react)
 
 	local km = config.opts.keymaps
 	if km.next_comment then
@@ -1193,7 +1196,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			handle.refresh_left()
 		end)
 	end
-	vim.keymap.set("n", "+", function()
+	local function react_in_left()
 		local line = vim.api.nvim_win_get_cursor(left_win)[1] - 1
 		local index = format.find_comment_index_at_line(left_result.comment_ranges, line)
 		local comment = index and issue_comments and issue_comments[index] or nil
@@ -1204,8 +1207,17 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		reactions.pick(comment, open_ctx, function()
 			handle.set_comments(issue_comments)
 		end)
-	end, { buffer = left_buf, desc = "Add/remove a reaction on the comment or the PR" })
+	end
+	vim.keymap.set(
+		"n",
+		"+",
+		react_in_left,
+		{ buffer = left_buf, desc = "Add/remove a reaction on the comment or the PR" }
+	)
 	vim.keymap.set("n", "+", react_to_pr, { buffer = right_buf, desc = "Add/remove a reaction on the PR" })
+	-- :FudeReviewReact in either pane does what `+` does there
+	reactions.set_buffer_handler(left_buf, react_in_left)
+	reactions.set_buffer_handler(right_buf, react_to_pr)
 
 	return handle
 end
