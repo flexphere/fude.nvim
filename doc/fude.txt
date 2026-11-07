@@ -1790,7 +1790,9 @@ cursor, or removes it when it is yours, and the picker stays open; while
 GitHub is being updated the row's mark turns into a spinner (as in the
 reviewer and label editors). The comment's display is redrawn in place
 after each change. `<CR>` on a row lists the users who reacted with it
-in a `vim.ui.select` (kind `fude_reaction_people`, prompt
+— even a single one — in a picker routed by `file_list_mode` like the
+reaction picker (Telescope / snacks.picker, else `vim.ui.select` with
+kind `fude_reaction_people`; title
 `👍 +1 reacted by 2 (<CR> copy username, <Esc> back to reactions):`):
 choosing a user copies the login (unnamed register, and `+` when a
 clipboard is available); `<Esc>` returns to the reaction picker, as

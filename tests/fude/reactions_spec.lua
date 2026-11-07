@@ -278,13 +278,17 @@ describe("reactions.pick", function()
 		assert.are.same({ "@me", "@alice" }, shown)
 		assert.truthy(prompt:find("<CR> copy username", 1, true))
 		assert.truthy(prompt:find("<Esc> back to reactions", 1, true))
-		assert.are.equal("alice", copied)
+		assert.is_true(helpers.wait_for(function()
+			return copied == "alice"
+		end))
 		assert.are.equal(1, opens)
 
 		-- <Esc> (no choice): back to the reaction picker
 		answer = nil
 		opened.on_confirm(item_for(opened, "heart"))
-		assert.are.equal(2, opens)
+		assert.is_true(helpers.wait_for(function()
+			return opens == 2
+		end))
 
 		-- Nobody reacted with it: straight back to the reaction picker
 		shown = nil
@@ -520,5 +524,78 @@ describe("+ in the PR overview", function()
 		vim.api.nvim_win_set_cursor(win, { line_of("c"), 0 })
 		vim.fn.maparg("+", "n", false, true).callback()
 		assert.are.same({ "pr", 77 }, picked)
+	end)
+end)
+
+describe("reactions.show_people", function()
+	local config = require("fude.config")
+	local saved
+
+	before_each(function()
+		saved = package.loaded["snacks.picker"]
+	end)
+
+	after_each(function()
+		package.loaded["snacks.picker"] = saved
+		helpers.cleanup()
+	end)
+
+	it("vim.ui.select: shows even a single user instead of choosing it", function()
+		config.setup({ file_list_mode = "quickfix" })
+		local shown
+		helpers.mock(vim.ui, "select", function(items, _, on_choice)
+			shown = items
+			on_choice(nil)
+		end)
+		local cancelled = false
+		reactions.show_people({ "solo" }, "t", function() end, function()
+			cancelled = true
+		end)
+		assert.are.same({ "solo" }, shown)
+		assert.is_true(helpers.wait_for(function()
+			return cancelled
+		end))
+	end)
+
+	it("snacks: never auto-confirms, <CR> picks, any other close goes back once", function()
+		config.setup({ file_list_mode = "snacks" })
+		local popts
+		package.loaded["snacks.picker"] = {
+			pick = function(o)
+				popts = o
+			end,
+		}
+		local picked, cancels = nil, 0
+		local function open()
+			reactions.show_people({ "solo" }, "👍 +1 reacted by 1", function(login)
+				picked = login
+			end, function()
+				cancels = cancels + 1
+			end)
+		end
+		open()
+		assert.is_false(popts.auto_confirm)
+		assert.are.equal("👍 +1 reacted by 1", popts.title)
+		assert.are.equal("@solo", popts.format(popts.items[1])[1][1])
+		local picker = {
+			close = function()
+				popts.on_close()
+			end,
+		}
+		popts.confirm(picker, popts.items[1])
+		assert.is_true(helpers.wait_for(function()
+			return picked == "solo"
+		end))
+		vim.wait(20)
+		assert.are.equal(0, cancels)
+
+		open()
+		popts.on_close()
+		popts.on_close()
+		assert.is_true(helpers.wait_for(function()
+			return cancels == 1
+		end))
+		vim.wait(20)
+		assert.are.equal(1, cancels)
 	end)
 end)

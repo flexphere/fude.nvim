@@ -70,6 +70,115 @@ function M.build_people_prompt(text, count)
 	return string.format("%s reacted by %d (<CR> copy username, <Esc> back to reactions):", text, count)
 end
 
+--- Show the people picker (who reacted with one reaction), routed by
+--- `file_list_mode` like the reaction picker: Telescope / snacks.picker, else
+--- vim.ui.select (also when the plugin is missing). It always waits for a
+--- choice, even with one user — snacks' `auto_confirm` is turned off.
+--- `on_pick(login)` runs for `<CR>`; `on_cancel()` once for any other close
+--- (`<Esc>`, `q`).
+--- @param logins string[]
+--- @param title string (build_people_prompt)
+--- @param on_pick fun(login: string)
+--- @param on_cancel fun()
+function M.show_people(logins, title, on_pick, on_cancel)
+	local mode = config.opts.file_list_mode
+	local picked = false
+	local function cancelled()
+		if not picked then
+			picked = true
+			vim.schedule(on_cancel)
+		end
+	end
+	local function pick(login)
+		if picked then
+			return
+		end
+		picked = true
+		vim.schedule(function()
+			on_pick(login)
+		end)
+	end
+
+	if mode == "telescope" then
+		local ok, pickers = pcall(require, "telescope.pickers")
+		if ok then
+			local finders = require("telescope.finders")
+			local conf = require("telescope.config").values
+			local actions = require("telescope.actions")
+			local action_state = require("telescope.actions.state")
+			local themes = require("telescope.themes")
+			pickers
+				.new(themes.get_dropdown({}), {
+					prompt_title = title,
+					finder = finders.new_table({
+						results = logins,
+						entry_maker = function(login)
+							return { value = login, display = "@" .. login, ordinal = login }
+						end,
+					}),
+					sorter = conf.generic_sorter({}),
+					attach_mappings = function(prompt_bufnr)
+						vim.api.nvim_create_autocmd("BufWipeout", {
+							buffer = prompt_bufnr,
+							once = true,
+							callback = cancelled,
+						})
+						actions.select_default:replace(function()
+							local selection = action_state.get_selected_entry()
+							if selection then
+								pick(selection.value)
+							end
+							actions.close(prompt_bufnr)
+						end)
+						return true
+					end,
+				})
+				:find()
+			return
+		end
+	elseif mode == "snacks" then
+		local ok, snacks_picker = pcall(require, "snacks.picker")
+		if ok then
+			local items = {}
+			for _, login in ipairs(logins) do
+				table.insert(items, { text = login })
+			end
+			snacks_picker.pick({
+				source = "fude_reaction_people",
+				title = title,
+				items = items,
+				layout = { preset = "select" },
+				auto_confirm = false,
+				format = function(item)
+					return { { "@" .. item.text } }
+				end,
+				confirm = function(picker, item)
+					if item then
+						pick(item.text)
+					end
+					picker:close()
+				end,
+				on_close = cancelled,
+			})
+			return
+		end
+	end
+
+	vim.ui.select(logins, {
+		prompt = title,
+		kind = "fude_reaction_people",
+		format_item = function(login)
+			return "@" .. login
+		end,
+	}, function(login)
+		if login then
+			pick(login)
+		else
+			cancelled()
+		end
+	end)
+end
+
 --- The REST path of the PR's own reactions (its body: `issues/<n>/reactions`),
 --- or why it has none. Pure.
 --- @param pr_info any
@@ -128,11 +237,12 @@ function M.find_user_reactions(list, login)
 	return mine
 end
 
---- How many of the users who reacted a picker row names before `+N more`.
+--- How many of the users who reacted a picker row names before `+N`.
 M.DETAIL_USERS = 3
 
---- Who reacted, as a picker row shows it: `@a, @b, @c +2`. nil for nobody.
---- Pure.
+--- Who reacted, as a picker row shows it: the first `limit` logins, then
+--- `+N` for the rest (`@a, @b, @c +2`), so a popular reaction does not
+--- stretch the row. nil for nobody. Pure.
 --- @param logins string[]|nil
 --- @param limit number|nil default M.DETAIL_USERS
 --- @return string|nil
@@ -287,23 +397,13 @@ local function open_picker(path, target, on_done)
 				show_reactions()
 				return
 			end
-			vim.ui.select(logins, {
-				prompt = M.build_people_prompt(item.text, #logins),
-				kind = "fude_reaction_people",
-				format_item = function(user)
-					return "@" .. user
-				end,
-			}, function(user)
-				if not user then
-					show_reactions()
-					return
-				end
+			M.show_people(logins, M.build_people_prompt(item.text, #logins), function(user)
 				local to_clipboard = require("fude.util").copy_to_clipboard(user)
 				vim.notify(
 					string.format("fude.nvim: Copied %s%s", user, to_clipboard and "" or " (unnamed register only)"),
 					vim.log.levels.INFO
 				)
-			end)
+			end, show_reactions)
 		end
 
 		show_reactions = function()
