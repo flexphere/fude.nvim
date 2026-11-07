@@ -1,11 +1,12 @@
---- Avatars of the PR author and reviewers in the overview, drawn inline with
+--- Avatars of the PR author, reviewers, assignees and comment authors in the
+--- overview, drawn inline with
 --- snacks.nvim's image module (kitty graphics protocol: kitty, ghostty,
 --- wezterm; tmux with passthrough). The images are downloaded with curl into
 --- `stdpath("cache")/fude/avatars` and cut into a circle with ImageMagick
 --- (`magick`, or `convert` of ImageMagick 6), as the GitHub web UI shows
---- them; without ImageMagick the square image is shown. Everything is a no-op
---- unless `overview.avatars = true` (off by default), and without snacks.nvim
---- or terminal support.
+--- them; without ImageMagick the square image is shown. Each kind is a no-op
+--- unless `images` turns it on (off by default), and everything is
+--- a no-op without snacks.nvim or terminal support.
 local M = {}
 local config = require("fude.config")
 
@@ -177,12 +178,73 @@ function M.find_magick()
 	return nil
 end
 
---- Whether avatars are drawn: `overview.avatars` is true, snacks.nvim is
---- installed, and its image module reports terminal support.
+--- The kinds of avatars, each drawn where the `images` group it belongs to
+--- (KIND_GROUPS) turns it on: the PR author (frontmatter), the reviewers
+--- (right pane and reviewer picker), the assignees (right pane), the authors
+--- of the PR-level comments, and the comment authors of the comment viewer,
+--- the reply/edit window and the comment browser's thread pane.
+M.KINDS = { "author", "reviewers", "assignees", "comments", "comment_threads" }
+
+--- The `images` key that turns each kind on.
+M.KIND_GROUPS = {
+	author = "overview",
+	reviewers = "overview",
+	assignees = "overview",
+	comments = "overview",
+	comment_threads = "comment",
+}
+
+--- The `images` setting in effect: `config.opts.images`, with `overview`
+--- also on when the earlier `overview.avatars = true` is set (it only ever
+--- covered the overview). Pure.
+--- @param opts table config.opts
+--- @return any `true` / `false` / `{ overview, comment }`
+function M.resolve_setting(opts)
+	local images = opts.images
+	local legacy = type(opts.overview) == "table" and opts.overview.avatars == true
+	if not legacy or images == true then
+		return images
+	end
+	local resolved = { overview = true }
+	if type(images) == "table" then
+		resolved.comment = images.comment
+	end
+	return resolved
+end
+
+--- Whether the `images` setting turns on the avatars of `kind`: `true` turns
+--- on every kind, a table each kind whose group (KIND_GROUPS) is `true`;
+--- anything else (`false`, nil) none. Without `kind`, whether any kind is
+--- on. Pure.
+--- @param setting any
+--- @param kind string|nil one of M.KINDS
 --- @return boolean
-function M.is_enabled()
-	local ov = config.opts.overview or {}
-	if ov.avatars ~= true then
+function M.should_draw(setting, kind)
+	if setting == true then
+		return true
+	end
+	if type(setting) ~= "table" then
+		return false
+	end
+	if kind == nil then
+		for _, k in ipairs(M.KINDS) do
+			if setting[M.KIND_GROUPS[k]] == true then
+				return true
+			end
+		end
+		return false
+	end
+	local group = M.KIND_GROUPS[kind]
+	return group ~= nil and setting[group] == true
+end
+
+--- Whether avatars (of `kind`, or of any kind without it) are drawn: the
+--- `images` setting turns them on (`should_draw`), snacks.nvim is
+--- installed, and its image module reports terminal support.
+--- @param kind string|nil one of M.KINDS
+--- @return boolean
+function M.is_enabled(kind)
+	if not M.should_draw(M.resolve_setting(config.opts), kind) then
 		return false
 	end
 	local ok, snacks = pcall(require, "snacks")
@@ -340,30 +402,33 @@ function M.clear(buf)
 	end
 end
 
---- Draw the avatars of `positions` (`{ line (0-indexed), col, login }`, from
---- the overview line builders) into `buf`, each once its file is available.
---- Nothing happens when avatars are disabled or unsupported, and a buffer
---- gone by the time a download finished is left alone.
+--- Draw the avatars of `positions` (`{ line (0-indexed), col, login, kind }`,
+--- from the overview line builders) into `buf`, each once its file is
+--- available. A position whose `kind` is disabled (`is_enabled(kind)`) is
+--- skipped, and a buffer gone by the time a download finished is left alone.
 --- @param buf number
 --- @param positions table[]|nil
 function M.place(buf, positions)
 	if not positions or #positions == 0 or not M.is_enabled() then
 		return
 	end
+	local setting = M.resolve_setting(config.opts)
 	for _, position in ipairs(positions) do
-		M.fetch(position.login, function(path)
-			if not path or not vim.api.nvim_buf_is_valid(buf) then
-				return
-			end
-			pcall(function()
-				require("snacks").image.placement.new(buf, path, {
-					pos = { position.line + 1, position.col },
-					inline = true,
-					height = M.CELL_HEIGHT,
-					width = M.CELL_WIDTH,
-				})
+		if M.should_draw(setting, position.kind) then
+			M.fetch(position.login, function(path)
+				if not path or not vim.api.nvim_buf_is_valid(buf) then
+					return
+				end
+				pcall(function()
+					require("snacks").image.placement.new(buf, path, {
+						pos = { position.line + 1, position.col },
+						inline = true,
+						height = M.CELL_HEIGHT,
+						width = M.CELL_WIDTH,
+					})
+				end)
 			end)
-		end)
+		end
 	end
 end
 

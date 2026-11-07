@@ -13,6 +13,7 @@ M.calculate_float_dimensions = format.calculate_float_dimensions
 M.format_line_range = format.format_line_range
 M.build_range_start_marker = format.build_range_start_marker
 M.format_comments_for_display = format.format_comments_for_display
+M.build_comment_avatar_position = format.build_comment_avatar_position
 M.build_comments_float_title = format.build_comments_float_title
 M.normalize_check = format.normalize_check
 M.format_check_status = format.format_check_status
@@ -398,6 +399,8 @@ function M.show_comments_float(comments, opts)
 	-- Lets `close_comment_ui` find viewer floats: they show working-tree
 	-- comments, which the local commit scope must not keep on screen.
 	vim.b[buf].fude_comment_view = true
+	-- Comment authors' avatars (images.comment)
+	require("fude.ui.avatars").place(buf, result.avatar_positions)
 
 	local win = vim.api.nvim_open_win(buf, true, {
 		relative = "editor",
@@ -784,8 +787,9 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.bo[right_buf].bufhidden = "wipe"
 	vim.bo[right_buf].filetype = "markdown"
 
-	-- Author and reviewer avatars, drawn as their downloads finish (a no-op
-	-- without snacks.nvim image support or with overview.avatars = false)
+	-- Author, reviewer, assignee and comment author avatars, drawn as their
+	-- downloads finish (each kind a no-op unless images.overview turns it
+	-- on, and all without snacks.nvim image support)
 	local avatars = require("fude.ui.avatars")
 	avatars.place(left_buf, left_result.avatar_positions)
 	avatars.place(right_buf, right_result.avatar_positions)
@@ -1082,8 +1086,8 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	end
 
 	--- Fill in the PR-level comments. COMMENTS is the end of the left pane
-	--- (with the footer), so the frontmatter and the body above it — and the
-	--- author's avatar — stay as they are.
+	--- (with the footer), so the frontmatter and the body above it stay as
+	--- they are; the avatars are drawn again with the comment authors'.
 	--- @param comments table[]
 	function handle.set_comments(comments)
 		issue_comments = comments
@@ -1100,6 +1104,8 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			collect_sections()
 			vim.api.nvim_buf_clear_namespace(left_buf, ref_ns, 0, -1)
 			setup_github_refs(left_buf, get_repo_base_url(pr_info.url))
+			avatars.clear(left_buf)
+			avatars.place(left_buf, left_result.avatar_positions)
 		end
 		update_spinner()
 	end
@@ -1295,6 +1301,7 @@ function M.open_edit_window(thread, comment, opts)
 	vim.bo[upper_buf].buftype = "nofile"
 	vim.bo[upper_buf].bufhidden = "wipe"
 	vim.bo[upper_buf].filetype = "markdown"
+	require("fude.ui.avatars").place(upper_buf, result.avatar_positions)
 
 	-- Create lower buffer (editable, pre-filled with comment body)
 	local lower_buf = vim.api.nvim_create_buf(false, true)
@@ -1484,6 +1491,7 @@ function M.open_reply_window(comments, opts)
 	vim.bo[upper_buf].buftype = "nofile"
 	vim.bo[upper_buf].bufhidden = "wipe"
 	vim.bo[upper_buf].filetype = opts.filetype or "markdown"
+	require("fude.ui.avatars").place(upper_buf, result.avatar_positions)
 
 	-- Create lower buffer (editable input)
 	local lower_buf = vim.api.nvim_create_buf(false, true)

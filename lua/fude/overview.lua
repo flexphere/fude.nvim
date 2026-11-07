@@ -490,7 +490,7 @@ function M.edit_reviewers(pr_info, captured_state)
 		require("fude.ui.toggle_picker").open({
 			title = "Reviewers",
 			items = items,
-			images = avatars.is_enabled() and function(item, cb)
+			images = avatars.is_enabled("reviewers") and function(item, cb)
 				avatars.fetch(item.value, cb)
 			end or nil,
 			-- A dedicated key, shown at the end of each row it applies to, so

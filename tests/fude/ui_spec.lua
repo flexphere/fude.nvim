@@ -1117,6 +1117,42 @@ describe("build_overview_left_lines", function()
 	end)
 end)
 
+describe("comment thread avatar positions", function()
+	local identity = function(s)
+		return s
+	end
+	local comments = {
+		{ user = { login = "alice" }, body = "a\nb", created_at = "t1" },
+		{ body = "no user", created_at = "t2" },
+		{ user = { login = "bot[bot]" }, body = "c", created_at = "t3" },
+	}
+
+	it("build_comment_avatar_position: start of the header line, kind comment_threads", function()
+		assert.are.same(
+			{ line = 3, col = 0, login = "alice", kind = "comment_threads" },
+			ui.build_comment_avatar_position(3, "alice")
+		)
+		assert.is_nil(ui.build_comment_avatar_position(0, "unknown"))
+		assert.is_nil(ui.build_comment_avatar_position(0, ""))
+		assert.is_nil(ui.build_comment_avatar_position(0, vim.NIL))
+		assert.is_nil(ui.build_comment_avatar_position(0, nil))
+	end)
+
+	for _, name in ipairs({ "format_comments_for_display", "format_reply_comments_for_display" }) do
+		it(name .. " puts each known author's avatar before `@login` on the header", function()
+			local result = ui[name](comments, identity)
+			local logins = {}
+			for _, p in ipairs(result.avatar_positions) do
+				table.insert(logins, p.login)
+				assert.are.equal(0, p.col)
+				assert.are.equal("comment_threads", p.kind)
+				assert.are.equal("@" .. p.login, result.lines[p.line + 1]:sub(1, #p.login + 1))
+			end
+			assert.are.same({ "alice", "bot[bot]" }, logins)
+		end)
+	end
+end)
+
 describe("overview avatar positions", function()
 	local identity = function(s)
 		return s
@@ -1124,7 +1160,7 @@ describe("overview avatar positions", function()
 
 	it("left pane: the author line, after `author: `; none for an unknown author", function()
 		local result = ui.build_overview_left_lines({ number = 1, title = "T", author = { login = "kyu08" } }, {}, identity)
-		assert.are.same({ { line = 2, col = 8, login = "kyu08" } }, result.avatar_positions)
+		assert.are.same({ { line = 2, col = 8, login = "kyu08", kind = "author" } }, result.avatar_positions)
 		assert.are.equal('author: "@kyu08"', result.lines[3])
 		assert.are.same({}, ui.build_overview_left_lines({ number = 1, title = "T" }, {}, identity).avatar_positions)
 	end)
@@ -1141,6 +1177,53 @@ describe("overview avatar positions", function()
 			assert.are.equal("@" .. p.login, result.lines[p.line + 1]:sub(p.col + 1, p.col + #p.login + 1))
 		end
 		assert.are.same({ "✓ @alice  approved", "● @carol  pending" }, lines)
+	end)
+
+	it("left pane: each comment header, after `### `, with kind comments", function()
+		local result = ui.build_overview_left_lines({ number = 1, title = "T", author = { login = "kyu08" } }, {
+			{ user = { login = "alice" }, body = "hi", created_at = "2026-01-01T00:00:00Z" },
+			{ user = { login = "bot[bot]" }, body = "x", created_at = "2026-01-02T00:00:00Z" },
+			{ body = "no user", created_at = "2026-01-03T00:00:00Z" },
+		}, identity)
+		local comment_positions = {}
+		for _, p in ipairs(result.avatar_positions) do
+			if p.kind == "comments" then
+				table.insert(comment_positions, p)
+				assert.are.equal(4, p.col)
+				assert.are.equal("### @" .. p.login, result.lines[p.line + 1]:sub(1, 5 + #p.login))
+			end
+		end
+		assert.are.same(
+			{ "alice", "bot[bot]" },
+			vim.tbl_map(function(p)
+				return p.login
+			end, comment_positions)
+		)
+		-- Still loading: no comment positions, only the author's
+		local loading =
+			ui.build_overview_left_lines({ number = 1, title = "T", author = { login = "kyu08" } }, nil, identity)
+		assert.are.same(
+			{ "author" },
+			vim.tbl_map(function(p)
+				return p.kind
+			end, loading.avatar_positions)
+		)
+	end)
+
+	it("right pane: each assignee line, at its start, with kind assignees", function()
+		local result = ui.build_overview_right_lines({
+			reviewRequests = { { login = "carol" } },
+			assignees = { { login = "dave" }, "erin" },
+		})
+		local kinds = {}
+		for _, p in ipairs(result.avatar_positions) do
+			kinds[p.login] = p.kind
+			if p.kind == "assignees" then
+				assert.are.equal(0, p.col)
+				assert.are.equal("@" .. p.login, result.lines[p.line + 1])
+			end
+		end
+		assert.are.same({ carol = "reviewers", dave = "assignees", erin = "assignees" }, kinds)
 	end)
 end)
 
@@ -4054,5 +4137,39 @@ describe("o key in the comment viewer and PR overview", function()
 		press(left_buf, "<Tab>")
 		press(vim.api.nvim_get_current_buf(), "o")
 		assert.are.same({ "https://gh/pull/1", "https://gh/pull/1#c5", "https://gh/pull/1" }, opened)
+	end)
+end)
+
+describe("comment thread avatars in the comment viewer", function()
+	local helpers = require("tests.helpers")
+
+	after_each(function()
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative ~= "" then
+				pcall(vim.api.nvim_win_close, win, true)
+			end
+		end
+		helpers.cleanup()
+	end)
+
+	it("hands the authors' header positions to ui/avatars.place for the viewer buffer", function()
+		local avatars = require("fude.ui.avatars")
+		local calls = {}
+		helpers.mock(avatars, "place", function(buf, positions)
+			table.insert(calls, { buf = buf, positions = positions })
+		end)
+		ui.show_comments_float({
+			{ id = 1, user = { login = "a" }, created_at = "", body = "first" },
+			{ id = 2, user = { login = "b" }, created_at = "", body = "second" },
+		})
+		local buf = vim.api.nvim_get_current_buf()
+		assert.are.equal(1, #calls)
+		assert.are.equal(buf, calls[1].buf)
+		assert.are.same(
+			{ "a", "b" },
+			vim.tbl_map(function(p)
+				return p.login
+			end, calls[1].positions)
+		)
 	end)
 end)

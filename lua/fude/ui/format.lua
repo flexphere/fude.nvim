@@ -89,11 +89,13 @@ end
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
 --- @param separator_width number|nil width of the separator between comments (see build_comment_separator)
---- @return table { lines: string[], hl_ranges: table[] }
+--- @return table { lines: string[], hl_ranges: table[], comment_ranges: table[], avatar_positions: table[] }
+---   avatar_positions: where ui/avatars draws each author's avatar (see build_comment_avatar_position)
 function M.format_comments_for_display(comments, format_date_fn, separator_width)
 	local lines = {}
 	local hl_ranges = {}
 	local comment_ranges = {}
+	local avatar_positions = {}
 	for i, comment in ipairs(comments) do
 		local start_line = #lines
 		local author = comment.user and comment.user.login or "unknown"
@@ -101,6 +103,10 @@ function M.format_comments_for_display(comments, format_date_fn, separator_width
 		local header = string.format("@%s  %s%s", author, created, M.comment_badges(comment))
 		table.insert(lines, header)
 		table.insert(hl_ranges, { line = #lines - 1, hl = "Title" })
+		local avatar = M.build_comment_avatar_position(#lines - 1, author)
+		if avatar then
+			table.insert(avatar_positions, avatar)
+		end
 		local comment_body = M.normalize_newlines(comment.body)
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
@@ -112,7 +118,20 @@ function M.format_comments_for_display(comments, format_date_fn, separator_width
 			table.insert(lines, "")
 		end
 	end
-	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges }
+	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges, avatar_positions = avatar_positions }
+end
+
+--- Where ui/avatars draws a comment author's avatar in the comment viewer,
+--- the reply/edit window and the comment browser's thread pane: at the start
+--- of the header line, before `@login` (kind `comment_threads`). Pure.
+--- @param line number 0-indexed header line
+--- @param login any the author's login
+--- @return table|nil { line, col, login, kind }; nil without a usable login
+function M.build_comment_avatar_position(line, login)
+	if type(login) ~= "string" or login == "" or login == "unknown" then
+		return nil
+	end
+	return { line = line, col = 0, login = login, kind = "comment_threads" }
 end
 
 --- Build the title for the comment viewer float.
@@ -781,18 +800,24 @@ end
 --- @param comments table[] list of comment objects
 --- @param format_date_fn fun(s: string): string
 --- @param separator_width number|nil width of the separator between comments (see build_comment_separator)
---- @return table { lines: string[], hl_ranges: table[], comment_ranges: table[] }
+--- @return table { lines: string[], hl_ranges: table[], comment_ranges: table[], avatar_positions: table[] }
 ---   comment_ranges: { start_line, end_line (0-indexed, header to last body line), index }
+---   avatar_positions: where ui/avatars draws each author's avatar (see build_comment_avatar_position)
 function M.format_reply_comments_for_display(comments, format_date_fn, separator_width)
 	local lines = {}
 	local hl_ranges = {}
 	local comment_ranges = {}
+	local avatar_positions = {}
 	for i, comment in ipairs(comments) do
 		local author = comment.user and comment.user.login or "unknown"
 		local created = format_date_fn(comment.created_at)
 		local header = string.format("@%s (%s):%s", author, created, M.comment_badges(comment))
 		local header_line_idx = #lines
 		table.insert(lines, header)
+		local avatar = M.build_comment_avatar_position(header_line_idx, author)
+		if avatar then
+			table.insert(avatar_positions, avatar)
+		end
 		-- Author highlight: from 0 to end of @username
 		local author_end = #author + 1 -- "@" + username
 		table.insert(hl_ranges, { line = header_line_idx, col_start = 0, col_end = author_end, hl = "ReviewCommentAuthor" })
@@ -816,7 +841,7 @@ function M.format_reply_comments_for_display(comments, format_date_fn, separator
 			table.insert(lines, "")
 		end
 	end
-	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges }
+	return { lines = lines, hl_ranges = hl_ranges, comment_ranges = comment_ranges, avatar_positions = avatar_positions }
 end
 
 --- Find the comment shown on a buffer line from the `comment_ranges` the
@@ -884,11 +909,12 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 	end
 	add_string("state", state)
 	add_string("author", "@" .. author)
-	-- Where ui/avatars draws the author's avatar: between `author: ` and
+	-- Where ui/avatars draws the avatars (kind `author` / `comments`):
+	-- the author's between `author: ` and
 	-- the quoted login (0-indexed line, byte column)
 	local avatar_positions = {}
 	if author ~= "unknown" then
-		table.insert(avatar_positions, { line = #lines - 1, col = #"author: ", login = author })
+		table.insert(avatar_positions, { line = #lines - 1, col = #"author: ", login = author, kind = "author" })
 	end
 	add_string("base", pr_info.baseRefName)
 	add_string("head", pr_info.headRefName)
@@ -975,6 +1001,10 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 			local header = string.format("### @%s  %s%s", comment_author, created, M.comment_badges(comment))
 			table.insert(lines, header)
 			table.insert(comment_positions, #lines) -- 1-indexed header line
+			-- The comment author's avatar: between `### ` and the login
+			if comment_author ~= "unknown" then
+				table.insert(avatar_positions, { line = #lines - 1, col = #"### ", login = comment_author, kind = "comments" })
+			end
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
 			local start_line = #lines - 1
 			local comment_body = M.normalize_newlines(comment.body)
@@ -1231,8 +1261,10 @@ end
 --- is highlighted with the build_label_hl_names groups;
 --- `label_colors` lists those colours once each (normalized `rrggbb`) so the
 --- caller can define the groups (see calculate_label_colors).
---- `avatar_positions` (`{ line, col, login }`, 0-indexed line, byte column) is
---- where ui/avatars draws each reviewer's avatar: after the status symbol.
+--- `avatar_positions` (`{ line, col, login, kind }`, 0-indexed line, byte
+--- column) is where ui/avatars draws each reviewer's avatar (kind
+--- `reviewers`: after the status symbol) and each assignee's (kind
+--- `assignees`: before the login).
 --- The CI STATUS section comes last and starts at `ci_start` (0-indexed, its
 --- blank separator line); `pr_info.statusCheckRollup` nil means the checks are
 --- still being fetched (see build_overview_ci_lines for `opts`).
@@ -1283,7 +1315,10 @@ function M.build_overview_right_lines(pr_info, opts)
 				local symbol, hl = M.format_review_status(reviewer.state)
 				table.insert(lines, string.format("%s @%s  %s", symbol, reviewer.login, reviewer.state:lower()))
 				table.insert(hl_ranges, { line = #lines - 1, hl = hl })
-				table.insert(avatar_positions, { line = #lines - 1, col = #symbol + 1, login = reviewer.login })
+				table.insert(
+					avatar_positions,
+					{ line = #lines - 1, col = #symbol + 1, login = reviewer.login, kind = "reviewers" }
+				)
 			end
 		end
 	end
@@ -1297,8 +1332,12 @@ function M.build_overview_right_lines(pr_info, opts)
 		table.insert(lines, "(no assignees)")
 	else
 		for _, assignee in ipairs(assignees) do
-			local login = assignee.login or assignee
-			table.insert(lines, "@" .. login)
+			local login = type(assignee) == "table" and assignee.login or assignee
+			if type(login) == "string" then
+				table.insert(lines, "@" .. login)
+				-- The assignee's avatar: before the login
+				table.insert(avatar_positions, { line = #lines - 1, col = 0, login = login, kind = "assignees" })
+			end
 		end
 	end
 
