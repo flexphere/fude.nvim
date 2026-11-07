@@ -524,8 +524,9 @@ File opening position                                 *fude-file-position*
     reviewer who has already reviewed (the overview is not reopened
     afterwards, as with Reviewer and Label), `o` opens the comment under the
     cursor on GitHub (the PR elsewhere, and in the right pane), `+`
-    adds or removes a reaction on the comment under the cursor (see
-    |fude-reactions|; reactions are shown under each comment), `R`
+    adds or removes a reaction on the comment under the cursor, or on
+    the PR itself elsewhere and in the right pane (see |fude-reactions|;
+    reactions are shown under the body and each comment), `R`
     refreshes (refetching rather than reusing the prefetched data), `<Tab>` switches between panes, `]c`/`[c` navigate
     review comments, and `q` closes.
     Reviewer and Label open a picker (routed by `file_list_mode`) in
@@ -1775,11 +1776,14 @@ Reactions on review comments and PR-level comments are shown under each
 comment's body (`👍 2  ❤️ 1`, `Comment` highlight) in the comment viewer
 (|:FudeReviewViewComment|), the reply/edit window, the comment browser's
 thread pane (|:FudeReviewListComments|) and the overview's COMMENTS
-(|:FudeReviewOverview|).
+(|:FudeReviewOverview|). The overview also shows the PR's own reactions
+under its body.
 
 `+` in the comment viewer, the comment browser's thread pane and the
 overview's left pane opens a picker of GitHub's eight reactions for the
-comment under the cursor (titled `Reactions (<Tab> toggle)`; routed by
+comment under the cursor (in the overview: the PR itself anywhere off a
+comment — the body, frontmatter, headings — and everywhere in the right
+pane) (titled `Reactions (<Tab> toggle)`; routed by
 `file_list_mode` like the reviewer and label editors), with your own
 marked `●` and each row ending in its count and what `<Tab>` does there
 (`2 · <Tab>: remove`, `<Tab>: add`). `<Tab>` adds the reaction under the

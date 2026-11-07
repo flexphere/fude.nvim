@@ -43,6 +43,23 @@ function M.find_reaction_target(comment, ctx, repo_api_path)
 	return string.format("%s/%s/comments/%d/reactions", repo_api_path, kind, comment.id)
 end
 
+--- The REST path of the PR's own reactions (its body: `issues/<n>/reactions`),
+--- or why it has none. Pure.
+--- @param pr_info any
+--- @param ctx table|nil { is_local } (ui.capture_open_context)
+--- @param repo_api_path string `repos/<owner>/<repo>` (gh.build_repo_api_path)
+--- @return string|nil path
+--- @return string|nil reason when nil
+function M.find_pr_reaction_target(pr_info, ctx, repo_api_path)
+	if ctx and ctx.is_local then
+		return nil, "Local review has no PR to react to"
+	end
+	if type(pr_info) ~= "table" or type(pr_info.number) ~= "number" then
+		return nil, "No PR to react to"
+	end
+	return string.format("%s/issues/%d/reactions", repo_api_path, pr_info.number)
+end
+
 --- The rollup of a reactions listing (`GET …/reactions`): a count per
 --- content plus `total_count`, the shape of a comment's `reactions`. Pure.
 --- @param list any
@@ -128,22 +145,17 @@ local function repo_api_path(ctx)
 	return require("fude.gh").build_repo_api_path(repo)
 end
 
---- Open the reaction picker for `comment` (ui/toggle_picker): every
---- reaction with the viewer's own marked and the counts; `<Tab>` adds the one
---- under the cursor, or removes it when it is the viewer's, the row showing a
---- spinner while GitHub is being updated, and the picker stays open. After
---- each change the reactions are listed again: the comment's `reactions` is
---- replaced with their rollup in place and `on_done(comment)` runs, so the
---- caller can redraw it.
---- @param comment table|nil
---- @param ctx table ui.capture_open_context(), taken when the comment was shown
---- @param on_done fun(comment: table)|nil
-function M.pick(comment, ctx, on_done)
-	local path, reason = M.find_reaction_target(comment, ctx, repo_api_path(ctx))
-	if not path then
-		vim.notify("fude.nvim: " .. reason, vim.log.levels.INFO)
-		return
-	end
+--- Open the reaction picker (ui/toggle_picker) over the reactions at `path`:
+--- every reaction with the viewer's own marked and the counts; `<Tab>` adds
+--- the one under the cursor, or removes it when it is the viewer's, the row
+--- showing a spinner while GitHub is being updated, and the picker stays
+--- open. After each change the reactions are listed again: `target.reactions`
+--- (a comment, or the PR) is replaced with their rollup in place and
+--- `on_done(target)` runs, so the caller can redraw it.
+--- @param path string
+--- @param target table
+--- @param on_done fun(target: table)|nil
+local function open_picker(path, target, on_done)
 	local gh = require("fude.gh")
 	local login = config.state.github_user
 	gh.get_reactions(path, function(err, list)
@@ -176,14 +188,14 @@ function M.pick(comment, ctx, on_done)
 				for k, v in pairs(new_mine) do
 					mine[k] = v
 				end
-				comment.reactions = rollup
+				target.reactions = rollup
 				vim.notify(
 					string.format("fude.nvim: Reaction %s %s", item.text, item.on and "removed" or "added"),
 					vim.log.levels.INFO
 				)
 				done(true)
 				if on_done then
-					on_done(comment)
+					on_done(target)
 				end
 			end)
 		end
@@ -211,6 +223,35 @@ function M.pick(comment, ctx, on_done)
 			end,
 		})
 	end)
+end
+
+--- Open the reaction picker for `comment` (see open_picker).
+--- @param comment table|nil
+--- @param ctx table ui.capture_open_context(), taken when the comment was shown
+--- @param on_done fun(comment: table)|nil
+function M.pick(comment, ctx, on_done)
+	local path, reason = M.find_reaction_target(comment, ctx, repo_api_path(ctx))
+	if not path then
+		vim.notify("fude.nvim: " .. reason, vim.log.levels.INFO)
+		return
+	end
+	open_picker(path, comment, on_done)
+end
+
+--- The same picker for the PR itself (its body): `pr_info.reactions` is
+--- replaced with the fresh rollup, which ui/format.find_pr_reactions prefers
+--- over the `reactionGroups` the overview was fetched with.
+--- @param pr_info table|nil the overview's PR data (number, url, reactionGroups)
+--- @param ctx table ui.capture_open_context()
+--- @param on_done fun(pr_info: table)|nil
+function M.pick_pr(pr_info, ctx, on_done)
+	local url = type(pr_info) == "table" and pr_info.url or (ctx and ctx.pr_url)
+	local path, reason = M.find_pr_reaction_target(pr_info, ctx, repo_api_path({ pr_url = url }))
+	if not path then
+		vim.notify("fude.nvim: " .. reason, vim.log.levels.INFO)
+		return
+	end
+	open_picker(path, pr_info, on_done)
 end
 
 return M

@@ -123,6 +123,53 @@ function M.format_reactions(rollup)
 	return table.concat(parts, "  ")
 end
 
+--- GraphQL reaction contents (`gh pr view --json reactionGroups`) → the REST
+--- names M.REACTIONS uses.
+M.REACTION_GROUP_CONTENTS = {
+	THUMBS_UP = "+1",
+	THUMBS_DOWN = "-1",
+	LAUGH = "laugh",
+	HOORAY = "hooray",
+	CONFUSED = "confused",
+	HEART = "heart",
+	ROCKET = "rocket",
+	EYES = "eyes",
+}
+
+--- The REST `reactions` rollup shape (`{ ["+1"] = 2, total_count = 2 }`)
+--- from gh's `reactionGroups` (`{ { content = "THUMBS_UP", users = {
+--- totalCount = 2 } } }`). Unknown contents and malformed groups are
+--- skipped; nil without a list. Pure.
+--- @param groups any
+--- @return table|nil
+function M.build_rollup_from_reaction_groups(groups)
+	if type(groups) ~= "table" then
+		return nil
+	end
+	local rollup = { total_count = 0 }
+	for _, group in ipairs(groups) do
+		local content = type(group) == "table" and M.REACTION_GROUP_CONTENTS[group.content] or nil
+		local users = content and group.users
+		local n = type(users) == "table" and users.totalCount or nil
+		if type(n) == "number" and n > 0 then
+			rollup[content] = (rollup[content] or 0) + n
+			rollup.total_count = rollup.total_count + n
+		end
+	end
+	return rollup
+end
+
+--- The PR's own reactions rollup: `pr_info.reactions` once fude changed them
+--- (reactions.pick_pr), else the one from `pr_info.reactionGroups`. Pure.
+--- @param pr_info table
+--- @return table|nil
+function M.find_pr_reactions(pr_info)
+	if type(pr_info.reactions) == "table" then
+		return pr_info.reactions
+	end
+	return M.build_rollup_from_reaction_groups(pr_info.reactionGroups)
+end
+
 --- Append a comment's reactions line (and its highlight) after its body,
 --- when it has any.
 --- @param lines string[]
@@ -1020,6 +1067,8 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 			table.insert(lines, body_line)
 		end
 	end
+	-- The PR's own reactions, under its body
+	append_reactions(lines, hl_ranges, { reactions = M.find_pr_reactions(pr_info) })
 
 	-- Comments: the section runs to the end of the pane (with the footer),
 	-- so it can be rebuilt in place (from comments_start) once they arrive.

@@ -102,7 +102,7 @@ M.PR_INFO_FIELDS = "number,baseRefName,baseRefOid,headRefName,url,state"
 --- reviewers and the CI checks are fetched on their own (get_pr_reviewers,
 --- get_pr_checks), so the body arrives as soon as possible.
 M.PR_OVERVIEW_FIELDS = "number,title,body,labels,assignees,state,isDraft,author,"
-	.. "baseRefName,headRefName,url,additions,deletions,changedFiles"
+	.. "baseRefName,headRefName,url,additions,deletions,changedFiles,reactionGroups"
 
 --- Union of two comma-separated `--json` field lists, in order, without
 --- duplicates. Pure.

@@ -1118,23 +1118,37 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	--- (with the footer), so the frontmatter and the body above it stay as
 	--- they are; the avatars are drawn again with the comment authors'.
 	--- @param comments table[]
+	--- Rebuild the left pane from line `start` (0-indexed) on.
+	--- @param start number
+	local function rewrite_left(start)
+		left_result = build_left()
+		set_lines(left_buf, start, vim.list_slice(left_result.lines, start + 1))
+		for _, hl in ipairs(left_result.hl_ranges) do
+			if hl.line >= start then
+				pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, hl.hl, hl.line, hl.col_start or 0, hl.col_end or -1)
+			end
+		end
+		set_marks()
+		collect_sections()
+		vim.api.nvim_buf_clear_namespace(left_buf, ref_ns, 0, -1)
+		setup_github_refs(left_buf, get_repo_base_url(pr_info.url))
+		avatars.clear(left_buf)
+		avatars.place(left_buf, left_result.avatar_positions)
+	end
+
 	function handle.set_comments(comments)
 		issue_comments = comments
 		if handle.is_open() then
-			local start = left_result.comments_start
-			left_result = build_left()
-			set_lines(left_buf, start, vim.list_slice(left_result.lines, start + 1))
-			for _, hl in ipairs(left_result.hl_ranges) do
-				if hl.line >= start then
-					pcall(vim.api.nvim_buf_add_highlight, left_buf, ns, hl.hl, hl.line, hl.col_start or 0, hl.col_end or -1)
-				end
-			end
-			set_marks()
-			collect_sections()
-			vim.api.nvim_buf_clear_namespace(left_buf, ref_ns, 0, -1)
-			setup_github_refs(left_buf, get_repo_base_url(pr_info.url))
-			avatars.clear(left_buf)
-			avatars.place(left_buf, left_result.avatar_positions)
+			rewrite_left(left_result.comments_start)
+		end
+		update_spinner()
+	end
+
+	--- Redraw the whole left pane (the PR's own reactions, under its body,
+	--- move everything below them).
+	function handle.refresh_left()
+		if handle.is_open() then
+			rewrite_left(0)
 		end
 		update_spinner()
 	end
@@ -1170,16 +1184,28 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 		update_spinner()
 	end
 
-	-- `+` reacts to the PR-level comment under the cursor (not the body,
-	-- which has no reactions endpoint here) and redraws COMMENTS
+	-- `+` reacts to the PR-level comment under the cursor, and to the PR
+	-- itself (its body) anywhere else, like `o`; the right pane always means
+	-- the PR. The left pane is redrawn with the new reactions.
+	local reactions = require("fude.reactions")
+	local function react_to_pr()
+		reactions.pick_pr(pr_info, open_ctx, function()
+			handle.refresh_left()
+		end)
+	end
 	vim.keymap.set("n", "+", function()
 		local line = vim.api.nvim_win_get_cursor(left_win)[1] - 1
 		local index = format.find_comment_index_at_line(left_result.comment_ranges, line)
 		local comment = index and issue_comments and issue_comments[index] or nil
-		require("fude.reactions").pick(comment, open_ctx, function()
+		if not comment then
+			react_to_pr()
+			return
+		end
+		reactions.pick(comment, open_ctx, function()
 			handle.set_comments(issue_comments)
 		end)
-	end, { buffer = left_buf, desc = "Add/remove a reaction" })
+	end, { buffer = left_buf, desc = "Add/remove a reaction on the comment or the PR" })
+	vim.keymap.set("n", "+", react_to_pr, { buffer = right_buf, desc = "Add/remove a reaction on the PR" })
 
 	return handle
 end

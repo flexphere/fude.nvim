@@ -282,3 +282,154 @@ describe("+ in the comment viewer", function()
 		assert.is_false(vim.bo[buf].modifiable)
 	end)
 end)
+
+describe("PR body reactions", function()
+	local identity = function(s)
+		return s
+	end
+
+	it("build_rollup_from_reaction_groups maps gh's reactionGroups to the REST rollup", function()
+		local rollup = format.build_rollup_from_reaction_groups({
+			{ content = "THUMBS_UP", users = { totalCount = 2 } },
+			{ content = "HEART", users = { totalCount = 1 } },
+			{ content = "EYES", users = { totalCount = 0 } },
+			{ content = "UNKNOWN", users = { totalCount = 5 } },
+			{ content = "ROCKET", users = vim.NIL },
+			vim.NIL,
+		})
+		assert.are.same({ ["+1"] = 2, heart = 1, total_count = 3 }, rollup)
+		assert.is_nil(format.build_rollup_from_reaction_groups(nil))
+		assert.is_nil(format.build_rollup_from_reaction_groups(vim.NIL))
+	end)
+
+	it("find_pr_reactions prefers the rollup fude set over reactionGroups", function()
+		local groups = { { content = "HEART", users = { totalCount = 1 } } }
+		assert.are.same({ heart = 1, total_count = 1 }, format.find_pr_reactions({ reactionGroups = groups }))
+		assert.are.same({ rocket = 3 }, format.find_pr_reactions({ reactionGroups = groups, reactions = { rocket = 3 } }))
+		assert.is_nil(format.find_pr_reactions({}))
+	end)
+
+	it("shows the PR's reactions under its body, before COMMENTS", function()
+		local result = format.build_overview_left_lines({
+			number = 1,
+			title = "T",
+			body = "the body",
+			reactionGroups = { { content = "HOORAY", users = { totalCount = 4 } } },
+		}, {}, identity)
+		local body_line
+		for i, l in ipairs(result.lines) do
+			if l == "the body" then
+				body_line = i
+			end
+		end
+		assert.are.same({ "the body", "", "🎉 4" }, vim.list_slice(result.lines, body_line, body_line + 2))
+		assert.truthy(result.lines[body_line + 4]:find("^## COMMENTS"))
+		-- No line without reactions
+		local plain = format.build_overview_left_lines({ number = 1, title = "T", body = "the body" }, {}, identity)
+		assert.truthy(vim.tbl_contains(plain.lines, "the body"))
+		assert.is_false(vim.tbl_contains(plain.lines, "🎉 4"))
+	end)
+
+	it("find_pr_reaction_target uses issues/<n>/reactions and refuses without a PR", function()
+		assert.are.equal(
+			"repos/o/r/issues/12/reactions",
+			reactions.find_pr_reaction_target({ number = 12 }, {}, "repos/o/r")
+		)
+		local path, reason = reactions.find_pr_reaction_target({ number = 12 }, { is_local = true }, "repos/o/r")
+		assert.is_nil(path)
+		assert.truthy(reason:find("Local"))
+		assert.is_nil(reactions.find_pr_reaction_target(nil, {}, "repos/o/r"))
+		assert.is_nil(reactions.find_pr_reaction_target({ number = vim.NIL }, {}, "repos/o/r"))
+	end)
+
+	it("pick_pr toggles the PR's reactions in the PR's repository and updates pr_info", function()
+		local gh = require("fude.gh")
+		require("fude.config").state.github_user = "me"
+		local listing = {}
+		local calls = {}
+		helpers.mock(gh, "get_reactions", function(path, cb)
+			table.insert(calls, { "get", path })
+			cb(nil, listing)
+		end)
+		helpers.mock(gh, "add_reaction", function(path, content, cb)
+			table.insert(calls, { "add", path, content })
+			table.insert(listing, { id = 9, content = content, user = { login = "me" } })
+			cb(nil, {})
+		end)
+		helpers.mock(vim, "notify", function() end)
+		local opened
+		helpers.mock(require("fude.ui.toggle_picker"), "open", function(opts)
+			opened = opts
+		end)
+		local pr_info = { number = 12, url = "https://github.com/o/r/pull/12" }
+		local redrawn
+		reactions.pick_pr(pr_info, { pr_url = "https://github.com/x/y/pull/1" }, function(t)
+			redrawn = t
+		end)
+		assert.are.equal("Reactions", opened.title)
+		opened.on_toggle(opened.items[1], function() end)
+		assert.are.same({ "add", "repos/o/r/issues/12/reactions", "+1" }, calls[2])
+		assert.are.equal(pr_info, redrawn)
+		assert.are.equal(1, pr_info.reactions["+1"])
+		helpers.cleanup()
+	end)
+end)
+
+describe("+ in the PR overview", function()
+	local ui = require("fude.ui")
+
+	before_each(function()
+		require("fude.config").setup({})
+	end)
+
+	after_each(function()
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative ~= "" then
+				pcall(vim.api.nvim_win_close, win, true)
+			end
+		end
+		helpers.cleanup()
+	end)
+
+	it("reacts to the PR off any comment, to the comment on one, and redraws the pane", function()
+		local picked = {}
+		helpers.mock(reactions, "pick_pr", function(pr_info, _, on_done)
+			table.insert(picked, "pr")
+			pr_info.reactions = { heart = 2, total_count = 2 }
+			on_done(pr_info)
+		end)
+		helpers.mock(reactions, "pick", function(comment, _, on_done)
+			table.insert(picked, comment.id)
+			on_done(comment)
+		end)
+		local pr_info = {
+			number = 1,
+			title = "T",
+			body = "the body",
+			url = "https://github.com/o/r/pull/1",
+			reviewRequests = {},
+			latestReviews = {},
+			statusCheckRollup = {},
+		}
+		local comments = { { id = 77, user = { login = "a" }, body = "c", created_at = "" } }
+		ui.show_overview_float(pr_info, comments, {})
+		local win = vim.api.nvim_get_current_win()
+		local buf = vim.api.nvim_win_get_buf(win)
+		local function line_of(text)
+			for i, l in ipairs(vim.api.nvim_buf_get_lines(buf, 0, -1, false)) do
+				if l == text then
+					return i
+				end
+			end
+		end
+		vim.api.nvim_win_set_cursor(win, { line_of("the body"), 0 })
+		vim.fn.maparg("+", "n", false, true).callback()
+		assert.are.same({ "pr" }, picked)
+		local body = line_of("the body")
+		assert.are.equal("❤️ 2", vim.api.nvim_buf_get_lines(buf, body + 1, body + 2, false)[1])
+
+		vim.api.nvim_win_set_cursor(win, { line_of("c"), 0 })
+		vim.fn.maparg("+", "n", false, true).callback()
+		assert.are.same({ "pr", 77 }, picked)
+	end)
+end)
