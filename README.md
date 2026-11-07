@@ -47,7 +47,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
   "flexphere/fude.nvim",
   opts = {},
   cmd = {
-    "FudeCommandPalette",
+    "FudeCommandPalette", "FudeCommandRepeat",
     "FudeReviewStart", "FudeReviewStop", "FudeReviewToggle", "FudeReviewDiff",
     "FudeReviewLocal", "FudeReviewLocalToggle", "FudeReviewLocalScope", "FudeReviewLocalBase",
     "FudeReviewResolve",
@@ -109,13 +109,14 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 9. View PR overview with `:FudeReviewOverview`
 10. Stop review mode: `:FudeReviewStop`
 
-Not sure which command you need? `:FudeCommandPalette` opens a command palette listing every command usable in the current state. With Telescope, snacks, or a picker-backed `vim.ui.select` provider (dressing.nvim, telescope-ui-select, ...) you can fuzzy search by description and command name; the built-in `vim.ui.select` falls back to numbered selection. Opened from visual mode (`:'<,'>FudeCommandPalette` or a `<Cmd>FudeCommandPalette<CR>` mapping), it forwards the selection to line/selection commands such as `:FudeReviewComment`.
+Not sure which command you need? `:FudeCommandPalette` opens a command palette listing every command usable in the current state. With Telescope, snacks, or a picker-backed `vim.ui.select` provider (dressing.nvim, telescope-ui-select, ...) you can fuzzy search by description and command name; the built-in `vim.ui.select` falls back to numbered selection. Opened from visual mode (`:'<,'>FudeCommandPalette` or a `<Cmd>FudeCommandPalette<CR>` mapping), it forwards the selection to line/selection commands such as `:FudeReviewComment`. `:FudeCommandRepeat` runs the last fude command again (also one picked from the palette).
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
 | `:FudeCommandPalette` | Open the command palette (commands usable in the current state; fuzzy search with Telescope / snacks / a picker-backed `vim.ui.select` provider; shows your key mappings; from visual mode the selection is forwarded to range commands) |
+| `:FudeCommandRepeat` | Run the last fude command again with the same arguments (a range command acts on the cursor line, or on the range given to the repeat: `:'<,'>FudeCommandRepeat`) |
 | `:FudeReviewStart` | Start review session (PR detection, comments, extmarks) |
 | `:FudeReviewStop` | Stop review session |
 | `:FudeReviewToggle` | Toggle review session |

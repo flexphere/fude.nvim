@@ -14,9 +14,101 @@
 ---   nargs     string|nil        `nargs` for commands taking arguments
 ---   complete  function|nil      `complete` callback for `nargs` commands
 ---   palette   boolean|nil       `false` hides the entry from the palette (still registered)
+---   repeatable boolean|nil      `false` keeps the command out of `:FudeCommandRepeat`
 local config = require("fude.config")
 
 local M = {}
+
+--- The last registry command run (`{ name, fargs, bang }`), repeated by
+--- `:FudeCommandRepeat`. Module-local rather than `config.state`, so it
+--- survives a review stop / start.
+local last_command = nil
+
+--- The last command `:FudeCommandRepeat` would run, or nil.
+--- @return table|nil { name, fargs, bang }
+function M.get_last()
+	return last_command
+end
+
+--- Forget the last command (tests).
+function M._reset_last()
+	last_command = nil
+end
+
+--- Record a run of `cmd` with the user-command `opts`, unless the entry is
+--- `repeatable = false`. The range is not recorded: a repeat acts on the
+--- cursor line, or on the range `:FudeCommandRepeat` itself was given.
+--- @param cmd table registry entry
+--- @param opts table|nil nvim_create_user_command callback opts
+function M.record(cmd, opts)
+	if cmd.repeatable == false then
+		return
+	end
+	opts = opts or {}
+	local fargs = {}
+	for _, arg in ipairs(opts.fargs or {}) do
+		table.insert(fargs, arg)
+	end
+	last_command = { name = cmd.name, fargs = fargs, bang = opts.bang == true }
+end
+
+--- Build the `vim.cmd` table that repeats `last`: the same command and
+--- arguments, plus `range` (`{ line1, line2 }`) only when the command takes
+--- one (`takes_range`). Pure.
+--- @param last table|nil { name, fargs, bang }
+--- @param range number[]|nil
+--- @param takes_range boolean|nil
+--- @return table|nil
+function M.build_repeat_cmd(last, range, takes_range)
+	if type(last) ~= "table" or type(last.name) ~= "string" then
+		return nil
+	end
+	local cmd = { cmd = last.name }
+	if type(last.fargs) == "table" and #last.fargs > 0 then
+		cmd.args = {}
+		for _, arg in ipairs(last.fargs) do
+			table.insert(cmd.args, arg)
+		end
+	end
+	if last.bang then
+		cmd.bang = true
+	end
+	if takes_range and range then
+		cmd.range = { range[1], range[2] }
+	end
+	return cmd
+end
+
+--- Find a registry entry by command name.
+--- @param name string
+--- @return table|nil
+function M.find(name)
+	for _, cmd in ipairs(M.list) do
+		if cmd.name == name then
+			return cmd
+		end
+	end
+	return nil
+end
+
+--- Run the last recorded command again (`:FudeCommandRepeat`). A range given
+--- to the repeat is forwarded to a range command (`:'<,'>FudeCommandRepeat`).
+--- @param opts table|nil user-command opts
+function M.repeat_last(opts)
+	opts = opts or {}
+	local last = last_command
+	if not last then
+		vim.notify("fude.nvim: No command to repeat yet", vim.log.levels.INFO)
+		return
+	end
+	local entry = M.find(last.name)
+	local range = (opts.range or 0) > 0 and { opts.line1, opts.line2 } or nil
+	local cmd = M.build_repeat_cmd(last, range, entry ~= nil and entry.range == true)
+	local ok, err = pcall(vim.cmd, cmd)
+	if not ok then
+		vim.notify("fude.nvim: " .. tostring(err), vim.log.levels.ERROR)
+	end
+end
 
 --- Palette category order (first to last).
 M.CATEGORIES = { "Session", "Comments", "Files", "Scope", "Review", "View", "PR" }
@@ -159,6 +251,17 @@ end
 
 M.list = {
 	-- Session --------------------------------------------------------------
+	{
+		name = "FudeCommandRepeat",
+		desc = "Repeat the last fude command",
+		category = "Session",
+		available = always,
+		range = true,
+		repeatable = false,
+		run = function(opts)
+			M.repeat_last(opts)
+		end,
+	},
 	{
 		name = "FudeReviewStart",
 		desc = "Start PR review mode",
@@ -555,7 +658,10 @@ M.list = {
 --- attribute mapping (`range`/`nargs`/`complete`) lives next to the data.
 function M.register_all()
 	for _, cmd in ipairs(M.list) do
-		vim.api.nvim_create_user_command(cmd.name, cmd.run, {
+		vim.api.nvim_create_user_command(cmd.name, function(opts)
+			M.record(cmd, opts)
+			cmd.run(opts)
+		end, {
 			desc = cmd.desc,
 			range = cmd.range,
 			nargs = cmd.nargs,
