@@ -220,6 +220,17 @@ Using lazy.nvim: >lua
     |:FudeReviewViewComment| float does the same for the thread of the
     comment under the cursor.
 
+:FudeReviewReact                                       *:FudeReviewReact*
+    Open the reaction picker (see |fude-reactions|) for the comment under
+    the cursor. On a source line it is the line's comment; when the line
+    has several that can be reacted to, `vim.ui.select` (kind
+    `fude_reaction_target`, rows `@login: first body line`) asks which
+    one first. In the comment viewer, the comment browser's thread pane
+    and the overview it reacts to what `+` reacts to there (the PR
+    itself off a comment in the overview). A line without comments,
+    local review comments, comments of your pending review and review
+    summaries are reported with the reason and open nothing.
+
 :FudeReviewDiff                                        *:FudeReviewDiff*
     Toggle the diff preview window. Opens a side-by-side diff view
     showing the base branch version of the current file, or closes
@@ -1781,7 +1792,8 @@ under its body.
 overview's left pane opens a picker of GitHub's eight reactions for the
 comment under the cursor (in the overview: the PR itself anywhere off a
 comment — the body, frontmatter, headings — and everywhere in the right
-pane) (titled `Reactions (<Tab> toggle, <CR> who reacted)`; routed by
+pane; |:FudeReviewReact| does the same, and on a source line opens it
+for the line's comment) (titled `Reactions (<Tab> toggle, <CR> who reacted)`; routed by
 `file_list_mode` like the reviewer and label editors), with your own
 marked `●` and each row ending in its count, who reacted (the first
 three, then `+N`) and what `<Tab>` does there
