@@ -76,13 +76,27 @@ describe("reactions rollup and choices", function()
 		assert.are.same({}, reactions.find_user_reactions(list, nil))
 	end)
 
-	it("build_reaction_choices marks the viewer's reactions and shows counts", function()
-		local choices = reactions.build_reaction_choices(reactions.build_rollup(list), { ["+1"] = 1 })
-		assert.are.equal(8, #choices)
-		assert.are.equal("● 👍 +1  2", choices[1].label)
-		assert.is_true(choices[1].mine)
-		assert.are.equal("○ 👎 -1", choices[2].label)
-		assert.are.equal("○ ❤️ heart  1", choices[6].label)
+	it("format_reaction_detail shows the count and what <Tab> does", function()
+		assert.are.equal("2 · <Tab>: remove", reactions.format_reaction_detail(2, true))
+		assert.are.equal("1 · <Tab>: add", reactions.format_reaction_detail(1, false))
+		assert.are.equal("<Tab>: add", reactions.format_reaction_detail(0, false))
+		assert.are.equal("<Tab>: add", reactions.format_reaction_detail(nil, false))
+	end)
+
+	it("build_reaction_items lists every reaction, on for the viewer's, with live details", function()
+		local counts = reactions.build_rollup(list)
+		local items = reactions.build_reaction_items(counts, { ["+1"] = 1 })
+		assert.are.equal(8, #items)
+		assert.are.equal("👍 +1", items[1].text)
+		assert.are.equal("+1", items[1].value)
+		assert.is_true(items[1].on)
+		assert.is_false(items[2].on)
+		assert.are.equal("2 · <Tab>: remove", items[1].detail(items[1]))
+		assert.are.equal("<Tab>: add", items[2].detail(items[2]))
+		-- The detail follows the counts table and the item's state
+		counts["-1"] = 4
+		items[2].on = true
+		assert.are.equal("4 · <Tab>: remove", items[2].detail(items[2]))
 	end)
 end)
 
@@ -117,44 +131,82 @@ describe("reactions.pick", function()
 		helpers.cleanup()
 	end)
 
-	local function pick_with(content, comment, ctx)
-		helpers.mock(vim.ui, "select", function(items, _, on_choice)
-			for _, item in ipairs(items) do
-				if item.content == content then
-					return on_choice(item)
-				end
-			end
-			on_choice(nil)
+	--- Open the picker for `comment` and capture the toggle_picker opts.
+	local function open_picker(comment, ctx, on_done)
+		local opened
+		helpers.mock(require("fude.ui.toggle_picker"), "open", function(opts)
+			opened = opts
 		end)
-		local done
-		reactions.pick(comment, ctx or { pr_url = "https://github.com/o/r/pull/1" }, function(c)
-			done = c
-		end)
-		return done
+		reactions.pick(comment, ctx or { pr_url = "https://github.com/o/r/pull/1" }, on_done)
+		return opened
 	end
 
-	it("adds a reaction the viewer has not given and updates the comment's rollup", function()
+	local function item_for(opts, content)
+		for _, item in ipairs(opts.items) do
+			if item.value == content then
+				return item
+			end
+		end
+	end
+
+	it("opens a <Tab> toggle picker titled Reactions with the viewer's reactions on", function()
+		local opts = open_picker({ id = 5, path = "a.lua" })
+		assert.are.equal("Reactions", opts.title)
+		assert.are.equal(8, #opts.items)
+		assert.is_true(item_for(opts, "heart").on)
+		assert.is_false(item_for(opts, "rocket").on)
+		assert.are.equal("1 · <Tab>: remove", item_for(opts, "heart").detail(item_for(opts, "heart")))
+	end)
+
+	it("adds a reaction on <Tab>, reports success and updates the comment's rollup", function()
 		local comment = { id = 5, path = "a.lua" }
-		local done = pick_with("rocket", comment)
-		assert.are.equal(comment, done)
+		local redrawn
+		local opts = open_picker(comment, nil, function(c)
+			redrawn = c
+		end)
+		local item = item_for(opts, "rocket")
+		local ok
+		opts.on_toggle(item, function(result)
+			ok = result
+		end)
+		assert.is_true(ok)
+		assert.are.equal(comment, redrawn)
 		assert.are.same({ "add", "repos/o/r/pulls/comments/5/reactions", "rocket" }, calls[2])
 		assert.are.equal(1, comment.reactions.rocket)
 		assert.are.equal(1, comment.reactions.heart)
+		-- The row's count follows the new listing
+		assert.are.equal("1 · <Tab>: add", item.detail(item))
 	end)
 
 	it("removes the viewer's own reaction by its id", function()
 		local comment = { id = 6 }
-		pick_with("heart", comment)
+		local opts = open_picker(comment)
+		local ok
+		opts.on_toggle(item_for(opts, "heart"), function(result)
+			ok = result
+		end)
+		assert.is_true(ok)
 		assert.are.same({ "remove", "repos/o/r/issues/comments/6/reactions", 7 }, calls[2])
 		assert.are.equal(0, comment.reactions.total_count)
 	end)
 
-	it("does nothing on cancel, and refuses a local comment without a request", function()
+	it("reports failure to the picker so the row's mark comes back", function()
+		helpers.mock(gh, "add_reaction", function(_, _, cb)
+			cb("boom")
+		end)
 		local comment = { id = 5, path = "a.lua" }
-		assert.is_nil(pick_with(nil, comment))
-		assert.are.equal(1, #calls)
-		calls = {}
-		assert.is_nil(pick_with("rocket", comment, { is_local = true }))
+		local opts = open_picker(comment)
+		local ok
+		opts.on_toggle(item_for(opts, "rocket"), function(result)
+			ok = result
+		end)
+		assert.is_false(ok)
+		assert.is_nil(comment.reactions)
+	end)
+
+	it("refuses a local comment without a request or a picker", function()
+		local opts = open_picker({ id = 5, path = "a.lua" }, { is_local = true })
+		assert.is_nil(opts)
 		assert.are.equal(0, #calls)
 	end)
 end)

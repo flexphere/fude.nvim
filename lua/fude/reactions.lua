@@ -14,18 +14,6 @@ local format = require("fude.ui.format")
 M.CONTENTS = format.REACTIONS
 M.format_reactions = format.format_reactions
 
---- Mark of a reaction the viewer gave, in the picker.
-M.MINE_MARK = "●"
-M.OTHER_MARK = "○"
-
-local function count_of(rollup, content)
-	local n = type(rollup) == "table" and rollup[content] or nil
-	if type(n) == "number" and n > 0 and n == math.floor(n) then
-		return n
-	end
-	return 0
-end
-
 --- The REST path of a comment's reactions, or why it has none. A review
 --- comment (it has a `path`) uses `pulls/comments/<id>/reactions`, any other
 --- comment `issues/comments/<id>/reactions`. Pure.
@@ -96,23 +84,39 @@ function M.find_user_reactions(list, login)
 	return mine
 end
 
---- The picker rows: every reaction in M.CONTENTS order with its count and
---- whether the viewer gave it (`● 👍 +1  2`). Pure.
---- @param rollup table|nil
---- @param mine table<string, number> from find_user_reactions
---- @return table[] { content, emoji, count, mine, label }
-function M.build_reaction_choices(rollup, mine)
-	local choices = {}
-	for _, c in ipairs(M.CONTENTS) do
-		local n = count_of(rollup, c.content)
-		local is_mine = mine[c.content] ~= nil
-		local label = string.format("%s %s %s", is_mine and M.MINE_MARK or M.OTHER_MARK, c.emoji, c.content)
-		if n > 0 then
-			label = label .. "  " .. n
-		end
-		table.insert(choices, { content = c.content, emoji = c.emoji, count = n, mine = is_mine, label = label })
+--- The detail of a reaction row in the picker: its count and what `<Tab>`
+--- does on it (`2 · <Tab>: remove`, `<Tab>: add`), so the key is visible on
+--- every row. Pure.
+--- @param count number|nil
+--- @param on boolean whether the viewer gave this reaction
+--- @return string
+function M.format_reaction_detail(count, on)
+	local hint = "<Tab>: " .. (on and "remove" or "add")
+	if type(count) == "number" and count > 0 then
+		return string.format("%d · %s", count, hint)
 	end
-	return choices
+	return hint
+end
+
+--- The picker rows (ui/toggle_picker items): every reaction in M.CONTENTS
+--- order, `on` when the viewer gave it, its detail re-read from `counts` (a
+--- content → count table the caller keeps current) on every render. Pure.
+--- @param counts table<string, number> the rollup's counts
+--- @param mine table<string, number> from find_user_reactions
+--- @return table[] items { text, on, value = content, detail }
+function M.build_reaction_items(counts, mine)
+	local items = {}
+	for _, c in ipairs(M.CONTENTS) do
+		table.insert(items, {
+			text = c.emoji .. " " .. c.content,
+			on = mine[c.content] ~= nil,
+			value = c.content,
+			detail = function(item)
+				return M.format_reaction_detail(counts[c.content], item.on)
+			end,
+		})
+	end
+	return items
 end
 
 --- The repository endpoint prefix for the PR of `ctx` (its URL's
@@ -124,11 +128,13 @@ local function repo_api_path(ctx)
 	return require("fude.gh").build_repo_api_path(repo)
 end
 
---- Open the reaction picker for `comment`: lists the reactions with the
---- viewer's own marked, and toggles the picked one (adds it, or removes the
---- viewer's). On success the comment's `reactions` is replaced with the
---- rollup of a fresh listing and `on_done(comment)` runs, so the caller can
---- redraw it.
+--- Open the reaction picker for `comment` (ui/toggle_picker): every
+--- reaction with the viewer's own marked and the counts; `<Tab>` adds the one
+--- under the cursor, or removes it when it is the viewer's, the row showing a
+--- spinner while GitHub is being updated, and the picker stays open. After
+--- each change the reactions are listed again: the comment's `reactions` is
+--- replaced with their rollup in place and `on_done(comment)` runs, so the
+--- caller can redraw it.
 --- @param comment table|nil
 --- @param ctx table ui.capture_open_context(), taken when the comment was shown
 --- @param on_done fun(comment: table)|nil
@@ -146,45 +152,64 @@ function M.pick(comment, ctx, on_done)
 			return
 		end
 		local mine = M.find_user_reactions(list, login)
-		local choices = M.build_reaction_choices(M.build_rollup(list), mine)
-		vim.ui.select(choices, {
-			prompt = "Reaction (toggle):",
-			kind = "fude_reaction",
-			format_item = function(choice)
-				return choice.label
-			end,
-		}, function(choice)
-			if not choice then
-				return
-			end
-			local function refresh(action_err)
-				if action_err then
-					vim.notify("fude.nvim: Failed to update reaction: " .. action_err, vim.log.levels.ERROR)
+		local counts = M.build_rollup(list)
+		local items = M.build_reaction_items(counts, mine)
+
+		-- After a change: list again so ids, counts and the comment follow
+		-- GitHub (another user may have reacted meanwhile)
+		local function reload(item, done)
+			gh.get_reactions(path, function(list_err, new_list)
+				if list_err then
+					vim.notify("fude.nvim: Failed to reload reactions: " .. list_err, vim.log.levels.ERROR)
+					-- The change itself went through
+					done(true)
 					return
 				end
-				gh.get_reactions(path, function(list_err, new_list)
-					if list_err then
-						vim.notify("fude.nvim: Failed to reload reactions: " .. list_err, vim.log.levels.ERROR)
+				local rollup = M.build_rollup(new_list)
+				for k, v in pairs(rollup) do
+					counts[k] = v
+				end
+				local new_mine = M.find_user_reactions(new_list, login)
+				for k in pairs(mine) do
+					mine[k] = nil
+				end
+				for k, v in pairs(new_mine) do
+					mine[k] = v
+				end
+				comment.reactions = rollup
+				vim.notify(
+					string.format("fude.nvim: Reaction %s %s", item.text, item.on and "removed" or "added"),
+					vim.log.levels.INFO
+				)
+				done(true)
+				if on_done then
+					on_done(comment)
+				end
+			end)
+		end
+
+		require("fude.ui.toggle_picker").open({
+			title = "Reactions",
+			items = items,
+			on_toggle = function(item, done)
+				local content = item.value
+				local function after(action_err)
+					if action_err then
+						vim.notify("fude.nvim: Failed to update reaction: " .. action_err, vim.log.levels.ERROR)
+						done(false)
 						return
 					end
-					comment.reactions = M.build_rollup(new_list)
-					vim.notify(
-						string.format("fude.nvim: Reaction %s %s", choice.emoji, choice.mine and "removed" or "added"),
-						vim.log.levels.INFO
-					)
-					if on_done then
-						on_done(comment)
-					end
-				end)
-			end
-			if choice.mine then
-				gh.remove_reaction(path, mine[choice.content], refresh)
-			else
-				gh.add_reaction(path, choice.content, function(add_err)
-					refresh(add_err)
-				end)
-			end
-		end)
+					reload(item, done)
+				end
+				if item.on and mine[content] then
+					gh.remove_reaction(path, mine[content], after)
+				else
+					gh.add_reaction(path, content, function(add_err)
+						after(add_err)
+					end)
+				end
+			end,
+		})
 	end)
 end
 

@@ -13,7 +13,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Suggest changes** - Post GitHub suggestion blocks with pre-filled code for one-click apply
 - **Virtual text** - Comment and pending indicators on lines with existing comments
 - **Resolved labels** - Threads resolved on GitHub are labeled `[resolved]` in the comment browser, comment viewer, and editor indicators
-- **Reactions** - Reactions (👍 2  ❤️ 1) are shown under each comment in the comment viewer, reply/edit window, comment browser and PR overview; press `+` on a comment (comment viewer, comment browser thread pane, PR overview) to add or remove one of your reactions
+- **Reactions** - Reactions (👍 2  ❤️ 1) are shown under each comment in the comment viewer, reply/edit window, comment browser and PR overview; press `+` on a comment (comment viewer, comment browser thread pane, PR overview) to open a reaction picker where `<Tab>` adds or removes one of your reactions in place (each row says what `<Tab>` does, and its mark turns into a spinner while GitHub is being updated)
 - **Resolve threads** - Resolve or unresolve the thread on the current line with `:FudeReviewResolve`, or with `R` in the comment viewer
 - **Pending review or single comment** - On submit, choose between adding the comment to a GitHub pending review (visible on PR page) or posting it immediately as a single comment
 - **Review submission** - Submit pending comments as a GitHub review with Comment/Approve/Request Changes

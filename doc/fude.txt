@@ -1778,10 +1778,16 @@ thread pane (|:FudeReviewListComments|) and the overview's COMMENTS
 (|:FudeReviewOverview|).
 
 `+` in the comment viewer, the comment browser's thread pane and the
-overview's left pane opens a `vim.ui.select` (kind `fude_reaction`) of
-GitHub's eight reactions for the comment under the cursor, with your own
-marked `●` and the current counts. Picking one adds it, or removes it when
-it is yours; the display is redrawn in place. Local review comments,
+overview's left pane opens a picker of GitHub's eight reactions for the
+comment under the cursor (titled `Reactions (<Tab> toggle)`; routed by
+`file_list_mode` like the reviewer and label editors), with your own
+marked `●` and each row ending in its count and what `<Tab>` does there
+(`2 · <Tab>: remove`, `<Tab>: add`). `<Tab>` adds the reaction under the
+cursor, or removes it when it is yours, and the picker stays open; while
+GitHub is being updated the row's mark turns into a spinner (as in the
+reviewer and label editors). The comment's display is redrawn in place
+after each change. With the `vim.ui.select` fallback, choosing a row
+toggles it and the select reopens. Local review comments,
 comments of your pending review and review summaries cannot be reacted to.
 
 ==============================================================================
