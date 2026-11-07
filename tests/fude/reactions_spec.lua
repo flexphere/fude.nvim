@@ -53,6 +53,29 @@ describe("reactions.find_reaction_target", function()
 	end)
 end)
 
+describe("reactions people", function()
+	it("find_reaction_users lists each login that used the content, oldest first", function()
+		local list = {
+			{ content = "+1", user = { login = "b" } },
+			{ content = "heart", user = { login = "c" } },
+			{ content = "+1", user = { login = "a" } },
+			{ content = "+1", user = { login = "b" } },
+			{ content = "+1", user = vim.NIL },
+			vim.NIL,
+		}
+		assert.are.same({ "b", "a" }, reactions.find_reaction_users(list, "+1"))
+		assert.are.same({}, reactions.find_reaction_users(list, "eyes"))
+		assert.are.same({}, reactions.find_reaction_users(nil, "+1"))
+	end)
+
+	it("build_people_prompt says what it lists and what <CR> / <Esc> do", function()
+		assert.are.equal(
+			"👍 +1 reacted by 2 (<CR> copy username, <Esc> back to reactions):",
+			reactions.build_people_prompt("👍 +1", 2)
+		)
+	end)
+end)
+
 describe("reactions rollup and choices", function()
 	local list = {
 		{ id = 1, content = "+1", user = { login = "me" } },
@@ -202,6 +225,52 @@ describe("reactions.pick", function()
 		end)
 		assert.is_false(ok)
 		assert.is_nil(comment.reactions)
+	end)
+
+	it("offers <CR> to list who reacted: choosing copies the login, <Esc> reopens the reactions", function()
+		listing = {
+			{ id = 7, content = "heart", user = { login = "me" } },
+			{ id = 8, content = "heart", user = { login = "alice" } },
+		}
+		local opens = 0
+		local opened
+		helpers.mock(require("fude.ui.toggle_picker"), "open", function(opts)
+			opens = opens + 1
+			opened = opts
+		end)
+		reactions.pick({ id = 5, path = "a.lua" }, { pr_url = "https://github.com/o/r/pull/1" })
+		assert.are.equal(1, opens)
+		assert.are.equal("who reacted", opened.confirm_label)
+
+		local copied
+		helpers.mock(require("fude.util"), "copy_to_clipboard", function(text)
+			copied = text
+			return true
+		end)
+		local prompt, shown
+		local answer = "alice"
+		helpers.mock(vim.ui, "select", function(items, sopts, on_choice)
+			shown = vim.tbl_map(sopts.format_item, items)
+			prompt = sopts.prompt
+			on_choice(answer)
+		end)
+		opened.on_confirm(item_for(opened, "heart"))
+		assert.are.same({ "@me", "@alice" }, shown)
+		assert.truthy(prompt:find("<CR> copy username", 1, true))
+		assert.truthy(prompt:find("<Esc> back to reactions", 1, true))
+		assert.are.equal("alice", copied)
+		assert.are.equal(1, opens)
+
+		-- <Esc> (no choice): back to the reaction picker
+		answer = nil
+		opened.on_confirm(item_for(opened, "heart"))
+		assert.are.equal(2, opens)
+
+		-- Nobody reacted with it: straight back to the reaction picker
+		shown = nil
+		opened.on_confirm(item_for(opened, "rocket"))
+		assert.is_nil(shown)
+		assert.are.equal(3, opens)
 	end)
 
 	it("refuses a local comment without a request or a picker", function()

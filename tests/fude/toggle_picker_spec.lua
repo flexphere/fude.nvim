@@ -1016,3 +1016,59 @@ describe("toggle_picker extra action", function()
 		assert.are.same({ { msg = "fude.nvim: @bob cannot", level = vim.log.levels.INFO } }, notified)
 	end)
 end)
+
+describe("toggle_picker <CR> confirm", function()
+	local config = require("fude.config")
+	local restore_fakes
+
+	after_each(function()
+		if restore_fakes then
+			restore_fakes()
+			restore_fakes = nil
+		end
+		helpers.cleanup()
+	end)
+
+	it("build_title adds the <CR> hint only when <CR> does something", function()
+		assert.are.equal("Labels (<Tab> toggle)", toggle_picker.build_title({ title = "Labels" }))
+		assert.are.equal(
+			"Reactions (<Tab> toggle, <CR> who reacted)",
+			toggle_picker.build_title({ title = "Reactions", confirm_label = "who reacted", on_confirm = function() end })
+		)
+		assert.are.equal("X (<Tab> toggle)", toggle_picker.build_title({ title = "X", confirm_label = "y" }))
+	end)
+
+	it("snacks: <CR> closes the picker and hands the row to on_confirm", function()
+		config.setup({ file_list_mode = "snacks" })
+		local picked
+		restore_fakes = install_fakes({
+			["snacks.picker"] = {
+				pick = function(popts)
+					picked = popts
+				end,
+			},
+		})
+		local item = { text = "👍 +1", on = false }
+		local confirmed
+		toggle_picker.open({
+			title = "Reactions",
+			confirm_label = "who reacted",
+			items = { item },
+			on_toggle = function() end,
+			on_confirm = function(i)
+				confirmed = i
+			end,
+		})
+		assert.are.equal("Reactions (<Tab> toggle, <CR> who reacted)", picked.title)
+		local closed = false
+		picked.confirm({
+			close = function()
+				closed = true
+			end,
+		}, item)
+		assert.is_true(closed)
+		assert.is_true(helpers.wait_for(function()
+			return confirmed == item
+		end))
+	end)
+end)

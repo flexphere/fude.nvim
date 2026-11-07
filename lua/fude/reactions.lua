@@ -43,6 +43,33 @@ function M.find_reaction_target(comment, ctx, repo_api_path)
 	return string.format("%s/%s/comments/%d/reactions", repo_api_path, kind, comment.id)
 end
 
+--- The logins that reacted with `content` in a reactions listing, in the
+--- listing's order (oldest first), each once. Pure.
+--- @param list any
+--- @param content string
+--- @return string[]
+function M.find_reaction_users(list, content)
+	local logins, seen = {}, {}
+	for _, reaction in ipairs(type(list) == "table" and list or {}) do
+		local user = type(reaction) == "table" and reaction.content == content and reaction.user or nil
+		local login = type(user) == "table" and user.login or nil
+		if type(login) == "string" and not seen[login] then
+			seen[login] = true
+			table.insert(logins, login)
+		end
+	end
+	return logins
+end
+
+--- The prompt of the people picker: what it lists and what its keys do,
+--- since `<CR>` copying and `<Esc>` going back are not otherwise visible. Pure.
+--- @param text string the reaction row (`👍 +1`)
+--- @param count number
+--- @return string
+function M.build_people_prompt(text, count)
+	return string.format("%s reacted by %d (<CR> copy username, <Esc> back to reactions):", text, count)
+end
+
 --- The REST path of the PR's own reactions (its body: `issues/<n>/reactions`),
 --- or why it has none. Pure.
 --- @param pr_info any
@@ -166,6 +193,8 @@ local function open_picker(path, target, on_done)
 		local mine = M.find_user_reactions(list, login)
 		local counts = M.build_rollup(list)
 		local items = M.build_reaction_items(counts, mine)
+		-- The latest listing, for the people picker
+		local current_list = list
 
 		-- After a change: list again so ids, counts and the comment follow
 		-- GitHub (another user may have reacted meanwhile)
@@ -177,6 +206,7 @@ local function open_picker(path, target, on_done)
 					done(true)
 					return
 				end
+				current_list = new_list
 				local rollup = M.build_rollup(new_list)
 				for k, v in pairs(rollup) do
 					counts[k] = v
@@ -200,28 +230,62 @@ local function open_picker(path, target, on_done)
 			end)
 		end
 
-		require("fude.ui.toggle_picker").open({
-			title = "Reactions",
-			items = items,
-			on_toggle = function(item, done)
-				local content = item.value
-				local function after(action_err)
-					if action_err then
-						vim.notify("fude.nvim: Failed to update reaction: " .. action_err, vim.log.levels.ERROR)
-						done(false)
-						return
+		local show_reactions
+		-- <CR> on a row: who reacted with it. Choosing a user copies the
+		-- login; cancelling (<Esc>) comes back to the reaction picker.
+		local function show_people(item)
+			local logins = M.find_reaction_users(current_list, item.value)
+			if #logins == 0 then
+				vim.notify("fude.nvim: Nobody has reacted with " .. item.text .. " yet", vim.log.levels.INFO)
+				show_reactions()
+				return
+			end
+			vim.ui.select(logins, {
+				prompt = M.build_people_prompt(item.text, #logins),
+				kind = "fude_reaction_people",
+				format_item = function(user)
+					return "@" .. user
+				end,
+			}, function(user)
+				if not user then
+					show_reactions()
+					return
+				end
+				local to_clipboard = require("fude.util").copy_to_clipboard(user)
+				vim.notify(
+					string.format("fude.nvim: Copied %s%s", user, to_clipboard and "" or " (unnamed register only)"),
+					vim.log.levels.INFO
+				)
+			end)
+		end
+
+		show_reactions = function()
+			require("fude.ui.toggle_picker").open({
+				title = "Reactions",
+				confirm_label = "who reacted",
+				on_confirm = show_people,
+				items = items,
+				on_toggle = function(item, done)
+					local content = item.value
+					local function after(action_err)
+						if action_err then
+							vim.notify("fude.nvim: Failed to update reaction: " .. action_err, vim.log.levels.ERROR)
+							done(false)
+							return
+						end
+						reload(item, done)
 					end
-					reload(item, done)
-				end
-				if item.on and mine[content] then
-					gh.remove_reaction(path, mine[content], after)
-				else
-					gh.add_reaction(path, content, function(add_err)
-						after(add_err)
-					end)
-				end
-			end,
-		})
+					if item.on and mine[content] then
+						gh.remove_reaction(path, mine[content], after)
+					else
+						gh.add_reaction(path, content, function(add_err)
+							after(add_err)
+						end)
+					end
+				end,
+			})
+		end
+		show_reactions()
 	end)
 end
 

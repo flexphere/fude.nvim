@@ -24,6 +24,9 @@ local format = require("fude.ui.format")
 --- @field on_close fun()|nil called once when the picker is closed and no request is in flight
 --- @field is_alive fun(): boolean|nil vim.ui.select only: reopen after a toggle while this returns true
 --- @field extra_action fude.TogglePickerAction|nil a second key (Telescope / snacks only)
+--- @field on_confirm fun(item: fude.TogglePickerItem)|nil Telescope / snacks only: `<CR>` closes the
+---   picker and runs this with the row under the cursor (otherwise `<CR>` only closes)
+--- @field confirm_label string|nil what `<CR>` does, shown in the title next to `<Tab> toggle`
 --- @field images (fun(item: fude.TogglePickerItem, cb: fun(path: string|nil)))|nil Telescope / snacks
 ---   only: asked once per item for the file of an image drawn inline before its row (IMAGE_HEIGHT
 ---   by IMAGE_WIDTH cells, through snacks.nvim's image module); `cb(nil)` for none. The rows are
@@ -38,6 +41,18 @@ local format = require("fude.ui.format")
 --- @field result_on boolean `item.on` after a successful run
 --- @field hint_hl (fun(item: fude.TogglePickerItem): string|nil)|nil highlight of the row-end hint
 ---   (default `Special`), e.g. grey where the action is rarely wanted
+
+--- The picker title with its key hints: `Reactions (<Tab> toggle)`, plus
+--- `, <CR> <confirm_label>` when `<CR>` does something. Pure.
+--- @param opts table { title, on_confirm?, confirm_label? }
+--- @return string
+function M.build_title(opts)
+	local hints = "<Tab> toggle"
+	if opts.on_confirm and opts.confirm_label then
+		hints = hints .. ", <CR> " .. opts.confirm_label
+	end
+	return string.format("%s (%s)", opts.title, hints)
+end
 
 --- Resolve an item's detail text for the current render.
 --- @param item fude.TogglePickerItem
@@ -532,7 +547,7 @@ function M.show_telescope(opts)
 	local slot = M.image_slot(opts)
 
 	local picker = pickers.new(themes.get_dropdown({}), {
-		prompt_title = opts.title .. " (<Tab> toggle)",
+		prompt_title = M.build_title(opts),
 		-- A refresh (on request start, every spinner frame, on settle) keeps
 		-- the selected entry selected: new_table builds the entries once, so
 		-- Telescope finds the same entry after the refresh. The default
@@ -591,7 +606,13 @@ function M.show_telescope(opts)
 				end,
 			})
 			actions.select_default:replace(function()
+				local selection = action_state.get_selected_entry()
 				actions.close(prompt_bufnr)
+				if opts.on_confirm and selection and selection.value then
+					vim.schedule(function()
+						opts.on_confirm(selection.value)
+					end)
+				end
 			end)
 			-- Re-render the rows (loading mark, flipped mark); the "follow"
 			-- strategy keeps the selection on the entry selected when the
@@ -764,7 +785,7 @@ function M.show_snacks(opts)
 	-- snacks matches on item.text, which the items already carry
 	local picker = snacks_picker.pick({
 		source = "fude_toggle",
-		title = opts.title .. " (<Tab> toggle)",
+		title = M.build_title(opts),
 		items = opts.items,
 		layout = { preset = "select" },
 		-- Same as Telescope's tiebreak above: snacks breaks ties by text
@@ -788,8 +809,13 @@ function M.show_snacks(opts)
 			end
 			return chunks
 		end,
-		confirm = function(picker)
+		confirm = function(picker, item)
 			picker:close()
+			if opts.on_confirm and item then
+				vim.schedule(function()
+					opts.on_confirm(item)
+				end)
+			end
 		end,
 		on_close = function()
 			vim.schedule(session.close)
