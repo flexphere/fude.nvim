@@ -465,4 +465,119 @@ function M.pick_pr(pr_info, ctx, on_done)
 	open_picker(path, pr_info, on_done)
 end
 
+--- The comments of a source line that can be reacted to (find_reaction_target
+--- accepts them), in the line's order. With none, nil and why: no comment on
+--- the line, or the first comment's reason (local review, pending, …). Pure.
+--- @param comments table[]|nil the line's comments (comments.get_comments_at)
+--- @param ctx table { pending_review_id, is_local } (ui.capture_open_context)
+--- @return table[]|nil comments
+--- @return string|nil reason when nil
+function M.find_line_targets(comments, ctx)
+	if type(comments) ~= "table" or #comments == 0 then
+		return nil, "No comments on this line"
+	end
+	local targets, first_reason = {}, nil
+	for _, comment in ipairs(comments) do
+		-- The repo path only shapes the returned path, which is not used here
+		local path, reason = M.find_reaction_target(comment, ctx, "")
+		if path then
+			table.insert(targets, comment)
+		elseif not first_reason then
+			first_reason = reason
+		end
+	end
+	if #targets == 0 then
+		return nil, first_reason
+	end
+	return targets
+end
+
+--- How many characters of a comment's first line the target choice shows.
+M.CHOICE_BODY_WIDTH = 60
+
+--- A comment as the choice of `:FudeReviewReact` shows it: `@login: ` and the
+--- first non-blank line of its body, cut at M.CHOICE_BODY_WIDTH characters. Pure.
+--- @param comment table
+--- @return string
+function M.format_comment_choice(comment)
+	local user = type(comment) == "table" and comment.user or nil
+	local login = type(user) == "table" and type(user.login) == "string" and user.login or "unknown"
+	local body = type(comment) == "table" and type(comment.body) == "string" and comment.body or ""
+	local first = ""
+	for _, line in ipairs(vim.split(format.normalize_newlines(body), "\n", { plain = true })) do
+		local trimmed = vim.trim(line)
+		if trimmed ~= "" then
+			first = trimmed
+			break
+		end
+	end
+	if vim.fn.strchars(first) > M.CHOICE_BODY_WIDTH then
+		first = vim.fn.strcharpart(first, 0, M.CHOICE_BODY_WIDTH) .. "…"
+	end
+	return string.format("@%s: %s", login, first)
+end
+
+--- Buffers whose own reaction target `:FudeReviewReact` asks for: the comment
+--- viewer, the comment browser's thread pane and the overview panes register
+--- the function their `+` runs, so the command reacts to what `+` would, with
+--- the context those UIs captured when they were drawn.
+local buffer_handlers = {}
+
+--- Register `fn` as what `:FudeReviewReact` runs in `buf`; dropped when the
+--- buffer is wiped out.
+--- @param buf number
+--- @param fn fun()
+function M.set_buffer_handler(buf, fn)
+	if not vim.api.nvim_buf_is_valid(buf) then
+		return
+	end
+	buffer_handlers[buf] = fn
+	vim.api.nvim_create_autocmd("BufWipeout", {
+		buffer = buf,
+		once = true,
+		callback = function()
+			buffer_handlers[buf] = nil
+		end,
+	})
+end
+
+--- `:FudeReviewReact`: open the reaction picker for what is under the cursor.
+--- In a buffer with a registered handler (set_buffer_handler) that handler
+--- runs; in a source buffer it is the cursor line's comments — one opens the
+--- picker at once, several are offered through vim.ui.select first.
+function M.react_at_cursor()
+	local buf = vim.api.nvim_get_current_buf()
+	local handler = buffer_handlers[buf]
+	if handler then
+		handler()
+		return
+	end
+
+	if not config.state.active then
+		vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
+		return
+	end
+	local rel_path = require("fude.diff").to_repo_relative(vim.api.nvim_buf_get_name(buf))
+	local comments = rel_path and require("fude.comments").get_comments_at(rel_path, vim.fn.line(".")) or {}
+	local ctx = require("fude.ui").capture_open_context()
+	local targets, reason = M.find_line_targets(comments, ctx)
+	if not targets then
+		vim.notify("fude.nvim: " .. reason, vim.log.levels.INFO)
+		return
+	end
+	if #targets == 1 then
+		M.pick(targets[1], ctx)
+		return
+	end
+	vim.ui.select(targets, {
+		prompt = "React to:",
+		kind = "fude_reaction_target",
+		format_item = M.format_comment_choice,
+	}, function(comment)
+		if comment then
+			M.pick(comment, ctx)
+		end
+	end)
+end
+
 return M

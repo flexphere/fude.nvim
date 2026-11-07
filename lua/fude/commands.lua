@@ -369,6 +369,15 @@ M.list = {
 			require("fude.comments").toggle_resolve()
 		end,
 	},
+	{
+		name = "FudeReviewReact",
+		desc = "Add/remove a reaction on the comment under the cursor",
+		category = "Comments",
+		available = when_github,
+		run = function()
+			require("fude.reactions").react_at_cursor()
+		end,
+	},
 
 	-- Files ----------------------------------------------------------------
 	{
