@@ -399,7 +399,7 @@ function M.show_comments_float(comments, opts)
 	-- Lets `close_comment_ui` find viewer floats: they show working-tree
 	-- comments, which the local commit scope must not keep on screen.
 	vim.b[buf].fude_comment_view = true
-	-- Comment authors' avatars (overview.avatars.comment_threads)
+	-- Comment authors' avatars (images.comment)
 	require("fude.ui.avatars").place(buf, result.avatar_positions)
 
 	local win = vim.api.nvim_open_win(buf, true, {
@@ -817,7 +817,7 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	vim.bo[right_buf].filetype = "markdown"
 
 	-- Author, reviewer, assignee and comment author avatars, drawn as their
-	-- downloads finish (each kind a no-op unless overview.avatars turns it
+	-- downloads finish (each kind a no-op unless images.overview turns it
 	-- on, and all without snacks.nvim image support)
 	local avatars = require("fude.ui.avatars")
 	avatars.place(left_buf, left_result.avatar_positions)

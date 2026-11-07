@@ -5,7 +5,7 @@
 --- `stdpath("cache")/fude/avatars` and cut into a circle with ImageMagick
 --- (`magick`, or `convert` of ImageMagick 6), as the GitHub web UI shows
 --- them; without ImageMagick the square image is shown. Each kind is a no-op
---- unless `overview.avatars` turns it on (off by default), and everything is
+--- unless `images` turns it on (off by default), and everything is
 --- a no-op without snacks.nvim or terminal support.
 local M = {}
 local config = require("fude.config")
@@ -178,17 +178,44 @@ function M.find_magick()
 	return nil
 end
 
---- The kinds of avatars `overview.avatars` turns on one by one: the PR
---- author (frontmatter), the reviewers (right pane and reviewer picker), the
---- assignees (right pane), the authors of the PR-level comments, and the
---- comment authors of the comment viewer, the reply/edit window and the
---- comment browser's thread pane.
+--- The kinds of avatars, each drawn where the `images` group it belongs to
+--- (KIND_GROUPS) turns it on: the PR author (frontmatter), the reviewers
+--- (right pane and reviewer picker), the assignees (right pane), the authors
+--- of the PR-level comments, and the comment authors of the comment viewer,
+--- the reply/edit window and the comment browser's thread pane.
 M.KINDS = { "author", "reviewers", "assignees", "comments", "comment_threads" }
 
---- Whether the `overview.avatars` setting turns on the avatars of `kind`:
---- `true` turns on every kind, a table each kind whose key is `true`;
---- anything else (the default `false`, nil) none. Without `kind`, whether
---- any kind is on. Pure.
+--- The `images` key that turns each kind on.
+M.KIND_GROUPS = {
+	author = "overview",
+	reviewers = "overview",
+	assignees = "overview",
+	comments = "overview",
+	comment_threads = "comment",
+}
+
+--- The `images` setting in effect: `config.opts.images`, with `overview`
+--- also on when the earlier `overview.avatars = true` is set (it only ever
+--- covered the overview). Pure.
+--- @param opts table config.opts
+--- @return any `true` / `false` / `{ overview, comment }`
+function M.resolve_setting(opts)
+	local images = opts.images
+	local legacy = type(opts.overview) == "table" and opts.overview.avatars == true
+	if not legacy or images == true then
+		return images
+	end
+	local resolved = { overview = true }
+	if type(images) == "table" then
+		resolved.comment = images.comment
+	end
+	return resolved
+end
+
+--- Whether the `images` setting turns on the avatars of `kind`: `true` turns
+--- on every kind, a table each kind whose group (KIND_GROUPS) is `true`;
+--- anything else (`false`, nil) none. Without `kind`, whether any kind is
+--- on. Pure.
 --- @param setting any
 --- @param kind string|nil one of M.KINDS
 --- @return boolean
@@ -201,23 +228,23 @@ function M.should_draw(setting, kind)
 	end
 	if kind == nil then
 		for _, k in ipairs(M.KINDS) do
-			if setting[k] == true then
+			if setting[M.KIND_GROUPS[k]] == true then
 				return true
 			end
 		end
 		return false
 	end
-	return setting[kind] == true
+	local group = M.KIND_GROUPS[kind]
+	return group ~= nil and setting[group] == true
 end
 
---- Whether avatars (of `kind`, or of any kind without it) are drawn:
---- `overview.avatars` turns them on (`should_draw`), snacks.nvim is
+--- Whether avatars (of `kind`, or of any kind without it) are drawn: the
+--- `images` setting turns them on (`should_draw`), snacks.nvim is
 --- installed, and its image module reports terminal support.
 --- @param kind string|nil one of M.KINDS
 --- @return boolean
 function M.is_enabled(kind)
-	local ov = config.opts.overview or {}
-	if not M.should_draw(ov.avatars, kind) then
+	if not M.should_draw(M.resolve_setting(config.opts), kind) then
 		return false
 	end
 	local ok, snacks = pcall(require, "snacks")
@@ -385,7 +412,7 @@ function M.place(buf, positions)
 	if not positions or #positions == 0 or not M.is_enabled() then
 		return
 	end
-	local setting = (config.opts.overview or {}).avatars
+	local setting = M.resolve_setting(config.opts)
 	for _, position in ipairs(positions) do
 		if M.should_draw(setting, position.kind) then
 			M.fetch(position.login, function(path)
