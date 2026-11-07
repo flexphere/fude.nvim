@@ -1767,6 +1767,8 @@ pane of `FudeCreatePR` / `FudeEditPR` support GitHub completion for `@user`
 mentions, `#issue/PR` references, and `_commit` hashes. PR body completion does
 not require an active review session. The PR title pane is not a completion
 target. Both completion plugins below support these input windows.
+`#` offers the 100 most recently updated issues and PRs, listed by number in
+descending order (newest first).
 
 blink.cmp: >lua
   sources = {
