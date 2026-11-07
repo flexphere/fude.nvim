@@ -157,6 +157,7 @@ describe("commands availability", function()
 	it("lists GitHub-only commands in github mode", function()
 		local expected = concat(ALWAYS, ANY_REVIEW, {
 			"FudeReviewOverview",
+			"FudeReviewReact",
 			"FudeReviewStackSwitch",
 			"FudeReviewSubmit",
 		})

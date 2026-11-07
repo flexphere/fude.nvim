@@ -599,3 +599,225 @@ describe("reactions.show_people", function()
 		assert.are.equal(1, cancels)
 	end)
 end)
+
+describe("reactions.find_line_targets", function()
+	it("keeps the comments that can be reacted to, in the line's order", function()
+		local comments = {
+			{ id = 1, path = "a.lua" },
+			{ id = 2, path = "a.lua", pull_request_review_id = 9 },
+			{ id = 3, path = "a.lua" },
+		}
+		local targets = reactions.find_line_targets(comments, { pending_review_id = 9 })
+		assert.are.same({ comments[1], comments[3] }, targets)
+	end)
+
+	it("returns why nothing on the line can be reacted to", function()
+		local cases = {
+			{ {}, {}, "No comments on this line" },
+			{ nil, {}, "No comments on this line" },
+			{ { { id = 1, path = "a" } }, { is_local = true }, "Local" },
+			{ { { id = 1, path = "a", pull_request_review_id = 5 } }, { pending_review_id = 5 }, "Pending" },
+			{ { { id = 1, is_review_summary = true } }, {}, "Review summaries" },
+		}
+		for _, case in ipairs(cases) do
+			local targets, reason = reactions.find_line_targets(case[1], case[2])
+			assert.is_nil(targets)
+			assert.truthy(reason:find(case[3], 1, true), reason)
+		end
+	end)
+end)
+
+describe("reactions.format_comment_choice", function()
+	it("shows the login and the first non-blank body line", function()
+		assert.are.equal(
+			"@alice: second line",
+			reactions.format_comment_choice({ user = { login = "alice" }, body = "\r\n  \r\n  second line\nthird" })
+		)
+	end)
+
+	it("cuts a long first line and tolerates a missing login or body", function()
+		local long = string.rep("あ", reactions.CHOICE_BODY_WIDTH + 5)
+		assert.are.equal(
+			"@a: " .. string.rep("あ", reactions.CHOICE_BODY_WIDTH) .. "…",
+			reactions.format_comment_choice({ user = { login = "a" }, body = long })
+		)
+		assert.are.equal("@unknown: ", reactions.format_comment_choice({ user = vim.NIL, body = vim.NIL }))
+	end)
+end)
+
+describe("reactions.react_at_cursor", function()
+	local config = require("fude.config")
+	local comments_mod = require("fude.comments")
+	local picked, notified, line_comments
+
+	before_each(function()
+		config.setup({})
+		picked, notified = {}, {}
+		line_comments = {}
+		helpers.mock(reactions, "pick", function(comment)
+			table.insert(picked, comment)
+		end)
+		helpers.mock(vim, "notify", function(msg, level)
+			table.insert(notified, { msg = msg, level = level })
+		end)
+		helpers.mock(require("fude.diff"), "to_repo_relative", function()
+			return "a.lua"
+		end)
+		helpers.mock(comments_mod, "get_comments_at", function(path, line)
+			assert.are.equal("a.lua", path)
+			assert.are.equal(1, line)
+			return line_comments
+		end)
+		vim.api.nvim_set_current_buf(helpers.create_buf({ "x" }, "/repo/a.lua"))
+		config.state.active = true
+	end)
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	it("runs the handler registered for the current buffer instead of reading the line", function()
+		local ran = 0
+		local buf = vim.api.nvim_get_current_buf()
+		reactions.set_buffer_handler(buf, function()
+			ran = ran + 1
+		end)
+		config.state.active = false
+		reactions.react_at_cursor()
+		assert.are.equal(1, ran)
+		assert.are.equal(0, #notified)
+
+		-- A wiped buffer's handler is gone: a new buffer reusing nothing of it
+		vim.api.nvim_buf_delete(buf, { force = true })
+		vim.api.nvim_set_current_buf(helpers.create_buf({ "x" }, "/repo/a.lua"))
+		config.state.active = true
+		reactions.react_at_cursor()
+		assert.are.equal(1, ran)
+	end)
+
+	it("opens the picker at once for the line's only reactable comment", function()
+		line_comments = { { id = 1, path = "a.lua", pull_request_review_id = 9 }, { id = 2, path = "a.lua" } }
+		config.state.pending_review_id = 9
+		reactions.react_at_cursor()
+		assert.are.same({ line_comments[2] }, picked)
+	end)
+
+	it("asks which comment when the line has several", function()
+		line_comments = {
+			{ id = 1, path = "a.lua", user = { login = "a" }, body = "one" },
+			{ id = 2, path = "a.lua", user = { login = "b" }, body = "two" },
+		}
+		local shown, kind
+		helpers.mock(vim.ui, "select", function(items, opts, on_choice)
+			shown = vim.tbl_map(opts.format_item, items)
+			kind = opts.kind
+			on_choice(items[2])
+		end)
+		reactions.react_at_cursor()
+		assert.are.same({ "@a: one", "@b: two" }, shown)
+		assert.are.equal("fude_reaction_target", kind)
+		assert.are.same({ line_comments[2] }, picked)
+
+		-- Cancelling the choice opens nothing
+		picked = {}
+		helpers.mock(vim.ui, "select", function(_, _, on_choice)
+			on_choice(nil)
+		end)
+		reactions.react_at_cursor()
+		assert.are.equal(0, #picked)
+	end)
+
+	it("notifies the reason at INFO when nothing on the line can be reacted to", function()
+		reactions.react_at_cursor()
+		assert.are.equal(0, #picked)
+		assert.are.same({ msg = "fude.nvim: No comments on this line", level = vim.log.levels.INFO }, notified[1])
+
+		config.state.review_mode = "local"
+		line_comments = { { id = 1, path = "a.lua" } }
+		reactions.react_at_cursor()
+		assert.are.equal(0, #picked)
+		assert.truthy(notified[2].msg:find("Local review", 1, true))
+		assert.are.equal(vim.log.levels.INFO, notified[2].level)
+	end)
+
+	it("warns outside a review", function()
+		config.state.active = false
+		reactions.react_at_cursor()
+		assert.are.equal(0, #picked)
+		assert.are.same({ msg = "fude.nvim: Not active", level = vim.log.levels.WARN }, notified[1])
+	end)
+end)
+
+describe(":FudeReviewReact in the comment UIs", function()
+	local ui = require("fude.ui")
+
+	before_each(function()
+		require("fude.config").setup({})
+	end)
+
+	after_each(function()
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_config(win).relative ~= "" then
+				pcall(vim.api.nvim_win_close, win, true)
+			end
+		end
+		helpers.cleanup()
+	end)
+
+	it("reacts to the comment under the cursor in the comment viewer", function()
+		local picked
+		helpers.mock(reactions, "pick", function(comment)
+			picked = comment
+		end)
+		local comments = {
+			{ id = 1, user = { login = "a" }, created_at = "", body = "first" },
+			{ id = 2, user = { login = "b" }, created_at = "", body = "second" },
+		}
+		ui.show_comments_float(comments)
+		local win = vim.api.nvim_get_current_win()
+		local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+		for i, l in ipairs(lines) do
+			if l == "second" then
+				vim.api.nvim_win_set_cursor(win, { i, 0 })
+			end
+		end
+		reactions.react_at_cursor()
+		assert.are.equal(comments[2], picked)
+	end)
+
+	it("reacts to the PR in the overview's right pane and to a comment in the left one", function()
+		local picked = {}
+		helpers.mock(reactions, "pick_pr", function()
+			table.insert(picked, "pr")
+		end)
+		helpers.mock(reactions, "pick", function(comment)
+			table.insert(picked, comment.id)
+		end)
+		local pr_info = {
+			number = 1,
+			title = "T",
+			body = "the body",
+			url = "https://github.com/o/r/pull/1",
+			reviewRequests = {},
+			latestReviews = {},
+			statusCheckRollup = {},
+		}
+		ui.show_overview_float(pr_info, { { id = 77, user = { login = "a" }, body = "c", created_at = "" } }, {})
+		local left_win = vim.api.nvim_get_current_win()
+		for i, l in ipairs(vim.api.nvim_buf_get_lines(0, 0, -1, false)) do
+			if l == "c" then
+				vim.api.nvim_win_set_cursor(left_win, { i, 0 })
+			end
+		end
+		reactions.react_at_cursor()
+		local right_win
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if win ~= left_win and vim.api.nvim_win_get_config(win).relative ~= "" then
+				right_win = win
+			end
+		end
+		vim.api.nvim_set_current_win(right_win)
+		reactions.react_at_cursor()
+		assert.are.same({ 77, "pr" }, picked)
+	end)
+end)

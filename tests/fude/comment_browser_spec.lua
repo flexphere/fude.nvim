@@ -215,6 +215,22 @@ describe("comment browser o key", function()
 		config.state = saved
 	end)
 
+	it(":FudeReviewReact in the thread pane reacts to the comment under the cursor, like +", function()
+		local reactions = require("fude.reactions")
+		local picked = {}
+		helpers.mock(reactions, "pick", function(comment)
+			table.insert(picked, comment.id)
+		end)
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		local lines = vim.api.nvim_buf_get_lines(browser.upper_buf, 0, -1, false)
+		vim.api.nvim_set_current_win(browser.upper_win)
+		vim.api.nvim_win_set_cursor(browser.upper_win, { #lines, 0 })
+		reactions.react_at_cursor()
+		press(browser.upper_buf, "+")
+		assert.are.same({ 2, 2 }, picked)
+	end)
+
 	it("opens nothing for a draft row from either pane and says why", function()
 		helpers.mock(require("fude.drafts"), "list_drafts", function()
 			return {
