@@ -851,7 +851,7 @@ describe("overview right pane toggle", function()
 		assert.is_true(vim.api.nvim_win_get_config(right).hide)
 	end)
 
-	it("uses the configured key, and maps nothing when it is false", function()
+	it("uses the configured key and lists it in the footer, and maps and lists nothing when it is false", function()
 		local function has_map(buf, lhs)
 			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
 				if map.lhs == lhs then
@@ -861,9 +861,21 @@ describe("overview right pane toggle", function()
 			return false
 		end
 
+		local function footer(win)
+			local lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false)
+			return lines[#lines]
+		end
+
+		config.setup({})
+		local left = open_overview()
+		assert.is_truthy(footer(left):find("  S: hide/show right pane  q: close", 1, true))
+		press("q")
+
 		config.setup({ overview = { keymaps = { toggle_right_pane = "gh" } } })
-		local left, right = open_overview()
+		local right
+		left, right = open_overview()
 		assert.is_false(has_map(vim.api.nvim_win_get_buf(left), "S"))
+		assert.is_truthy(footer(left):find("gh: hide/show right pane", 1, true))
 		press("gh")
 		assert.is_true(vim.api.nvim_win_get_config(right).hide)
 		press("q")
@@ -871,6 +883,8 @@ describe("overview right pane toggle", function()
 		config.setup({ overview = { keymaps = { toggle_right_pane = false } } })
 		left = open_overview()
 		assert.is_false(has_map(vim.api.nvim_win_get_buf(left), "S"))
+		assert.is_nil(footer(left):find("hide/show right pane", 1, true))
+		assert.is_truthy(footer(left):find("<Tab>: switch  q: close", 1, true))
 	end)
 end)
 
