@@ -100,9 +100,11 @@ end
 M.PR_INFO_FIELDS = "number,baseRefName,baseRefOid,headRefName,url,state"
 --- Fields of the PR overview's body request (`get_pr_overview`). The
 --- reviewers and the CI checks are fetched on their own (get_pr_reviewers,
---- get_pr_checks), so the body arrives as soon as possible.
+--- get_pr_checks), so the body arrives as soon as possible. `commits` is
+--- requested only for its length (the frontmatter's `commit_count`): gh has no
+--- field for the count alone, and returns only the first 100 commits.
 M.PR_OVERVIEW_FIELDS = "number,title,body,labels,assignees,state,isDraft,author,"
-	.. "baseRefName,headRefName,url,additions,deletions,changedFiles,reactionGroups"
+	.. "baseRefName,headRefName,url,additions,deletions,changedFiles,commits,reactionGroups"
 
 --- Union of two comma-separated `--json` field lists, in order, without
 --- duplicates. Pure.
