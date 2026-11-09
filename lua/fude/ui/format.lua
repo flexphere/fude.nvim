@@ -994,6 +994,10 @@ function M.find_comment_index_at_line(comment_ranges, line)
 	return nil
 end
 
+--- Number of commits `gh pr view --json commits` returns at most (its query is
+--- `commits(first: 100)` without paging). A list this long shows `"100+"`.
+M.COMMIT_LIST_LIMIT = 100
+
 --- Build display lines for the left pane of PR overview (header, description, comments).
 --- @param pr_info table PR data from gh pr view
 --- @param issue_comments table[] issue-level comments
@@ -1067,6 +1071,25 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 			col_end = start_col + #text,
 			hl = group,
 		})
+	end
+	-- `gh pr view --json commits` asks for the first COMMIT_LIST_LIMIT commits
+	-- and does not page, so a full list only says "at least that many".
+	-- Anything but a list (JSON null) is unknown.
+	local commits = type(pr_info.commits) == "table" and count_text(#pr_info.commits) or nil
+	if commits then
+		local prefix = "commit_count: "
+		if #pr_info.commits >= M.COMMIT_LIST_LIMIT then
+			-- Quoted: a bare `100+` is a string in YAML anyway, and the other
+			-- non-number values in the frontmatter are quoted too
+			commits = M.COMMIT_LIST_LIMIT .. "+"
+			table.insert(lines, prefix .. '"' .. commits .. '"')
+			highlight_count(#prefix + 1, commits, "ReviewCommitCount")
+			highlight_count(#prefix, '"', "Normal")
+			highlight_count(#prefix + #commits + 1, '"', "Normal")
+		else
+			table.insert(lines, prefix .. commits)
+			highlight_count(#prefix, commits, "ReviewCommitCount")
+		end
 	end
 	local files = count_text(pr_info.changedFiles)
 	if files then

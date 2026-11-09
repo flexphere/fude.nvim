@@ -484,12 +484,16 @@ File opening position                                 *fude-file-position*
     the content: a short PR does not shrink it. The left pane
     starts with YAML frontmatter containing state (`OPEN (draft)` for
     an open draft PR), author, base/head branches, URL, and PR-wide
-    file_changed (changed file count) and line_changed (additions/deletions).
-    For example: `file_changed: 10` and `line_changed: 70/6`.
-    Only the numbers are colored: files blue (DiagnosticInfo), additions
+    commit_count (commit count), file_changed (changed file count) and
+    line_changed (additions/deletions). For example: `commit_count: 6`,
+    `file_changed: 10` and `line_changed: "+70 -6"`. gh returns at most
+    100 commits, so a PR with 100 or more commits shows
+    `commit_count: "100+"`.
+    Only the numbers are colored: commits and files with the foreground
+    of `Underlined` (ReviewCommitCount / ReviewFileCount), additions
     green (DiagnosticOk), deletions red (DiagnosticError). Counts are
-    PR-wide; file_changed is omitted if unavailable, and line_changed
-    is omitted if either line count is unavailable.
+    PR-wide; commit_count and file_changed are omitted if unavailable,
+    and line_changed is omitted if either line count is unavailable.
     This is followed by a `# #<number> <title>` Markdown heading and
     the PR body, without an extra DESCRIPTION heading,
     and PR-level comments: issue comments plus the body of every
