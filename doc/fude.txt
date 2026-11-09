@@ -632,11 +632,14 @@ File opening position                                 *fude-file-position*
 
     Keymaps (left pane):~
       `<CR>`    Jump to file at comment line (review comments)
+      `r`       Focus the input pane (Reply, or New PR Comment on the
+                PR-level row)
       `R`       Refresh comments
       `q`       Close browser
       `<Tab>`   Switch to thread pane
 
     Keymaps (upper pane):~
+      `r`       Focus the input pane (same as the left pane's `r`)
       `e`       Edit own comment
       `d`       Delete own comment (with confirmation)
       `+`       Add/remove a reaction on the comment under the cursor

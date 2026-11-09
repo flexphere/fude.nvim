@@ -287,7 +287,7 @@ local function create_browser(entries, issue_comments)
 		border = border,
 		title = string.format(" Threads (%d) ", #entries),
 		title_pos = "center",
-		footer = " <CR> jump | o open | R refresh | <Tab> switch | q close ",
+		footer = " <CR> jump | r reply | o open | R refresh | <Tab> switch | q close ",
 		footer_pos = "center",
 	})
 	vim.wo[left_win].cursorline = true
@@ -304,7 +304,7 @@ local function create_browser(entries, issue_comments)
 		border = border,
 		title = " Comments ",
 		title_pos = "center",
-		footer = " e edit | d delete | + react | o open | <Tab> switch | q close ",
+		footer = " r reply | e edit | d delete | + react | o open | <Tab> switch | q close ",
 		footer_pos = "center",
 	})
 	vim.wo[upper_win].wrap = true
@@ -540,6 +540,16 @@ local function create_browser(entries, issue_comments)
 		end)
 	end
 
+	-- A line/suggest draft row is not editable inline (mode "reply" but no
+	-- thread to reply to); it is edited by jumping to the file with <CR>.
+	-- issue drafts use new_pr_comment mode and are written in the input pane.
+	local function is_file_draft_row(entry)
+		return entry ~= nil and entry.type == "draft" and browser.mode ~= "new_pr_comment"
+	end
+	local function notify_file_draft()
+		vim.notify("fude.nvim: Press <CR> to edit this draft in the file", vim.log.levels.INFO)
+	end
+
 	-- Submit handler for lower pane
 	local function submit()
 		local body = get_lower_text(lower_buf)
@@ -552,11 +562,8 @@ local function create_browser(entries, issue_comments)
 			return
 		end
 
-		-- A line/suggest draft row is not editable inline (mode "reply" but no
-		-- thread to reply to); it is edited by jumping to the file with <CR>.
-		-- issue drafts use new_pr_comment mode and submit normally below.
-		if entry.type == "draft" and browser.mode ~= "new_pr_comment" then
-			vim.notify("fude.nvim: Press <CR> to edit this draft in the file", vim.log.levels.INFO)
+		if is_file_draft_row(entry) then
+			notify_file_draft()
 			return
 		end
 
@@ -739,9 +746,24 @@ local function create_browser(entries, issue_comments)
 		})
 	end
 
+	-- Focus the input pane, which update_right_panes has already put in the
+	-- mode for the selected entry (Reply, New PR Comment, or an Edit in
+	-- progress); not for a line/suggest draft row, whose input pane cannot submit.
+	local function focus_reply()
+		if is_file_draft_row(current_entry()) then
+			notify_file_draft()
+			return
+		end
+		if vim.api.nvim_win_is_valid(lower_win) then
+			vim.api.nvim_set_current_win(lower_win)
+		end
+	end
+
 	-- === LEFT PANE KEYMAPS ===
 
 	vim.keymap.set("n", "q", close_with_confirm, { buffer = left_buf, desc = "Close comment browser" })
+
+	vim.keymap.set("n", "r", focus_reply, { buffer = left_buf, desc = "Go to input pane (reply)" })
 
 	vim.keymap.set("n", "<CR>", function()
 		local entry = current_entry()
@@ -787,6 +809,8 @@ local function create_browser(entries, issue_comments)
 	-- === UPPER PANE KEYMAPS ===
 
 	vim.keymap.set("n", "q", close_with_confirm, { buffer = upper_buf, desc = "Close" })
+
+	vim.keymap.set("n", "r", focus_reply, { buffer = upper_buf, desc = "Go to input pane (reply)" })
 
 	vim.keymap.set("n", "<Tab>", function()
 		if vim.api.nvim_win_is_valid(lower_win) then
