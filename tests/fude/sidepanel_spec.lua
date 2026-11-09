@@ -244,9 +244,9 @@ describe("build_commit_copy_choices", function()
 		)
 		assert.are.same(
 			{
-				"hash:       abc1234def",
-				"short_hash: abc1234",
-				"title:      feat: add copy",
+				"hash:           abc1234def",
+				"short_hash:     abc1234",
+				"commit_subject: feat: add copy",
 			},
 			vim.tbl_map(function(choice)
 				return choice.label
@@ -259,13 +259,13 @@ describe("build_commit_copy_choices", function()
 		local choices = sidepanel.build_commit_copy_choices("abc1234def", "abc1234", "feat: add copy", message)
 		assert.are.equal(4, #choices)
 		assert.are.equal(message, choices[4].text)
-		assert.are.equal("full_message: feat: add copy … (3 lines)", choices[4].label)
-		assert.are.equal("hash:         abc1234def", choices[1].label)
+		assert.are.equal("commit_message: feat: add copy … (3 lines)", choices[4].label)
+		assert.are.equal("hash:           abc1234def", choices[1].label)
 	end)
 
 	it("shows a single-line full message as is and omits a blank one", function()
 		local choices = sidepanel.build_commit_copy_choices("abc1234def", "abc1234", "fix: one", "fix: one")
-		assert.are.equal("full_message: fix: one", choices[4].label)
+		assert.are.equal("commit_message: fix: one", choices[4].label)
 		assert.are.equal(3, #sidepanel.build_commit_copy_choices("abc1234def", "abc1234", "fix: one", " \n"))
 	end)
 
@@ -277,6 +277,90 @@ describe("build_commit_copy_choices", function()
 				return choice.text
 			end, choices)
 		)
+	end)
+end)
+
+describe("build_pr_copy_choices", function()
+	it("lists the head branch, PR number, URL and title in that order", function()
+		local choices = sidepanel.build_pr_copy_choices({
+			head_branch = "feat/x",
+			pr_number = 321,
+			pr_url = "https://github.com/o/r/pull/321",
+			pr_title = "feat: copy",
+		})
+		assert.are.same({
+			{ kind = "head_branch", text = "feat/x" },
+			{ kind = "pr_number", text = "321" },
+			{ kind = "pr_url", text = "https://github.com/o/r/pull/321" },
+			{ kind = "pr_title", text = "feat: copy" },
+		}, choices)
+	end)
+
+	it("leaves out missing, empty and detached HEAD values", function()
+		assert.are.same({}, sidepanel.build_pr_copy_choices({}))
+		assert.are.same(
+			{ { kind = "pr_number", text = "7" } },
+			sidepanel.build_pr_copy_choices({ head_branch = "HEAD", pr_number = 7, pr_url = "", pr_title = vim.NIL })
+		)
+	end)
+
+	it("offers only the branch for a local review", function()
+		assert.are.same(
+			{ { kind = "head_branch", text = "feat/x" } },
+			sidepanel.build_pr_copy_choices({ head_branch = "feat/x" })
+		)
+	end)
+end)
+
+describe("merge_copy_choices", function()
+	it("puts the entry's choices first and aligns every key", function()
+		local choices = sidepanel.merge_copy_choices(
+			sidepanel.build_copy_choices("a.lua", "/repo"),
+			{ { kind = "pr_number", text = "1" } }
+		)
+		assert.are.same(
+			{
+				"filename:      a.lua",
+				"relative_path: a.lua",
+				"absolute_path: /repo/a.lua",
+				"pr_number:     1",
+			},
+			vim.tbl_map(function(choice)
+				return choice.label
+			end, choices)
+		)
+	end)
+
+	it("drops the head branch when the entry's branch has the same name", function()
+		local choices = sidepanel.merge_copy_choices(
+			{ { kind = "branch", text = "feat/x" } },
+			{ { kind = "head_branch", text = "feat/x" }, { kind = "pr_number", text = "1" } }
+		)
+		assert.are.same(
+			{ "branch", "pr_number" },
+			vim.tbl_map(function(choice)
+				return choice.kind
+			end, choices)
+		)
+	end)
+
+	it("keeps an equal text under a different key, such as a commit subject equal to the PR title", function()
+		local choices = sidepanel.merge_copy_choices(
+			{ { kind = "commit_subject", text = "feat: x" } },
+			{ { kind = "pr_title", text = "feat: x" } }
+		)
+		assert.are.same(
+			{ "commit_subject", "pr_title" },
+			vim.tbl_map(function(choice)
+				return choice.kind
+			end, choices)
+		)
+	end)
+
+	it("returns the PR choices alone when the entry has none, and nothing when both are empty", function()
+		local choices = sidepanel.merge_copy_choices({}, { { kind = "pr_url", text = "u" } })
+		assert.are.equal("pr_url: u", choices[1].label)
+		assert.are.same({}, sidepanel.merge_copy_choices({}, {}))
 	end)
 end)
 

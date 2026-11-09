@@ -970,7 +970,10 @@ describe("sidepanel integration", function()
 			config.opts.sidepanel.keymaps.copy_path = "o"
 			sidepanel.open()
 			local panel = config.state.sidepanel
-			assert.are.equal("Copy file path, commit hash/title/message, or branch", buf_keymap_desc(panel.buf, "o"))
+			assert.are.equal(
+				"Copy file path, commit hash/title/message, branch, or PR number/URL/title",
+				buf_keymap_desc(panel.buf, "o")
+			)
 		end)
 	end)
 
@@ -980,6 +983,8 @@ describe("sidepanel integration", function()
 			config.state.changed_files = {
 				{ path = "lua/fude/a.lua", status = "modified", additions = 5, deletions = 2 },
 			}
+			config.state.pr_url = "https://github.com/o/r/pull/1"
+			config.state.pr_title = "feat: add copy"
 			vim.fn.setreg('"', "before")
 			picked = nil
 		end)
@@ -1003,11 +1008,19 @@ describe("sidepanel integration", function()
 			buf_keymap(panel.buf, "y").callback()
 		end
 
-		it("y on a file copies the picked file name, relative path, or absolute path", function()
+		it("y on a file copies the picked file name, path, or PR-wide value", function()
 			sidepanel.open()
 			local panel = config.state.sidepanel
 			move_to(panel, "file")
-			local expected = { "a.lua", "lua/fude/a.lua", "/mock/repo/lua/fude/a.lua" }
+			local expected = {
+				"a.lua",
+				"lua/fude/a.lua",
+				"/mock/repo/lua/fude/a.lua",
+				"feat/test",
+				"1",
+				"https://github.com/o/r/pull/1",
+				"feat: add copy",
+			}
 			for index, text in ipairs(expected) do
 				press_and_choose(panel, index)
 				assert.are.equal(text, vim.fn.getreg('"'))
@@ -1020,6 +1033,10 @@ describe("sidepanel integration", function()
 				"filename:      a.lua",
 				"relative_path: lua/fude/a.lua",
 				"absolute_path: /mock/repo/lua/fude/a.lua",
+				"head_branch:   feat/test",
+				"pr_number:     1",
+				"pr_url:        https://github.com/o/r/pull/1",
+				"pr_title:      feat: add copy",
 			}, labels)
 		end)
 
@@ -1032,6 +1049,19 @@ describe("sidepanel integration", function()
 			assert.are.equal("fude", vim.fn.getreg('"'))
 			press_and_choose(panel, 2)
 			assert.are.equal("lua/fude", vim.fn.getreg('"'))
+		end)
+
+		it("y on a file whose repository root cannot be resolved warns and opens no picker", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to(panel, "file")
+			panel.repo_root = nil
+			helpers.mock(require("fude.diff"), "get_repo_root", function()
+				return nil
+			end)
+			press_and_choose(panel, 1)
+			assert.is_nil(picked)
+			assert.are.equal("before", vim.fn.getreg('"'))
 		end)
 
 		it("y copies the absolute path under the root the panel opened with after a :cd elsewhere", function()
@@ -1065,15 +1095,30 @@ describe("sidepanel integration", function()
 			error("no matching scope row")
 		end
 
-		it("y on the Entire PR row opens no picker", function()
+		it("y on the Entire PR row offers only the PR-wide values", function()
 			sidepanel.open()
 			local panel = config.state.sidepanel
 			move_to_scope(panel, function(entry)
 				return entry.is_full_pr
 			end)
-			press_and_choose(panel, 1)
-			assert.is_nil(picked)
-			assert.are.equal("before", vim.fn.getreg('"'))
+			local expected = { "feat/test", "1", "https://github.com/o/r/pull/1", "feat: add copy" }
+			for index, text in ipairs(expected) do
+				press_and_choose(panel, index)
+				assert.are.equal(text, vim.fn.getreg('"'))
+			end
+			assert.are.equal(#expected, #picked.items)
+			assert.are.equal("fude_copy_pr", picked.opts.kind)
+			assert.are.equal("Copy PR info", picked.opts.prompt)
+		end)
+
+		it("y on a header row offers the PR-wide values", function()
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			vim.api.nvim_win_set_cursor(panel.win, { 1, 0 })
+			assert.is_nil(sidepanel.get_current_entry(panel))
+			press_and_choose(panel, 3)
+			assert.are.equal("https://github.com/o/r/pull/1", vim.fn.getreg('"'))
+			assert.are.equal("fude_copy_pr", picked.opts.kind)
 		end)
 
 		it("y on a PR commit row copies the picked hash, short hash, title, or full message", function()
@@ -1097,7 +1142,7 @@ describe("sidepanel integration", function()
 			assert.are.equal("Copy commit", picked.opts.prompt)
 		end)
 
-		it("y on a local commit row copies its hash or full message, and on a non-commit scope opens no picker", function()
+		it("y on a local commit row copies its hash or full message, and on uncommitted offers only the branch", function()
 			config.state.review_mode = "local"
 			config.state.local_session = {
 				scope = "base",
@@ -1132,10 +1177,33 @@ describe("sidepanel integration", function()
 				return entry.local_scope == "uncommitted"
 			end)
 			press_and_choose(panel, 1)
-			assert.is_nil(picked)
+			assert.are.equal(1, #picked.items)
+			assert.are.equal("feat/x", vim.fn.getreg('"'))
+			assert.are.equal("Copy branch", picked.opts.prompt)
+			assert.are.equal("fude_copy_branch", picked.opts.kind)
 		end)
 
-		it("y on a local base or unpushed row copies its branch without a picker", function()
+		it("y on a local session on a detached HEAD with nothing under the cursor opens no picker", function()
+			config.state.review_mode = "local"
+			config.state.local_session = {
+				scope = "uncommitted",
+				worktree_root = "/mock/repo",
+				commits = {},
+			}
+			helpers.mock(require("fude.diff"), "get_upstream_ref", function()
+				return nil
+			end)
+			sidepanel.open()
+			local panel = config.state.sidepanel
+			move_to_scope(panel, function(entry)
+				return entry.local_scope == "uncommitted"
+			end)
+			press_and_choose(panel, 1)
+			assert.is_nil(picked)
+			assert.are.equal("before", vim.fn.getreg('"'))
+		end)
+
+		it("y on a local base or unpushed row offers its branch and the reviewed branch once", function()
 			config.state.review_mode = "local"
 			config.state.local_session = {
 				scope = "base",
@@ -1149,14 +1217,18 @@ describe("sidepanel integration", function()
 			end)
 			sidepanel.open()
 			local panel = config.state.sidepanel
-			local expected = { base = "master", unpushed = "feat/x" }
-			for scope_name, branch in pairs(expected) do
+			local expected = { base = { "master", "feat/x" }, unpushed = { "feat/x" } }
+			for scope_name, branches in pairs(expected) do
 				move_to_scope(panel, function(entry)
 					return entry.local_scope == scope_name
 				end)
-				press_and_choose(panel, 1)
-				assert.is_nil(picked)
-				assert.are.equal(branch, vim.fn.getreg('"'))
+				for index, branch in ipairs(branches) do
+					press_and_choose(panel, index)
+					assert.are.equal(branch, vim.fn.getreg('"'))
+				end
+				assert.are.equal(#branches, #picked.items)
+				assert.are.equal("Copy branch", picked.opts.prompt)
+				assert.are.equal("fude_copy_branch", picked.opts.kind)
 			end
 		end)
 	end)

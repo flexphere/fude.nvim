@@ -37,6 +37,7 @@ local function setup_gh_mocks()
 			baseRefOid = "base0123",
 			headRefName = "feature-branch",
 			url = "https://github.com/owner/repo/pull/42",
+			title = "feat: add sidepanel copy",
 		},
 		["api:repos/{owner}/{repo}/pulls/42/files"] = {
 			{ filename = "lua/fude/init.lua", status = "modified", additions = 10, deletions = 5 },
@@ -94,6 +95,7 @@ describe("init integration", function()
 			assert.are.equal("base0123", config.state.base_sha)
 			assert.are.equal("feature-branch", config.state.head_ref)
 			assert.are.equal("https://github.com/owner/repo/pull/42", config.state.pr_url)
+			assert.are.equal("feat: add sidepanel copy", config.state.pr_title)
 		end)
 
 		it("fetches changed files", function()
