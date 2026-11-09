@@ -641,6 +641,25 @@ function M.build_comment_browser_entries(
 	return entries
 end
 
+--- Review states shown in the PR-level conversation even without a body.
+--- Only an approval or a change request can be dismissed, so a DISMISSED
+--- review is one of those two. COMMENTED is absent: every standalone review
+--- comment creates an empty COMMENTED review.
+M.STATES_SHOWN_WITHOUT_BODY = { APPROVED = true, CHANGES_REQUESTED = true, DISMISSED = true }
+
+--- Whether a submitted review appears in the PR-level conversation. Pure.
+--- @param review table from `pulls/{pr}/reviews`
+--- @return boolean
+local function should_show_review(review)
+	if review.state == "PENDING" then
+		return false
+	end
+	if type(review.body) == "string" and review.body:match("%S") then
+		return true
+	end
+	return M.STATES_SHOWN_WITHOUT_BODY[review.state] == true
+end
+
 --- Build the PR-level conversation: issue comments plus the body of every
 --- submitted review (Approve / Request changes / Comment summaries, bot
 --- "review overview" posts), which GitHub shows as comments in the
@@ -650,9 +669,12 @@ end
 --- `submitted_at`) flagged `is_review_summary = true` with `review_state`, so
 --- display code treats them uniformly while edit/delete can skip them (a
 --- review body is edited through a different endpoint and cannot be deleted).
---- Reviews in PENDING state (the viewer's own unsubmitted review) and reviews
---- with an empty body (every standalone review comment creates one) are
---- skipped. Nested fields may be JSON null, so they are type-checked.
+--- Reviews in PENDING state (the viewer's own unsubmitted review) are skipped.
+--- A review with an empty body is kept only when its state is in
+--- `STATES_SHOWN_WITHOUT_BODY` (an Approve without a comment, which GitHub
+--- shows as "approved these changes"); an empty COMMENTED review is skipped,
+--- since every standalone review comment creates one. Nested fields may be
+--- JSON null, so they are type-checked.
 --- @param issue_comments table[]|nil from `issues/{pr}/comments`
 --- @param reviews table[]|nil from `pulls/{pr}/reviews`
 --- @return table[] merged comments, oldest first
@@ -662,11 +684,11 @@ function M.build_pr_level_comments(issue_comments, reviews)
 		table.insert(merged, c)
 	end
 	for _, r in ipairs(reviews or {}) do
-		if type(r) == "table" and r.state ~= "PENDING" and type(r.body) == "string" and r.body:match("%S") then
+		if type(r) == "table" and should_show_review(r) then
 			table.insert(merged, {
 				id = r.id,
 				user = type(r.user) == "table" and r.user or nil,
-				body = r.body,
+				body = type(r.body) == "string" and r.body or "",
 				created_at = type(r.submitted_at) == "string" and r.submitted_at or "",
 				review_state = type(r.state) == "string" and r.state or nil,
 				-- `#pullrequestreview-<id>` on the PR page, opened by the `o` key

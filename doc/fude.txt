@@ -496,7 +496,10 @@ File opening position                                 *fude-file-position*
     submitted review (Approve / Request changes / Comment summaries,
     bot review overviews), merged oldest first as GitHub's
     Conversation tab shows them. A review body is headed with its
-    state, e.g. `### @alice  2024-01-01 [approved]`.
+    state, e.g. `### @alice  2024-01-01 [approved]`. An approval or
+    change request submitted without a comment is listed with an empty
+    body; an empty Comment review (created by every standalone review
+    comment) is not.
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count. Labels, in the order the
@@ -1438,8 +1441,12 @@ Options:
                   without ImageMagick. Bots (Copilot code review,
                   devin-ai-integration, …) show their GitHub App
                   icon, looked up once through `gh api
-                  users/<name>[bot]`. A no-op when snacks.nvim is missing or the
-                  terminal is unsupported.
+                  users/<name>[bot]`. Wherever a review summary is
+                  headed with `[approved]`, a green check icon
+                  (shipped in `assets/`) of the same size is
+                  drawn right before the badge, under the same setting
+                  as that heading's avatar. A no-op when snacks.nvim is
+                  missing or the terminal is unsupported.
 
 `flash.duration`    Duration in milliseconds for the flash highlight
                   when navigating to a comment line (default: 200).

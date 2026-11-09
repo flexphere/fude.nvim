@@ -392,6 +392,36 @@ function M.fetch(login, cb)
 	end)
 end
 
+--- Images shipped under the plugin's `assets/` directory, drawn without a
+--- download: a position with `image = <name>` instead of `login` (see
+--- `ui/format.build_review_state_image_position`).
+M.ASSET_FILES = {
+	approved = "review-approved.png",
+}
+
+--- The plugin root: this file is `<root>/lua/fude/ui/avatars.lua`.
+local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:h:h:h:h")
+
+--- The file of a shipped image (`ASSET_FILES`), nil for an unknown name.
+--- @param name string
+--- @return string|nil
+function M.asset_path(name)
+	local file = M.ASSET_FILES[name]
+	return file and (plugin_root .. "/assets/" .. file) or nil
+end
+
+--- Get the file a position draws: a shipped image for `image`, else the
+--- avatar of `login` (`fetch`).
+--- @param position table `{ login }` or `{ image }`
+--- @param cb fun(path: string|nil)
+local function resolve_file(position, cb)
+	if position.image ~= nil then
+		local path = M.asset_path(position.image)
+		return cb(path and exists(path) and path or nil)
+	end
+	M.fetch(position.login, cb)
+end
+
 --- Remove every avatar drawn in `buf` (before drawing a rebuilt pane's).
 --- A no-op without snacks.nvim.
 --- @param buf number
@@ -404,8 +434,10 @@ end
 
 --- Draw the avatars of `positions` (`{ line (0-indexed), col, login, kind }`,
 --- from the overview line builders) into `buf`, each once its file is
---- available. A position whose `kind` is disabled (`is_enabled(kind)`) is
---- skipped, and a buffer gone by the time a download finished is left alone.
+--- available. A position with `image` (a name in `ASSET_FILES`) instead of
+--- `login` draws that shipped image, at the same size. A position whose
+--- `kind` is disabled (`is_enabled(kind)`) is skipped, and a buffer gone by
+--- the time a download finished is left alone.
 --- @param buf number
 --- @param positions table[]|nil
 function M.place(buf, positions)
@@ -415,7 +447,7 @@ function M.place(buf, positions)
 	local setting = M.resolve_setting(config.opts)
 	for _, position in ipairs(positions) do
 		if M.should_draw(setting, position.kind) then
-			M.fetch(position.login, function(path)
+			resolve_file(position, function(path)
 				if not path or not vim.api.nvim_buf_is_valid(buf) then
 					return
 				end
