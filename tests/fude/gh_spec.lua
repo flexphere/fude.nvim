@@ -253,6 +253,7 @@ describe("parse_pr_from_commit_api", function()
 				number = 42,
 				state = "open",
 				html_url = "https://github.com/owner/repo/pull/42",
+				title = "feat: add copy",
 				base = { ref = "main", sha = "base0123" },
 				head = { ref = "feature-branch" },
 			},
@@ -264,6 +265,17 @@ describe("parse_pr_from_commit_api", function()
 		assert.are.equal("feature-branch", result.headRefName)
 		assert.are.equal("https://github.com/owner/repo/pull/42", result.url)
 		assert.are.equal("open", result.state)
+		assert.are.equal("feat: add copy", result.title)
+	end)
+
+	it("leaves the title nil when it is missing or not a string", function()
+		for _, title in ipairs({ vim.NIL, 42 }) do
+			local result = gh.parse_pr_from_commit_api({
+				{ number = 1, state = "open", title = title, base = { ref = "main" }, head = { ref = "x" } },
+			})
+			assert.is_nil(result.title)
+		end
+		assert.is_nil(gh.parse_pr_from_commit_api({ { number = 1, state = "open" } }).title)
 	end)
 
 	it("includes merged state", function()

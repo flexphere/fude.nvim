@@ -155,7 +155,7 @@ M.defaults = {
 			prev_entry = "k", -- Jump to the previous entry or commit message row
 			change_base = "b", -- Local review only: pick a new base branch
 			toggle_commit_message = "m", -- Expand/collapse a commit message longer than max_lines
-			copy_path = "y", -- Copy a file name/path, a commit hash/title/message, or a branch
+			copy_path = "y", -- Copy a file name/path, a commit hash/title/message, a branch, or the PR number/URL/title
 			open_in_browser = "o", -- GitHub review only: open the commit (or the PR, on Entire PR) on GitHub
 			help = "?", -- Show the side panel's configured keymaps
 		},
@@ -194,6 +194,7 @@ M.state = {
 	base_sha = nil, -- PR's base commit from GitHub (base.sha), where merge_base_sha starts from
 	merge_base_sha = nil, -- Merge-base SHA for gitsigns (avoids merge commit noise)
 	pr_url = nil,
+	pr_title = nil, -- PR title from the PR lookup at review start (side panel copy)
 	changed_files = {},
 	file_views = {}, -- buffer -> last source view during this review session
 	comments = {},
@@ -256,6 +257,7 @@ function M.reset_state()
 		base_sha = nil,
 		merge_base_sha = nil,
 		pr_url = nil,
+		pr_title = nil,
 		changed_files = {},
 		file_views = {},
 		comments = {},

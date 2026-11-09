@@ -311,7 +311,7 @@ require("fude").setup({
       prev_entry = "k",          -- jump to previous selectable entry
       change_base = "b",         -- local review only: pick a new base branch
       toggle_commit_message = "m", -- expand/collapse a folded commit message
-      copy_path = "y",           -- copy a file name / path, a commit hash / message, or a branch
+      copy_path = "y",           -- copy a file name / path, a commit hash / message, a branch, or the PR number / URL / title
       open_in_browser = "o",     -- GitHub review only: open the commit (Entire PR: the PR) on GitHub
       help = "?",                -- show configured panel keymaps
     },
@@ -377,10 +377,12 @@ folders use open/closed icons to match their fold state.
 Set `sidepanel.icons = false` to hide them; fold arrows remain visible.
 Press `y` on a file or directory to pick its file name, path relative to the
 repository root, or absolute path and copy it. On a commit row in Review Scope,
-`y` picks the full hash, short hash, title (the first line of the message), or
+`y` picks the full hash, short hash, subject (the first line of the message), or
 full commit message instead. In local review, `y` on the Base branch or Unpushed
-row copies that branch name (e.g. `master`, or `feat/x` for `origin/feat/x`)
-right away, without a picker.
+row picks that branch name (e.g. `master`, or `feat/x` for `origin/feat/x`).
+On every line, the picker also offers the head branch, PR number, PR URL and
+PR title after these, or alone on a line with nothing else to copy such as
+Entire PR (local review offers only the reviewed branch).
 
 While a single commit is the review scope, a Commit Message section between
 Review Scope and Files shows the commit's full message, wrapped to the panel

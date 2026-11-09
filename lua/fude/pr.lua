@@ -1668,6 +1668,10 @@ function M.edit()
 									if not draft_saved_in_flight then
 										drafts.remove(draft_key)
 									end
+									local st = config.state
+									if st.active and st.review_mode == "github" and tonumber(st.pr_number) == tonumber(num) then
+										st.pr_title = title
+									end
 									local suffix = M.format_attach_suffix(#extracted.attachments)
 									vim.notify("fude.nvim: PR updated" .. suffix, vim.log.levels.INFO)
 								end

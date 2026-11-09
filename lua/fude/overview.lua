@@ -128,6 +128,11 @@ local function fetch_overview(state, on_done, body)
 			end
 			if config.state == state and not entry.stale then
 				state.overview_cache = bundle
+				-- Keeps the side panel's copy picker on the current title after a
+				-- reload, which refetches the overview but not the PR lookup
+				if type(pr_info.title) == "string" then
+					state.pr_title = pr_info.title
+				end
 			end
 		end
 		for _, waiter in ipairs(entry.waiters) do

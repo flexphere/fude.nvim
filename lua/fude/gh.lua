@@ -50,7 +50,7 @@ end
 --- Parse commits API response into PR info format.
 --- Prefers open PRs when multiple results exist.
 --- @param data table[]|nil array of PR objects from commits/{sha}/pulls API
---- @return table|nil pr_info {number, baseRefName, baseRefOid?, headRefName, url, state} or nil
+--- @return table|nil pr_info {number, baseRefName, baseRefOid?, headRefName, url, state, title?} or nil
 function M.parse_pr_from_commit_api(data)
 	if not data or #data == 0 then
 		return nil
@@ -71,6 +71,7 @@ function M.parse_pr_from_commit_api(data)
 		headRefName = (pr.head and pr.head.ref) or "",
 		url = pr.html_url,
 		state = pr.state,
+		title = type(pr.title) == "string" and pr.title or nil,
 	}
 end
 
@@ -97,7 +98,7 @@ function M.get_pr_by_commit(sha, callback)
 end
 
 --- Fields of the PR lookup that starts a review (`get_pr_info`).
-M.PR_INFO_FIELDS = "number,baseRefName,baseRefOid,headRefName,url,state"
+M.PR_INFO_FIELDS = "number,baseRefName,baseRefOid,headRefName,url,state,title"
 --- Fields of the PR overview's body request (`get_pr_overview`). The
 --- reviewers and the CI checks are fetched on their own (get_pr_reviewers,
 --- get_pr_checks), so the body arrives as soon as possible. `commits` is
