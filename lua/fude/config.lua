@@ -38,6 +38,11 @@ M.defaults = {
 		height = 80,
 		-- Right pane width as percentage of total overview width (1-100)
 		right_width = 30,
+		keymaps = {
+			-- Hide/show the right pane; the left pane takes the whole width
+			-- while it is hidden. Set to false to leave the key unmapped.
+			toggle_right_pane = "S",
+		},
 	},
 	-- Avatar images (off by default; `images = true` / `false` sets every
 	-- place at once). Needs snacks.nvim with image support, curl, and

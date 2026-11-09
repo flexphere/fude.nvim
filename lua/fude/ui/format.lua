@@ -883,6 +883,14 @@ function M.calculate_overview_layout(columns, screen_lines, pct_w, pct_h, right_
 	}
 end
 
+--- Width of the overview's left pane with the right pane hidden: the left
+--- pane then spans the right pane and the two border columns between them.
+--- @param layout table from calculate_overview_layout
+--- @return number width
+function M.calculate_overview_full_width(layout)
+	return layout.left.width + layout.right.width + 2
+end
+
 --- Calculate upper window height for reply view.
 --- @param line_count number total lines of formatted comments
 --- @param min_height number minimum height
