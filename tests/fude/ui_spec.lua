@@ -779,6 +779,115 @@ describe("open_overview_loading", function()
 	end)
 end)
 
+describe("calculate_overview_full_width", function()
+	it("spans the right pane and the two border columns between the panes", function()
+		local layout = ui.calculate_overview_layout(200, 50, 80, 80, 30)
+		local width = ui.calculate_overview_full_width(layout)
+		assert.are.equal(110 + 46 + 2, width)
+		-- The widened left pane ends where the right pane ended
+		assert.are.equal(layout.right.col + layout.right.width, layout.left.col + width)
+	end)
+end)
+
+describe("overview right pane toggle", function()
+	local helpers = require("tests.helpers")
+	local config = require("fude.config")
+
+	after_each(function()
+		helpers.cleanup()
+	end)
+
+	local function press(keys)
+		vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
+	end
+
+	--- Open the overview; returns the focused left window and the right one.
+	local function open_overview()
+		ui.show_overview_float({ number = 1, title = "T", state = "OPEN", body = "body" }, {}, {})
+		local left = vim.api.nvim_get_current_win()
+		local right
+		for _, win in ipairs(vim.api.nvim_list_wins()) do
+			if win ~= left and vim.api.nvim_win_get_config(win).relative == "editor" then
+				right = win
+			end
+		end
+		return left, right
+	end
+
+	local function layout()
+		local ov = config.opts.overview
+		return ui.calculate_overview_layout(vim.o.columns, vim.o.lines, ov.width, ov.height, ov.right_width)
+	end
+
+	it("S hides the right pane and widens the left one, and S again restores both", function()
+		config.setup({})
+		local left, right = open_overview()
+		local expected = layout()
+
+		press("S")
+		assert.is_true(vim.api.nvim_win_get_config(right).hide)
+		assert.are.equal(ui.calculate_overview_full_width(expected), vim.api.nvim_win_get_width(left))
+		assert.are.equal(expected.left.col, vim.api.nvim_win_get_config(left).col)
+		-- Hidden, not closed: closing a pane would close the whole overview
+		assert.is_true(vim.api.nvim_win_is_valid(left))
+		assert.is_true(vim.api.nvim_win_is_valid(right))
+		-- <Tab> has nothing to switch to
+		press("<Tab>")
+		assert.are.equal(left, vim.api.nvim_get_current_win())
+
+		press("S")
+		assert.is_false(vim.api.nvim_win_get_config(right).hide)
+		assert.are.equal(expected.left.width, vim.api.nvim_win_get_width(left))
+		press("<Tab>")
+		assert.are.equal(right, vim.api.nvim_get_current_win())
+	end)
+
+	it("S in the right pane hides it and moves the cursor to the left pane", function()
+		config.setup({})
+		local left, right = open_overview()
+		press("<Tab>")
+		press("S")
+		assert.are.equal(left, vim.api.nvim_get_current_win())
+		assert.is_true(vim.api.nvim_win_get_config(right).hide)
+	end)
+
+	it("uses the configured key and lists it in the footer, and maps and lists nothing when it is false", function()
+		local function has_map(buf, lhs)
+			for _, map in ipairs(vim.api.nvim_buf_get_keymap(buf, "n")) do
+				if map.lhs == lhs then
+					return true
+				end
+			end
+			return false
+		end
+
+		local function footer(win)
+			local lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false)
+			return lines[#lines]
+		end
+
+		config.setup({})
+		local left = open_overview()
+		assert.is_truthy(footer(left):find("  S: hide/show right pane  q: close", 1, true))
+		press("q")
+
+		config.setup({ overview = { keymaps = { toggle_right_pane = "gh" } } })
+		local right
+		left, right = open_overview()
+		assert.is_false(has_map(vim.api.nvim_win_get_buf(left), "S"))
+		assert.is_truthy(footer(left):find("gh: hide/show right pane", 1, true))
+		press("gh")
+		assert.is_true(vim.api.nvim_win_get_config(right).hide)
+		press("q")
+
+		config.setup({ overview = { keymaps = { toggle_right_pane = false } } })
+		left = open_overview()
+		assert.is_false(has_map(vim.api.nvim_win_get_buf(left), "S"))
+		assert.is_nil(footer(left):find("hide/show right pane", 1, true))
+		assert.is_truthy(footer(left):find("<Tab>: switch  q: close", 1, true))
+	end)
+end)
+
 describe("build_centered_lines", function()
 	it("centres one line of text left / right and top / bottom", function()
 		local lines, row, col = ui.build_centered_lines("abcd", 4, 10, 5)

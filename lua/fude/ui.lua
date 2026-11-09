@@ -34,6 +34,7 @@ M.format_toggle_entry = format.format_toggle_entry
 M.format_reviewer_mark = format.format_reviewer_mark
 M.build_reviewers_summary = format.build_reviewers_summary
 M.calculate_overview_layout = format.calculate_overview_layout
+M.calculate_overview_full_width = format.calculate_overview_full_width
 M.calculate_comments_height = format.calculate_comments_height
 M.calculate_reply_window_dimensions = format.calculate_reply_window_dimensions
 M.format_reply_comments_for_display = format.format_reply_comments_for_display
@@ -780,9 +781,12 @@ M._define_label_hls = define_label_hls
 ---   the failure row when `pr_info.checks_failed` is already set.
 function M.show_overview_float(pr_info, issue_comments, opts)
 	local toggle_picker = require("fude.ui.toggle_picker")
+	local ov = config.opts.overview or {}
+	local toggle_key = type(ov.keymaps) == "table" and ov.keymaps.toggle_right_pane or nil
 	local loading_opts = {
 		loading_mark = toggle_picker.format_loading_mark(1),
 		loading_hl = toggle_picker.LOADING_HL,
+		toggle_right_pane_key = toggle_key,
 	}
 	local function build_left()
 		return format.build_overview_left_lines(pr_info, issue_comments, config.format_date, loading_opts)
@@ -829,7 +833,6 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	-- Calculate split-pane layout. The panes always take the layout's full
 	-- height, not the content's: a short PR must not shrink the window that
 	-- replaces the loading placeholder of the same size.
-	local ov = config.opts.overview or {}
 	local layout = overview_layout()
 	local row = layout.left.row
 
@@ -998,9 +1001,35 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	end, { buffer = left_buf, desc = "Open comment or PR on GitHub" })
 	vim.keymap.set("n", "o", open_pr, { buffer = right_buf, desc = "Open PR on GitHub" })
 
-	-- Tab to switch between panes
+	-- Hide the right pane so the left one (the PR body) takes the whole
+	-- width, and show it again. The window is hidden rather than closed:
+	-- closing either pane closes the overview (WinClosed below).
+	local right_hidden = false
+	local function toggle_right_pane()
+		right_hidden = not right_hidden
+		if right_hidden and vim.api.nvim_get_current_win() == right_win then
+			vim.api.nvim_set_current_win(left_win)
+		end
+		pcall(vim.api.nvim_win_set_config, right_win, { hide = right_hidden })
+		pcall(vim.api.nvim_win_set_config, left_win, {
+			relative = "editor",
+			row = row,
+			col = layout.left.col,
+			width = right_hidden and format.calculate_overview_full_width(layout) or layout.left.width,
+			height = layout.left.height,
+		})
+	end
+	if toggle_key then
+		for _, buf in ipairs({ left_buf, right_buf }) do
+			vim.keymap.set("n", toggle_key, toggle_right_pane, { buffer = buf, desc = "Hide/show the right pane" })
+		end
+	end
+
+	-- Tab to switch between panes (nothing to switch to while the right one is hidden)
 	vim.keymap.set("n", "<Tab>", function()
-		vim.api.nvim_set_current_win(right_win)
+		if not right_hidden then
+			vim.api.nvim_set_current_win(right_win)
+		end
 	end, { buffer = left_buf, desc = "Switch to right pane" })
 
 	vim.keymap.set("n", "<Tab>", function()

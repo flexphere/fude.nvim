@@ -883,6 +883,14 @@ function M.calculate_overview_layout(columns, screen_lines, pct_w, pct_h, right_
 	}
 end
 
+--- Width of the overview's left pane with the right pane hidden: the left
+--- pane then spans the right pane and the two border columns between them.
+--- @param layout table from calculate_overview_layout
+--- @return number width
+function M.calculate_overview_full_width(layout)
+	return layout.left.width + layout.right.width + 2
+end
+
 --- Calculate upper window height for reply view.
 --- @param line_count number total lines of formatted comments
 --- @param min_height number minimum height
@@ -1007,7 +1015,8 @@ M.COMMIT_LIST_LIMIT = 100
 --- starts at `comments_start` (0-indexed, its blank separator line) and runs to
 --- the end of the pane with the footer, so it can be rebuilt in place.
 --- @param format_date_fn fun(s: string): string
---- @param opts { loading_mark: string|nil, loading_hl: string|nil }|nil
+--- @param opts { loading_mark: string|nil, loading_hl: string|nil, toggle_right_pane_key: string|false|nil }|nil
+---   `toggle_right_pane_key` is listed in the footer (`overview.keymaps.toggle_right_pane`; omitted unless a string)
 --- @return table { lines: string[], hl_ranges: table[], sections: table, comment_positions: number[],
 ---   comment_ranges: table[], comments_start: number, loading_row: number|nil } comment_positions are
 ---   1-indexed header lines; comment_ranges ({ start_line, end_line, index } into issue_comments) are
@@ -1180,12 +1189,15 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 		end
 	end
 
-	-- Footer
+	-- Footer: the right pane key is configurable (false leaves it unmapped)
+	local toggle_key = type(opts.toggle_right_pane_key) == "string" and opts.toggle_right_pane_key or nil
 	table.insert(lines, "")
 	table.insert(
 		lines,
 		" ]s/[s: sections  ]c/[c: comments  o: open  +: react  C: comment/reviewer/label  r: re-request  za: fold"
-			.. "  R: refresh  <Tab>: switch  q: close"
+			.. "  R: refresh  <Tab>: switch"
+			.. (toggle_key and ("  " .. toggle_key .. ": hide/show right pane") or "")
+			.. "  q: close"
 	)
 	table.insert(hl_ranges, { line = #lines - 1, hl = "Comment" })
 
