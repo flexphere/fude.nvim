@@ -545,7 +545,10 @@ File opening position                                 *fude-file-position*
     adds or removes a reaction on the comment under the cursor, or on
     the PR itself elsewhere and in the right pane (see |fude-reactions|;
     reactions are shown under the body and each comment), `R`
-    refreshes (refetching rather than reusing the prefetched data), `<Tab>` switches between panes, `]c`/`[c` navigate
+    refreshes (refetching rather than reusing the prefetched data), `<Tab>` switches between panes, `S` hides the right pane so the
+    left one (the PR body) takes the whole width and shows it again
+    (`overview.keymaps.toggle_right_pane`; `<Tab>` does nothing while it
+    is hidden), `]c`/`[c` navigate
     review comments, and `q` closes.
     Reviewer and Label open a picker (routed by `file_list_mode`) in
     which `<Tab>` toggles the row under the cursor: it requests a
@@ -1197,6 +1200,7 @@ command). Suggested mappings:
                 Toggle reviewer / label (in the overview's `C` pickers)
                 Switch between left/right panes (in |:FudeReviewOverview|)
   `<C-e>`       Re-request review (in the overview's reviewer picker)
+  `S`           Hide/show the right pane (in |:FudeReviewOverview|)
   `'d`/`'c`    Jump to description/comments (overview left pane)
   `za`/`zc`/`zo` Toggle/close/open fold (overview sections and comments)
   `zM`/`zR`     Close/open all folds (in |:FudeReviewOverview|)
@@ -1242,6 +1246,10 @@ Default configuration: >lua
       right_width = 30,
       -- Section marks (jump with 'd, 'c in left pane)
       marks = { description = "d", comments = "c" },
+      keymaps = {
+        -- Hide/show the right pane (false to leave it unmapped)
+        toggle_right_pane = "S",
+      },
     },
     -- Avatar images (snacks.nvim image support, curl, ImageMagick).
     -- `images = true` / `false` sets every place at once.
@@ -1423,6 +1431,12 @@ Options:
                   Use `'d`, `'c` to jump to each section.
                   (default: { description = "d",
                   comments = "c" }).
+
+`overview.keymaps.toggle_right_pane`
+                  Key that hides the right pane (reviewers, labels,
+                  CI status) so the left pane takes the whole width,
+                  and shows it again. Mapped in both panes. `false`
+                  leaves it unmapped (default: "S").
 
 `images`            Avatar images drawn inline with snacks.nvim's image
                   module, per place (each `false` by default):
