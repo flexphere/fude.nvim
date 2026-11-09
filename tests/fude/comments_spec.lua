@@ -1938,6 +1938,26 @@ describe("build_pr_level_comments", function()
 		assert.are.equal(4, out[1].id)
 	end)
 
+	it("keeps APPROVED / CHANGES_REQUESTED / DISMISSED reviews without a body", function()
+		local reviews = {
+			{ id = 1, state = "APPROVED", body = "", submitted_at = "2024-01-01T00:00:00Z" },
+			{ id = 2, state = "CHANGES_REQUESTED", body = " \n", submitted_at = "2024-01-02T00:00:00Z" },
+			{ id = 3, state = "DISMISSED", body = vim.NIL, submitted_at = "2024-01-03T00:00:00Z" },
+			{ id = 4, state = "COMMENTED", body = "", submitted_at = "2024-01-04T00:00:00Z" },
+			{ id = 5, state = "PENDING", body = "", submitted_at = vim.NIL },
+			{ id = 6, state = vim.NIL, body = "", submitted_at = "2024-01-05T00:00:00Z" },
+		}
+		local out = data.build_pr_level_comments({}, reviews)
+		assert.are.same({ 1, 2, 3 }, { out[1] and out[1].id, out[2] and out[2].id, out[3] and out[3].id })
+		assert.are.equal(3, #out)
+		assert.are.equal("APPROVED", out[1].review_state)
+		assert.are.equal("", out[1].body)
+		assert.are.equal(" \n", out[2].body)
+		-- JSON null body becomes "" so display code can split it
+		assert.are.equal("", out[3].body)
+		assert.is_true(out[3].is_review_summary)
+	end)
+
 	it("tolerates JSON null fields and nil inputs", function()
 		local reviews = {
 			{

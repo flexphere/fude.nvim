@@ -3937,6 +3937,20 @@ describe("comment_badges review_state", function()
 		assert.are.same({ "### @alice  2024-01-01 [approved]", "### @bob  2024-01-02" }, headers)
 	end)
 
+	it("shows an approval without a body in the overview comments", function()
+		local identity = function(s)
+			return s or ""
+		end
+		local pr = { number = 1, title = "T", state = "OPEN", url = "" }
+		local comments = require("fude.comments.data").build_pr_level_comments({}, {
+			{ id = 1, state = "APPROVED", body = "", user = { login = "alice" }, submitted_at = "2024-01-01" },
+		})
+		local result = ui.build_overview_left_lines(pr, comments, identity)
+		assert.are.equal(1, #result.comment_positions)
+		assert.are.equal("### @alice  2024-01-01 [approved]", result.lines[result.comment_positions[1]])
+		assert.is_truthy(vim.tbl_contains(result.lines, "## COMMENTS (1)"))
+	end)
+
 	it("shows the badge in the thread display header", function()
 		local result = format.format_reply_comments_for_display({
 			{ user = { login = "alice" }, created_at = "2024-01-01", body = "LGTM", review_state = "APPROVED" },
