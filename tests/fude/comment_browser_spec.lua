@@ -264,6 +264,96 @@ describe("comment browser o key", function()
 	end)
 end)
 
+describe("comment browser r key", function()
+	local notified
+	before_each(function()
+		config.setup({ drafts = { enabled = false } })
+		config.state.active = true
+		config.state.review_mode = "github"
+		config.state.pr_number = 42
+		config.state.comments = {
+			{ id = 1, path = "a.lua", line = 3, body = "root", created_at = "2026-01-01" },
+		}
+		config.state.comment_map = data.build_comment_map(config.state.comments)
+		notified = {}
+		helpers.mock(require("fude.diff"), "get_repo_root", function()
+			return "/repo"
+		end)
+		helpers.mock(require("fude.comments.sync"), "fetch_pr_level_comments", function(_, cb)
+			cb({ { id = 9, body = "issue", created_at = "2025-12-01" } })
+		end)
+		helpers.mock(vim, "notify", function(msg)
+			table.insert(notified, msg)
+		end)
+	end)
+
+	after_each(function()
+		browser_mod.close()
+		helpers.cleanup()
+	end)
+
+	local function select_row(browser, idx)
+		vim.api.nvim_set_current_win(browser.left_win)
+		vim.api.nvim_win_set_cursor(browser.left_win, { idx, 0 })
+		vim.api.nvim_exec_autocmds("CursorMoved", { buffer = browser.left_buf })
+	end
+
+	it("focuses the Reply input from the list pane and from the thread pane", function()
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		assert.are.equal("review", browser.entries[1].type)
+		vim.api.nvim_set_current_win(browser.left_win)
+		press(browser.left_buf, "r")
+		assert.are.equal(browser.lower_win, vim.api.nvim_get_current_win())
+		assert.are.equal("reply", browser.mode)
+		vim.api.nvim_set_current_win(browser.upper_win)
+		press(browser.upper_buf, "r")
+		assert.are.equal(browser.lower_win, vim.api.nvim_get_current_win())
+		assert.are.same({}, notified)
+	end)
+
+	it("focuses the New PR Comment input on the PR-level row", function()
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		assert.are.equal("issue", browser.entries[2].type)
+		select_row(browser, 2)
+		press(browser.left_buf, "r")
+		assert.are.equal(browser.lower_win, vim.api.nvim_get_current_win())
+		assert.are.equal("new_pr_comment", browser.mode)
+	end)
+
+	it("stays put on a line draft row and says to edit it in the file", function()
+		helpers.mock(require("fude.drafts"), "list_drafts", function()
+			return {
+				{
+					key = "k",
+					kind = "line",
+					body = "draft body",
+					saved_at = "2027-01-01T00:00:00Z",
+					path = "b.lua",
+					end_line = 1,
+				},
+			}
+		end)
+		browser_mod.open()
+		local browser = config.state.comment_browser
+		local idx
+		for i, e in ipairs(browser.entries) do
+			if e.type == "draft" then
+				idx = i
+			end
+		end
+		select_row(browser, idx)
+		press(browser.left_buf, "r")
+		assert.are.equal(browser.left_win, vim.api.nvim_get_current_win())
+		vim.api.nvim_set_current_win(browser.upper_win)
+		press(browser.upper_buf, "r")
+		assert.are.equal(browser.upper_win, vim.api.nvim_get_current_win())
+		local reason = "fude.nvim: Press <CR> to edit this draft in the file"
+		assert.are.same({ reason, reason }, notified)
+	end)
+end)
+
 describe("comment browser open helpers", function()
 	it("find_entry_open_target picks the thread root, the PR, or explains a draft", function()
 		local root = { id = 1 }
