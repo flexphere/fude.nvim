@@ -496,7 +496,10 @@ File opening position                                 *fude-file-position*
     submitted review (Approve / Request changes / Comment summaries,
     bot review overviews), merged oldest first as GitHub's
     Conversation tab shows them. A review body is headed with its
-    state, e.g. `### @alice  2024-01-01 [approved]`.
+    state, e.g. `### @alice  2024-01-01 [approved]`. An approval or
+    change request submitted without a comment is listed with an empty
+    body; an empty Comment review (created by every standalone review
+    comment) is not.
     The right pane shows reviewers with
     review status, assignees, labels, and CI check status with
     pass/fail indicators and a summary count. Labels, in the order the
