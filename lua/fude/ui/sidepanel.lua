@@ -1317,7 +1317,7 @@ function M.setup_keymaps(panel)
 
 	map("copy_path", function()
 		M.pick_path_to_copy(panel)
-	end, "Copy file path, commit hash/title/message, or branch")
+	end, "Copy file path, commit hash/title/message, branch, or PR number/URL/title")
 
 	-- Local review scopes are not on GitHub, so only the GitHub review maps it
 	-- (the reverse of `change_base`), leaving `o` free in a local panel.
@@ -1615,8 +1615,8 @@ function M.build_scope_url(entry_info, pr_url, review_mode)
 end
 
 --- Build the choices of the `copy_path` picker for a Review Scope commit entry.
---- `short_hash` falls back to the first 7 characters of `sha`, and `title` /
---- `full_message` are left out when unknown, so a choice never copies an empty
+--- `short_hash` falls back to the first 7 characters of `sha`, and
+--- `commit_subject` / `commit_message` are left out when unknown, so a choice never copies an empty
 --- string. A multi-line message is shown as its first line plus the line count,
 --- since a picker row holds one line; `summary` is that row text, also used by
 --- the copy notification.
@@ -1624,14 +1624,14 @@ end
 --- @param short_sha string|nil abbreviated SHA
 --- @param subject string|nil first line of the commit message
 --- @param message string|nil full commit message
---- @return table[] { kind, text, summary?, label } for the full hash, short hash, title, and full message
+--- @return table[] { kind, text, summary?, label } for the full hash, short hash, subject, and full message
 function M.build_commit_copy_choices(sha, short_sha, subject, message)
 	local choices = {
 		{ kind = "hash", text = sha },
 		{ kind = "short_hash", text = (short_sha and short_sha ~= "") and short_sha or sha:sub(1, 7) },
 	}
 	if subject and subject ~= "" then
-		table.insert(choices, { kind = "title", text = subject })
+		table.insert(choices, { kind = "commit_subject", text = subject })
 	end
 	if type(message) == "string" and message:match("%S") then
 		local line_count = select(2, message:gsub("\n", "\n")) + 1
@@ -1639,9 +1639,77 @@ function M.build_commit_copy_choices(sha, short_sha, subject, message)
 		if line_count > 1 then
 			summary = string.format("%s … (%d lines)", summary, line_count)
 		end
-		table.insert(choices, { kind = "full_message", text = message, summary = summary })
+		table.insert(choices, { kind = "commit_message", text = message, summary = summary })
 	end
 	return label_copy_choices(choices)
+end
+
+--- Build the PR-wide choices of the `copy_path` picker, offered whatever is
+--- under the cursor: the head branch, PR number, PR URL and PR title. A value
+--- that is missing (local review has only the branch) or the detached `HEAD`
+--- placeholder is left out, so a choice never copies an empty string.
+--- @param info table { head_branch?, pr_number?, pr_url?, pr_title? }
+--- @return table[] { kind, text } without labels (see merge_copy_choices)
+function M.build_pr_copy_choices(info)
+	local function present(v)
+		return type(v) == "string" and v ~= ""
+	end
+	local choices = {}
+	if present(info.head_branch) and info.head_branch ~= "HEAD" then
+		table.insert(choices, { kind = "head_branch", text = info.head_branch })
+	end
+	if type(info.pr_number) == "number" then
+		table.insert(choices, { kind = "pr_number", text = tostring(info.pr_number) })
+	end
+	if present(info.pr_url) then
+		table.insert(choices, { kind = "pr_url", text = info.pr_url })
+	end
+	if present(info.pr_title) then
+		table.insert(choices, { kind = "pr_title", text = info.pr_title })
+	end
+	return choices
+end
+
+--- Put the entry's choices first and the PR-wide ones after them, dropping the
+--- head branch when the entry's branch is the same name (an Unpushed row whose
+--- upstream is the branch itself), and pad every key to one column. Other
+--- equal texts are kept, since their keys mean different things (a commit
+--- subject equal to the PR title).
+--- @param entry_choices table[] { kind, text, summary? }
+--- @param pr_choices table[] { kind, text }
+--- @return table[] { kind, text, summary?, label }
+function M.merge_copy_choices(entry_choices, pr_choices)
+	local merged = {}
+	local entry_branches = {}
+	for _, choice in ipairs(entry_choices) do
+		table.insert(merged, choice)
+		if choice.kind == "branch" then
+			entry_branches[choice.text] = true
+		end
+	end
+	for _, choice in ipairs(pr_choices) do
+		if not (choice.kind == "head_branch" and entry_branches[choice.text]) then
+			table.insert(merged, choice)
+		end
+	end
+	return label_copy_choices(merged)
+end
+
+-- PR-wide values for the copy picker. Local review has no PR, so only the
+-- reviewed branch (nil on a detached HEAD); `state.head_ref` is not used there
+-- since it reads "HEAD" when detached.
+local function collect_pr_copy_info()
+	local state = config.state
+	if state.review_mode == "local" then
+		local session = state.local_session
+		return { head_branch = session and session.branch or nil }
+	end
+	return {
+		head_branch = state.head_ref,
+		pr_number = state.pr_number,
+		pr_url = state.pr_url,
+		pr_title = state.pr_title,
+	}
 end
 
 --- Copy `text` and report it; `shown` replaces the text in the message (e.g. a long message's summary).
@@ -1676,41 +1744,47 @@ local function select_and_copy(choices, prompt, kind)
 	end)
 end
 
---- Pick what to copy from the entry under the cursor: the file name, relative
---- path, or absolute path of a Files section entry (file or tree-mode
---- directory), or the hash, short hash, title, or full message of a Review
---- Scope commit. A local base/unpushed scope row copies its branch at once.
+--- Pick what to copy: the choices of the entry under the cursor — the file
+--- name, relative path, or absolute path of a Files section entry (file or
+--- tree-mode directory), the hash, short hash, title, or full message of a
+--- Review Scope commit, or the branch of a local base/unpushed scope row —
+--- followed by the PR-wide choices (head branch, PR number, URL, title), which
+--- are offered on every row, alone where the entry has nothing to copy.
 --- @param panel table sidepanel state
 function M.pick_path_to_copy(panel)
+	-- Local review has no PR: its fallback offers only the reviewed branch
+	local entry_choices, prompt, kind = {}, "Copy PR info", "fude_copy_pr"
+	if config.state.review_mode == "local" then
+		prompt, kind = "Copy branch", "fude_copy_branch"
+	end
 	local entry_info = M.get_current_entry(panel)
 	if entry_info and entry_info.type == "scope" then
 		local entry = entry_info.entry
-		-- A branch row has one value to copy, so it is copied without a picker
 		if entry.branch then
-			copy_text(entry.branch)
+			entry_choices = { { kind = "branch", text = entry.branch } }
+			prompt, kind = "Copy branch", "fude_copy_branch"
+		elseif entry.sha then
+			local message = commit_message_for(panel, entry.sha)
+			entry_choices = M.build_commit_copy_choices(entry.sha, entry.short_sha, entry.subject, message)
+			prompt, kind = "Copy commit", "fude_copy_commit"
+		end
+	elseif entry_info and (entry_info.type == "file" or entry_info.type == "directory") then
+		-- The root the panel rendered and opens files with, so a `:cd` elsewhere
+		-- after opening the panel does not change the copied absolute path
+		local root = panel.repo_root or get_diff().get_repo_root()
+		if not root then
+			vim.notify("fude.nvim: Could not resolve the repository root", vim.log.levels.WARN)
 			return
 		end
-		if not entry.sha then
-			vim.notify("fude.nvim: No commit or branch under cursor", vim.log.levels.INFO)
-			return
-		end
-		local message = commit_message_for(panel, entry.sha)
-		local choices = M.build_commit_copy_choices(entry.sha, entry.short_sha, entry.subject, message)
-		select_and_copy(choices, "Copy commit", "fude_copy_commit")
+		entry_choices = M.build_copy_choices(entry_info.entry.path, root)
+		prompt, kind = "Copy path", "fude_copy_path"
+	end
+	local choices = M.merge_copy_choices(entry_choices, M.build_pr_copy_choices(collect_pr_copy_info()))
+	if #choices == 0 then
+		vim.notify("fude.nvim: Nothing to copy under cursor", vim.log.levels.INFO)
 		return
 	end
-	if not entry_info or (entry_info.type ~= "file" and entry_info.type ~= "directory") then
-		vim.notify("fude.nvim: No file or commit under cursor", vim.log.levels.INFO)
-		return
-	end
-	-- The root the panel rendered and opens files with, so a `:cd` elsewhere
-	-- after opening the panel does not change the copied absolute path
-	local root = panel.repo_root or get_diff().get_repo_root()
-	if not root then
-		vim.notify("fude.nvim: Could not resolve the repository root", vim.log.levels.WARN)
-		return
-	end
-	select_and_copy(M.build_copy_choices(entry_info.entry.path, root), "Copy path", "fude_copy_path")
+	select_and_copy(choices, prompt, kind)
 end
 
 --- Toggle reviewed state for a scope entry.
