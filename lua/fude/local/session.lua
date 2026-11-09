@@ -1474,8 +1474,9 @@ function M.set_base(base_ref)
 end
 
 --- Pick a new base branch for the active local session from the `origin`
---- branches. A ref that is not on the remote can be passed to
---- `:FudeReviewLocalBase <ref>` instead.
+--- branches: the default branch first, then the ancestor branches
+--- (`diff.get_ancestor_branches`), then the rest. A ref that is not on the
+--- remote can be passed to `:FudeReviewLocalBase <ref>` instead.
 function M.select_base()
 	local state = config.state
 	if not state.active or state.review_mode ~= "local" then
@@ -1491,11 +1492,13 @@ function M.select_base()
 	local pr = require("fude.pr")
 	-- Ask the reviewed worktree, not Neovim's cwd, which a `:cd` may have moved.
 	local root = session.worktree_root
-	local entries = pr.build_base_branch_entries(
-		diff_mod.get_remote_branches(root),
-		diff_mod.get_default_branch(root),
-		{ current_branch = session.branch }
-	)
+	local default_branch = diff_mod.get_default_branch(root)
+	-- Branches HEAD was built on (e.g. the lower layers of a stack) are the
+	-- likely new bases, so list them right after the default branch.
+	local entries = pr.build_base_branch_entries(diff_mod.get_remote_branches(root), default_branch, {
+		current_branch = session.branch,
+		ancestors = diff_mod.get_ancestor_branches(default_branch, root),
+	})
 	if #entries == 0 then
 		vim.notify("fude.nvim: No base branch candidates — pass one to :FudeReviewLocalBase", vim.log.levels.WARN)
 		return
