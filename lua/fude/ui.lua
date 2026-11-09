@@ -781,9 +781,12 @@ M._define_label_hls = define_label_hls
 ---   the failure row when `pr_info.checks_failed` is already set.
 function M.show_overview_float(pr_info, issue_comments, opts)
 	local toggle_picker = require("fude.ui.toggle_picker")
+	local ov = config.opts.overview or {}
+	local toggle_key = type(ov.keymaps) == "table" and ov.keymaps.toggle_right_pane or nil
 	local loading_opts = {
 		loading_mark = toggle_picker.format_loading_mark(1),
 		loading_hl = toggle_picker.LOADING_HL,
+		toggle_right_pane_key = toggle_key,
 	}
 	local function build_left()
 		return format.build_overview_left_lines(pr_info, issue_comments, config.format_date, loading_opts)
@@ -830,7 +833,6 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 	-- Calculate split-pane layout. The panes always take the layout's full
 	-- height, not the content's: a short PR must not shrink the window that
 	-- replaces the loading placeholder of the same size.
-	local ov = config.opts.overview or {}
 	local layout = overview_layout()
 	local row = layout.left.row
 
@@ -1017,7 +1019,6 @@ function M.show_overview_float(pr_info, issue_comments, opts)
 			height = layout.left.height,
 		})
 	end
-	local toggle_key = type(ov.keymaps) == "table" and ov.keymaps.toggle_right_pane or nil
 	if toggle_key then
 		for _, buf in ipairs({ left_buf, right_buf }) do
 			vim.keymap.set("n", toggle_key, toggle_right_pane, { buffer = buf, desc = "Hide/show the right pane" })
