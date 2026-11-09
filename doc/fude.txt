@@ -1094,7 +1094,9 @@ File opening position                                 *fude-file-position*
       `y`       On a file or directory: pick its file name, path
                 relative to the repository root, or absolute path and
                 copy it (unnamed register, and `+` when a clipboard
-                provider is available)
+                provider is available). On a commit row: its hash,
+                title or message. On every line the picker also offers
+                the head branch, PR number, PR URL and PR title
       `?`       Open a floating reference of configured panel keymaps
 
     The "? Help" hint appears below the file list. Both the hint and help
@@ -1617,19 +1619,28 @@ Options:
                   - `copy_path`: "y" (pick the file name, relative path,
                     or absolute path of the file or directory under the
                     cursor and copy it; on a commit row in Review Scope,
-                    pick the full hash, short hash, title (the first line
+                    pick the full hash, short hash, subject (the first line
                     of the message), or full message instead; the picker
                     shows a multi-line message as its first line and line
                     count, and copies all of it; on a local Base branch
-                    or Unpushed row, copy that branch name at once
-                    without a picker — the remote is dropped, so
-                    `origin/feat/x` copies `feat/x`; other scope rows such
-                    as Entire PR copy nothing. The picker is opened
-                    through |vim.ui.select()| with
-                    `kind = "fude_copy_path"` for paths and
-                    `kind = "fude_copy_commit"` for commits, so a provider
-                    such as dressing.nvim can be configured to open it in
-                    normal mode)
+                    or Unpushed row, pick that branch name — the remote
+                    is dropped, so `origin/feat/x` copies `feat/x`.
+                    Whatever is under the cursor, the picker also offers
+                    the PR-wide values after these: the head branch, PR
+                    number, PR URL and PR title (local review offers only
+                    the reviewed branch, and the head branch is not
+                    repeated when the row's branch has the same name); on
+                    a row with nothing else to copy,
+                    such as Entire PR or a header, it offers them alone.
+                    The picker is opened through |vim.ui.select()| with
+                    `kind = "fude_copy_path"` for paths,
+                    `kind = "fude_copy_commit"` for commits,
+                    `kind = "fude_copy_branch"` for a local branch row
+                    (and for the reviewed branch alone in local review)
+                    and `kind = "fude_copy_pr"` for the PR-wide values
+                    alone,
+                    so a provider such as dressing.nvim can be configured
+                    to open it in normal mode)
                   - `open_in_browser`: "o" (GitHub review only: on a
                     commit row in Review Scope, open the commit inside
                     the PR on GitHub, `<pr_url>/commits/<sha>`; on Entire
