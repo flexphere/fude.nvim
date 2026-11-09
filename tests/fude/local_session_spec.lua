@@ -1244,13 +1244,41 @@ describe("session lifecycle (start/reload/stop)", function()
 			asked.default = cwd
 			return "main"
 		end)
+		helpers.mock(diff, "get_ancestor_branches", function(default_branch, cwd)
+			asked.ancestors = { default_branch, cwd }
+			return {}
+		end)
 		helpers.mock(require("fude.pr"), "select_base_branch", function() end)
 		session.start(nil)
-		asked.remote, asked.default = nil, nil
+		asked.remote, asked.default, asked.ancestors = nil, nil, nil
 
 		session.select_base()
 		assert.equals(tmp_repo, asked.remote)
 		assert.equals(tmp_repo, asked.default)
+		assert.same({ "main", tmp_repo }, asked.ancestors)
+	end)
+
+	it("select_base lists the ancestor branches right after the default branch", function()
+		mock_release_merge_base()
+		local diff = require("fude.diff")
+		helpers.mock(diff, "get_remote_branches", function()
+			return { "release/1", "feat/x", "feat/lower", "main" }
+		end)
+		helpers.mock(diff, "get_ancestor_branches", function()
+			-- the reviewed branch's own remote ref is filtered out by the entry builder
+			return { "feat/x", "feat/lower" }
+		end)
+		local offered
+		helpers.mock(require("fude.pr"), "select_base_branch", function(entries)
+			offered = entries
+		end)
+		session.start(nil)
+
+		session.select_base()
+		local displays = vim.tbl_map(function(e)
+			return e.display
+		end, offered)
+		assert.same({ "main (default) (current)", "feat/lower (ancestor)", "release/1" }, displays)
 	end)
 
 	it("set_base onto the reviewed branch itself drops the base scope to uncommitted", function()
