@@ -196,6 +196,11 @@ describe("get_ancestor_branches / get_gh_stack_parent (real git repo)", function
 		assert.are.same({ "b", "feat/a" }, diff.get_ancestor_branches("main"))
 	end)
 
+	it("lists the ancestor branches of the repository given as cwd", function()
+		vim.cmd.cd(original_cwd)
+		assert.are.same({ "b", "feat/a" }, diff.get_ancestor_branches("main", repo))
+	end)
+
 	it("lists the commits of base..tip oldest first", function()
 		local commits = diff.get_commit_log("main", "feature", repo)
 		assert.equals(3, #commits)

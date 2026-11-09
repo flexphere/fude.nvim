@@ -699,14 +699,15 @@ end
 --- the range bound every branch in HEAD's history would match.
 --- May include the current branch's own remote ref; callers filter it out.
 --- @param default_branch string|nil repository default branch
+--- @param cwd string|nil repo root (default: Neovim's cwd)
 --- @return string[] branch names without the `origin/` prefix
-function M.get_ancestor_branches(default_branch)
+function M.get_ancestor_branches(default_branch, cwd)
 	if not default_branch or default_branch == "" then
 		return {}
 	end
 	local default_ref
 	for _, ref in ipairs({ "origin/" .. default_branch, default_branch }) do
-		if vim.system({ "git", "rev-parse", "--verify", "--quiet", ref }, { text = true }):wait().code == 0 then
+		if vim.system({ "git", "rev-parse", "--verify", "--quiet", ref }, { text = true, cwd = cwd }):wait().code == 0 then
 			default_ref = ref
 			break
 		end
@@ -722,7 +723,7 @@ function M.get_ancestor_branches(default_branch)
 			"--decorate-refs=refs/remotes/origin/",
 			"--decorate-refs-exclude=refs/remotes/origin/HEAD",
 			default_ref .. "..HEAD",
-		}, { text = true })
+		}, { text = true, cwd = cwd })
 		:wait()
 	if result.code ~= 0 then
 		return {}

@@ -157,7 +157,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewLocal [base]` | Start local (pre-PR) review mode against a base ref |
 | `:FudeReviewLocalToggle [base]` | Toggle local review mode on/off |
 | `:FudeReviewLocalScope [scope]` | Switch local review scope (`base` / `unpushed` / `uncommitted` / `commit`) |
-| `:FudeReviewLocalBase [ref]` | Change the local review's base branch without restarting it (no argument: pick from `origin` branches; `b` in the side panel does the same) |
+| `:FudeReviewLocalBase [ref]` | Change the local review's base branch without restarting it (no argument: pick from `origin` branches, default branch first and the branches HEAD was built on (`(ancestor)`) right after it; `b` in the side panel does the same) |
 
 ### File opening position
 
