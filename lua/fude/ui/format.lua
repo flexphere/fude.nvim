@@ -206,6 +206,10 @@ function M.format_comments_for_display(comments, format_date_fn, separator_width
 		if avatar then
 			table.insert(avatar_positions, avatar)
 		end
+		local state_image = M.build_review_state_image_position(#lines - 1, header, comment.review_state, "comment_threads")
+		if state_image then
+			table.insert(avatar_positions, state_image)
+		end
 		local comment_body = M.normalize_newlines(comment.body)
 		for _, body_line in ipairs(vim.split(comment_body, "\n")) do
 			table.insert(lines, body_line)
@@ -232,6 +236,31 @@ function M.build_comment_avatar_position(line, login)
 		return nil
 	end
 	return { line = line, col = 0, login = login, kind = "comment_threads" }
+end
+
+--- Review states drawn with a shipped image (ui/avatars `ASSET_FILES`) right
+--- before their header badge, e.g. `[approved]`.
+M.REVIEW_STATE_IMAGES = { APPROVED = "approved" }
+
+--- Where ui/avatars draws the image of a review summary's state
+--- (`REVIEW_STATE_IMAGES`): right before the state badge that ends the header
+--- (`comment_badges` puts it last). Drawn under the same `kind` as the
+--- header's avatar. Pure.
+--- @param line number 0-indexed header line
+--- @param header string the header line
+--- @param review_state any the comment's `review_state`
+--- @param kind string ui/avatars kind (`comments` / `comment_threads`)
+--- @return table|nil { line, col, image, kind }; nil without an image for the state
+function M.build_review_state_image_position(line, header, review_state, kind)
+	local image = type(review_state) == "string" and M.REVIEW_STATE_IMAGES[review_state] or nil
+	if not image or type(header) ~= "string" then
+		return nil
+	end
+	local badge = "[" .. (review_state:lower():gsub("_", " ")) .. "]"
+	if header:sub(-#badge) ~= badge then
+		return nil
+	end
+	return { line = line, col = #header - #badge, image = image, kind = kind }
 end
 
 --- Build the title for the comment viewer float.
@@ -918,6 +947,11 @@ function M.format_reply_comments_for_display(comments, format_date_fn, separator
 		if avatar then
 			table.insert(avatar_positions, avatar)
 		end
+		local state_image =
+			M.build_review_state_image_position(header_line_idx, header, comment.review_state, "comment_threads")
+		if state_image then
+			table.insert(avatar_positions, state_image)
+		end
 		-- Author highlight: from 0 to end of @username
 		local author_end = #author + 1 -- "@" + username
 		table.insert(hl_ranges, { line = header_line_idx, col_start = 0, col_end = author_end, hl = "ReviewCommentAuthor" })
@@ -1107,6 +1141,10 @@ function M.build_overview_left_lines(pr_info, issue_comments, format_date_fn, op
 			-- The comment author's avatar: between `### ` and the login
 			if comment_author ~= "unknown" then
 				table.insert(avatar_positions, { line = #lines - 1, col = #"### ", login = comment_author, kind = "comments" })
+			end
+			local state_image = M.build_review_state_image_position(#lines - 1, header, comment.review_state, "comments")
+			if state_image then
+				table.insert(avatar_positions, state_image)
 			end
 			table.insert(hl_ranges, { line = #lines - 1, hl = "Special" })
 			local start_line = #lines - 1
