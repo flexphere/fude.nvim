@@ -504,6 +504,33 @@ describe("avatars.place", function()
 		)
 	end)
 
+	it("places a shipped image for an `image` position without fetching", function()
+		local fetched = false
+		helpers.mock(avatars, "fetch", function(_, cb)
+			fetched = true
+			cb(nil)
+		end)
+		local buf = helpers.create_buf({ "### @alice  d [approved]" })
+		avatars.place(buf, {
+			{ line = 0, col = 14, image = "approved", kind = "comments" },
+			{ line = 0, col = 0, image = "no-such-image", kind = "comments" },
+		})
+		assert.is_false(fetched)
+		assert.are.equal(1, #placed)
+		assert.are.equal(avatars.asset_path("approved"), placed[1].file)
+		assert.are.same(
+			{ pos = { 1, 14 }, inline = true, height = avatars.CELL_HEIGHT, width = avatars.CELL_WIDTH },
+			placed[1].opts
+		)
+	end)
+
+	it("skips a shipped image whose kind is turned off", function()
+		config.setup({ images = { comment = true } })
+		local buf = helpers.create_buf({ "x" })
+		avatars.place(buf, { { line = 0, col = 0, image = "approved", kind = "comments" } })
+		assert.are.equal(0, #placed)
+	end)
+
 	it("does nothing when disabled, and skips a buffer gone before the file arrived", function()
 		config.setup({ images = false })
 		local buf = helpers.create_buf({ "a" })
@@ -519,5 +546,16 @@ describe("avatars.place", function()
 		vim.api.nvim_buf_delete(buf, { force = true })
 		pending("/cache/kyu08.round80.png")
 		assert.are.equal(0, #placed)
+	end)
+end)
+
+describe("avatars.asset_path", function()
+	it("resolves every shipped image to an existing file under assets/", function()
+		for name in pairs(avatars.ASSET_FILES) do
+			local path = avatars.asset_path(name)
+			assert.is_truthy(path:match("/assets/[^/]+%.png$"))
+			assert.is_not_nil(vim.uv.fs_stat(path), path)
+		end
+		assert.is_nil(avatars.asset_path("no-such-image"))
 	end)
 end)

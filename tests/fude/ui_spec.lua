@@ -3950,6 +3950,56 @@ describe("comment_badges review_state", function()
 		assert.are.equal("### @alice  2024-01-01 [approved]", result.lines[result.comment_positions[1]])
 		assert.is_truthy(vim.tbl_contains(result.lines, "## COMMENTS (1)"))
 	end)
+end)
+
+describe("build_review_state_image_position", function()
+	it("points right before the [approved] badge ending the header", function()
+		local header = "### @alice  2024-01-01 [approved]"
+		assert.are.same(
+			{ line = 3, col = #"### @alice  2024-01-01 ", image = "approved", kind = "comments" },
+			format.build_review_state_image_position(3, header, "APPROVED", "comments")
+		)
+	end)
+
+	it("returns nil for states without an image, missing states, or a header without the badge", function()
+		local header = "### @alice  2024-01-01 [changes requested]"
+		assert.is_nil(format.build_review_state_image_position(0, header, "CHANGES_REQUESTED", "comments"))
+		assert.is_nil(format.build_review_state_image_position(0, "### @a  d", nil, "comments"))
+		assert.is_nil(format.build_review_state_image_position(0, "### @a  d", vim.NIL, "comments"))
+		assert.is_nil(format.build_review_state_image_position(0, "### @a  d", "APPROVED", "comments"))
+	end)
+
+	it("is added to the avatar positions of every comment header formatter", function()
+		local identity = function(s)
+			return s or ""
+		end
+		local comments = { { user = { login = "alice" }, created_at = "d", body = "", review_state = "APPROVED" } }
+		local function images(positions)
+			return vim.tbl_filter(function(p)
+				return p.image ~= nil
+			end, positions)
+		end
+
+		local overview =
+			ui.build_overview_left_lines({ number = 1, title = "T", state = "OPEN", url = "" }, comments, identity)
+		local header_line = overview.comment_positions[1] - 1
+		assert.are.same(
+			{ { line = header_line, col = #"### @alice  d ", image = "approved", kind = "comments" } },
+			images(overview.avatar_positions)
+		)
+
+		local reply = format.format_reply_comments_for_display(comments, identity)
+		assert.are.same(
+			{ { line = 0, col = #"@alice (d): ", image = "approved", kind = "comment_threads" } },
+			images(reply.avatar_positions)
+		)
+
+		local viewer = format.format_comments_for_display(comments, identity)
+		assert.are.same(
+			{ { line = 0, col = #"@alice  d ", image = "approved", kind = "comment_threads" } },
+			images(viewer.avatar_positions)
+		)
+	end)
 
 	it("shows the badge in the thread display header", function()
 		local result = format.format_reply_comments_for_display({
