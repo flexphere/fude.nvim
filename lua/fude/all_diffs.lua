@@ -12,6 +12,7 @@ local syntax_ns = vim.api.nvim_create_namespace("fude_all_diffs_syntax")
 
 M.STATUS_LABELS = { added = "A", modified = "M", removed = "D", renamed = "R", copied = "C" }
 M.NO_DIFF_TEXT = "(diff not available)"
+M.NO_CHANGES_TEXT = "(no content changes)"
 M.FILLER_CHAR = "╱"
 
 M.HL = {
@@ -232,7 +233,12 @@ function M.build_rows(files)
 			lnum = first_hunk and first_hunk.lnum or 1,
 		})
 		if #body == 0 then
-			table.insert(rows, { kind = "note", left = M.NO_DIFF_TEXT, right = M.NO_DIFF_TEXT, file_index = i, lnum = 1 })
+			-- No hunks and no counted lines: a pure rename or a mode change, not a
+			-- diff GitHub left out (too large or binary).
+			local unchanged = (tonumber(file.additions) or 0) == 0 and (tonumber(file.deletions) or 0) == 0
+			local note = unchanged and file.status ~= "added" and file.status ~= "removed" and M.NO_CHANGES_TEXT
+				or M.NO_DIFF_TEXT
+			table.insert(rows, { kind = "note", left = note, right = note, file_index = i, lnum = 1 })
 		end
 		for _, row in ipairs(body) do
 			row.file_index = i
@@ -434,7 +440,9 @@ end
 --- @return integer|nil hunk_row
 function M.find_sticky_rows(rows, index)
 	local row = rows[index]
-	if not row or not row.file_index or row.kind == "file" then
+	-- The separator after a file sits right above the next file's header, so
+	-- naming the file above would put two file names on screen.
+	if not row or not row.file_index or row.kind == "file" or row.kind == "blank" then
 		return nil, nil
 	end
 	local hunk_row
@@ -443,7 +451,7 @@ function M.find_sticky_rows(rows, index)
 		if r.file_index ~= row.file_index then
 			break
 		end
-		if r.kind == "hunk" and not hunk_row and row.kind ~= "blank" and row.kind ~= "hunk" then
+		if r.kind == "hunk" and not hunk_row and row.kind ~= "hunk" then
 			hunk_row = i
 		elseif r.kind == "file" then
 			return i, hunk_row
@@ -456,14 +464,15 @@ local function escape_statusline(text)
 	return (text:gsub("%%", "%%%%"))
 end
 
---- 'winbar' text: the side label, then the sticky file header with its
+--- 'winbar' text (not a pure `build_*` helper: it measures display width
+--- with vim.fn): the side label, then the sticky file header with its
 --- coloured parts and the current hunk header.
 --- @param side_label string "Base" / "Head"
 --- @param file_row table|nil file header row ({ left, header_ranges })
 --- @param hunk_row table|nil hunk header row
 --- @param width integer|nil window width; the hunk header is cut to fit it
 --- @return string
-function M.build_winbar(side_label, file_row, hunk_row, width)
+function M.compose_winbar(side_label, file_row, hunk_row, width)
 	local label = " " .. side_label .. " "
 	-- %< after the label: a path too long for the window loses its start, so
 	-- the file name stays.
@@ -568,8 +577,14 @@ local function define_highlights()
 	end
 end
 
+--- Whether the view is usable: its tab and both its buffers still exist. A
+--- view buffer is wiped (bufhidden=wipe) when another buffer is opened in its
+--- window, which fires no WinClosed.
 local function is_open()
-	return view ~= nil and vim.api.nvim_tabpage_is_valid(view.tab)
+	return view ~= nil
+		and vim.api.nvim_tabpage_is_valid(view.tab)
+		and vim.api.nvim_buf_is_valid(view.left.buf)
+		and vim.api.nvim_buf_is_valid(view.right.buf)
 end
 
 --- Whether the view is open (for tests and callers that only need to know).
@@ -828,7 +843,7 @@ local function reset_window_options(win)
 			scope = "local",
 		})
 	end
-	for _, name in ipairs({ "winbar", "numberwidth" }) do
+	for _, name in ipairs({ "winbar", "numberwidth", "winfixwidth", "winfixheight" }) do
 		vim.api.nvim_set_option_value(name, vim.api.nvim_get_option_value(name, { scope = "global" }), {
 			win = win,
 			scope = "local",
@@ -845,7 +860,7 @@ function M.winbar()
 		return ""
 	end
 	local file_row, hunk_row = M.find_sticky_rows(view.rows, vim.fn.line("w0", win))
-	return M.build_winbar(
+	return M.compose_winbar(
 		side == "left" and "Base" or "Head",
 		view.rows[file_row],
 		view.rows[hunk_row],
@@ -861,12 +876,30 @@ function M.close()
 	local v = view
 	view = nil
 	pcall(vim.api.nvim_del_augroup_by_id, v.augroup)
-	if vim.api.nvim_tabpage_is_valid(v.tab) and #vim.api.nvim_list_tabpages() > 1 then
+	-- Close the whole tab only while it holds nothing but the view: a window
+	-- the user has since opened another buffer in is kept.
+	local only_view = vim.api.nvim_tabpage_is_valid(v.tab)
+	if only_view then
+		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(v.tab)) do
+			local buf = vim.api.nvim_win_get_buf(win)
+			if buf ~= v.left.buf and buf ~= v.right.buf then
+				only_view = false
+			end
+		end
+	end
+	if only_view and #vim.api.nvim_list_tabpages() > 1 then
 		pcall(vim.cmd, "tabclose " .. vim.api.nvim_tabpage_get_number(v.tab))
 	end
 	for _, side in ipairs({ "left", "right" }) do
-		if vim.api.nvim_win_is_valid(v[side].win) then
-			reset_window_options(v[side].win)
+		local win = v[side].win
+		if vim.api.nvim_win_is_valid(win) then
+			if vim.api.nvim_win_get_buf(win) == v[side].buf then
+				pcall(vim.api.nvim_win_close, win, true)
+			end
+			-- Still open: another buffer is shown there, or it is the last window.
+			if vim.api.nvim_win_is_valid(win) then
+				reset_window_options(win)
+			end
 		end
 		if vim.api.nvim_buf_is_valid(v[side].buf) then
 			pcall(vim.api.nvim_buf_delete, v[side].buf, { force = true })
@@ -941,6 +974,9 @@ function M.jump()
 		vim.cmd("vsplit")
 		win = vim.api.nvim_get_current_win()
 		vim.cmd("enew")
+		-- The split copies the window-local options of the window it came from,
+		-- which may be the side panel (no number column, fixed width).
+		reset_window_options(win)
 	end
 	vim.api.nvim_set_current_win(win)
 
