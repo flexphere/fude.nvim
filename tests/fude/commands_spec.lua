@@ -37,6 +37,7 @@ local ALWAYS = {
 
 -- Commands usable in both review modes.
 local ANY_REVIEW = {
+	"FudeReviewAllDiffs",
 	"FudeReviewComment",
 	"FudeReviewDiff",
 	"FudeReviewFiles",
