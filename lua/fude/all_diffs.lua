@@ -17,10 +17,9 @@ M.FILLER_CHAR = "╱"
 M.HL = {
 	file = "FudeAllDiffsFile",
 	hunk = "FudeAllDiffsHunk",
-	-- Background-only groups for the whole header line: a line_hl_group's
-	-- foreground wins over every other highlight of the line, so the header's
-	-- text colours go in separate groups (file / hunk / header_*).
-	file_line = "FudeAllDiffsFileLine",
+	-- Background-only group for a whole hunk header line: a line_hl_group
+	-- wins over every other highlight of its line, so its text is coloured by
+	-- the separate `hunk` extmark. (The file header bar uses no line group.)
 	hunk_line = "FudeAllDiffsHunkLine",
 	delete = "FudeAllDiffsDelete",
 	add = "FudeAllDiffsAdd",
@@ -33,6 +32,8 @@ M.HL = {
 	header_warn = "FudeAllDiffsHeaderWarn",
 	header_error = "FudeAllDiffsHeaderError",
 	header_info = "FudeAllDiffsHeaderInfo",
+	header_plain = "FudeAllDiffsHeaderPlain",
+	header_muted = "FudeAllDiffsHeaderMuted",
 }
 
 -- Colours of the status label inside a file header.
@@ -63,27 +64,74 @@ local INLINE_PRIORITY = 150
 -- Pure helpers
 ----------------------------------------------------------------
 
---- Header of a file block, ` M path  +3 -1`, and the coloured parts of it.
+M.DIFFSTAT_BLOCKS = 5
+M.DIFFSTAT_CHAR = "■"
+
+--- GitHub's diffstat: how many of the `DIFFSTAT_BLOCKS` squares are green
+--- (added) and red (deleted); the rest are grey. A small change gets one
+--- square per line, a larger one squares in proportion.
+--- @param additions integer
+--- @param deletions integer
+--- @return integer green
+--- @return integer red
+function M.calculate_diffstat(additions, deletions)
+	local total = additions + deletions
+	if total <= M.DIFFSTAT_BLOCKS then
+		return additions, deletions
+	end
+	local green = math.floor(additions * M.DIFFSTAT_BLOCKS / total + 0.5)
+	return green, M.DIFFSTAT_BLOCKS - green
+end
+
+--- Header of a file block, like the file header of GitHub's diff view: a bar
+--- with the status letter and the line counts in badges, followed by the
+--- diffstat squares: ` M  path   +3 -1 ■■■■□ `.
 --- @param file table changed-file entry { path, previous_path?, status, additions?, deletions? }
 --- @return string text
---- @return table[] ranges { start_col, end_col, hl } (0-based, end exclusive)
+--- @return table[] ranges { start_col, end_col, hl } (0-based, end exclusive) of the badges
 function M.build_file_header(file)
 	local label = M.STATUS_LABELS[file.status] or "?"
 	local path = file.path
 	if file.previous_path and file.previous_path ~= file.path then
 		path = file.previous_path .. " → " .. file.path
 	end
-	local added = "+" .. (tonumber(file.additions) or 0)
-	local deleted = "-" .. (tonumber(file.deletions) or 0)
-	local text = " " .. label .. " " .. path .. "  "
-	local ranges = {}
-	if M.STATUS_HL[file.status] then
-		table.insert(ranges, { 1, 1 + #label, M.STATUS_HL[file.status] })
+	local additions = math.max(tonumber(file.additions) or 0, 0)
+	local deletions = math.max(tonumber(file.deletions) or 0, 0)
+	local green, red = M.calculate_diffstat(additions, deletions)
+	local grey = M.DIFFSTAT_BLOCKS - green - red
+
+	local text, ranges = "", {}
+	-- nil hl: the bar itself (the file group), no range needed.
+	local function add(part, hl)
+		if hl then
+			table.insert(ranges, { #text, #text + #part, hl })
+		end
+		text = text .. part
 	end
-	table.insert(ranges, { #text, #text + #added, M.HL.header_ok })
-	text = text .. added .. " "
-	table.insert(ranges, { #text, #text + #deleted, M.HL.header_error })
-	return text .. deleted .. " ", ranges
+	add(" ")
+	add(" " .. label .. " ", M.STATUS_HL[file.status] or M.HL.header_plain)
+	add("  " .. path .. "   ")
+	add(" ", M.HL.header_plain)
+	add("+" .. additions, M.HL.header_ok)
+	add(" ", M.HL.header_plain)
+	add("-" .. deletions, M.HL.header_error)
+	add(" ", M.HL.header_plain)
+	add(string.rep(M.DIFFSTAT_CHAR, green), green > 0 and M.HL.header_ok or nil)
+	add(string.rep(M.DIFFSTAT_CHAR, red), red > 0 and M.HL.header_error or nil)
+	add(string.rep(M.DIFFSTAT_CHAR, grey), grey > 0 and M.HL.header_muted or nil)
+	add(" ", M.HL.header_plain)
+	add(" ")
+	-- Merge touching ranges of one group (an empty part adds none).
+	local merged = {}
+	for _, r in ipairs(ranges) do
+		local prev = merged[#merged]
+		if prev and prev[2] == r[1] and prev[3] == r[3] then
+			prev[2] = r[2]
+		else
+			table.insert(merged, r)
+		end
+	end
+	return text, merged
 end
 
 --- Header text of a file block (see `build_file_header`).
@@ -216,7 +264,10 @@ end
 --- @return boolean right_filler
 function M.row_highlights(row)
 	if row.kind == "file" then
-		return M.HL.file_line, M.HL.file_line, false, false
+		-- No line group: a line_hl_group wins over every other highlight on
+		-- the line, background included, which would hide the header badges.
+		-- The bar is the text highlight extended with hl_eol instead.
+		return nil, nil, false, false
 	elseif row.kind == "hunk" then
 		return M.HL.hunk_line, M.HL.hunk_line, false, false
 	elseif row.kind == "note" then
@@ -466,8 +517,8 @@ local function to_hex(color)
 end
 
 -- Weight of the header text colour mixed into the background of a header.
-M.FILE_BG_ALPHA = 0.3
 M.HUNK_BG_ALPHA = 0.15
+M.SIDE_BG_ALPHA = 0.3
 
 --- Header groups carry their own background, so that they stand apart from
 --- code rows. The background is the header's text colour mixed into the
@@ -485,20 +536,28 @@ local function define_highlights()
 		hl_color("Title", "fg") or hl_color("Directory", "fg") or hl_color("Function", "fg") or hl_color("Normal", "fg")
 	)
 	local info_fg = to_hex(hl_color("DiagnosticInfo", "fg") or hl_color("Comment", "fg"))
-	local file_bg = (title_fg and blend(title_fg, normal_bg, M.FILE_BG_ALPHA)) or to_hex(hl_color("StatusLine", "bg"))
+	-- The file header is a solid bar of the Title colour, as loud as GitHub's
+	-- file header box; its badges use the Normal background.
+	local file_bg = title_fg or to_hex(hl_color("StatusLine", "bg"))
 	local hunk_bg = (info_fg and blend(info_fg, normal_bg, M.HUNK_BG_ALPHA)) or to_hex(hl_color("CursorLine", "bg"))
-	vim.api.nvim_set_hl(0, M.HL.file_line, { bg = file_bg, default = true })
 	vim.api.nvim_set_hl(0, M.HL.hunk_line, { bg = hunk_bg, default = true })
-	vim.api.nvim_set_hl(0, M.HL.file, { fg = title_fg, bg = file_bg, bold = true, default = true })
+	vim.api.nvim_set_hl(0, M.HL.file, { fg = normal_bg, bg = file_bg, bold = true, default = true })
 	vim.api.nvim_set_hl(0, M.HL.hunk, { fg = info_fg, bg = hunk_bg, italic = true, default = true })
-	vim.api.nvim_set_hl(
-		0,
-		M.HL.side,
-		{ fg = hl_color("Normal", "bg"), bg = hl_color("Title", "fg"), bold = true, default = true }
-	)
-	-- Coloured parts of a file header keep the header's background, also in
-	-- the winbar, where a group without a background would show a gap.
-	local header_bg = hl_color(M.HL.file, "bg")
+	vim.api.nvim_set_hl(0, M.HL.side, {
+		fg = title_fg,
+		bg = title_fg and blend(title_fg, normal_bg, M.SIDE_BG_ALPHA) or nil,
+		bold = true,
+		default = true,
+	})
+	-- Badges on the bar: the Normal background, also in the winbar, where a
+	-- group without a background would show a gap.
+	local header_bg = normal_bg
+	vim.api.nvim_set_hl(0, M.HL.header_plain, { fg = to_hex(hl_color("Normal", "fg")), bg = header_bg, default = true })
+	vim.api.nvim_set_hl(0, M.HL.header_muted, {
+		fg = to_hex(hl_color("NonText", "fg") or hl_color("Comment", "fg")),
+		bg = header_bg,
+		default = true,
+	})
 	for group, source in pairs({
 		[M.HL.header_ok] = "DiagnosticOk",
 		[M.HL.header_warn] = "DiagnosticWarn",
@@ -574,12 +633,25 @@ local function apply_row_highlights(rows)
 				})
 			end
 		end
-		local text_hl = (row.kind == "file" and M.HL.file) or (row.kind == "hunk" and M.HL.hunk) or nil
-		if text_hl then
+		if row.kind == "file" then
+			-- Up to the start of the next line with hl_eol: the bar fills the
+			-- rest of the screen line, and the badges can still set their own
+			-- background over it.
+			for _, side in ipairs({ "left", "right" }) do
+				vim.api.nvim_buf_set_extmark(view[side].buf, ns, i - 1, 0, {
+					end_row = i,
+					end_col = 0,
+					hl_group = M.HL.file,
+					hl_eol = true,
+					priority = SYNTAX_PRIORITY,
+					strict = false,
+				})
+			end
+		elseif row.kind == "hunk" then
 			for _, side in ipairs({ "left", "right" }) do
 				vim.api.nvim_buf_set_extmark(view[side].buf, ns, i - 1, 0, {
 					end_col = #(row[side] or ""),
-					hl_group = text_hl,
+					hl_group = M.HL.hunk,
 					priority = SYNTAX_PRIORITY,
 				})
 			end
