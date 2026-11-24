@@ -1,0 +1,629 @@
+local config = require("fude.config")
+local all_diffs = require("fude.all_diffs")
+local helpers = require("tests.helpers")
+
+describe("all_diffs", function()
+	describe("parse_patch_rows", function()
+		it("returns no rows for nil or a patch without hunks", function()
+			assert.same({}, all_diffs.parse_patch_rows(nil))
+			assert.same({}, all_diffs.parse_patch_rows(""))
+		end)
+
+		it("puts context lines on both sides with their own line numbers", function()
+			local rows = all_diffs.parse_patch_rows("@@ -10,2 +20,2 @@\n a\n b")
+			assert.equals("hunk", rows[1].kind)
+			assert.equals(20, rows[1].lnum)
+			assert.same({ kind = "context", left = "a", right = "a", old_lnum = 10, new_lnum = 20, lnum = 20 }, rows[2])
+			assert.same({ kind = "context", left = "b", right = "b", old_lnum = 11, new_lnum = 21, lnum = 21 }, rows[3])
+		end)
+
+		it("pairs removed lines with the added lines that follow and leaves the shorter side nil", function()
+			local rows = all_diffs.parse_patch_rows("@@ -1,2 +1,3 @@\n-old\n+new1\n+new2\n keep")
+			assert.same({ kind = "change", left = "old", right = "new1", old_lnum = 1, new_lnum = 1, lnum = 1 }, rows[2])
+			assert.same({ kind = "change", right = "new2", new_lnum = 2, lnum = 2 }, rows[3])
+			assert.same({ kind = "context", left = "keep", right = "keep", old_lnum = 2, new_lnum = 3, lnum = 3 }, rows[4])
+		end)
+
+		it("jumps from a deletion-only row to the head line after it", function()
+			local rows = all_diffs.parse_patch_rows("@@ -1,3 +1,1 @@\n a\n-b\n-c")
+			assert.same({ kind = "change", left = "b", old_lnum = 2, lnum = 2 }, rows[3])
+			assert.same({ kind = "change", left = "c", old_lnum = 3, lnum = 2 }, rows[4])
+		end)
+
+		it("starts a new pair block when a removal follows additions", function()
+			local rows = all_diffs.parse_patch_rows("@@ -1,2 +1,2 @@\n-a\n+A\n-b\n+B")
+			assert.equals(3, #rows)
+			assert.equals("a", rows[2].left)
+			assert.equals("A", rows[2].right)
+			assert.equals("b", rows[3].left)
+			assert.equals("B", rows[3].right)
+		end)
+
+		it("skips the no-newline marker and reads every hunk", function()
+			local rows = all_diffs.parse_patch_rows("@@ -1 +1 @@\n-a\n\\ No newline at end of file\n+b\n@@ -9 +9 @@\n c")
+			assert.equals(4, #rows)
+			assert.equals("a", rows[2].left)
+			assert.equals("b", rows[2].right)
+			assert.equals("hunk", rows[3].kind)
+			assert.equals(9, rows[4].new_lnum)
+		end)
+
+		it("jumps from the hunk of a file added from nothing (+0) to line 1", function()
+			local rows = all_diffs.parse_patch_rows("@@ -1 +0,0 @@\n-gone")
+			assert.equals(1, rows[1].lnum)
+			assert.equals(1, rows[2].lnum)
+		end)
+	end)
+
+	describe("format_file_header", function()
+		it("returns the text of build_file_header", function()
+			local file = { path = "lua/a.lua", status = "modified", additions = 3, deletions = 1 }
+			assert.equals((all_diffs.build_file_header(file)), all_diffs.format_file_header(file))
+		end)
+	end)
+
+	describe("calculate_diffstat", function()
+		it("gives a small change one square per line", function()
+			assert.same({ 2, 1 }, { all_diffs.calculate_diffstat(2, 1) })
+			assert.same({ 0, 0 }, { all_diffs.calculate_diffstat(0, 0) })
+		end)
+
+		it("splits the five squares in proportion for a larger change", function()
+			assert.same({ 4, 1 }, { all_diffs.calculate_diffstat(30, 8) })
+			assert.same({ 5, 0 }, { all_diffs.calculate_diffstat(100, 1) })
+			assert.same({ 0, 5 }, { all_diffs.calculate_diffstat(0, 9) })
+		end)
+	end)
+
+	describe("build_file_header", function()
+		it("puts the status letter, the counts and the diffstat in badges on the bar", function()
+			local text, ranges = all_diffs.build_file_header({
+				path = "a.lua",
+				status = "added",
+				additions = 2,
+				deletions = 1,
+			})
+			assert.equals("  A   a.lua    +2 -1 ■■■■■  ", text)
+			local parts = {}
+			for _, r in ipairs(ranges) do
+				table.insert(parts, { text:sub(r[1] + 1, r[2]), r[3] })
+			end
+			local HL = all_diffs.HL
+			assert.same({
+				{ " A ", HL.header_ok },
+				{ " ", HL.header_plain },
+				{ "+2", HL.header_ok },
+				{ " ", HL.header_plain },
+				{ "-1", HL.header_error },
+				{ " ", HL.header_plain },
+				{ "■■", HL.header_ok },
+				{ "■", HL.header_error },
+				{ "■■", HL.header_muted },
+				{ " ", HL.header_plain },
+			}, parts)
+		end)
+
+		it("shows a rename as old → new and an unknown status in a plain badge", function()
+			local text, ranges =
+				all_diffs.build_file_header({ path = "new.lua", previous_path = "old.lua", status = "weird" })
+			assert.truthy(text:find("old.lua → new.lua", 1, true))
+			assert.equals(all_diffs.HL.header_plain, ranges[1][3])
+			assert.equals(" ? ", text:sub(ranges[1][1] + 1, ranges[1][2]))
+		end)
+	end)
+
+	describe("find_sticky_rows", function()
+		local rows = all_diffs.build_rows({
+			{ path = "a", status = "modified", patch = "@@ -1 +1 @@\n-x\n+y\n@@ -9 +9 @@\n z" },
+			{ path = "b", status = "modified", patch = "@@ -1 +1 @@\n-p\n+q" },
+		})
+
+		it("returns the file header and the hunk above a code row", function()
+			assert.same({ 1, 2 }, { all_diffs.find_sticky_rows(rows, 3) })
+			assert.same({ 1, 4 }, { all_diffs.find_sticky_rows(rows, 5) })
+		end)
+
+		it("returns nothing when the file header itself is the top row", function()
+			assert.same({}, { all_diffs.find_sticky_rows(rows, 1) })
+			assert.same({}, { all_diffs.find_sticky_rows(rows, 7) })
+		end)
+
+		it("returns only the file header when a hunk header is the top row", function()
+			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 2) })
+			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 4) })
+		end)
+
+		it("returns nothing for the separator, which sits right above the next file's header", function()
+			assert.same({}, { all_diffs.find_sticky_rows(rows, 6) })
+		end)
+
+		it("switches to the next file below its header", function()
+			assert.same({ 7, 8 }, { all_diffs.find_sticky_rows(rows, 9) })
+		end)
+
+		it("returns nothing for a row outside any file", function()
+			assert.same({}, { all_diffs.find_sticky_rows({ { kind = "note" } }, 1) })
+		end)
+	end)
+
+	describe("compose_winbar", function()
+		local file_row = {
+			left = " M a%b.lua  +1 -2 ",
+			header_ranges = { { 1, 2, "W" }, { 12, 14, "O" }, { 15, 17, "E" } },
+		}
+
+		it("shows the side label and the coloured file header with % escaped", function()
+			local bar = all_diffs.compose_winbar("Head", file_row, nil)
+			assert.truthy(bar:find("# Head %<", 1, true))
+			assert.truthy(bar:find("%#W#M", 1, true))
+			assert.truthy(bar:find("a%%b.lua", 1, true))
+			assert.truthy(bar:find("%#O#+1", 1, true))
+			assert.truthy(bar:find("%#E#-2", 1, true))
+		end)
+
+		it("shows the hunk header, cut with … when the window is too narrow", function()
+			local hunk = { left = "@@ -1,41 +1,42 @@ local function f()" }
+			local wide = all_diffs.compose_winbar("Base", file_row, hunk, 200)
+			assert.truthy(wide:find("@@ -1,41 +1,42 @@ local function f() ", 1, true))
+			local narrow = all_diffs.compose_winbar("Base", file_row, hunk, 36)
+			assert.truthy(narrow:find(" @@ -1,41… ", 1, true))
+			local none = all_diffs.compose_winbar("Base", file_row, hunk, 26)
+			assert.is_nil(none:find("@@", 1, true))
+		end)
+
+		it("shows only the side label without a file", function()
+			assert.equals(
+				"%#" .. all_diffs.HL.side .. "# Base %<%#" .. all_diffs.HL.file .. "#%=",
+				all_diffs.compose_winbar("Base")
+			)
+		end)
+	end)
+
+	describe("build_rows notes", function()
+		it("says a file without hunks or counted lines has no content changes", function()
+			local rows = all_diffs.build_rows({
+				{ path = "b.lua", previous_path = "a.lua", status = "renamed", additions = 0, deletions = 0, patch = "" },
+			})
+			assert.equals(all_diffs.NO_CHANGES_TEXT, rows[2].left)
+		end)
+
+		it("says the diff is not available when lines changed but no patch came, or for an empty added file", function()
+			local rows = all_diffs.build_rows({
+				{ path = "big.lua", status = "modified", additions = 5000, deletions = 10 },
+				{ path = "empty.txt", status = "added", additions = 0, deletions = 0, patch = "" },
+			})
+			assert.equals(all_diffs.NO_DIFF_TEXT, rows[2].left)
+			assert.equals(all_diffs.NO_DIFF_TEXT, rows[5].left)
+		end)
+	end)
+
+	describe("build_rows", function()
+		it("starts each file with a header row, separates files and records each file's row range", function()
+			local rows, ranges = all_diffs.build_rows({
+				{ path = "a", status = "modified", patch = "@@ -1 +1 @@\n-x\n+y" },
+				{ path = "b", status = "added", patch = "" },
+			})
+			assert.same(
+				{ "file", "hunk", "change", "blank", "file", "note" },
+				vim.tbl_map(function(r)
+					return r.kind
+				end, rows)
+			)
+			assert.equals(all_diffs.NO_DIFF_TEXT, rows[6].left)
+			assert.same({ { first = 1, last = 3 }, { first = 5, last = 6 } }, ranges)
+			assert.equals(1, rows[4].file_index)
+			assert.equals(2, rows[6].file_index)
+		end)
+
+		it("makes both sides the same number of lines, with fillers as empty lines", function()
+			local rows = all_diffs.build_rows({ { path = "a", status = "modified", patch = "@@ -1 +1,2 @@\n-x\n+y\n+z" } })
+			local left, right = all_diffs.build_buffer_lines(rows)
+			assert.equals(#left, #right)
+			assert.same({ "  M   a    +0 -0 ■■■■■  ", "@@ -1 +1,2 @@", "x", "" }, left)
+			assert.same({ "  M   a    +0 -0 ■■■■■  ", "@@ -1 +1,2 @@", "y", "z" }, right)
+		end)
+	end)
+
+	describe("row_highlights", function()
+		it("colours removed/added sides and marks the missing side as a filler", function()
+			local l, r, lf, rf = all_diffs.row_highlights({ kind = "change", right = "z" })
+			assert.is_nil(l)
+			assert.equals(all_diffs.HL.add, r)
+			assert.is_true(lf)
+			assert.is_false(rf)
+			l, r = all_diffs.row_highlights({ kind = "change", left = "a", right = "b" })
+			assert.equals(all_diffs.HL.delete, l)
+			assert.equals(all_diffs.HL.add, r)
+		end)
+
+		it("leaves context rows uncoloured", function()
+			assert.same({ nil, nil, false, false }, { all_diffs.row_highlights({ kind = "context" }) })
+		end)
+	end)
+
+	describe("tokenize", function()
+		it("splits words, whitespace and punctuation with byte columns", function()
+			local tokens = all_diffs.tokenize("foo(bar, 1)")
+			assert.same(
+				{ "foo", "(", "bar", ",", " ", "1", ")" },
+				vim.tbl_map(function(t)
+					return t.text
+				end, tokens)
+			)
+			assert.equals(4, tokens[3].start)
+		end)
+
+		it("keeps a multibyte run as one token", function()
+			local tokens = all_diffs.tokenize("a 日本")
+			assert.equals("日本", tokens[3].text)
+			assert.equals(2, tokens[3].start)
+		end)
+	end)
+
+	describe("find_inline_ranges", function()
+		it("marks only the changed word on each side", function()
+			local old_ranges, new_ranges = all_diffs.find_inline_ranges('local y = "old"', 'local y = "new"')
+			assert.same({ { 11, 14 } }, old_ranges)
+			assert.same({ { 11, 14 } }, new_ranges)
+		end)
+
+		it("marks an insertion on the new side only", function()
+			local old_ranges, new_ranges = all_diffs.find_inline_ranges("f(a)", "f(a, b)")
+			assert.same({}, old_ranges)
+			assert.same({ { 3, 6 } }, new_ranges)
+		end)
+
+		it("marks nothing when the lines share no token, are equal, or one is empty", function()
+			assert.same({ {}, {} }, { all_diffs.find_inline_ranges("abc", "xyz") })
+			assert.same({ {}, {} }, { all_diffs.find_inline_ranges("same", "same") })
+			assert.same({ {}, {} }, { all_diffs.find_inline_ranges("", "x") })
+		end)
+	end)
+
+	describe("build_syntax_source", function()
+		it("joins one side's code lines of a file and maps them to buffer rows", function()
+			local rows, ranges = all_diffs.build_rows({
+				{ path = "a.lua", status = "modified", patch = "@@ -1,2 +1,2 @@\n local a\n-x\n+y" },
+			})
+			local left, left_map = all_diffs.build_syntax_source(rows, ranges[1], "left")
+			local right, right_map = all_diffs.build_syntax_source(rows, ranges[1], "right")
+			assert.equals("local a\nx", left)
+			assert.same({ 3, 4 }, left_map)
+			assert.equals("local a\ny", right)
+			assert.same({ 3, 4 }, right_map)
+		end)
+
+		it("leaves out filler rows of that side", function()
+			local rows, ranges = all_diffs.build_rows({
+				{ path = "a.lua", status = "modified", patch = "@@ -1 +1,2 @@\n-x\n+y\n+z" },
+			})
+			local left, left_map = all_diffs.build_syntax_source(rows, ranges[1], "left")
+			assert.equals("x", left)
+			assert.same({ 3 }, left_map)
+		end)
+	end)
+
+	describe("find_jump_target", function()
+		local files = {
+			{ path = "a.lua", status = "modified", patch = "@@ -1,2 +5,2 @@\n ctx\n-x\n+y" },
+			{ path = "gone.lua", status = "removed", patch = "@@ -1 +0,0 @@\n-x" },
+		}
+		local rows = all_diffs.build_rows(files)
+
+		it("jumps from a code row to its head line and from the file header to the first hunk", function()
+			assert.same({ file = files[1], lnum = 5 }, all_diffs.find_jump_target(rows, files, 3))
+			assert.same({ file = files[1], lnum = 6 }, all_diffs.find_jump_target(rows, files, 4))
+			assert.same({ file = files[1], lnum = 5 }, all_diffs.find_jump_target(rows, files, 1))
+		end)
+
+		it("jumps from a separator to the file above", function()
+			assert.same({ file = files[1], lnum = 5 }, all_diffs.find_jump_target(rows, files, 5))
+		end)
+
+		it("refuses a removed file and a row without a file", function()
+			local target, reason = all_diffs.find_jump_target(rows, files, 7)
+			assert.is_nil(target)
+			assert.equals("gone.lua was removed", reason)
+			target, reason = all_diffs.find_jump_target({ { kind = "note" } }, files, 1)
+			assert.is_nil(target)
+			assert.equals("No file on this line", reason)
+		end)
+	end)
+
+	describe("format_line_number / calculate_number_width", function()
+		it("shows the old number on the left, the new one on the right and blanks a filler side", function()
+			local row = { old_lnum = 7, new_lnum = 12 }
+			assert.equals(" 7", all_diffs.format_line_number(row, "left", 2))
+			assert.equals("12", all_diffs.format_line_number(row, "right", 2))
+			assert.equals("  ", all_diffs.format_line_number({ new_lnum = 3 }, "left", 2))
+			assert.equals("  ", all_diffs.format_line_number(nil, "right", 2))
+		end)
+
+		it("sizes the column by the widest number, at least 2", function()
+			assert.equals(2, all_diffs.calculate_number_width({ { old_lnum = 1 } }))
+			assert.equals(3, all_diffs.calculate_number_width({ { old_lnum = 9 }, { new_lnum = 120 } }))
+		end)
+	end)
+
+	describe("view", function()
+		local notifications
+		local tmpdir
+
+		local function start_session(files)
+			config.setup({})
+			-- reset_state() gives a new state table, as a stop → start does.
+			config.reset_state()
+			config.state.active = true
+			config.state.changed_files = files
+		end
+
+		before_each(function()
+			notifications = {}
+			helpers.mock(vim, "notify", function(msg, level)
+				table.insert(notifications, { msg = msg, level = level })
+			end)
+			tmpdir = vim.fn.resolve(vim.fn.tempname())
+			vim.fn.mkdir(tmpdir, "p")
+			vim.fn.writefile({ "local a = 1", "local b = 2", "local c = 3" }, tmpdir .. "/a.lua")
+			helpers.mock(require("fude.diff"), "get_repo_root", function()
+				return tmpdir
+			end)
+			start_session({
+				{
+					path = "a.lua",
+					status = "modified",
+					additions = 1,
+					deletions = 1,
+					patch = "@@ -1,3 +1,3 @@\n local a = 1\n-local b = 0\n+local b = 2\n local c = 3",
+				},
+			})
+		end)
+
+		after_each(function()
+			all_diffs.close()
+			vim.cmd("silent! tabonly")
+			helpers.cleanup()
+			vim.fn.delete(tmpdir, "rf")
+		end)
+
+		it("opens a new tab with two scroll-bound windows of the same length", function()
+			local tabs_before = #vim.api.nvim_list_tabpages()
+			all_diffs.open()
+			assert.is_true(all_diffs.is_open())
+			assert.equals(tabs_before + 1, #vim.api.nvim_list_tabpages())
+			local wins = vim.api.nvim_tabpage_list_wins(0)
+			assert.equals(2, #wins)
+			local left_buf, right_buf = vim.api.nvim_win_get_buf(wins[1]), vim.api.nvim_win_get_buf(wins[2])
+			assert.equals(vim.api.nvim_buf_line_count(left_buf), vim.api.nvim_buf_line_count(right_buf))
+			assert.equals("local b = 0", vim.api.nvim_buf_get_lines(left_buf, 3, 4, false)[1])
+			assert.equals("local b = 2", vim.api.nvim_buf_get_lines(right_buf, 3, 4, false)[1])
+			for _, win in ipairs(wins) do
+				assert.is_true(vim.wo[win].scrollbind)
+				assert.is_true(vim.wo[win].cursorbind)
+				assert.is_false(vim.wo[win].wrap)
+			end
+		end)
+
+		it("highlights the changed word and the code syntax", function()
+			all_diffs.open()
+			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
+			local groups = {}
+			for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(right_buf, -1, 0, -1, { details = true })) do
+				if mark[4].hl_group then
+					groups[mark[4].hl_group] = true
+				end
+			end
+			assert.is_true(groups[all_diffs.HL.add_text])
+			assert.is_true(groups["@keyword.lua"])
+		end)
+
+		it("keeps the header of the file at the top of each window in its winbar", function()
+			all_diffs.open()
+			local wins = vim.api.nvim_tabpage_list_wins(0)
+			-- The header row is the top row at first: the winbar does not repeat it.
+			local first = vim.api.nvim_eval_statusline(vim.wo[wins[2]].winbar, { winid = wins[2], use_winbar = true }).str
+			assert.is_nil(first:find("a.lua", 1, true))
+			-- Scroll the code row under the header to the top of both windows.
+			vim.api.nvim_win_call(wins[2], function()
+				vim.api.nvim_win_set_cursor(0, { 3, 0 })
+				vim.cmd("normal! zt")
+				-- A scroll from a nvim_win_call does not sync the bound window by itself.
+				vim.cmd("syncbind")
+			end)
+			vim.cmd("redraw")
+			for _, win in ipairs(wins) do
+				local bar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
+				assert.truthy(bar:find("a.lua", 1, true))
+				assert.truthy(bar:find("+1 -1", 1, true))
+			end
+			local left_bar = vim.api.nvim_eval_statusline(vim.wo[wins[1]].winbar, { winid = wins[1], use_winbar = true }).str
+			assert.truthy(left_bar:find("Base", 1, true))
+		end)
+
+		it("draws the file header as a bar to the line end without a line group, with badges over it", function()
+			all_diffs.open()
+			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
+			local line_groups, text_groups, bar = {}, {}, nil
+			for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(right_buf, -1, { 0, 0 }, { 0, -1 }, { details = true })) do
+				local d = mark[4]
+				if d.line_hl_group then
+					table.insert(line_groups, d.line_hl_group)
+				end
+				if d.hl_group then
+					text_groups[d.hl_group] = true
+				end
+				if d.hl_group == all_diffs.HL.file then
+					bar = d
+				end
+			end
+			-- A line group would win over the badges' own background.
+			assert.same({}, line_groups)
+			assert.is_true(bar.hl_eol)
+			assert.equals(1, bar.end_row)
+			assert.is_true(text_groups[all_diffs.HL.header_warn])
+			assert.is_true(text_groups[all_diffs.HL.header_ok])
+			assert.is_true(text_groups[all_diffs.HL.header_error])
+			assert.is_true(text_groups[all_diffs.HL.header_plain])
+		end)
+
+		it("opens a new view when another buffer replaced one of the view's buffers", function()
+			all_diffs.open()
+			local head_win = vim.api.nvim_tabpage_list_wins(0)[2]
+			vim.api.nvim_set_current_win(head_win)
+			-- bufhidden=wipe: the head buffer is wiped, no WinClosed fires.
+			vim.cmd("enew")
+			assert.is_false(all_diffs.is_open())
+			all_diffs.open()
+			assert.is_true(all_diffs.is_open())
+			local wins = vim.api.nvim_tabpage_list_wins(0)
+			assert.equals(2, #wins)
+			assert.equals("fude://all-diffs/head", vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(wins[2])))
+			-- The window the user opened another buffer in is kept, without the view's options.
+			assert.is_true(vim.api.nvim_win_is_valid(head_win))
+			assert.is_false(vim.wo[head_win].scrollbind)
+		end)
+
+		it("<CR> gives a new split the global window options when the review tab has no source window", function()
+			-- The review tab holds only a special window with panel-like options.
+			local panel_buf = vim.api.nvim_create_buf(false, true)
+			vim.bo[panel_buf].buftype = "nofile"
+			vim.api.nvim_win_set_buf(0, panel_buf)
+			vim.wo.number = false
+			vim.wo.winfixwidth = true
+			all_diffs.open()
+			vim.api.nvim_win_set_cursor(0, { 4, 0 })
+			all_diffs.jump()
+			local win = vim.api.nvim_get_current_win()
+			assert.equals(tmpdir .. "/a.lua", vim.fn.resolve(vim.api.nvim_buf_get_name(0)))
+			assert.equals(vim.go.number, vim.wo[win].number)
+			assert.is_false(vim.wo[win].winfixwidth)
+			vim.cmd("silent! bwipeout!")
+			vim.api.nvim_buf_delete(panel_buf, { force = true })
+		end)
+
+		it("closes the whole view when one of its windows is closed", function()
+			all_diffs.open()
+			vim.cmd("close")
+			assert.is_true(helpers.wait_for(function()
+				return not all_diffs.is_open()
+			end, 1000))
+		end)
+
+		it("gives windows it cannot close (the view tab is the last one) their own options back", function()
+			all_diffs.open()
+			local wins = vim.api.nvim_tabpage_list_wins(0)
+			vim.cmd("tabonly")
+			all_diffs.close()
+			assert.is_false(all_diffs.is_open())
+			for _, win in ipairs(wins) do
+				if vim.api.nvim_win_is_valid(win) then
+					assert.is_false(vim.wo[win].scrollbind)
+					assert.is_false(vim.wo[win].cursorbind)
+					assert.equals(vim.go.statuscolumn, vim.wo[win].statuscolumn)
+				end
+			end
+		end)
+
+		it("shows ordinary line numbers for another buffer opened in a view window", function()
+			all_diffs.open()
+			local win = vim.api.nvim_get_current_win()
+			local other = vim.api.nvim_create_buf(false, true)
+			vim.api.nvim_win_set_buf(win, other)
+			vim.g.statusline_winid = win
+			assert.equals("%l ", all_diffs.statuscolumn())
+			vim.g.statusline_winid = nil
+		end)
+
+		it("q closes the tab", function()
+			local tabs_before = #vim.api.nvim_list_tabpages()
+			all_diffs.open()
+			vim.api.nvim_feedkeys("q", "x", false)
+			assert.is_false(all_diffs.is_open())
+			assert.equals(tabs_before, #vim.api.nvim_list_tabpages())
+		end)
+
+		it("<CR> opens the file at the row's head line in the original tab", function()
+			local origin_tab = vim.api.nvim_get_current_tabpage()
+			all_diffs.open()
+			vim.api.nvim_win_set_cursor(0, { 4, 0 })
+			all_diffs.jump()
+			assert.equals(origin_tab, vim.api.nvim_get_current_tabpage())
+			assert.equals(tmpdir .. "/a.lua", vim.fn.resolve(vim.api.nvim_buf_get_name(0)))
+			assert.equals(2, vim.api.nvim_win_get_cursor(0)[1])
+			vim.cmd("silent! bwipeout!")
+		end)
+
+		it("re-running open focuses and rebuilds the view from the current scope", function()
+			all_diffs.open()
+			local tab = vim.api.nvim_get_current_tabpage()
+			vim.cmd("tabprevious")
+			config.state.changed_files = {
+				{ path = "b.lua", status = "added", patch = "@@ -0,0 +1 @@\n+new" },
+			}
+			all_diffs.open()
+			assert.equals(tab, vim.api.nvim_get_current_tabpage())
+			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
+			assert.truthy(vim.api.nvim_buf_get_lines(right_buf, 0, 1, false)[1]:find("b.lua", 1, true))
+		end)
+
+		it("replaces the view of a stopped session instead of reusing it", function()
+			all_diffs.open()
+			local old_tab = vim.api.nvim_get_current_tabpage()
+			vim.cmd("tabprevious")
+			start_session({ { path = "c.lua", status = "added", patch = "@@ -0,0 +1 @@\n+c" } })
+			all_diffs.open()
+			assert.is_false(vim.api.nvim_tabpage_is_valid(old_tab))
+			assert.is_true(all_diffs.is_open())
+		end)
+
+		it("refuses R and <CR> once the session the view was opened in has ended", function()
+			all_diffs.open()
+			config.reset_state()
+			all_diffs.refresh()
+			all_diffs.jump()
+			assert.equals(2, #notifications)
+			assert.truthy(notifications[1].msg:find("has ended"))
+		end)
+
+		it("reads local review patches with one git diff and falls back per file only for the rest", function()
+			local diff = require("fude.diff")
+			local batch_calls, single_paths = 0, {}
+			helpers.mock(diff, "get_review_patches", function(base_sha, cwd)
+				batch_calls = batch_calls + 1
+				assert.equals("base123", base_sha)
+				assert.equals(tmpdir, cwd)
+				return { ["a.lua"] = "@@ -1 +1 @@\n-old\n+new" }
+			end)
+			helpers.mock(diff, "get_review_patch", function(_, path)
+				table.insert(single_paths, path)
+				return "@@ -0,0 +1 @@\n+untracked"
+			end)
+			config.state.review_mode = "local"
+			config.state.local_session = { base_sha = "base123", worktree_root = tmpdir }
+			config.state.changed_files = {
+				{ path = "a.lua", status = "modified" },
+				{ path = "u.lua", status = "added" },
+			}
+			all_diffs.open()
+			assert.equals(1, batch_calls)
+			assert.same({ "u.lua" }, single_paths)
+			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
+			local lines = vim.api.nvim_buf_get_lines(right_buf, 0, -1, false)
+			assert.equals("new", lines[3])
+			assert.equals("untracked", lines[7])
+		end)
+
+		it("is closed by :FudeReviewStop", function()
+			all_diffs.open()
+			require("fude").stop()
+			assert.is_false(all_diffs.is_open())
+		end)
+
+		it("warns and opens nothing outside a review", function()
+			config.state.active = false
+			all_diffs.open()
+			assert.is_false(all_diffs.is_open())
+			assert.equals(vim.log.levels.WARN, notifications[1].level)
+		end)
+	end)
+end)

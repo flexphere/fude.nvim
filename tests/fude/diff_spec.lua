@@ -699,6 +699,136 @@ describe("get_review_patch", function()
 	end)
 end)
 
+describe("parse_patches_by_path", function()
+	it("returns an empty map for nil or empty output", function()
+		assert.same({}, diff.parse_patches_by_path(nil))
+		assert.same({}, diff.parse_patches_by_path(""))
+	end)
+
+	it("splits a multi-file diff into each file's hunks keyed by the new path", function()
+		local output = table.concat({
+			"diff --git a/a.lua b/a.lua",
+			"index 1..2 100644",
+			"--- a/a.lua",
+			"+++ b/a.lua",
+			"@@ -1 +1 @@",
+			"--- a/not-a-header",
+			"+x",
+			"diff --git a/old.lua b/new.lua",
+			"similarity index 90%",
+			"rename from old.lua",
+			"rename to new.lua",
+			"--- a/old.lua",
+			"+++ b/new.lua",
+			"@@ -2 +2 @@",
+			"-y",
+			"+z",
+			"diff --git a/gone.lua b/gone.lua",
+			"deleted file mode 100644",
+			"--- a/gone.lua",
+			"+++ /dev/null",
+			"@@ -1 +0,0 @@",
+			"-bye",
+			"diff --git a/img.png b/img.png",
+			"Binary files a/img.png and b/img.png differ",
+			"",
+		}, "\n")
+		assert.same({
+			["a.lua"] = "@@ -1 +1 @@\n--- a/not-a-header\n+x",
+			["new.lua"] = "@@ -2 +2 @@\n-y\n+z",
+			["gone.lua"] = "@@ -1 +0,0 @@\n-bye",
+			["img.png"] = "",
+		}, diff.parse_patches_by_path(output))
+	end)
+
+	it("maps a pure rename to an empty patch under its new path", function()
+		local output = table.concat({
+			"diff --git a/old name.lua b/new.lua",
+			"similarity index 100%",
+			"rename from old name.lua",
+			"rename to new.lua",
+		}, "\n")
+		assert.same({ ["new.lua"] = "" }, diff.parse_patches_by_path(output))
+	end)
+
+	it("drops the TAB git appends to a ---/+++ name with a space", function()
+		local output = table.concat({
+			"diff --git a/my file.lua b/my file.lua",
+			"--- a/my file.lua\t",
+			"+++ b/my file.lua\t",
+			"@@ -1 +1 @@",
+			"-a",
+			"+b",
+		}, "\n")
+		assert.same({ ["my file.lua"] = "@@ -1 +1 @@\n-a\n+b" }, diff.parse_patches_by_path(output))
+	end)
+end)
+
+describe("get_review_patches (real git repo)", function()
+	local repo
+
+	local function git(...)
+		local result = vim.system({ "git", ... }, { cwd = repo, text = true }):wait()
+		assert.equals(0, result.code, result.stderr)
+		return vim.trim(result.stdout or "")
+	end
+
+	before_each(function()
+		repo = vim.fn.resolve(vim.fn.tempname())
+		vim.fn.mkdir(repo, "p")
+		git("init", "-q")
+		git("config", "user.name", "test")
+		git("config", "user.email", "test@example.com")
+		vim.fn.writefile({ "one", "two" }, repo .. "/a.txt")
+		vim.fn.writefile({ "keep 1", "keep 2", "keep 3", "keep 4" }, repo .. "/old.txt")
+		vim.fn.writefile({ "bye" }, repo .. "/gone.txt")
+		git("add", ".")
+		git("commit", "-q", "-m", "base")
+	end)
+
+	after_each(function()
+		vim.fn.delete(repo, "rf")
+	end)
+
+	it("returns every tracked change in one map, renames under the new path", function()
+		local base = git("rev-parse", "HEAD")
+		vim.fn.writefile({ "one", "TWO" }, repo .. "/a.txt")
+		git("mv", "old.txt", "new.txt")
+		vim.fn.writefile({ "keep 1", "keep 2", "keep 3", "keep 4", "added" }, repo .. "/new.txt")
+		git("rm", "-q", "gone.txt")
+		vim.fn.writefile({ "untracked" }, repo .. "/untracked.txt")
+
+		local patches = diff.get_review_patches(base, repo)
+		assert.same({ "a.txt", "gone.txt", "new.txt" }, vim.fn.sort(vim.tbl_keys(patches)))
+		assert.equals("@@ -1,2 +1,2 @@\n one\n-two\n+TWO", patches["a.txt"])
+		assert.truthy(patches["new.txt"]:find("+added", 1, true))
+		assert.equals("@@ -1 +0,0 @@\n-bye", patches["gone.txt"])
+	end)
+
+	it("keys a pure rename by its new path and ignores the user's diff prefix settings", function()
+		local base = git("rev-parse", "HEAD")
+		git("config", "diff.noprefix", "true")
+		git("mv", "old.txt", "renamed.txt")
+		local patches = diff.get_review_patches(base, repo)
+		assert.same({ ["renamed.txt"] = "" }, patches)
+	end)
+
+	it("keeps an empty context line when the user sets diff.suppressBlankEmpty", function()
+		vim.fn.writefile({ "one", "", "three" }, repo .. "/blank.txt")
+		git("add", "blank.txt")
+		git("commit", "-q", "-m", "blank")
+		local base = git("rev-parse", "HEAD")
+		git("config", "diff.suppressBlankEmpty", "true")
+		vim.fn.writefile({ "one", "", "THREE" }, repo .. "/blank.txt")
+		local patches = diff.get_review_patches(base, repo)
+		assert.equals("@@ -1,3 +1,3 @@\n one\n \n-three\n+THREE", patches["blank.txt"])
+	end)
+
+	it("returns nil when git fails", function()
+		assert.is_nil(diff.get_review_patches("0000000000000000000000000000000000000000", repo))
+	end)
+end)
+
 describe("parse_commit_log", function()
 	local SEP = "\31"
 

@@ -31,6 +31,9 @@ end
 
 vim.o.swapfile = false
 vim.bo.swapfile = false
+-- Spec files run in parallel nvim processes; a shared ShaDa file read by :edit
+-- while another process writes it on exit fails with E576.
+vim.o.shadafile = "NONE"
 
 vim.api.nvim_create_user_command("RunTests", function(opts)
 	local path = opts.fargs[1] or "tests"

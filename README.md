@@ -122,6 +122,7 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewStop` | Stop review session |
 | `:FudeReviewToggle` | Toggle review session |
 | `:FudeReviewDiff` | Toggle diff preview window (renamed files diff against their old path) |
+| `:FudeReviewAllDiffs` | Show every changed file's diff in a new tab, base left / head right with syntax and changed-word highlights and the current file's header kept in the winbar; both sides scroll together (`<C-e>`/`<C-y>`), `<CR>` opens the line in the review tab, `R` rebuilds, `q` closes |
 | `:FudeReviewComment` | Create pending comment on current line/selection |
 | `:FudeReviewSuggest` | Create pending suggestion on current line/selection |
 | `:FudeReviewViewComment` | View comments on current line (`r` reply, `e` edit, `d` delete, `R` resolve/unresolve the thread, `+` add/remove a reaction) |
