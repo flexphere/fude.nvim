@@ -262,9 +262,9 @@ Using lazy.nvim: >lua
     file without one stays uncoloured) and the changed words of a
     removed/added line pair are marked. Only the diff lines are parsed,
     so a string or comment that starts outside a hunk may be coloured
-    wrongly. The winbar of each window keeps the header of the file at
-    the top of the window, and the hunk header above it, so the file name
-    stays visible while scrolling through a long file. Requires an active
+    wrongly. Once a file's header line scrolls off the top, the winbar
+    of each window shows it, and the hunk header above the top line, so
+    the file name stays visible while scrolling through a long file. Requires an active
     review session.
 
     Keys in the view:
