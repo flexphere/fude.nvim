@@ -1121,6 +1121,7 @@ function M.stop()
 	end
 
 	require("fude.ui.sidepanel").close()
+	require("fude.all_diffs").close()
 	require("fude.preview").close_preview()
 	require("fude.ui").clear_all_extmarks()
 	require("fude.ui").teardown_inline_hint_autocmd()

@@ -541,6 +541,15 @@ M.list = {
 		end,
 	},
 	{
+		name = "FudeReviewAllDiffs",
+		desc = "Show every changed file's diff side by side in a new tab",
+		category = "View",
+		available = when_active,
+		run = function()
+			require("fude.all_diffs").open()
+		end,
+	},
+	{
 		name = "FudeReviewPanel",
 		desc = "Toggle review side panel (focus it when open, close it when focused)",
 		category = "View",
