@@ -370,23 +370,24 @@ end
 
 --- Header rows to keep on screen for the row at the top of a window: the
 --- header of the file the row belongs to, and the hunk header above the row
---- within that file.
+--- within that file. A header that is itself the top row is on screen
+--- already and is not returned, so the winbar does not repeat it.
 --- @param rows table[]
 --- @param index integer 1-based row at the top of the window
 --- @return integer|nil file_row
 --- @return integer|nil hunk_row
 function M.find_sticky_rows(rows, index)
 	local row = rows[index]
-	if not row or not row.file_index then
+	if not row or not row.file_index or row.kind == "file" then
 		return nil, nil
 	end
 	local hunk_row
-	for i = index, 1, -1 do
+	for i = index - 1, 1, -1 do
 		local r = rows[i]
 		if r.file_index ~= row.file_index then
 			break
 		end
-		if r.kind == "hunk" and not hunk_row and row.kind ~= "blank" then
+		if r.kind == "hunk" and not hunk_row and row.kind ~= "blank" and row.kind ~= "hunk" then
 			hunk_row = i
 		elseif r.kind == "file" then
 			return i, hunk_row
