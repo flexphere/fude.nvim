@@ -282,9 +282,11 @@ Using lazy.nvim: >lua
     `FudeAllDiffsAddText` / `FudeAllDiffsDeleteText` (DiffText),
     `FudeAllDiffsFiller` (NonText), `FudeAllDiffsNote` (Comment).
     Derived from the colorscheme (and again after |:colorscheme|):
-    `FudeAllDiffsFile` (file header: Title foreground on the StatusLine
-    background, bold), `FudeAllDiffsHunk` (hunk header: DiagnosticInfo
-    foreground on the CursorLine background, italic), `FudeAllDiffsSide`
+    `FudeAllDiffsFile` (file header text: the Title colour, bold, on a
+    background of that colour mixed into the Normal background),
+    `FudeAllDiffsFileLine` (that background over the whole header line),
+    `FudeAllDiffsHunk` / `FudeAllDiffsHunkLine` (the same for hunk
+    headers with the DiagnosticInfo colour, italic), `FudeAllDiffsSide`
     (the Base/Head label of the winbar), and `FudeAllDiffsHeaderOk` /
     `FudeAllDiffsHeaderWarn` / `FudeAllDiffsHeaderError` /
     `FudeAllDiffsHeaderInfo` (status letter and counts in a file
