@@ -1083,6 +1083,10 @@ function M.get_review_patches(base_sha, cwd)
 			"git",
 			"-c",
 			"core.quotePath=false",
+			-- An empty context line would lose its leading space and be dropped
+			-- by the patch parser, shifting every later line number.
+			"-c",
+			"diff.suppressBlankEmpty=false",
 			"diff",
 			"-M",
 			"--no-color",
