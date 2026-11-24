@@ -133,8 +133,8 @@ describe("all_diffs", function()
 			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 4) })
 		end)
 
-		it("returns only the file header for the separator after a file", function()
-			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 6) })
+		it("returns nothing for the separator, which sits right above the next file's header", function()
+			assert.same({}, { all_diffs.find_sticky_rows(rows, 6) })
 		end)
 
 		it("switches to the next file below its header", function()
@@ -146,14 +146,14 @@ describe("all_diffs", function()
 		end)
 	end)
 
-	describe("build_winbar", function()
+	describe("compose_winbar", function()
 		local file_row = {
 			left = " M a%b.lua  +1 -2 ",
 			header_ranges = { { 1, 2, "W" }, { 12, 14, "O" }, { 15, 17, "E" } },
 		}
 
 		it("shows the side label and the coloured file header with % escaped", function()
-			local bar = all_diffs.build_winbar("Head", file_row, nil)
+			local bar = all_diffs.compose_winbar("Head", file_row, nil)
 			assert.truthy(bar:find("# Head %<", 1, true))
 			assert.truthy(bar:find("%#W#M", 1, true))
 			assert.truthy(bar:find("a%%b.lua", 1, true))
@@ -163,19 +163,37 @@ describe("all_diffs", function()
 
 		it("shows the hunk header, cut with … when the window is too narrow", function()
 			local hunk = { left = "@@ -1,41 +1,42 @@ local function f()" }
-			local wide = all_diffs.build_winbar("Base", file_row, hunk, 200)
+			local wide = all_diffs.compose_winbar("Base", file_row, hunk, 200)
 			assert.truthy(wide:find("@@ -1,41 +1,42 @@ local function f() ", 1, true))
-			local narrow = all_diffs.build_winbar("Base", file_row, hunk, 36)
+			local narrow = all_diffs.compose_winbar("Base", file_row, hunk, 36)
 			assert.truthy(narrow:find(" @@ -1,41… ", 1, true))
-			local none = all_diffs.build_winbar("Base", file_row, hunk, 26)
+			local none = all_diffs.compose_winbar("Base", file_row, hunk, 26)
 			assert.is_nil(none:find("@@", 1, true))
 		end)
 
 		it("shows only the side label without a file", function()
 			assert.equals(
 				"%#" .. all_diffs.HL.side .. "# Base %<%#" .. all_diffs.HL.file .. "#%=",
-				all_diffs.build_winbar("Base")
+				all_diffs.compose_winbar("Base")
 			)
+		end)
+	end)
+
+	describe("build_rows notes", function()
+		it("says a file without hunks or counted lines has no content changes", function()
+			local rows = all_diffs.build_rows({
+				{ path = "b.lua", previous_path = "a.lua", status = "renamed", additions = 0, deletions = 0, patch = "" },
+			})
+			assert.equals(all_diffs.NO_CHANGES_TEXT, rows[2].left)
+		end)
+
+		it("says the diff is not available when lines changed but no patch came, or for an empty added file", function()
+			local rows = all_diffs.build_rows({
+				{ path = "big.lua", status = "modified", additions = 5000, deletions = 10 },
+				{ path = "empty.txt", status = "added", additions = 0, deletions = 0, patch = "" },
+			})
+			assert.equals(all_diffs.NO_DIFF_TEXT, rows[2].left)
+			assert.equals(all_diffs.NO_DIFF_TEXT, rows[5].left)
 		end)
 	end)
 
@@ -446,6 +464,41 @@ describe("all_diffs", function()
 			assert.is_true(text_groups[all_diffs.HL.header_ok])
 			assert.is_true(text_groups[all_diffs.HL.header_error])
 			assert.is_true(text_groups[all_diffs.HL.header_plain])
+		end)
+
+		it("opens a new view when another buffer replaced one of the view's buffers", function()
+			all_diffs.open()
+			local head_win = vim.api.nvim_tabpage_list_wins(0)[2]
+			vim.api.nvim_set_current_win(head_win)
+			-- bufhidden=wipe: the head buffer is wiped, no WinClosed fires.
+			vim.cmd("enew")
+			assert.is_false(all_diffs.is_open())
+			all_diffs.open()
+			assert.is_true(all_diffs.is_open())
+			local wins = vim.api.nvim_tabpage_list_wins(0)
+			assert.equals(2, #wins)
+			assert.equals("fude://all-diffs/head", vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(wins[2])))
+			-- The window the user opened another buffer in is kept, without the view's options.
+			assert.is_true(vim.api.nvim_win_is_valid(head_win))
+			assert.is_false(vim.wo[head_win].scrollbind)
+		end)
+
+		it("<CR> gives a new split the global window options when the review tab has no source window", function()
+			-- The review tab holds only a special window with panel-like options.
+			local panel_buf = vim.api.nvim_create_buf(false, true)
+			vim.bo[panel_buf].buftype = "nofile"
+			vim.api.nvim_win_set_buf(0, panel_buf)
+			vim.wo.number = false
+			vim.wo.winfixwidth = true
+			all_diffs.open()
+			vim.api.nvim_win_set_cursor(0, { 4, 0 })
+			all_diffs.jump()
+			local win = vim.api.nvim_get_current_win()
+			assert.equals(tmpdir .. "/a.lua", vim.fn.resolve(vim.api.nvim_buf_get_name(0)))
+			assert.equals(vim.go.number, vim.wo[win].number)
+			assert.is_false(vim.wo[win].winfixwidth)
+			vim.cmd("silent! bwipeout!")
+			vim.api.nvim_buf_delete(panel_buf, { force = true })
 		end)
 
 		it("closes the whole view when one of its windows is closed", function()
