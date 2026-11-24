@@ -23,11 +23,23 @@ M.HL = {
 	add_text = "FudeAllDiffsAddText",
 	filler = "FudeAllDiffsFiller",
 	note = "FudeAllDiffsNote",
+	side = "FudeAllDiffsSide",
+	header_ok = "FudeAllDiffsHeaderOk",
+	header_warn = "FudeAllDiffsHeaderWarn",
+	header_error = "FudeAllDiffsHeaderError",
+	header_info = "FudeAllDiffsHeaderInfo",
+}
+
+-- Colours of the status label inside a file header.
+M.STATUS_HL = {
+	added = M.HL.header_ok,
+	modified = M.HL.header_warn,
+	removed = M.HL.header_error,
+	renamed = M.HL.header_info,
+	copied = M.HL.header_info,
 }
 
 local HL_LINKS = {
-	[M.HL.file] = "Title",
-	[M.HL.hunk] = "Comment",
 	[M.HL.delete] = "DiffDelete",
 	[M.HL.add] = "DiffAdd",
 	[M.HL.delete_text] = "DiffText",
@@ -46,16 +58,34 @@ local INLINE_PRIORITY = 150
 -- Pure helpers
 ----------------------------------------------------------------
 
---- Header text of a file block.
+--- Header of a file block, ` M path  +3 -1`, and the coloured parts of it.
 --- @param file table changed-file entry { path, previous_path?, status, additions?, deletions? }
---- @return string
-function M.format_file_header(file)
+--- @return string text
+--- @return table[] ranges { start_col, end_col, hl } (0-based, end exclusive)
+function M.build_file_header(file)
 	local label = M.STATUS_LABELS[file.status] or "?"
 	local path = file.path
 	if file.previous_path and file.previous_path ~= file.path then
 		path = file.previous_path .. " → " .. file.path
 	end
-	return string.format("%s %s  +%d -%d", label, path, tonumber(file.additions) or 0, tonumber(file.deletions) or 0)
+	local added = "+" .. (tonumber(file.additions) or 0)
+	local deleted = "-" .. (tonumber(file.deletions) or 0)
+	local text = " " .. label .. " " .. path .. "  "
+	local ranges = {}
+	if M.STATUS_HL[file.status] then
+		table.insert(ranges, { 1, 1 + #label, M.STATUS_HL[file.status] })
+	end
+	table.insert(ranges, { #text, #text + #added, M.HL.header_ok })
+	text = text .. added .. " "
+	table.insert(ranges, { #text, #text + #deleted, M.HL.header_error })
+	return text .. deleted .. " ", ranges
+end
+
+--- Header text of a file block (see `build_file_header`).
+--- @param file table
+--- @return string
+function M.format_file_header(file)
+	return (M.build_file_header(file))
 end
 
 --- Rows of one file's unified patch, both sides aligned. Removed lines are
@@ -138,12 +168,13 @@ function M.build_rows(files)
 		end
 		local first = #rows + 1
 		local body = M.parse_patch_rows(file.patch)
-		local header = M.format_file_header(file)
+		local header, header_ranges = M.build_file_header(file)
 		local first_hunk = body[1]
 		table.insert(rows, {
 			kind = "file",
 			left = header,
 			right = header,
+			header_ranges = header_ranges,
 			file_index = i,
 			lnum = first_hunk and first_hunk.lnum or 1,
 		})
@@ -337,6 +368,77 @@ function M.calculate_number_width(rows)
 	return math.max(#tostring(max), 2)
 end
 
+--- Header rows to keep on screen for the row at the top of a window: the
+--- header of the file the row belongs to, and the hunk header above the row
+--- within that file.
+--- @param rows table[]
+--- @param index integer 1-based row at the top of the window
+--- @return integer|nil file_row
+--- @return integer|nil hunk_row
+function M.find_sticky_rows(rows, index)
+	local row = rows[index]
+	if not row or not row.file_index then
+		return nil, nil
+	end
+	local hunk_row
+	for i = index, 1, -1 do
+		local r = rows[i]
+		if r.file_index ~= row.file_index then
+			break
+		end
+		if r.kind == "hunk" and not hunk_row and row.kind ~= "blank" then
+			hunk_row = i
+		elseif r.kind == "file" then
+			return i, hunk_row
+		end
+	end
+	return nil, nil
+end
+
+local function escape_statusline(text)
+	return (text:gsub("%%", "%%%%"))
+end
+
+--- 'winbar' text: the side label, then the sticky file header with its
+--- coloured parts and the current hunk header.
+--- @param side_label string "Base" / "Head"
+--- @param file_row table|nil file header row ({ left, header_ranges })
+--- @param hunk_row table|nil hunk header row
+--- @param width integer|nil window width; the hunk header is cut to fit it
+--- @return string
+function M.build_winbar(side_label, file_row, hunk_row, width)
+	local label = " " .. side_label .. " "
+	-- %< after the label: a path too long for the window loses its start, so
+	-- the file name stays.
+	local parts = { "%#" .. M.HL.side .. "#" .. label .. "%<" }
+	local used = vim.fn.strdisplaywidth(label)
+	if file_row then
+		used = used + vim.fn.strdisplaywidth(file_row.left or "")
+		local text, ranges = file_row.left or "", file_row.header_ranges or {}
+		local col = 0
+		table.insert(parts, "%#" .. M.HL.file .. "#")
+		for _, r in ipairs(ranges) do
+			table.insert(parts, escape_statusline(text:sub(col + 1, r[1])))
+			table.insert(parts, "%#" .. r[3] .. "#" .. escape_statusline(text:sub(r[1] + 1, r[2])))
+			table.insert(parts, "%#" .. M.HL.file .. "#")
+			col = r[2]
+		end
+		table.insert(parts, escape_statusline(text:sub(col + 1)))
+	end
+	if hunk_row then
+		local hunk = " " .. (hunk_row.left or "") .. " "
+		local room = width and (width - used) or math.huge
+		if vim.fn.strdisplaywidth(hunk) > room then
+			hunk = room >= 4 and (vim.fn.strcharpart(hunk, 0, room - 2):gsub("%s+$", "") .. "… ") or nil
+		end
+		if hunk then
+			table.insert(parts, "%#" .. M.HL.hunk .. "#" .. escape_statusline(hunk))
+		end
+	end
+	table.insert(parts, "%#" .. M.HL.file .. "#%=")
+	return table.concat(parts)
+end
+
 ----------------------------------------------------------------
 -- View
 ----------------------------------------------------------------
@@ -347,9 +449,43 @@ end
 ---@type table|nil
 local view = nil
 
+--- Resolved foreground/background of a highlight group.
+local function hl_color(name, key)
+	local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = name, link = false })
+	return ok and hl and hl[key] or nil
+end
+
+--- Header groups carry their own background, so that they stand apart from
+--- code rows; derived from the colorscheme rather than fixed colours. Every
+--- group is `default`, so a user definition wins.
 local function define_highlights()
 	for name, link in pairs(HL_LINKS) do
 		vim.api.nvim_set_hl(0, name, { link = link, default = true })
+	end
+	local bar_bg = hl_color("StatusLine", "bg") or hl_color("CursorLine", "bg")
+	local line_bg = hl_color("CursorLine", "bg") or bar_bg
+	vim.api.nvim_set_hl(0, M.HL.file, { fg = hl_color("Title", "fg"), bg = bar_bg, bold = true, default = true })
+	vim.api.nvim_set_hl(0, M.HL.hunk, {
+		fg = hl_color("DiagnosticInfo", "fg") or hl_color("Comment", "fg"),
+		bg = line_bg,
+		italic = true,
+		default = true,
+	})
+	vim.api.nvim_set_hl(
+		0,
+		M.HL.side,
+		{ fg = hl_color("Normal", "bg"), bg = hl_color("Title", "fg"), bold = true, default = true }
+	)
+	-- Coloured parts of a file header keep the header's background, also in
+	-- the winbar, where a group without a background would show a gap.
+	local file_bg = hl_color(M.HL.file, "bg")
+	for group, source in pairs({
+		[M.HL.header_ok] = "DiagnosticOk",
+		[M.HL.header_warn] = "DiagnosticWarn",
+		[M.HL.header_error] = "DiagnosticError",
+		[M.HL.header_info] = "DiagnosticInfo",
+	}) do
+		vim.api.nvim_set_hl(0, group, { fg = hl_color(source, "fg"), bg = file_bg, bold = true, default = true })
 	end
 end
 
@@ -415,6 +551,15 @@ local function apply_row_highlights(rows)
 					virt_text = { { string.rep(M.FILLER_CHAR, vim.o.columns), M.HL.filler } },
 					virt_text_pos = "overlay",
 					priority = LINE_PRIORITY,
+				})
+			end
+		end
+		for _, r in ipairs(row.header_ranges or {}) do
+			for _, side in ipairs({ "left", "right" }) do
+				vim.api.nvim_buf_set_extmark(view[side].buf, ns, i - 1, r[1], {
+					end_col = r[2],
+					hl_group = r[3],
+					priority = INLINE_PRIORITY,
 				})
 			end
 		end
@@ -589,6 +734,23 @@ local function reset_window_options(win)
 	end
 end
 
+--- winbar: the side label and the header of the file (and hunk) at the top
+--- of the window, so the file name stays visible while scrolling through it.
+function M.winbar()
+	local win = vim.g.statusline_winid
+	local side = view and ((view.left.win == win and "left") or (view.right.win == win and "right")) or nil
+	if not side or vim.api.nvim_win_get_buf(win) ~= view[side].buf then
+		return ""
+	end
+	local file_row, hunk_row = M.find_sticky_rows(view.rows, vim.fn.line("w0", win))
+	return M.build_winbar(
+		side == "left" and "Base" or "Head",
+		view.rows[file_row],
+		view.rows[hunk_row],
+		vim.api.nvim_win_get_width(win)
+	)
+end
+
 --- Close the view (no-op when closed).
 function M.close()
 	if not view then
@@ -724,11 +886,11 @@ local function new_buffer(name)
 	return buf
 end
 
-local function setup_window(win, winbar)
+local function setup_window(win)
 	for name, value in pairs(WIN_OPTIONS) do
 		vim.api.nvim_set_option_value(name, value, { win = win, scope = "local" })
 	end
-	vim.api.nvim_set_option_value("winbar", winbar, { win = win, scope = "local" })
+	vim.api.nvim_set_option_value("winbar", "%!v:lua.require'fude.all_diffs'.winbar()", { win = win, scope = "local" })
 end
 
 local function setup_keymaps(buf)
@@ -772,8 +934,8 @@ function M.open()
 		right = { win = right_win, buf = right_buf },
 		augroup = vim.api.nvim_create_augroup("FudeAllDiffs", { clear = true }),
 	}
-	setup_window(left_win, " Base")
-	setup_window(right_win, " Head")
+	setup_window(left_win)
+	setup_window(right_win)
 	setup_keymaps(left_buf)
 	setup_keymaps(right_buf)
 	render(state)
@@ -786,6 +948,11 @@ function M.open()
 		callback = function()
 			vim.schedule(M.close)
 		end,
+	})
+	-- A colorscheme change clears the derived header colours.
+	vim.api.nvim_create_autocmd("ColorScheme", {
+		group = view.augroup,
+		callback = define_highlights,
 	})
 	vim.api.nvim_create_autocmd({ "WinScrolled", "WinResized" }, {
 		group = view.augroup,
