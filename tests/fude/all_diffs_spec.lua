@@ -108,12 +108,21 @@ describe("all_diffs", function()
 			assert.same({ 1, 4 }, { all_diffs.find_sticky_rows(rows, 5) })
 		end)
 
-		it("returns no hunk for the header row itself or the separator after a file", function()
-			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 1) })
+		it("returns nothing when the file header itself is the top row", function()
+			assert.same({}, { all_diffs.find_sticky_rows(rows, 1) })
+			assert.same({}, { all_diffs.find_sticky_rows(rows, 7) })
+		end)
+
+		it("returns only the file header when a hunk header is the top row", function()
+			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 2) })
+			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 4) })
+		end)
+
+		it("returns only the file header for the separator after a file", function()
 			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 6) })
 		end)
 
-		it("switches to the next file at its header", function()
+		it("switches to the next file below its header", function()
 			assert.same({ 7, 8 }, { all_diffs.find_sticky_rows(rows, 9) })
 		end)
 
@@ -378,6 +387,17 @@ describe("all_diffs", function()
 		it("keeps the header of the file at the top of each window in its winbar", function()
 			all_diffs.open()
 			local wins = vim.api.nvim_tabpage_list_wins(0)
+			-- The header row is the top row at first: the winbar does not repeat it.
+			local first = vim.api.nvim_eval_statusline(vim.wo[wins[2]].winbar, { winid = wins[2], use_winbar = true }).str
+			assert.is_nil(first:find("a.lua", 1, true))
+			-- Scroll the code row under the header to the top of both windows.
+			vim.api.nvim_win_call(wins[2], function()
+				vim.api.nvim_win_set_cursor(0, { 3, 0 })
+				vim.cmd("normal! zt")
+				-- A scroll from a nvim_win_call does not sync the bound window by itself.
+				vim.cmd("syncbind")
+			end)
+			vim.cmd("redraw")
 			for _, win in ipairs(wins) do
 				local bar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
 				assert.truthy(bar:find("M a.lua  +1 -1", 1, true))
