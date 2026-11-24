@@ -58,17 +58,100 @@ describe("all_diffs", function()
 	describe("format_file_header", function()
 		it("shows the status label, the path and the line counts", function()
 			assert.equals(
-				"M lua/a.lua  +3 -1",
+				" M lua/a.lua  +3 -1 ",
 				all_diffs.format_file_header({ path = "lua/a.lua", status = "modified", additions = 3, deletions = 1 })
 			)
 		end)
 
 		it("shows a rename as old → new and an unknown status as ?", function()
 			assert.equals(
-				"R old.lua → new.lua  +0 -0",
+				" R old.lua → new.lua  +0 -0 ",
 				all_diffs.format_file_header({ path = "new.lua", previous_path = "old.lua", status = "renamed" })
 			)
-			assert.equals("? x  +0 -0", all_diffs.format_file_header({ path = "x", status = "weird" }))
+			assert.equals(" ? x  +0 -0 ", all_diffs.format_file_header({ path = "x", status = "weird" }))
+		end)
+	end)
+
+	describe("build_file_header", function()
+		it("colours the status label and the two counts", function()
+			local text, ranges = all_diffs.build_file_header({
+				path = "a.lua",
+				status = "added",
+				additions = 12,
+				deletions = 0,
+			})
+			assert.equals(" A a.lua  +12 -0 ", text)
+			assert.same({
+				{ 1, 2, all_diffs.HL.header_ok },
+				{ 10, 13, all_diffs.HL.header_ok },
+				{ 14, 16, all_diffs.HL.header_error },
+			}, ranges)
+			assert.equals("A", text:sub(2, 2))
+			assert.equals("+12", text:sub(11, 13))
+			assert.equals("-0", text:sub(15, 16))
+		end)
+
+		it("leaves an unknown status uncoloured", function()
+			local _, ranges = all_diffs.build_file_header({ path = "x", status = "weird" })
+			assert.equals(2, #ranges)
+		end)
+	end)
+
+	describe("find_sticky_rows", function()
+		local rows = all_diffs.build_rows({
+			{ path = "a", status = "modified", patch = "@@ -1 +1 @@\n-x\n+y\n@@ -9 +9 @@\n z" },
+			{ path = "b", status = "modified", patch = "@@ -1 +1 @@\n-p\n+q" },
+		})
+
+		it("returns the file header and the hunk above a code row", function()
+			assert.same({ 1, 2 }, { all_diffs.find_sticky_rows(rows, 3) })
+			assert.same({ 1, 4 }, { all_diffs.find_sticky_rows(rows, 5) })
+		end)
+
+		it("returns no hunk for the header row itself or the separator after a file", function()
+			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 1) })
+			assert.same({ 1 }, { all_diffs.find_sticky_rows(rows, 6) })
+		end)
+
+		it("switches to the next file at its header", function()
+			assert.same({ 7, 8 }, { all_diffs.find_sticky_rows(rows, 9) })
+		end)
+
+		it("returns nothing for a row outside any file", function()
+			assert.same({}, { all_diffs.find_sticky_rows({ { kind = "note" } }, 1) })
+		end)
+	end)
+
+	describe("build_winbar", function()
+		local file_row = {
+			left = " M a%b.lua  +1 -2 ",
+			header_ranges = { { 1, 2, "W" }, { 12, 14, "O" }, { 15, 17, "E" } },
+		}
+
+		it("shows the side label and the coloured file header with % escaped", function()
+			local bar = all_diffs.build_winbar("Head", file_row, nil)
+			assert.truthy(bar:find("# Head %<", 1, true))
+			assert.truthy(bar:find("%#W#M", 1, true))
+			assert.truthy(bar:find("a%%b.lua", 1, true))
+			assert.truthy(bar:find("%#O#+1", 1, true))
+			assert.truthy(bar:find("%#E#-2", 1, true))
+		end)
+
+		it("shows the hunk header, cut with … when the window is too narrow", function()
+			local hunk = { left = "@@ -1,41 +1,42 @@ local function f()" }
+			local wide = all_diffs.build_winbar("Base", file_row, hunk, 200)
+			assert.truthy(wide:find("@@ -1,41 +1,42 @@ local function f() ", 1, true))
+			local narrow = all_diffs.build_winbar("Base", file_row, hunk, 36)
+			assert.truthy(narrow:find(" @@ -1,41… ", 1, true))
+			local none = all_diffs.build_winbar("Base", file_row, hunk, 26)
+			assert.is_nil(none:find("@@", 1, true))
+		end)
+
+		it("shows only the side label without a file", function()
+			assert.equals(
+				"%#" .. all_diffs.HL.side .. "# Base %<%#" .. all_diffs.HL.file .. "#%=",
+				all_diffs.build_winbar("Base")
+			)
 		end)
 	end)
 
@@ -94,8 +177,8 @@ describe("all_diffs", function()
 			local rows = all_diffs.build_rows({ { path = "a", status = "modified", patch = "@@ -1 +1,2 @@\n-x\n+y\n+z" } })
 			local left, right = all_diffs.build_buffer_lines(rows)
 			assert.equals(#left, #right)
-			assert.same({ "M a  +0 -0", "@@ -1 +1,2 @@", "x", "" }, left)
-			assert.same({ "M a  +0 -0", "@@ -1 +1,2 @@", "y", "z" }, right)
+			assert.same({ " M a  +0 -0 ", "@@ -1 +1,2 @@", "x", "" }, left)
+			assert.same({ " M a  +0 -0 ", "@@ -1 +1,2 @@", "y", "z" }, right)
 		end)
 	end)
 
@@ -292,6 +375,17 @@ describe("all_diffs", function()
 			assert.is_true(groups["@keyword.lua"])
 		end)
 
+		it("keeps the header of the file at the top of each window in its winbar", function()
+			all_diffs.open()
+			local wins = vim.api.nvim_tabpage_list_wins(0)
+			for _, win in ipairs(wins) do
+				local bar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
+				assert.truthy(bar:find("M a.lua  +1 -1", 1, true))
+			end
+			local left_bar = vim.api.nvim_eval_statusline(vim.wo[wins[1]].winbar, { winid = wins[1], use_winbar = true }).str
+			assert.truthy(left_bar:find("Base", 1, true))
+		end)
+
 		it("closes the whole view when one of its windows is closed", function()
 			all_diffs.open()
 			vim.cmd("close")
@@ -354,7 +448,7 @@ describe("all_diffs", function()
 			all_diffs.open()
 			assert.equals(tab, vim.api.nvim_get_current_tabpage())
 			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
-			assert.equals("A b.lua  +0 -0", vim.api.nvim_buf_get_lines(right_buf, 0, 1, false)[1])
+			assert.equals(" A b.lua  +0 -0 ", vim.api.nvim_buf_get_lines(right_buf, 0, 1, false)[1])
 		end)
 
 		it("replaces the view of a stopped session instead of reusing it", function()
