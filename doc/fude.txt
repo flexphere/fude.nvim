@@ -253,7 +253,8 @@ Using lazy.nvim: >lua
     Show the diff of every changed file of the current scope in a new
     tab, base on the left and head on the right, like the GitHub PR
     "Files changed" split view. Each file starts with a header line
-    (`M path  +3 -1`) followed by its hunks; a file without a patch (too
+    (` M path  +3 -1 `, on a background of its own, with the status
+    letter and the counts coloured) followed by its hunks; a file without a patch (too
     large or binary) shows `(diff not available)`. The two windows use
     'scrollbind' and 'cursorbind', so any scroll key (<C-e>, <C-y>,
     <C-d>, j, k) moves both sides. Each side shows its own line numbers;
@@ -261,7 +262,10 @@ Using lazy.nvim: >lua
     file without one stays uncoloured) and the changed words of a
     removed/added line pair are marked. Only the diff lines are parsed,
     so a string or comment that starts outside a hunk may be coloured
-    wrongly. Requires an active review session.
+    wrongly. The winbar of each window keeps the header of the file at
+    the top of the window, and the hunk header above it, so the file name
+    stays visible while scrolling through a long file. Requires an active
+    review session.
 
     Keys in the view:
       <CR>  Open the file at the cursor row's line in the tab the view
@@ -276,8 +280,16 @@ Using lazy.nvim: >lua
     |:FudeReviewStop|. Highlight groups (linked by default):
     `FudeAllDiffsAdd` (DiffAdd), `FudeAllDiffsDelete` (DiffDelete),
     `FudeAllDiffsAddText` / `FudeAllDiffsDeleteText` (DiffText),
-    `FudeAllDiffsFile` (Title), `FudeAllDiffsHunk` (Comment),
     `FudeAllDiffsFiller` (NonText), `FudeAllDiffsNote` (Comment).
+    Derived from the colorscheme (and again after |:colorscheme|):
+    `FudeAllDiffsFile` (file header: Title foreground on the StatusLine
+    background, bold), `FudeAllDiffsHunk` (hunk header: DiagnosticInfo
+    foreground on the CursorLine background, italic), `FudeAllDiffsSide`
+    (the Base/Head label of the winbar), and `FudeAllDiffsHeaderOk` /
+    `FudeAllDiffsHeaderWarn` / `FudeAllDiffsHeaderError` /
+    `FudeAllDiffsHeaderInfo` (status letter and counts in a file
+    header, on its background). Defining any of these yourself overrides
+    the default.
 
 :FudeReviewComment                                  *:FudeReviewComment*
     Create a review comment on the current line (normal mode) or
