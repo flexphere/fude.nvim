@@ -257,7 +257,8 @@ Using lazy.nvim: >lua
     and a five-square diffstat (green added, red deleted, grey the rest),
     e.g. `  M   lua/a.lua    +30 -8 ■■■■■  `, the status letter and the
     counts in badges on the bar. A file without a patch (too large or
-    binary) shows `(diff not available)`. The two windows use
+    binary) shows `(diff not available)`; a rename or mode change without
+    content changes shows `(no content changes)`. The two windows use
     'scrollbind' and 'cursorbind', so any scroll key (<C-e>, <C-y>,
     <C-d>, j, k) moves both sides. Each side shows its own line numbers;
     the code is highlighted with the file type's treesitter parser (a
