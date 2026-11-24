@@ -56,44 +56,59 @@ describe("all_diffs", function()
 	end)
 
 	describe("format_file_header", function()
-		it("shows the status label, the path and the line counts", function()
-			assert.equals(
-				" M lua/a.lua  +3 -1 ",
-				all_diffs.format_file_header({ path = "lua/a.lua", status = "modified", additions = 3, deletions = 1 })
-			)
+		it("returns the text of build_file_header", function()
+			local file = { path = "lua/a.lua", status = "modified", additions = 3, deletions = 1 }
+			assert.equals((all_diffs.build_file_header(file)), all_diffs.format_file_header(file))
+		end)
+	end)
+
+	describe("calculate_diffstat", function()
+		it("gives a small change one square per line", function()
+			assert.same({ 2, 1 }, { all_diffs.calculate_diffstat(2, 1) })
+			assert.same({ 0, 0 }, { all_diffs.calculate_diffstat(0, 0) })
 		end)
 
-		it("shows a rename as old → new and an unknown status as ?", function()
-			assert.equals(
-				" R old.lua → new.lua  +0 -0 ",
-				all_diffs.format_file_header({ path = "new.lua", previous_path = "old.lua", status = "renamed" })
-			)
-			assert.equals(" ? x  +0 -0 ", all_diffs.format_file_header({ path = "x", status = "weird" }))
+		it("splits the five squares in proportion for a larger change", function()
+			assert.same({ 4, 1 }, { all_diffs.calculate_diffstat(30, 8) })
+			assert.same({ 5, 0 }, { all_diffs.calculate_diffstat(100, 1) })
+			assert.same({ 0, 5 }, { all_diffs.calculate_diffstat(0, 9) })
 		end)
 	end)
 
 	describe("build_file_header", function()
-		it("colours the status label and the two counts", function()
+		it("puts the status letter, the counts and the diffstat in badges on the bar", function()
 			local text, ranges = all_diffs.build_file_header({
 				path = "a.lua",
 				status = "added",
-				additions = 12,
-				deletions = 0,
+				additions = 2,
+				deletions = 1,
 			})
-			assert.equals(" A a.lua  +12 -0 ", text)
+			assert.equals("  A   a.lua    +2 -1 ■■■■■  ", text)
+			local parts = {}
+			for _, r in ipairs(ranges) do
+				table.insert(parts, { text:sub(r[1] + 1, r[2]), r[3] })
+			end
+			local HL = all_diffs.HL
 			assert.same({
-				{ 1, 2, all_diffs.HL.header_ok },
-				{ 10, 13, all_diffs.HL.header_ok },
-				{ 14, 16, all_diffs.HL.header_error },
-			}, ranges)
-			assert.equals("A", text:sub(2, 2))
-			assert.equals("+12", text:sub(11, 13))
-			assert.equals("-0", text:sub(15, 16))
+				{ " A ", HL.header_ok },
+				{ " ", HL.header_plain },
+				{ "+2", HL.header_ok },
+				{ " ", HL.header_plain },
+				{ "-1", HL.header_error },
+				{ " ", HL.header_plain },
+				{ "■■", HL.header_ok },
+				{ "■", HL.header_error },
+				{ "■■", HL.header_muted },
+				{ " ", HL.header_plain },
+			}, parts)
 		end)
 
-		it("leaves an unknown status uncoloured", function()
-			local _, ranges = all_diffs.build_file_header({ path = "x", status = "weird" })
-			assert.equals(2, #ranges)
+		it("shows a rename as old → new and an unknown status in a plain badge", function()
+			local text, ranges =
+				all_diffs.build_file_header({ path = "new.lua", previous_path = "old.lua", status = "weird" })
+			assert.truthy(text:find("old.lua → new.lua", 1, true))
+			assert.equals(all_diffs.HL.header_plain, ranges[1][3])
+			assert.equals(" ? ", text:sub(ranges[1][1] + 1, ranges[1][2]))
 		end)
 	end)
 
@@ -186,8 +201,8 @@ describe("all_diffs", function()
 			local rows = all_diffs.build_rows({ { path = "a", status = "modified", patch = "@@ -1 +1,2 @@\n-x\n+y\n+z" } })
 			local left, right = all_diffs.build_buffer_lines(rows)
 			assert.equals(#left, #right)
-			assert.same({ " M a  +0 -0 ", "@@ -1 +1,2 @@", "x", "" }, left)
-			assert.same({ " M a  +0 -0 ", "@@ -1 +1,2 @@", "y", "z" }, right)
+			assert.same({ "  M   a    +0 -0 ■■■■■  ", "@@ -1 +1,2 @@", "x", "" }, left)
+			assert.same({ "  M   a    +0 -0 ■■■■■  ", "@@ -1 +1,2 @@", "y", "z" }, right)
 		end)
 	end)
 
@@ -400,31 +415,37 @@ describe("all_diffs", function()
 			vim.cmd("redraw")
 			for _, win in ipairs(wins) do
 				local bar = vim.api.nvim_eval_statusline(vim.wo[win].winbar, { winid = win, use_winbar = true }).str
-				assert.truthy(bar:find("M a.lua  +1 -1", 1, true))
+				assert.truthy(bar:find("a.lua", 1, true))
+				assert.truthy(bar:find("+1 -1", 1, true))
 			end
 			local left_bar = vim.api.nvim_eval_statusline(vim.wo[wins[1]].winbar, { winid = wins[1], use_winbar = true }).str
 			assert.truthy(left_bar:find("Base", 1, true))
 		end)
 
-		it("gives a file header line a background-only line group and colours its text separately", function()
+		it("draws the file header as a bar to the line end without a line group, with badges over it", function()
 			all_diffs.open()
 			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
-			local line_groups, text_groups = {}, {}
+			local line_groups, text_groups, bar = {}, {}, nil
 			for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(right_buf, -1, { 0, 0 }, { 0, -1 }, { details = true })) do
-				if mark[4].line_hl_group then
-					line_groups[mark[4].line_hl_group] = true
+				local d = mark[4]
+				if d.line_hl_group then
+					table.insert(line_groups, d.line_hl_group)
 				end
-				if mark[4].hl_group then
-					text_groups[mark[4].hl_group] = true
+				if d.hl_group then
+					text_groups[d.hl_group] = true
+				end
+				if d.hl_group == all_diffs.HL.file then
+					bar = d
 				end
 			end
-			assert.same({ [all_diffs.HL.file_line] = true }, line_groups)
-			assert.is_true(text_groups[all_diffs.HL.file])
+			-- A line group would win over the badges' own background.
+			assert.same({}, line_groups)
+			assert.is_true(bar.hl_eol)
+			assert.equals(1, bar.end_row)
 			assert.is_true(text_groups[all_diffs.HL.header_warn])
 			assert.is_true(text_groups[all_diffs.HL.header_ok])
 			assert.is_true(text_groups[all_diffs.HL.header_error])
-			-- A foreground on the line group would override every text colour above.
-			assert.is_nil(vim.api.nvim_get_hl(0, { name = all_diffs.HL.file_line, link = false }).fg)
+			assert.is_true(text_groups[all_diffs.HL.header_plain])
 		end)
 
 		it("closes the whole view when one of its windows is closed", function()
@@ -489,7 +510,7 @@ describe("all_diffs", function()
 			all_diffs.open()
 			assert.equals(tab, vim.api.nvim_get_current_tabpage())
 			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
-			assert.equals(" A b.lua  +0 -0 ", vim.api.nvim_buf_get_lines(right_buf, 0, 1, false)[1])
+			assert.truthy(vim.api.nvim_buf_get_lines(right_buf, 0, 1, false)[1]:find("b.lua", 1, true))
 		end)
 
 		it("replaces the view of a stopped session instead of reusing it", function()
