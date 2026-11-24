@@ -252,20 +252,22 @@ Using lazy.nvim: >lua
 :FudeReviewAllDiffs                                *:FudeReviewAllDiffs*
     Show the diff of every changed file of the current scope in a new
     tab, base on the left and head on the right, like the GitHub PR
-    "Files changed" split view. Each file starts with a header line
-    (` M path  +3 -1 `, on a background of its own, with the status
-    letter and the counts coloured) followed by its hunks; a file without a patch (too
-    large or binary) shows `(diff not available)`. The two windows use
+    "Files changed" split view. Each file starts with a header bar like
+    GitHub's file header: the status letter, the path, the line counts
+    and a five-square diffstat (green added, red deleted, grey the rest),
+    e.g. `  M   lua/a.lua    +30 -8 ■■■■■  `, the status letter and the
+    counts in badges on the bar. A file without a patch (too large or
+    binary) shows `(diff not available)`. The two windows use
     'scrollbind' and 'cursorbind', so any scroll key (<C-e>, <C-y>,
     <C-d>, j, k) moves both sides. Each side shows its own line numbers;
     the code is highlighted with the file type's treesitter parser (a
     file without one stays uncoloured) and the changed words of a
     removed/added line pair are marked. Only the diff lines are parsed,
     so a string or comment that starts outside a hunk may be coloured
-    wrongly. Once a file's header line scrolls off the top, the winbar
-    of each window shows it, and the hunk header above the top line, so
-    the file name stays visible while scrolling through a long file. Requires an active
-    review session.
+    wrongly. Once a file's header bar scrolls off the top, the winbar of
+    each window shows it, and the hunk header above the top line, so the
+    file name stays visible while scrolling through a long file.
+    Requires an active review session.
 
     Keys in the view:
       <CR>  Open the file at the cursor row's line in the tab the view
@@ -282,16 +284,17 @@ Using lazy.nvim: >lua
     `FudeAllDiffsAddText` / `FudeAllDiffsDeleteText` (DiffText),
     `FudeAllDiffsFiller` (NonText), `FudeAllDiffsNote` (Comment).
     Derived from the colorscheme (and again after |:colorscheme|):
-    `FudeAllDiffsFile` (file header text: the Title colour, bold, on a
-    background of that colour mixed into the Normal background),
-    `FudeAllDiffsFileLine` (that background over the whole header line),
-    `FudeAllDiffsHunk` / `FudeAllDiffsHunkLine` (the same for hunk
-    headers with the DiagnosticInfo colour, italic), `FudeAllDiffsSide`
-    (the Base/Head label of the winbar), and `FudeAllDiffsHeaderOk` /
-    `FudeAllDiffsHeaderWarn` / `FudeAllDiffsHeaderError` /
-    `FudeAllDiffsHeaderInfo` (status letter and counts in a file
-    header, on its background). Defining any of these yourself overrides
-    the default.
+    `FudeAllDiffsFile` (the file header bar: the Normal background
+    colour, bold, on the Title colour), `FudeAllDiffsHeaderPlain` /
+    `FudeAllDiffsHeaderOk` / `FudeAllDiffsHeaderWarn` /
+    `FudeAllDiffsHeaderError` / `FudeAllDiffsHeaderInfo` /
+    `FudeAllDiffsHeaderMuted` (the badges on the bar: Normal, the
+    Diagnostic colours and NonText on the Normal background),
+    `FudeAllDiffsHunk` (hunk header text: the DiagnosticInfo colour,
+    italic, on that colour mixed into the Normal background),
+    `FudeAllDiffsHunkLine` (that background over the whole hunk header
+    line), and `FudeAllDiffsSide` (the Base/Head label of the winbar).
+    Defining any of these yourself overrides the default.
 
 :FudeReviewComment                                  *:FudeReviewComment*
     Create a review comment on the current line (normal mode) or
