@@ -406,6 +406,27 @@ describe("all_diffs", function()
 			assert.truthy(left_bar:find("Base", 1, true))
 		end)
 
+		it("gives a file header line a background-only line group and colours its text separately", function()
+			all_diffs.open()
+			local right_buf = vim.api.nvim_win_get_buf(vim.api.nvim_tabpage_list_wins(0)[2])
+			local line_groups, text_groups = {}, {}
+			for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(right_buf, -1, { 0, 0 }, { 0, -1 }, { details = true })) do
+				if mark[4].line_hl_group then
+					line_groups[mark[4].line_hl_group] = true
+				end
+				if mark[4].hl_group then
+					text_groups[mark[4].hl_group] = true
+				end
+			end
+			assert.same({ [all_diffs.HL.file_line] = true }, line_groups)
+			assert.is_true(text_groups[all_diffs.HL.file])
+			assert.is_true(text_groups[all_diffs.HL.header_warn])
+			assert.is_true(text_groups[all_diffs.HL.header_ok])
+			assert.is_true(text_groups[all_diffs.HL.header_error])
+			-- A foreground on the line group would override every text colour above.
+			assert.is_nil(vim.api.nvim_get_hl(0, { name = all_diffs.HL.file_line, link = false }).fg)
+		end)
+
 		it("closes the whole view when one of its windows is closed", function()
 			all_diffs.open()
 			vim.cmd("close")
