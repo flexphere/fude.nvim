@@ -249,6 +249,36 @@ Using lazy.nvim: >lua
     For a renamed file, the base version is read from its old path,
     so the diff shows the content changes rather than a new file.
 
+:FudeReviewAllDiffs                                *:FudeReviewAllDiffs*
+    Show the diff of every changed file of the current scope in a new
+    tab, base on the left and head on the right, like the GitHub PR
+    "Files changed" split view. Each file starts with a header line
+    (`M path  +3 -1`) followed by its hunks; a file without a patch (too
+    large or binary) shows `(diff not available)`. The two windows use
+    'scrollbind' and 'cursorbind', so any scroll key (<C-e>, <C-y>,
+    <C-d>, j, k) moves both sides. Each side shows its own line numbers;
+    the code is highlighted with the file type's treesitter parser (a
+    file without one stays uncoloured) and the changed words of a
+    removed/added line pair are marked. Only the diff lines are parsed,
+    so a string or comment that starts outside a hunk may be coloured
+    wrongly. Requires an active review session.
+
+    Keys in the view:
+      <CR>  Open the file at the cursor row's line in the tab the view
+            was opened from (a removed line opens the line after it).
+            Removed files cannot be opened.
+      R     Rebuild the view from the current scope (the view does not
+            follow a scope switch or reload by itself).
+      q     Close the view.
+
+    Running the command again focuses the open view and rebuilds it.
+    Closing either window closes the view, and so does
+    |:FudeReviewStop|. Highlight groups (linked by default):
+    `FudeAllDiffsAdd` (DiffAdd), `FudeAllDiffsDelete` (DiffDelete),
+    `FudeAllDiffsAddText` / `FudeAllDiffsDeleteText` (DiffText),
+    `FudeAllDiffsFile` (Title), `FudeAllDiffsHunk` (Comment),
+    `FudeAllDiffsFiller` (NonText), `FudeAllDiffsNote` (Comment).
+
 :FudeReviewComment                                  *:FudeReviewComment*
     Create a review comment on the current line (normal mode) or
     selected lines (visual mode). Opens a floating window for
