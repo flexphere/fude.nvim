@@ -17,6 +17,11 @@ M.FILLER_CHAR = "╱"
 M.HL = {
 	file = "FudeAllDiffsFile",
 	hunk = "FudeAllDiffsHunk",
+	-- Background-only groups for the whole header line: a line_hl_group's
+	-- foreground wins over every other highlight of the line, so the header's
+	-- text colours go in separate groups (file / hunk / header_*).
+	file_line = "FudeAllDiffsFileLine",
+	hunk_line = "FudeAllDiffsHunkLine",
 	delete = "FudeAllDiffsDelete",
 	add = "FudeAllDiffsAdd",
 	delete_text = "FudeAllDiffsDeleteText",
@@ -211,9 +216,9 @@ end
 --- @return boolean right_filler
 function M.row_highlights(row)
 	if row.kind == "file" then
-		return M.HL.file, M.HL.file, false, false
+		return M.HL.file_line, M.HL.file_line, false, false
 	elseif row.kind == "hunk" then
-		return M.HL.hunk, M.HL.hunk, false, false
+		return M.HL.hunk_line, M.HL.hunk_line, false, false
 	elseif row.kind == "note" then
 		return M.HL.note, M.HL.note, false, false
 	elseif row.kind == "change" then
@@ -456,22 +461,36 @@ local function hl_color(name, key)
 	return ok and hl and hl[key] or nil
 end
 
+local function to_hex(color)
+	return color and string.format("#%06x", color) or nil
+end
+
+-- Weight of the header text colour mixed into the background of a header.
+M.FILE_BG_ALPHA = 0.3
+M.HUNK_BG_ALPHA = 0.15
+
 --- Header groups carry their own background, so that they stand apart from
---- code rows; derived from the colorscheme rather than fixed colours. Every
---- group is `default`, so a user definition wins.
+--- code rows. The background is the header's text colour mixed into the
+--- Normal background, so it shows on any colorscheme (StatusLine or
+--- CursorLine can be as dark as Normal). Every group is `default`, so a user
+--- definition wins.
 local function define_highlights()
 	for name, link in pairs(HL_LINKS) do
 		vim.api.nvim_set_hl(0, name, { link = link, default = true })
 	end
-	local bar_bg = hl_color("StatusLine", "bg") or hl_color("CursorLine", "bg")
-	local line_bg = hl_color("CursorLine", "bg") or bar_bg
-	vim.api.nvim_set_hl(0, M.HL.file, { fg = hl_color("Title", "fg"), bg = bar_bg, bold = true, default = true })
-	vim.api.nvim_set_hl(0, M.HL.hunk, {
-		fg = hl_color("DiagnosticInfo", "fg") or hl_color("Comment", "fg"),
-		bg = line_bg,
-		italic = true,
-		default = true,
-	})
+	local blend = require("fude.ui.format").blend_colors
+	local normal_bg = to_hex(hl_color("Normal", "bg")) or (vim.o.background == "light" and "#ffffff" or "#000000")
+	-- Some colorschemes give Title no colour (habamax makes it only bold).
+	local title_fg = to_hex(
+		hl_color("Title", "fg") or hl_color("Directory", "fg") or hl_color("Function", "fg") or hl_color("Normal", "fg")
+	)
+	local info_fg = to_hex(hl_color("DiagnosticInfo", "fg") or hl_color("Comment", "fg"))
+	local file_bg = (title_fg and blend(title_fg, normal_bg, M.FILE_BG_ALPHA)) or to_hex(hl_color("StatusLine", "bg"))
+	local hunk_bg = (info_fg and blend(info_fg, normal_bg, M.HUNK_BG_ALPHA)) or to_hex(hl_color("CursorLine", "bg"))
+	vim.api.nvim_set_hl(0, M.HL.file_line, { bg = file_bg, default = true })
+	vim.api.nvim_set_hl(0, M.HL.hunk_line, { bg = hunk_bg, default = true })
+	vim.api.nvim_set_hl(0, M.HL.file, { fg = title_fg, bg = file_bg, bold = true, default = true })
+	vim.api.nvim_set_hl(0, M.HL.hunk, { fg = info_fg, bg = hunk_bg, italic = true, default = true })
 	vim.api.nvim_set_hl(
 		0,
 		M.HL.side,
@@ -479,14 +498,14 @@ local function define_highlights()
 	)
 	-- Coloured parts of a file header keep the header's background, also in
 	-- the winbar, where a group without a background would show a gap.
-	local file_bg = hl_color(M.HL.file, "bg")
+	local header_bg = hl_color(M.HL.file, "bg")
 	for group, source in pairs({
 		[M.HL.header_ok] = "DiagnosticOk",
 		[M.HL.header_warn] = "DiagnosticWarn",
 		[M.HL.header_error] = "DiagnosticError",
 		[M.HL.header_info] = "DiagnosticInfo",
 	}) do
-		vim.api.nvim_set_hl(0, group, { fg = hl_color(source, "fg"), bg = file_bg, bold = true, default = true })
+		vim.api.nvim_set_hl(0, group, { fg = hl_color(source, "fg"), bg = header_bg, bold = true, default = true })
 	end
 end
 
@@ -552,6 +571,16 @@ local function apply_row_highlights(rows)
 					virt_text = { { string.rep(M.FILLER_CHAR, vim.o.columns), M.HL.filler } },
 					virt_text_pos = "overlay",
 					priority = LINE_PRIORITY,
+				})
+			end
+		end
+		local text_hl = (row.kind == "file" and M.HL.file) or (row.kind == "hunk" and M.HL.hunk) or nil
+		if text_hl then
+			for _, side in ipairs({ "left", "right" }) do
+				vim.api.nvim_buf_set_extmark(view[side].buf, ns, i - 1, 0, {
+					end_col = #(row[side] or ""),
+					hl_group = text_hl,
+					priority = SYNTAX_PRIORITY,
 				})
 			end
 		end
