@@ -1019,6 +1019,86 @@ function M.get_review_patch(base_sha, path, cwd)
 	return nil
 end
 
+--- Split a multi-file `git diff` output into each file's hunks, keyed by the
+--- path on the new side (the old one for a deleted file). A file listed
+--- without hunks (a pure rename, a mode change, a binary file) maps to "", so
+--- callers can tell it from a file the output does not cover. Expects
+--- `core.quotePath=false` and the `a/`/`b/` prefixes.
+--- @param output string|nil
+--- @return table<string, string> path → patch text from the first `@@` line, or ""
+function M.parse_patches_by_path(output)
+	local patches = {}
+	if type(output) ~= "string" then
+		return patches
+	end
+	local path, old_path, body
+	local function finish()
+		if path then
+			patches[path] = body and (table.concat(body, "\n"):gsub("\n+$", "")) or ""
+		end
+		path, old_path, body = nil, nil, nil
+	end
+	-- git appends a TAB to a ---/+++ name that contains a space.
+	local function name(text)
+		return (text:gsub("\t$", ""))
+	end
+	for line in (output .. "\n"):gmatch("(.-)\n") do
+		if line:sub(1, 11) == "diff --git " then
+			finish()
+			-- "a/<p> b/<p>" is unambiguous only when both halves are the same
+			-- path; a rename names its paths on the "rename to" line instead.
+			local pair = line:sub(12)
+			local half = (#pair - 1) / 2
+			local p = pair:sub(3, half)
+			if half == math.floor(half) and pair == "a/" .. p .. " b/" .. p then
+				path = p
+			end
+		elseif body then
+			table.insert(body, line)
+		elseif line:sub(1, 10) == "rename to " then
+			path = line:sub(11)
+		elseif line:sub(1, 6) == "--- a/" then
+			old_path = name(line:sub(7))
+		elseif line:sub(1, 6) == "+++ b/" then
+			path = name(line:sub(7))
+		elseif line == "+++ /dev/null" then
+			path = old_path or path
+		elseif line:sub(1, 2) == "@@" and path then
+			body = { line }
+		end
+	end
+	finish()
+	return patches
+end
+
+--- Every tracked file's patch against `base_sha` in one `git diff` (renames
+--- detected like `get_name_status`), so a caller that needs all of them does
+--- not start one git process per file. Untracked files are not included.
+--- @param base_sha string
+--- @param cwd string|nil repository root
+--- @return table<string, string>|nil path → patch, nil when git failed
+function M.get_review_patches(base_sha, cwd)
+	local result = vim
+		.system({
+			"git",
+			"-c",
+			"core.quotePath=false",
+			"diff",
+			"-M",
+			"--no-color",
+			"--no-ext-diff",
+			-- Fixed prefixes: diff.noprefix / diff.mnemonicPrefix would change them.
+			"--src-prefix=a/",
+			"--dst-prefix=b/",
+			base_sha,
+		}, { text = true, cwd = cwd })
+		:wait()
+	if result.code ~= 0 then
+		return nil
+	end
+	return M.parse_patches_by_path(result.stdout)
+end
+
 --- Get the subject of the first commit since base branch.
 --- `origin/<base>` is tried before the local ref: the PR targets the branch on
 --- GitHub, and a stale local branch of the same name would give a title based
