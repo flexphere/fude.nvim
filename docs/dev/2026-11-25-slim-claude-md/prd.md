@@ -22,7 +22,7 @@
 | AC3 | `CLAUDE.md` の各モジュールの項目は、責務と壊しやすい不変条件の要約（目安 1〜5 行）と、詳細ファイルへのリンクになっている。`lua/fude/` の全モジュールに項目がある | 目視。`lua/fude/**/*.lua` の一覧と突き合わせる | |
 | AC4 | State Dependencies 表は `CLAUDE.md` に残り、`make check-state-deps` が通る | `make all` | |
 | AC5 | `CLAUDE.md` の文字数が上限（40,000）を超えると失敗する `make check-claude-size`（`scripts/check_claude_size.lua`）があり、`make all`・`.githooks/pre-commit`・CI に入っている | `tests/fude/scripts/check_claude_size_spec.lua`（上限ちょうど・超過・文字数をバイトでなく文字で数える） | |
-| AC6 | 「CLAUDE.md の Architecture を更新」と書いている規則（`CLAUDE.md` の Quality Rules、`pj-checklist`、`develop` / `develop-v2` / `self-review` / `review-respond` / `harness-audit` スキル、`CONTRIBUTING.md`、`.claude/HARNESS.md`）が、「詳細は `docs/architecture/` に、`CLAUDE.md` には責務と不変条件だけ」という書き分けに更新されている。`CLAUDE.md` に何を書くか・書かないかの指針が書かれている | grep で古い指示が残っていないこと | |
+| AC6 | 「CLAUDE.md の Architecture を更新」と書いている規則（`CLAUDE.md` の Quality Rules、`pj-checklist`、`develop` / `self-review` / `review-respond` / `harness-audit` スキル、`CONTRIBUTING.md`、`.claude/HARNESS.md`）が、「詳細は `docs/architecture/` に、`CLAUDE.md` には責務と不変条件だけ」という書き分けに更新されている。`CLAUDE.md` に何を書くか・書かないかの指針が書かれている | grep で古い指示が残っていないこと | |
 | AC7 | `make all` が通る | `make all` | |
 
 ## スコープ外
@@ -49,3 +49,4 @@
 
 | 日付 | 変更 | 理由 |
 |---|---|---|
+| 2026-11-25 | AC6 の対象から `develop-v2` を外す。`develop-v2` は `origin/main` に無く未マージの PR #328 にだけあるため、そちらの 3 行の修正はユーザーに委ねる | D-005（判断役） |
