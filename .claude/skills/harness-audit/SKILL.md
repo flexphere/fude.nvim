@@ -223,7 +223,7 @@ Phase 2 step 7 の集計を読み、`/develop-v2` のどこにボトルネック
    # 同月内に複数回 formal audit する場合は audit-YYYY-MM-DD.md (日付付与) を採用
    ```
    保存内容は Phase 4 で提示した完全なレポート（pj-checklist 発火、取りこぼし、
-   sensor 発火率、`/develop-v2` の指標、4-quadrant matrix、review-lessons 健全性、HARNESS.md 整合性、
+   sensor 発火率、4-quadrant matrix、`/develop-v2` の指標、review-lessons 健全性、HARNESS.md 整合性、
    次アクション）。これにより四半期間隔の傾向分析・前回 audit との差分比較が
    可能になる。
 
