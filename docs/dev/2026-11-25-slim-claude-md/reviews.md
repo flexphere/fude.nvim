@@ -74,12 +74,12 @@ Copilot は「Copilot was unable to review this pull request because the user wh
 
 | 区画 | モジュール | 点検役 | 列挙した主張 | 問題あり | 迷い | 問題なしと確かめた範囲 | コミット |
 |---|---|---|---|---|---|---|---|
-| S1 | commands, palette, init, config, gh, util | fable | 31 | 3 | 2 | 残り 26 件 | (修正後に記入) |
-| S2 | drafts, diff, local/store, local/session, local/tracker, comments/local_sync | fable | 49 | 3 | 2 | 残り 44 件 | (修正後に記入) |
-| S3 | preview, all_diffs, comments, comments/data, comments/sync, comments/pickers | fable | 36 | 3 | 2 | 残り 31 件 | (修正後に記入) |
-| S4 | ui, ui/avatars, ui/format, ui/inline, ui/comment_browser, ui/sidepanel | fable | 28 | 6 | 2 | 残り 20 件 | (修正後に記入) |
-| S5 | ui/sidepanel/tree, ui/extmarks, files, scope, stack, overview | fable | 38 | 2 | 3 | 残り 33 件 | (修正後に記入) |
-| S6 | ui/toggle_picker, reactions, completion/init, completion/blink, completion/cmp, pr | fable | 33 | 2 | 3 | 残り 28 件 | (修正後に記入) |
+| S1 | commands, palette, init, config, gh, util | fable | 31 | 3 | 2 | 残り 26 件 | 2492334 |
+| S2 | drafts, diff, local/store, local/session, local/tracker, comments/local_sync | fable | 49 | 3 | 2 | 残り 44 件 | 2492334 |
+| S3 | preview, all_diffs, comments, comments/data, comments/sync, comments/pickers | fable | 36 | 3 | 2 | 残り 31 件 | 2492334 |
+| S4 | ui, ui/avatars, ui/format, ui/inline, ui/comment_browser, ui/sidepanel | fable | 28 | 6 | 2 | 残り 20 件 | 2492334 |
+| S5 | ui/sidepanel/tree, ui/extmarks, files, scope, stack, overview | fable | 38 | 2 | 3 | 残り 33 件 | 2492334 |
+| S6 | ui/toggle_picker, reactions, completion/init, completion/blink, completion/cmp, pr | fable | 33 | 2 | 3 | 残り 28 件 | 2492334 |
 | 計 | 36 項目 | | 215 | 19 | 14 | 182 件 | |
 
 迷いの 14 件も同じ形（限定の脱落）なので、問題ありの 19 件とあわせて実装役に直させた。点検役の詳細な結果（場所・元の記述・置き換え案）は作業用のメモに残した。
