@@ -148,7 +148,7 @@ def main():
     if len(miss) >= 2:
         signals.append(
             f"レビュー役の見逃し: 直近 {k} 件中 {len(miss)} 件で、MUST 0 のあとに Copilot の指摘で直した、"
-            "またはマージ後の fix 候補がある → §4.2 案 4（レビュー役の観点別並列化）を検討"
+            "またはマージ後の fix 候補がある → §4.2 案 4（レビュー役の観点別並列化）または案 7（レビュー役・判断役を毎回新しく立てる）を検討"
         )
     req = [m for m in recent if g(m, "revisions", "requirement_change", default=0) > 0
            or g(m, "hearing", "prd_changes_after_approval", default=0) > 0]

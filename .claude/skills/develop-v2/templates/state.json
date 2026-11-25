@@ -33,6 +33,9 @@
     }
   ],
   "review_round": 0,
+  "reviewer_agent_id": null,
+  "judge_agent_id": null,
+  "_agent_ids_note": "レビュー役・判断役に SendMessage で続けて頼むための ID（セッションをまたぐと使えない）。版が変わったらレビュー役は立て直す",
   "review_kinds": [],
   "_review_kinds_note": "1 件の形: {\"revision\": 1, \"round\": 1, \"kind\": \"指摘の本質を 1 文で\", \"severity\": \"MUST\"}",
   "review_outcomes": [],
