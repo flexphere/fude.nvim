@@ -4,9 +4,9 @@
   "date": "2026-11-26",
   "branch": "docs/slim-claude-md-trial",
   "base": "origin/main",
-  "status": "実装中",
+  "status": "レビュー対応中",
   "generatedBy": "/develop-v2",
-  "summary": "PRD が承認され、実装中です。文書の移動、上限チェックの追加、参照先の書き換えを行い、そのあとレビューに進みます。ユーザーが不在のため、承認はユーザー代理のサブエージェントが行いました。",
+  "summary": "実装とレビュー（MUST 0 件）が済み、PR #330 を ready for review にしました。Copilot のレビューを待っています（届かなければそのまま報告に進みます）。",
   "attention": [
     {
       "text": "同じ課題の PR #329 とは独立に進める試行です（#329 には触りません）",
@@ -17,32 +17,38 @@
     {
       "id": "AC1",
       "text": "CLAUDE.md が 40,000 文字以下になる",
-      "how": "wc -m CLAUDE.md"
+      "how": "wc -m CLAUDE.md → wc -m CLAUDE.md = 16,241 文字",
+      "result": "met"
     },
     {
       "id": "AC2",
       "text": "起点の CLAUDE.md の Module Responsibilities の全行が docs/architecture/ に元の文面のまま欠けずにある",
-      "how": "完全一致で探すスクリプト（照合した行数と欠け 0 件）"
+      "how": "完全一致で探すスクリプト（照合した行数と欠け 0 件） → 52 行（Module Responsibilities 37 行＋thread identity 15 行）を照合し、欠け 0 件。レビュー役も別のスクリプトで同じ結果",
+      "result": "met"
     },
     {
       "id": "AC3",
       "text": "CLAUDE.md に各モジュールの要約・詳細ファイルのパス・「実装前に読む」の指示がある。@path の取り込みは使わない",
-      "how": "CLAUDE.md を読む・パスの実在と全ファイルが参照されていること・@ の取り込みが 0 件"
+      "how": "CLAUDE.md を読む・パスの実在と全ファイルが参照されていること・@ の取り込みが 0 件 → 12 パスがすべて実在し、12 ファイルすべてが参照されている。@ の取り込み 0 件",
+      "result": "met"
     },
     {
       "id": "AC4",
       "text": "make all に文字数の上限チェックが入り、超えると失敗して直し方を示す",
-      "how": "一時的に膨らませて失敗を確かめる"
+      "how": "一時的に膨らませて失敗を確かめる → 50,001 文字で make check-claude-md が失敗し直し方が出る。pre-commit と CI にも入れ、CI の「CLAUDE.md Size Check」が通過",
+      "result": "met"
     },
     {
       "id": "AC5",
       "text": "残す節が CLAUDE.md に残り、既存のチェックが通る",
-      "how": "make all"
+      "how": "make all → 6 つの節が残り、make all が通過",
+      "result": "met"
     },
     {
       "id": "AC6",
       "text": "詳細の更新先を CLAUDE.md としている記述が新しい置き場所を指す",
-      "how": "grep の結果を 1 件ずつ確かめる"
+      "how": "grep の結果を 1 件ずつ確かめる → grep の 47 件を 1 件ずつ確認し、詳細の更新先を docs/architecture/ に変更",
+      "result": "met"
     }
   ],
   "prd": {
@@ -88,19 +94,217 @@
       "impact": "CLAUDE.md、docs/architecture/、Makefile、scripts/、.claude/、CONTRIBUTING.md",
       "revisit": "詳細ファイルが読まれず実装の質が落ちたとき",
       "refs": "AC1〜AC6"
+    },
+    {
+      "id": "D-002",
+      "title": "上限チェックを pre-commit と CI にも足す",
+      "at": "2026-11-26 01:15",
+      "phase": "実装",
+      "severity": "中",
+      "severityReason": "変更は小さく戻せるが、再発防止という目的に直結する",
+      "by": "判断役",
+      "background": "実装役が、pre-commit と CI は make all を呼ばないため、新しいチェックが関門で動かないと報告した。",
+      "options": [
+        "make all だけ",
+        "pre-commit と CI の両方",
+        "CI だけ"
+      ],
+      "decided": "pre-commit と CI の両方に足す",
+      "reason": "既存の 3 つのチェックはすべての関門に入っている。関門の外のチェックは流されなくなる。",
+      "impact": ".githooks/pre-commit、.github/workflows/ci.yml、HARNESS.md、CONTRIBUTING.md",
+      "revisit": "pre-commit と CI を make all の呼び出しに一本化するとき",
+      "refs": "AC4"
+    },
+    {
+      "id": "D-003",
+      "title": "draft PR をレビューの途中で作る",
+      "at": "2026-11-26 01:15",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "手順の順番だけの違い",
+      "by": "作業する側",
+      "background": "HARNESS.md に PR 番号を書く指摘と、CI の変更が手元で確かめられないことがあった。",
+      "options": [
+        "レビューが終わってから作る",
+        "先に draft で作る"
+      ],
+      "decided": "1 周目のあとに draft で作った",
+      "reason": "番号が確定し、CI の結果もレビュー中に見られる。",
+      "impact": "なし",
+      "revisit": "-",
+      "refs": ""
+    },
+    {
+      "id": "D-004",
+      "title": "MAY の指摘の大半は直さない",
+      "at": "2026-11-26 01:15",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "今回の変更より前からある事柄か、PRD の制約（移動だけ）で直せないもの",
+      "by": "作業する側",
+      "background": "レビューで MAY が 10 件出た。",
+      "options": [
+        "直す",
+        "直さない"
+      ],
+      "decided": "2 件だけ直し、残りは直さない",
+      "reason": "スコープ外（lua/ の変更、記述の書き直し）に当たるか、影響が小さい。",
+      "impact": "報告の「直さなかった指摘」に載せる",
+      "revisit": "docs/architecture/ の整形や pre-commit の対象を見直すとき",
+      "refs": ""
     }
   ],
-  "reviews": [],
-  "unresolved": [],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 4,
+      "may": 5,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "severity": "SHOULD",
+          "text": "thread identity の見出しの階層が元と違う",
+          "outcome": "直した"
+        },
+        {
+          "severity": "SHOULD",
+          "text": "横断的な契約が束縛される側のファイルから辿れない",
+          "outcome": "直した（Related 行と Key Patterns）"
+        },
+        {
+          "severity": "SHOULD",
+          "text": "HARNESS.md の PR 欄が「(本 PR)」",
+          "outcome": "直した（#330）"
+        },
+        {
+          "severity": "SHOULD",
+          "text": "harness-audit が新しいセンサーを集計しない",
+          "outcome": "直した"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 2,
+      "may": 9,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "severity": "SHOULD",
+          "text": "Shared helpers の行がコードの現状と合わない断定をしている",
+          "outcome": "直した（新しいコード向けの規則に）"
+        },
+        {
+          "severity": "SHOULD",
+          "text": "check_claude_md の発火を数える grep が広すぎる",
+          "outcome": "直した"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 0,
+      "may": 1,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "severity": "MAY",
+          "text": "（修正箇所だけの確認）grep がセンサーを導入したコミットを 1 件数える",
+          "outcome": "直さない"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R1-M1",
+      "severity": "MAY",
+      "text": "completion/blink.lua と completion/cmp.lua が CLAUDE.md の地図に無い",
+      "reason": "元の CLAUDE.md にも無い（今回の欠けではない）"
+    },
+    {
+      "id": "R1-M3",
+      "severity": "MAY",
+      "text": "移した先に、親を失った字下げの箇条書きと「Moved verbatim」の注記が残る",
+      "reason": "直すと「元の文面のまま」の制約に反する"
+    },
+    {
+      "id": "R1-M4",
+      "severity": "MAY",
+      "text": "pre-commit の luacheck / stylua が scripts/ を見ない",
+      "reason": "今回の変更より前からあるずれ"
+    },
+    {
+      "id": "R1-M5",
+      "severity": "MAY",
+      "text": "check_claude_md.lua はリポジトリ直下以外から走らせると失敗する",
+      "reason": "既存のチェックと同じ作り"
+    },
+    {
+      "id": "R2-N3",
+      "severity": "MAY",
+      "text": "Related 行が直接呼ぶモジュールのファイルを一部挙げていない",
+      "reason": "契約のある場所の案内であり、全依存の一覧ではない"
+    },
+    {
+      "id": "R2-N6",
+      "severity": "MAY",
+      "text": "上限 50,000 が 6 か所に直書き",
+      "reason": "影響が小さい"
+    },
+    {
+      "id": "R3-1",
+      "severity": "MAY",
+      "text": "harness-audit の grep がセンサーを導入したコミットを 1 件数える",
+      "reason": "初回の監査で 1 件多く出るだけ"
+    }
+  ],
   "tasks": [
     {
       "id": "T1",
       "title": "Module Responsibilities を docs/architecture/ へ移し、CLAUDE.md を要約にする。上限チェックを足し、参照先を書き換える",
-      "status": "実装中",
+      "status": "完了",
       "owner": "impl-1"
     }
   ],
-  "tests": [],
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト（失敗 0）・check-state-deps・check-purity・check-docs・check-claude-md"
+    },
+    {
+      "command": "GitHub Actions（PR #330）",
+      "result": "pass",
+      "detail": "10 ジョブすべて通過（新しい CLAUDE.md Size Check を含む）"
+    }
+  ],
   "revision": 1,
-  "revisions": []
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": "CLAUDE.md を 158,255 → 16,241 文字にし、詳細を docs/architecture/ の 12 ファイルへ移した。上限チェックを make all・pre-commit・CI に足した。",
+      "refs": ""
+    }
+  ],
+  "commits": 6,
+  "pr": {
+    "number": 330,
+    "url": "https://github.com/flexphere/fude.nvim/pull/330"
+  }
 }
