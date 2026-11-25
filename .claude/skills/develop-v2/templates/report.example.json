@@ -3,21 +3,16 @@
   "slug": "csv-export-filter",
   "date": "2026-11-25",
   "branch": "feat/csv-export-filter",
-  "base": "main",
+  "base": "origin/main",
   "status": "完了",
   "commits": 7,
   "summary": "これはテンプレートの見た目を確かめるための架空の例です。管理画面の CSV 出力に、期間と状態での絞り込みを足しました。既存の出力（絞り込みなし）の列と並び順は変えていません。",
   "generatedBy": "/develop-v2",
   "tests": [
     {
-      "command": "make check",
+      "command": "make all",
       "result": "pass",
-      "detail": "phpstan・deptrac・Unit 412 件すべて通過"
-    },
-    {
-      "command": "make test",
-      "result": "pass",
-      "detail": "Golden 1,284 件すべて通過。差分なし"
+      "detail": "lint・format-check・テスト（成功 412 件）・check-state-deps・check-purity・check-docs すべて通過"
     },
     {
       "command": "CSV の手動確認（会社 3）",
@@ -52,7 +47,7 @@
       "id": "AC3",
       "text": "絞り込みを指定しないとき、出力は今と 1 バイトも変わらない",
       "result": "met",
-      "how": "Golden（export 系 38 件）"
+      "how": "テスト（export 系 38 件）"
     },
     {
       "id": "AC4",
@@ -143,7 +138,7 @@
       ],
       "decided": "ストリームで返す",
       "reason": "上限を設けると利用者の作業が変わる。ストリームなら出力は同じまま、メモリの使い方だけが変わる。",
-      "impact": "ExportController の応答の作り方。Golden は通過",
+      "impact": "ExportController の応答の作り方。テストは通過",
       "revisit": "staging で 10 秒を超えたとき",
       "refs": "R1-1, AC4"
     },
@@ -253,25 +248,25 @@
       "id": "T1",
       "title": "ExportQuery に期間・状態の条件を足す",
       "status": "完了",
-      "owner": "main"
+      "owner": "impl-1"
     },
     {
       "id": "T2",
       "title": "画面に絞り込みの入力欄を足す",
       "status": "完了",
-      "owner": "sub-1"
+      "owner": "impl-2"
     },
     {
       "id": "T3",
       "title": "1 万件超をストリームで返す",
       "status": "完了",
-      "owner": "main"
+      "owner": "impl-1"
     },
     {
       "id": "T4",
       "title": "Unit テストを足す",
       "status": "完了",
-      "owner": "sub-2"
+      "owner": "impl-3"
     }
   ],
   "revision": 2,

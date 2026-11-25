@@ -32,14 +32,8 @@
     }
   ],
   "review_round": 0,
-  "review_kinds": [
-    {
-      "revision": 1,
-      "round": 1,
-      "kind": "指摘の本質を 1 文で",
-      "severity": "MUST"
-    }
-  ],
+  "review_kinds": [],
+  "_review_kinds_note": "1 件の形: {\"revision\": 1, \"round\": 1, \"kind\": \"指摘の本質を 1 文で\", \"severity\": \"MUST\"}",
   "sweeps": [],
   "pr": {
     "number": null,
@@ -48,18 +42,13 @@
   "copilot": {
     "reviews_seen": 0,
     "unable_seen": 0,
-    "status": null
+    "status": null,
+    "timed_out": false,
+    "_note": "timed_out・status は報告のときに report.json の copilot へ写す（指標は report.json から数える）"
   },
   "revision": 1,
-  "revisions": [
-    {
-      "revision": 2,
-      "date": "2026-01-02",
-      "request": "修正の依頼",
-      "kind": "手直し | 要件の変更",
-      "decision": "D-010"
-    }
-  ],
+  "revisions": [],
+  "_revisions_note": "報告のときに第 1 版 {\"revision\": 1, \"date\": \"<報告日>\", \"kind\": \"最初の報告\", \"request\": \"最初の開発\"} を入れ、報告後の修正のたびに {\"revision\": 2, \"date\": \"...\", \"request\": \"修正の依頼\", \"kind\": \"手直し | 要件の変更\", \"decision\": \"D-010\"} を足す",
   "report_url": null,
   "updated_at": "2026-01-01T00:00:00+09:00"
 }

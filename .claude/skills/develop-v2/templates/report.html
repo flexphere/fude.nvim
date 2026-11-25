@@ -276,7 +276,7 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const eb = h("div", "eyebrow");
   const revs = arr(D.revisions);
   const revNo = D.revision || (revs.length ? Math.max(...revs.map(r => r.revision || 1)) : 1);
-  add(eb, h("span", null, "第 " + revNo + " 版"), h("span", null, D.date ? "報告日 " + D.date : null), h("span", null, D.branch ? "ブランチ " + D.branch : null), h("span", null, D.base ? "元 " + D.base : null));
+  add(eb, h("span", null, "第 " + revNo + " 版"), h("span", null, D.date ? (D.status === "完了" ? "報告日 " : "更新日 ") + D.date : null), h("span", null, D.branch ? "ブランチ " + D.branch : null), h("span", null, D.base ? "元 " + D.base : null));
   if (D.pr && /^https:\/\/github\.com\//.test(String(D.pr.url || ""))) { const a = h("a", null, "PR #" + (D.pr.number || "?")); a.href = D.pr.url; a.target = "_blank"; a.rel = "noopener"; const s = h("span"); s.append(a); eb.append(s); }
   const tests = arr(D.tests);
   const failed = tests.filter(t => t.result === "fail").length;
@@ -287,7 +287,7 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const highs = arr(D.decisions).filter(d => d.severity === "高").length;
   const rounds = arr(D.reviews);
   const facts = h("div", "facts");
-  [["状態", D.status || "—"], ["受け入れ基準", acc.length ? `${met} / ${acc.length} 満たした` : "—"],
+  [["状態", D.status || "—"], ["受け入れ基準", !acc.length ? "—" : acc.some(a => a.result) ? `${met} / ${acc.length} 満たした` : `${acc.length} 件・未確認`],
    ["テスト", !tests.length ? "—" : failed ? `${failed} 件失敗` + (notPassed ? `・${notPassed} 件未実行` : "") : notPassed ? `${passed} 件通過・${notPassed} 件未実行` : `${tests.length} 件すべて通過`],
    ["コミット", D.commits != null ? `${D.commits} 件` : "—"], ["レビュー", rounds.length ? `${rounds.length} 周` : "—"],
    ["重要度 高の判断", `${highs} 件`]].forEach(([k, v]) => { const f = h("div", "fact"); add(f, h("span", "k", k), h("span", "v", v)); facts.append(f); });
@@ -309,7 +309,7 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
     { label: "#", key: "id", cls: "id" },
     { label: "基準", key: "text" },
     { label: "結果", render: r => { const x = ACC[r.result] || [r.result || "—", "b-plain"]; return badge(x[0], x[1]); } },
-    { label: "確かめた方法", key: "how" },
+    { label: "確かめ方", key: "how" },
   ], acc, true));
 
   // ---- PRD ----
