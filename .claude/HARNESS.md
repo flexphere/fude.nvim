@@ -23,6 +23,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 |------|------|------|------|
 | 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
 | 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR→Copilot レビュー対応の一貫ワークフロー（計画合意後は自律実行） | `.claude/skills/develop/` |
+| 推論的 | `/develop-v2` skill | エージェント主導の開発。ヒアリング→PRD 承認→実装→経緯を知らないレビュー役（MUST 0 まで）→PR→Copilot 対応→判断の履歴つき報告ページ。記録は `docs/dev/` | `.claude/skills/develop-v2/` |
 | 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
 | 推論的 | `/self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/self-review/` |
 | 推論的 | `/pr` skill | コミット分割と draft PR 作成 | `.claude/skills/pr/` |
