@@ -4,7 +4,7 @@
 
 ## 渡すもの
 - PRD: <prd.md の全文を貼る（場所は渡さない）>
-- 差分: worktree `<worktree の場所>` で `git diff <base>...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'`
+- 差分: worktree `<worktree の場所>` で `git diff <base>...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'`（Bash の命令は毎回 `cd "<worktree の場所>" && ...` で始める（作業ディレクトリの外への `cd` は次の呼び出しに残らないため））
 - `docs/dev/` と `.claude/review-lessons.md` は読まない。そこには作った側の判断やレビューの記録があり、経緯を知らないあなたの判断を偏らせる。PRD は上に渡したものを使う。
 - リポジトリの規則: `<worktree>/CLAUDE.md`（そこから参照される資料も必要に応じて読む）
 - プロジェクト固有のチェックリスト: `<worktree>/.claude/skills/pj-checklist/SKILL.md`（無ければ元のリポジトリの同じパス）

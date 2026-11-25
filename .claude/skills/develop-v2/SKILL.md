@@ -176,7 +176,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 ## 4. レビュー
 
 1. 1 周目は、経緯を知らないレビュー役を `Agent` で立てる（その `agentId` を `state.json` の `reviewer_agent_id` に書く）。2 周目からは、同じレビュー役に `SendMessage` で「直したので、もう一度レビューしてほしい」と頼み、直したコミットの範囲（`<state.json の review_head>..HEAD`）を伝える。届かない（セッションが変わった）ときは、新しく立てて 1 周目と同じものを渡す。プロンプトは [templates/review-prompt.md](templates/review-prompt.md) を使い、渡すのは **PRD（`prd.md` の全文）、差分（`origin/main` との差。`docs/dev/` を除く）、CLAUDE.md、worktree の場所、`/pj-checklist` の場所** だけ。
-   - **判断の記録、前の回の指摘、自分の見立ては渡さない。** 差分は `git diff origin/main...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で取る。`docs/dev/` にはコミット済みの判断・レビュー・報告の記録があり、`.claude/review-lessons.md` にはこの開発で受けた指摘と直し方を追記していくため、差分や worktree からそれが見えると経緯を知らないという前提が崩れるため、レビュー役には「`docs/dev/` は読まない」とも指示する（[開発記録を見せない](#開発記録を見せない)）。
+   - **判断の記録、前の回の指摘、自分の見立ては渡さない。** PRD の変更履歴は「理由」の列を除いて渡す（作った側の判断の理由が書かれるため）。 差分は `git diff origin/main...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で取る。`docs/dev/` にはコミット済みの判断・レビュー・報告の記録があり、`.claude/review-lessons.md` にはこの開発で受けた指摘と直し方を追記していくため、差分や worktree からそれが見えると経緯を知らないという前提が崩れるため、レビュー役には「`docs/dev/` は読まない」とも指示する（[開発記録を見せない](#開発記録を見せない)）。
 2. レビュー役は、毎周、Claude Code に同梱の `/code-review` を `high` で呼んで不具合を探し（対象は、ブランチではなく `docs/dev/` と `.claude/review-lessons.md` を除いた変更ファイルのパス）、そのうえで自分で PRD の受け入れ基準との照合と `/pj-checklist` を行い、`make all` も走らせる。`/code-review` の指摘と自分の指摘を合わせて MUST / SHOULD / MAY に分け直して返す（`/code-review` の `important` / `nit` / `pre_existing` はそのまま使わない）。あわせて、**どこをどう見たか**（ファイル・節ごとに、全数を見たか抜き取りか）を返す。
    - `/code-review` には除外の指定が無く、ブランチを対象にすると作った側の記録まで読んで要約に書き写すので、対象をパスで渡す（手順は [templates/review-prompt.md](templates/review-prompt.md)）。それでも記録の中身を含む指摘が返ったら、レビュー役が捨てる。
    - effort は `high` を既定にする（サブエージェントの中では、`/code-review` は観点を 1 人で順に回す形で動く）。指標を見て見直す。
@@ -276,16 +276,16 @@ echo "timeout" && exit 1
 ### 対応する
 
 
-1. メインが、その時点の `cnt_valid` を控えてから、未対応の行コメントを取得する（`gh api repos/{owner}/{repo}/pulls/<PR番号>/comments --paginate`。既定の 1 ページは 30 件で、古い順に返るため、`--paginate` が無いと新しい指摘を取りこぼす）。未対応の指摘が 0 件なら、手順 7 へ進む。`docs/dev/` の記録への指摘も同じく扱う（記録が事実と食い違っていれば直し、そうでなければ返信のみ）。
+1. メインが、その時点の `cnt_valid` と `cnt_unable` を控えてから、未対応の行コメントを取得する（`gh api repos/{owner}/{repo}/pulls/<PR番号>/comments --paginate`。既定の 1 ページは 30 件で、古い順に返るため、`--paginate` が無いと新しい指摘を取りこぼす）。未対応の指摘が 0 件なら、手順 7 へ進む。`docs/dev/` の記録への指摘も同じく扱う（記録が事実と食い違っていれば直し、そうでなければ返信のみ）。
 2. 指摘を、その場所を受け持った実装役に `SendMessage` で送り、**妥当かどうかの分析と、妥当なら修正**を頼む（同じ形の問題を他の場所でも探して直す。`make all` まで）。実装役は指摘ごとに「直した / 返信のみ（理由）/ 判断が要る（理由）」を返す。
    - 「判断が要る」もの、仕様・設計方針の変更を求めるもの、PRD と矛盾するもの、直し方を 1 つに絞れないものは、**判断役**に回す。判断役が「人が決めるべき」と答えたときだけユーザーに聞く。
    - 従わない指摘は、判断役に回すか（その判断の重要度が中以上のとき。[判断と記録](#判断と記録) の高・中・低）、理由を `decisions.md` に書いたうえで（低のとき）、その理由を返信する。
 3. メインが確かめ、**指摘ごとに**コミットし、`/review-respond` の Phase 4 の形で返信し（`in_reply_to` を付けてスレッドに返す。直したものは `<short-sha> で修正 — <説明>`）、push する。
 4. 各指摘を `reviews.md` に「Copilot」の周として記録する（重要度、指摘、場所、対応、コミット、返信したか）。重要度は、実装役・判断役の分析をもとにメインが MUST / SHOULD / MAY で付ける。基準はレビュー役と同じ「影響 × 起こりやすさ」（[templates/review-prompt.md](templates/review-prompt.md)）。
-5. `docs/dev/` の記録以外（コード・ドキュメント・スキルなど）を直したときは、[4. レビュー](#4-レビュー) を、同じレビュー役に頼んで行う（`origin/main` からの差分の全体を見てもらう。除外は 4. と同じ）。終わり方と上限は 4. の手順 5 と同じで、周の上限はこの対応のぶんとして数え直す。周の番号は版の中の通し番号で続け、`reviews` の各周と `review_outcomes` に `"after": "copilot"` を付ける（4. のレビューの打ち切りや 4 周目以降の MUST と混ざらないように）。MUST が出たら実装役に直させ、確かめてコミットし push する。Copilot の再レビューは待たない。
+5. `docs/dev/` の記録以外（コード・ドキュメント・スキルなど）を直したときは、[4. レビュー](#4-レビュー) を、同じレビュー役に頼んで行う（`origin/main` からの差分の全体を見てもらう。除外は 4. と同じ）。終わり方と上限は 4. の手順 5 と同じで、周の上限はこの対応のぶんとして数え直す。周の番号は版の中の通し番号で続け（この対応の周には、`reviews` に `"after": "copilot"` を付ける。付け忘れると本体のレビューの周として数えられる）、`reviews` の各周と `review_outcomes` に `"after": "copilot"` を付ける（4. のレビューの打ち切りや 4 周目以降の MUST と混ざらないように）。MUST が出たら実装役に直させ、確かめてコミットし push する。Copilot の再レビューは待たない。
 6. `/review-respond` の Phase 5・6 の手順で、再発防止のパターンを `.claude/review-lessons.md` に記録・統合し、コミットして push する（手順 5 のレビュー役に、指摘と直し方の記録を見せないため、レビューのあとに行う）。
 7. 対応している間に新しいレビューが届いていないかを確かめる。[待つ](#待つ) の「待つ前に」の確認を、`<前の件数>` を手順 1 で控えた件数にして走らせ、どちらかに当たれば手順 1 に戻る。
-8. 当たらなければ、`copilot.reviews_seen` を手順 1 で控えた件数（戻ったときは最後に控えた件数）にする。記録の更新をコミットして push し、[報告のページ](#報告のページ)を更新する（`status` は `報告準備中`）。
+8. 当たらなければ、`copilot.reviews_seen` を手順 1 で控えた件数（戻ったときは最後に控えた件数）にし、`copilot.unable_seen` も同じときに控えた `cnt_unable` にする（対応中の push に Copilot が「レビューできなかった」と返していても、次に待ち始めたときに即座に終わらないため）。記録の更新をコミットして push し、[報告のページ](#報告のページ)を更新する（`status` は `報告準備中`）。
 
 ## 判断と記録
 
@@ -363,6 +363,7 @@ echo "timeout" && exit 1
 
 - `state.json` と `report.json` の `revision` を 1 つ進め、`state.json` の `phase` を `revising`、`revising_step` を `fix` にする（`revising_step` は、この節の 3〜6 のどこにいるかを `fix` / `review` / `copilot` / `report` で表し、各小節に入るときに書き換える。[再開](#再開) で続きの位置を決めるため）（最初の報告が第 1 版。ページの版と指標は `report.json` の `revision` を読む）。`revisions` に依頼を足す。
 - 依頼を `decisions.md` に記録する（決めた人＝ユーザー、段階＝報告後の修正 第 N 版）。
+- 8. のあいだ、`phase` は `revising` のまま変えず、どこにいるかは `revising_step` で表す（[再開](#再開) が本体の流れの段階と取り違えないため）。
 - そのあとは [3. 実装](#3-実装) と同じ（タスク表の表示、実装役への依頼、確かめてからのコミット）。同じセッションに元の範囲の実装役が残っていれば、`SendMessage` で続けて頼む。
 
 ### 4. レビュー
@@ -373,13 +374,13 @@ echo "timeout" && exit 1
 
 ### 5. push と Copilot
 
-- `revising_step` を `copilot` にし、`state.json` の `copilot.timed_out` を `false`、`copilot.status` を `null` に戻す（前の版のタイムアウトを引きずらないため）。
+- `revising_step` を `copilot` にし、`state.json` の `copilot.timed_out` を `false`、`copilot.status` を `null` に戻し、`copilot.unable_seen` を今の `cnt_unable` に揃える（前の版のタイムアウトや「レビューできなかった」返事を引きずらないため）。
 - push したあと、Copilot の再レビューを依頼する（[6. Copilot](#6-copilot) のタイムアウト時と同じ API）。
 - [6. Copilot](#6-copilot) と同じく待って対応する（`<前の件数>` は `copilot.reviews_seen`）。
 
 ### 6. 報告
 
-1. `revising_step` を `report` にする。`prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。コミットして push する。
+1. `revising_step` を `report` にする。`prd.md`・`report.json` を最新にする。`report.json` の `copilot`（`timed_out`・`status` を含む）は、この版の `state.json` に合わせて写し直す。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。コミットして push する。
 2. [報告のページ](#報告のページ)の手順で、**同じ URL のページを更新する**。
 3. 公開できてから、[7. 報告](#7-報告) の 4. と同じく記録を締める（`phase` を `done` に戻し、`phase_history` に追記、`build-metrics.py` で `metrics.json` を作り直し、コミットして push）。
 4. 更新したことと、見てほしいことを伝える。

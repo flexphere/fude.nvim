@@ -286,10 +286,11 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const met = acc.filter(a => a.result === "met").length;
   const highs = arr(D.decisions).filter(d => d.severity === "高").length;
   const rounds = arr(D.reviews);
+  const nAgent = rounds.filter(r => r.reviewer !== "Copilot").length;
   const facts = h("div", "facts");
   [["状態", D.status || "—"], ["受け入れ基準", !acc.length ? "—" : acc.some(a => a.result) ? `${met} / ${acc.length} 満たした` : `${acc.length} 件・未確認`],
    ["テスト", !tests.length ? "—" : failed ? `${failed} 件失敗` + (notPassed ? `・${notPassed} 件未実行` : "") : notPassed ? `${passed} 件通過・${notPassed} 件未実行` : `${tests.length} 件すべて通過`],
-   ["コミット", D.commits != null ? `${D.commits} 件` : "—"], ["レビュー", rounds.filter(r => r.reviewer !== "Copilot").length ? `${rounds.filter(r => r.reviewer !== "Copilot").length} 周` + (rounds.some(r => r.reviewer === "Copilot") ? "＋Copilot" : "") : "—"],
+   ["コミット", D.commits != null ? `${D.commits} 件` : "—"], ["レビュー", nAgent ? `${nAgent} 周` + (rounds.some(r => r.reviewer === "Copilot") ? "＋Copilot" : "") : "—"],
    ["重要度 高の判断", `${highs} 件`]].forEach(([k, v]) => { const f = h("div", "fact"); add(f, h("span", "k", k), h("span", "v", v)); facts.append(f); });
   add(hero, eb, h("h1", null, title), h("p", "summary", D.summary), facts);
   main.append(hero);
@@ -369,7 +370,7 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   if (decs.length) add(sD, filters, dWrap); else sD.append(h("p", "note", "記録した判断はありません。"));
 
   // ---- レビューの経過 ----
-  const sR = section("reviews", "レビューの経過", rounds.length ? rounds.length + " 周" : null);
+  const sR = section("reviews", "レビューの経過", rounds.length ? (nAgent ? nAgent + " 周" : "") + (rounds.length > nAgent ? (nAgent ? "＋" : "") + "Copilot" : "") : null);
   if (rounds.length && new Set(rounds.map(r => r.revision || 1)).size > 1) sR.append(h("p", "note", "報告後の修正を含め、版ごとに周を数えています。"));
   if (rounds.length) {
     const box = h("div", "sheet");
