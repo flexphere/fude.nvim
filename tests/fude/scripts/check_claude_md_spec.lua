@@ -1,0 +1,37 @@
+local check = require("check_claude_md")
+
+describe("check_claude_md.count_chars", function()
+	it("counts ASCII characters including newlines", function()
+		assert.are.equal(4, check.count_chars("abc\n"))
+	end)
+
+	it("counts multi-byte characters once each", function()
+		assert.are.equal(3, check.count_chars("日本語"))
+		assert.are.equal(5, check.count_chars("a—b▶c"))
+	end)
+
+	it("returns 0 for an empty string", function()
+		assert.are.equal(0, check.count_chars(""))
+	end)
+end)
+
+describe("check_claude_md.format_report", function()
+	it("passes at the limit", function()
+		local report, ok = check.format_report(50000, 50000)
+		assert.is_true(ok)
+		assert.is_truthy(report:find("OK: CLAUDE.md is 50000 characters", 1, true))
+	end)
+
+	it("fails one character over the limit and says where details belong", function()
+		local report, ok = check.format_report(50001, 50000)
+		assert.is_false(ok)
+		assert.is_truthy(report:find("FAIL: CLAUDE.md is 50001 characters, 1 over the limit of 50000", 1, true))
+		assert.is_truthy(report:find("docs/architecture/", 1, true))
+	end)
+end)
+
+describe("check_claude_md.LIMIT", function()
+	it("is 50,000 characters", function()
+		assert.are.equal(50000, check.LIMIT)
+	end)
+end)
