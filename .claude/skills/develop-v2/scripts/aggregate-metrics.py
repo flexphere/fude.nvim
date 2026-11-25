@@ -27,10 +27,15 @@ def git(root, *args):
 
 def post_merge_fixes(root, pr_number, days):
     """PR の squash コミットが触ったファイルを、その後 days 日以内に触った fix コミットの一覧。"""
-    line = git(root, "log", "--format=%H%x09%cI", "-F", f"--grep=(#{pr_number})", "-n", "1", "HEAD").strip()
-    if not line:
+    # 件名が `(#N)` で終わるコミット（squash マージ）だけを対象にし、複数あれば最も古いものを取る。
+    # 本文で `(#N)` に触れただけの後のコミットを拾わないため。
+    tag = f"(#{pr_number})"
+    out = git(root, "log", "--reverse", "--format=%H%x09%cI%x09%s", "-F", f"--grep={tag}", "HEAD")
+    hits = [l.split("\t", 2) for l in out.splitlines() if l.count("\t") >= 2]
+    hits = [h for h in hits if h[2].rstrip().endswith(tag)]
+    if not hits:
         return None
-    sha, when = line.split("\t")
+    sha, when, _ = hits[0]
     files = [
         f
         for f in git(root, "show", "--format=", "--name-only", sha).splitlines()
