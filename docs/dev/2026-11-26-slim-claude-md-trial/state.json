@@ -1,0 +1,36 @@
+{
+  "slug": "slim-claude-md-trial",
+  "title": "CLAUDE.md を要約にし、詳細を docs/architecture へ移す（試行）",
+  "branch": "docs/slim-claude-md-trial",
+  "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-slim-claude-md-trial",
+  "phase": "implementing",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-26T00:51:06+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-26T00:51:06+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-26T00:52:24+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 4,
+    "prd_drafts": 1
+  },
+  "agents": {
+    "reviewer": null,
+    "judge": null
+  },
+  "review_outcomes": [],
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/H5RaJ3DJgf6PB8979KPbcD"
+}

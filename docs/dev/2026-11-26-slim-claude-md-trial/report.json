@@ -1,0 +1,106 @@
+{
+  "title": "CLAUDE.md を要約にし、詳細を docs/architecture へ移す（/develop-v2 の試行）",
+  "slug": "slim-claude-md-trial",
+  "date": "2026-11-26",
+  "branch": "docs/slim-claude-md-trial",
+  "base": "origin/main",
+  "status": "実装中",
+  "generatedBy": "/develop-v2",
+  "summary": "PRD が承認され、実装中です。文書の移動、上限チェックの追加、参照先の書き換えを行い、そのあとレビューに進みます。ユーザーが不在のため、承認はユーザー代理のサブエージェントが行いました。",
+  "attention": [
+    {
+      "text": "同じ課題の PR #329 とは独立に進める試行です（#329 には触りません）",
+      "ref": ""
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "CLAUDE.md が 40,000 文字以下になる",
+      "how": "wc -m CLAUDE.md"
+    },
+    {
+      "id": "AC2",
+      "text": "起点の CLAUDE.md の Module Responsibilities の全行が docs/architecture/ に元の文面のまま欠けずにある",
+      "how": "完全一致で探すスクリプト（照合した行数と欠け 0 件）"
+    },
+    {
+      "id": "AC3",
+      "text": "CLAUDE.md に各モジュールの要約・詳細ファイルのパス・「実装前に読む」の指示がある。@path の取り込みは使わない",
+      "how": "CLAUDE.md を読む・パスの実在と全ファイルが参照されていること・@ の取り込みが 0 件"
+    },
+    {
+      "id": "AC4",
+      "text": "make all に文字数の上限チェックが入り、超えると失敗して直し方を示す",
+      "how": "一時的に膨らませて失敗を確かめる"
+    },
+    {
+      "id": "AC5",
+      "text": "残す節が CLAUDE.md に残り、既存のチェックが通る",
+      "how": "make all"
+    },
+    {
+      "id": "AC6",
+      "text": "詳細の更新先を CLAUDE.md としている記述が新しい置き場所を指す",
+      "how": "grep の結果を 1 件ずつ確かめる"
+    }
+  ],
+  "prd": {
+    "purpose": "起動時の「CLAUDE.md is over the 150.0k-char limit」の警告を解消し、再発しないようにする。",
+    "users": "このリポジトリで開発するエージェントと開発者。",
+    "outOfScope": [
+      "プラグイン本体（lua/、plugin/）の変更",
+      "State Dependencies の表の移動",
+      "モジュールの記述そのものの書き直し"
+    ],
+    "constraints": [
+      "情報を捨てない（移動であって要約ではない）",
+      "AGENTS.md はシンボリックリンクのまま",
+      "docs/architecture/ はモジュール群ごとに分ける",
+      "新しいチェックは既存のチェックと同じ並びに足す"
+    ],
+    "changes": [],
+    "verification": [
+      "固定のテスト: make all",
+      "AC2 の照合スクリプト",
+      "AC4 の失敗の確認",
+      "手で: マージ後に Claude Code を起動して警告が出ないこと"
+    ],
+    "openQuestions": [],
+    "approvedAt": "2026-11-26"
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "詳細を別ファイルへ移し CLAUDE.md は要約にする（目安 40k、上限 50k 文字）",
+      "at": "2026-11-26 00:51",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "文書の置き場所が変わり、スキルや規則の参照先に波及する",
+      "by": "ユーザー",
+      "background": "CLAUDE.md の 158k 文字のうち 148k が Module Responsibilities。上限すれすれに削るだけでは機能を足すたびに再発する。",
+      "options": [
+        "上限をわずかに下回る程度に削る",
+        "詳細を別ファイルへ移し要約にする"
+      ],
+      "decided": "詳細を docs/architecture/ のモジュール群ごとのファイルへ移す。make all に上限チェックを足す。参照している規則・スキルも直す。",
+      "reason": "再発しない形を優先。エージェントが必要な分だけ読める。（ユーザー代理の回答）",
+      "impact": "CLAUDE.md、docs/architecture/、Makefile、scripts/、.claude/、CONTRIBUTING.md",
+      "revisit": "詳細ファイルが読まれず実装の質が落ちたとき",
+      "refs": "AC1〜AC6"
+    }
+  ],
+  "reviews": [],
+  "unresolved": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Module Responsibilities を docs/architecture/ へ移し、CLAUDE.md を要約にする。上限チェックを足し、参照先を書き換える",
+      "status": "実装中",
+      "owner": "impl-1"
+    }
+  ],
+  "tests": [],
+  "revision": 1,
+  "revisions": []
+}
