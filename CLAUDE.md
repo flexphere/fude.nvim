@@ -57,7 +57,7 @@ This section is a map only: one or two lines per module, grouped by the file und
 
 **`docs/architecture/comments.md`** — comments, drafts, reactions, completion
 - `comments.lua` — Facade over `comments/*`: navigation, create / suggest / view / reply / edit / delete, thread resolution; dispatches to the GitHub or local backend by `state.review_mode`.
-- `comments/data.lua` — Pure comment data functions (comment map, threads, browser entries, pending review, PR-level comments). The "Comment browser thread identity" rules are in this file too.
+- `comments/data.lua` — Pure comment data functions (comment map, threads, browser entries, pending review, PR-level comments). The "Comment browser thread identity" rules are in `docs/architecture/comments.md` too.
 - `comments/sync.lua` — GitHub sync / submit: loading comments and the pending review, single comments, reply / edit / delete, resolve.
 - `comments/pickers.lua` — `list_comments` entry point (delegates to the comment browser).
 - `drafts.lua` — On-disk storage for unsubmitted input (`drafts.json`): keys, revisions, file markers, browser listing.
@@ -85,7 +85,7 @@ This section is a map only: one or two lines per module, grouped by the file und
 - `stack.lua` — `:FudeReviewStackSwitch`: GitHub stacked PR navigation (checkout or worktree `:cd`).
 
 **`docs/architecture/overview.md`** — PR overview
-- `overview.lua` — PR overview fetch / prefetch / cache, the `C` menu, reviewer and label editors, re-request review. The overview metadata (frontmatter) contract is in this file too.
+- `overview.lua` — PR overview fetch / prefetch / cache, the `C` menu, reviewer and label editors, re-request review. The overview metadata (frontmatter) contract is in `docs/architecture/overview.md` too.
 
 **`docs/architecture/pr.md`** — PR creation, editing, state changes
 - `pr.lua` — `:FudeCreatePR` (base picker, templates, stacking, push, drafts, attachments), PR edit, `:FudeChangePRState`.
@@ -98,7 +98,7 @@ This section is a map only: one or two lines per module, grouped by the file und
 - **Window management**: Preview uses `noautocmd` commands to avoid triggering the plugin's own `BufEnter` handler during window operations.
 - **Pure function extraction**: Each module exports testable pure functions separately from side-effect code. Naming convention: `build_*`, `find_*`, `parse_*`, `format_*`, `should_*`, `make_*`, `calculate_*`. These functions take all inputs as parameters and return data without reading `config.state` or calling vim API.
 - **Picker-agnostic state mutators (`apply_*`)**: Functions that mutate `config.state` and interact with external APIs (e.g. `apply_viewed_state`/`apply_viewed_toggle`, `apply_reviewed_toggle`) but are independent of any specific picker implementation. They take inputs as parameters and either return the updated display fields (sync) or invoke a callback with them (async). Picker-specific adapters (`toggle_*_in_<picker>`) delegate to these mutators and handle only selection retrieval and picker refresh.
-- **Shared helpers (`util.lua`, details in `docs/architecture/core.md`)**: every Telescope picker goes through `util.reset_selection_on_prompt_change(picker)` before `:find()`; JSON nulls are handled with `util.is_null` / `util.null_to` (not the `and-or` idiom); every `o` (open on GitHub) key uses `util.open_url`; clipboard writes use `util.copy_to_clipboard`; the "all resolved" rule is `util.all_comments_resolved`.
+- **Shared helpers (`util.lua`, details in `docs/architecture/core.md`)**: new code uses these helpers instead of calling the underlying API directly — a new Telescope picker calls `util.reset_selection_on_prompt_change(picker)` before `:find()`; JSON nulls go through `util.is_null` / `util.null_to` (not the `and-or` idiom); a new "open on GitHub" key uses `util.open_url`; clipboard writes use `util.copy_to_clipboard`; the "all resolved" rule is `util.all_comments_resolved`. Some existing call sites predate the helpers and still call the API directly; do not copy them.
 - **Cross-module contracts**: a contract that spans modules is written once, in one detail file. Each file under `docs/architecture/` starts with a "Related details in other files" line naming where the contracts that bind its modules live — follow it before changing a module. Notably: the overview metadata (frontmatter) contract (`gh.get_pr_overview`, `ui/format.build_overview_left_lines`, `ui.show_overview_float`) is in `overview.md`; the sidepanel commit review marks contract (`scope.lua`, `ui/sidepanel.lua`) is in `sidepanel.md`; the comment browser thread identity rules (`comments/data.lua`, `ui/format.lua`, `ui/comment_browser.lua`) are in `comments.md`.
 
 ### State Dependencies

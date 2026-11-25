@@ -60,8 +60,8 @@ argument-hint: [対象PR件数（省略時は10）]
    git log --oneline --since="$SINCE" | grep -E "純粋性|impure|inline"
    # check_docs 発火 = doc/fude.txt と lua/fude/commands.lua / plugin/fude.lua の整合修正
    git log --oneline --since="$SINCE" -- doc/fude.txt lua/fude/commands.lua plugin/fude.lua
-   # check_claude_md 発火 = CLAUDE.md の上限超過を受けて詳細を docs/architecture/ へ移した docs commit
-   git log --oneline --since="$SINCE" -- CLAUDE.md docs/architecture | grep -E "check-claude-md|文字数|上限|slim|docs/architecture"
+   # check_claude_md 発火 = CLAUDE.md の文字数の上限超過を受けて詳細を docs/architecture/ へ移した docs commit
+   git log --oneline --since="$SINCE" -- CLAUDE.md | grep -E "check-claude-md|check_claude_md|文字数の上限|character limit|char limit"
    # luacov 発火 = coverage 関連 (将来段階 3 の閾値違反含む)
    git log --oneline --since="$SINCE" | grep -E "coverage|カバレッジ"
    ```

@@ -75,7 +75,7 @@ make coverage          # luacov でテストカバレッジ計測 (要 `luarocks
 
 push 前に `make all` が通ることを必ず確認してください。`make setup` で `.githooks/pre-commit` が有効化され、コミット時に自動実行されます。
 
-`make check-*` 系は CLAUDE.md / 純粋性宣言 / `doc/fude.txt` の各「文書化された建前」が実コードと乖離していないかを機械検証します。`make all` / pre-commit / CI で自動実行されるため、手動で個別に走らせる必要はほとんどありませんが、ピンポイントで確認したい場合に利用してください。
+`make check-state-deps` / `check-purity` / `check-docs` は CLAUDE.md の State Dependencies 表 / 純粋性宣言 / `doc/fude.txt` の各「文書化された建前」が実コードと乖離していないかを機械検証します。`make check-claude-md` は実コードとの照合ではなく、CLAUDE.md の文字数だけを見ます。`make all` / pre-commit / CI で自動実行されるため、手動で個別に走らせる必要はほとんどありませんが、ピンポイントで確認したい場合に利用してください。
 
 `make coverage` は `make all` には含まれません（報告のみ・閾値強制なし）。CI では別 job として実行され、レポートは GitHub Actions の artifact `coverage-report` から取得できます。ローカルで実行する場合は `luarocks install --local luacov` を先に実行してください。
 
