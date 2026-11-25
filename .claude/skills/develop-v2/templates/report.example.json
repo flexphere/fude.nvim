@@ -190,7 +190,7 @@
       "should": 3,
       "may": 4,
       "revision": 1,
-      "reviewer": "fable"
+      "reviewer": "レビュー役"
     },
     {
       "round": 2,
@@ -200,7 +200,7 @@
       "should": 1,
       "may": 2,
       "revision": 1,
-      "reviewer": "fable"
+      "reviewer": "レビュー役"
     },
     {
       "round": 1,
@@ -210,7 +210,7 @@
       "must": 0,
       "should": 0,
       "may": 1,
-      "reviewer": "fable"
+      "reviewer": "レビュー役"
     },
     {
       "round": 1,

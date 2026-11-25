@@ -78,10 +78,17 @@ def recurring_kinds(review_kinds):
     return sorted(out)
 
 
-def review_end(agent_rounds):
-    """版ごとのレビューの終わり方。最後の周が MUST 0 でない版は「打ち切り」（上限・判断役の結論で終えた）。"""
+def review_end(agent_rounds, outcomes):
+    """4. のレビュー（Copilot 対応後の周 `after: "copilot"` を除く）の終わり方。
+
+    打ち切りは state.json の review_outcomes（ended: capped）を正とする。記録が無い古い開発だけ、
+    版の最後の周が MUST 0 でないことから推測する。
+    """
+    main = [r for r in agent_rounds if r.get("after") != "copilot"]
+    late = sum(1 for r in main if num(r.get("round"), 0) >= 4 and num(r.get("must"), 0) > 0)
+    outs = [o for o in arr(outcomes) if isinstance(o, dict) and o.get("after") != "copilot"]
     by_rev = {}
-    for r in agent_rounds:
+    for r in main:
         by_rev.setdefault(num(r.get("revision"), 1), []).append(r)
     capped = 0
     max_round = 0
@@ -90,7 +97,8 @@ def review_end(agent_rounds):
         if num(rs[-1].get("must"), 0) > 0:
             capped += 1
         max_round = max(max_round, len(rs))
-    late = sum(1 for r in agent_rounds if num(r.get("round"), 0) >= 4 and num(r.get("must"), 0) > 0)
+    if outs:
+        capped = sum(1 for o in outs if o.get("ended") == "capped")
     return {"capped_revisions": capped, "max_rounds": max_round, "late_must_rounds": late}
 
 
@@ -98,7 +106,7 @@ def build(report, state):
     report = report or {}
     state = state or {}
     reviews = [r for r in arr(report.get("reviews")) if isinstance(r, dict)]
-    agent_rounds = [r for r in reviews if (r.get("reviewer") or "fable") != "Copilot"]
+    agent_rounds = [r for r in reviews if r.get("reviewer") != "Copilot"]
     acc = [a for a in arr(report.get("acceptance")) if isinstance(a, dict)]
     decs = [d for d in arr(report.get("decisions")) if isinstance(d, dict)]
     revs = [r for r in arr(state.get("revisions") or report.get("revisions")) if isinstance(r, dict)]
@@ -132,7 +140,7 @@ def build(report, state):
             "must_by_round": [num(r.get("must"), 0) for r in agent_rounds],
             "must_total": sum(num(r.get("must"), 0) for r in agent_rounds),
             # capped_revisions: MUST 0 の周で終えられなかった版の数 / late_must_rounds: 4 周目以降で MUST が出た周の数
-            "review_end": review_end(agent_rounds),
+            "review_end": review_end(agent_rounds, state.get("review_outcomes")),
             "acceptance": {
                 "total": len(acc),
                 "met": count(acc, lambda a: a.get("result") == "met"),

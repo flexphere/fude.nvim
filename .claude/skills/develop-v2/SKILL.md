@@ -53,10 +53,10 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
 | 役 | 担当 | 立て方 |
 |---|---|---|
 | ヒアリング・PRD・進捗報告・記録・コミット・push・PR・返信 | メイン | - |
-| 実装役 | サブエージェント | `Agent`（`model` は指定しない）。受け持つ範囲ごとに 1 人。指摘を直すときは同じ実装役に `SendMessage` で続けて頼む |
-| レビュー役 | サブエージェント | `Agent`（`model: "fable"`）。**毎回新しく** |
-| 判断役 | サブエージェント | `Agent`（`model: "fable"`）。**判断のたびに新しく** |
-| 点検役 | サブエージェント | `Agent`（`model: "opus"`）。[全数点検](#全数点検)のときだけ、区画ごとに 1 人ずつ新しく立てて並列に走らせる |
+| 実装役 | サブエージェント | `Agent`。受け持つ範囲ごとに 1 人。指摘を直すときは同じ実装役に `SendMessage` で続けて頼む |
+| レビュー役 | サブエージェント | `Agent`。**毎回新しく** |
+| 判断役 | サブエージェント | `Agent`。**判断のたびに新しく** |
+| 点検役 | サブエージェント | `Agent`。[全数点検](#全数点検)のときだけ、区画ごとに 1 人ずつ新しく立てて並列に走らせる |
 
 - メインが自分で書き換えてよいのは、`docs/dev/<dir>/` の記録（`prd.md`・`decisions.md`・`reviews.md`・`state.json`・`report.json`・`metrics.json`）、報告のページ、`/review-respond` の Phase 5・6 で更新する `.claude/review-lessons.md` だけ。
 - メインがコードを読むのは、ヒアリングで PRD を書くため（段階 1）と、実装役への依頼を書くために必要な範囲に限る。差分の中身の確認はレビュー役に任せる。
@@ -129,7 +129,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
    - 受け入れ基準の `how` には確かめる方法を書き、`result` は報告まで空にする。
 2. スクリプトで HTML を作る。**テンプレートは読まない。**
    ```sh
-   python3 -I ${CLAUDE_SKILL_DIR}/templates/build-report.py docs/dev/<dir>/report.json <scratchpad>/report-<slug>.html
+   python3 -I "${CLAUDE_SKILL_DIR}/templates/build-report.py" docs/dev/<dir>/report.json <scratchpad>/report-<slug>.html
    ```
    （`${CLAUDE_SKILL_DIR}` が使えなければ、元のリポジトリ（上の `$root`）の `.claude/skills/develop-v2/`。worktree は `origin/main` から切るので、このスキルがまだ入っていないことがある。`scripts/` のスクリプトも同じ）
 3. 初回は Artifact で公開し（`icon: "report"`、`description` は 1 文の概要）、URL を `state.json` の `report_url` に書く（次のコミット、PRD の承認のコミットに含める）。2 回目からは同じファイルのパスで公開し直す（URL が変わらない）。別のセッションなら、先に `report_url` を Artifact の `read` で読んでから、`url` に指定して公開する（読んでいない artifact への公開は断られる）。
@@ -158,7 +158,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 
 ### 実装役に任せる
 
-1. 実装役を `Agent`（`model` は指定せず、メインと同じモデル）で立てる。プロンプトは [templates/implement-prompt.md](templates/implement-prompt.md) を使い、渡すのは、PRD、そのタスクの範囲、触ってよいファイル、関係する判断（`decisions.md` の該当分）、worktree の場所、依存するタスクの実装役の要約。
+1. 実装役を `Agent` で立てる。プロンプトは [templates/implement-prompt.md](templates/implement-prompt.md) を使い、渡すのは、PRD、そのタスクの範囲、触ってよいファイル、関係する判断（`decisions.md` の該当分）、worktree の場所、依存するタスクの実装役の要約。
 2. 並列にするのは、**依存が無く、触るファイルが重ならず、それぞれが十分に大きい**タスクだけ。それ以外は順に任せる。並列にするときは、1 つのメッセージで複数の `Agent` を呼ぶ。
 3. ドキュメントのタスクには、それまでの実装役の要約（足した・変えた関数、キーマップ、設定、表示の文言）を渡す。
 4. 実装役は、変更、フォーマット、テストの追加、`make all` まで行い、[返す形](templates/implement-prompt.md)で報告する。**コミットはしない。** 並列で立てた実装役には「並列で動いている」と伝える。同じ worktree で他の実装役が書きかけなので、そのときは `stylua` を自分の触ったファイルだけにかけ、`make all` の代わりに自分のテスト（`bash run_tests.sh tests/fude/<name>_spec.lua`）と `luacheck <触ったファイル>` を走らせる。`make all` は並列の全員が戻ってからメインが走らせ、落ちたらその箇所の実装役に直させる。
@@ -173,7 +173,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 
 ## 4. レビュー
 
-1. **毎回新しく**、経緯を知らないレビュー役を `Agent`（`model: "fable"`）で立てる。プロンプトは [templates/review-prompt.md](templates/review-prompt.md) を使い、渡すのは **PRD（`prd.md` の全文）、差分（`origin/main` との差。`docs/dev/` を除く）、CLAUDE.md、worktree の場所、`/pj-checklist` の場所** だけ。
+1. **毎回新しく**、経緯を知らないレビュー役を `Agent` で立てる。プロンプトは [templates/review-prompt.md](templates/review-prompt.md) を使い、渡すのは **PRD（`prd.md` の全文）、差分（`origin/main` との差。`docs/dev/` を除く）、CLAUDE.md、worktree の場所、`/pj-checklist` の場所** だけ。
    - **判断の記録、前の回の指摘、自分の見立ては渡さない。** 差分は `git diff origin/main...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で取る。`docs/dev/` にはコミット済みの判断・レビュー・報告の記録があり、`.claude/review-lessons.md` にはこの開発で受けた指摘と直し方を追記していくため、差分や worktree からそれが見えると経緯を知らないという前提が崩れるため、レビュー役には「`docs/dev/` は読まない」とも指示する（[開発記録を見せない](#開発記録を見せない)）。
 2. レビュー役は、`make all` を自分でも走らせ、指摘を MUST / SHOULD / MAY に分けて返す。あわせて、**どこをどう見たか**（ファイル・節ごとに、全数を見たか抜き取りか）を返す。
    - **MUST**: バグ、受け入れ基準を満たさない、テストが落ちる、セキュリティ、CLAUDE.md の規則違反（テスト・ドキュメント・State Dependencies の不足を含む）
@@ -187,10 +187,11 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
    - 直すのは、その場所を受け持った実装役。指摘の原文（重要度・場所・根拠）を `SendMessage` で送る。同じ形の問題が他の場所にないかも探して直すよう頼む。受け持ちの範囲をまたぐ指摘は、それぞれの実装役に分けて送る。
    - そのセッションに実装役が残っていない（別のセッションから再開した）ときは、新しい実装役を立て、その範囲のタスクの説明と指摘を渡す。
 4. 戻ってきたら、メインが確かめてコミットし、この節の手順 1 に戻る（新しいレビュー役を立てる）。ただし、次の [全数点検](#全数点検) に当たるときは、手順 1 に戻る前にそちらを行う。
-5. **新しいレビュー役が MUST 0 件を返した周で終わる。** 直したあとの修正も経緯を知らないレビュー役に見せてから終えるため、MUST を直した周のあとには必ずもう 1 周行う。周の上限（安全装置）は **5 周**。次のどれかに当たったら、判断役に「続けるか、残りをどう扱うか」を判断させ、その結論に従う。判断役には、周ごとの MUST の数、残っている MUST の種類、全数点検が済んだ範囲・済んでいない範囲も渡す。
-   - MUST の数が 2 周続けて減らない（前の周と同じか増えた）
+5. **新しいレビュー役が MUST 0 件を返した周で終わる。** 直したあとの修正も経緯を知らないレビュー役に見せてから終えるため、MUST を直した周のあとには必ずもう 1 周行う。周の上限（安全装置）は **5 周**。次のどちらかに当たったら、判断役に「続けるか、残りをどう扱うか」を判断させ、その結論に従う。判断役には、周ごとの MUST の数、残っている MUST の種類、全数点検が済んだ範囲・済んでいない範囲も渡す。
+   - 連続する 3 周で、MUST の数が一度も減らない（例: 2→2→2、2→3→3。2→2 の 2 周だけではまだ回さない）
    - 5 周しても MUST が残る
-   - 上限で打ち切った（判断役の結論で終えた）ときは、最後の修正が経緯を知らないレビュー役に見られていないことを、報告の「見てほしいこと」に入れる
+
+   終わったら、`state.json` の `review_outcomes` に `{ "revision": <版>, "after": null, "ended": "must0" | "capped", "rounds": <周数> }` を 1 件足す（`capped` は判断役の結論で MUST を残して終えたとき）。打ち切りは指標で数えるので、推測させずにここで記録する。`capped` のときは、最後の修正が経緯を知らないレビュー役に見られていないことを、報告の「見てほしいこと」に入れる。
 
 ### 開発記録を見せない
 
@@ -204,9 +205,9 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 **同じ種類の MUST が 2 周続けて見つかったら**、レビューの周を回すのをやめ、その種類について全数点検に切り替える。周ごとに新しいレビュー役が別の箇所を抜き取りで見つけていくだけでは、散らばった問題はいつまでも出尽くさないため。
 
 1. メインが、その種類が起こりうる範囲（ファイル、ドキュメントの節、関数の一覧など）を決め、互いに重ならない区画に分ける。区画は、1 人が 1 つずつ漏れなく照らせるよう**小さめ**にする（目安: ドキュメントなら 1〜3 節、または要約の 30 文程度まで。コードなら 1〜2 ファイル）。迷ったら細かく分ける。
-2. 区画ごとに、経緯を知らない**点検役**を `Agent`（`model: "opus"`）で新しく立て、1 つのメッセージでまとめて並列に走らせる。プロンプトは [templates/sweep-prompt.md](templates/sweep-prompt.md) を使い、渡すのは、点検する種類（1 文と、これまでの指摘の例 2〜3 件）、区画、照らす元（元の記述・PRD・仕様など）、worktree の場所。
+2. 区画ごとに、経緯を知らない**点検役**を `Agent` で新しく立て、1 つのメッセージでまとめて並列に走らせる。プロンプトは [templates/sweep-prompt.md](templates/sweep-prompt.md) を使い、渡すのは、点検する種類（1 文と、これまでの指摘の例 2〜3 件）、区画、照らす元（元の記述・PRD・仕様など）、worktree の場所。
    - 点検役は、区画の中の**すべての**該当箇所（要約なら 1 文ずつ）を元と照らし、問題のある箇所を全件、問題が無いと確かめた範囲と一緒に返す。コードは変えない。
-   - 点検役を Opus にするのは、探す種類と範囲が決まっていて照らす相手もある仕事では、モデルの能力より 1 人が見る量の少なさが漏れのなさに効くため。浮いた費用は区画を細かくするのに使う。見落としは、このあとの Fable のレビュー役が拾う。
+   - 区画を小さくするのは、探す種類と範囲が決まっていて照らす相手もある仕事では、1 人が見る量の少なさが漏れのなさに効くため。見落としは、このあとのレビュー役が拾う。
 3. 見つかった箇所を、その場所を受け持った実装役にまとめて `SendMessage` で送り、すべて直させる。メインが確かめてコミットする。
 4. `reviews.md` に「全数点検」として、種類、区画の一覧、区画ごとの件数、直したコミットを記録する。`state.json` の `sweeps` にも `{ "kind", "regions": <区画の数>, "found": <見つかった件数>, "recurred": false }` を追記する。
 5. そのあと [4. レビュー](#4-レビュー) の手順 1 に戻り、新しいレビュー役で 1 周行う（点検したことは渡さない）。同じ種類の MUST がまた出たら、その全数点検の `recurred` を `true` にし、区画の取り方か照らし方を見直して、もう 1 回だけ全数点検する。それでも出るなら判断役に回す。
@@ -267,7 +268,7 @@ echo "timeout" && exit 1
 
 - 待っている間に、`report.json` の最終版の下書きを進めてよい。
 - **`exit 2`（レビューできなかった）**: 返事の本文を確かめ、`unable_seen` を今の件数にする。割り当て不足のように待っても解決しないものは、待ち直さない。`state.json` の `copilot.timed_out` を `true`、`copilot.status` に理由を書き（報告のときに `report.json` の `copilot` へ写す）、その事実を報告の「見てほしいこと」に入れて先へ進む。
-- **`exit 1`（タイムアウト）**: `gh api repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers` で Copilot が入っているかを確かめる。入っていなければ `gh api -X POST repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` で依頼して、もう一度だけ待つ。それでも来なければ、`state.json` の `copilot.timed_out` を `true`、`copilot.status` に理由を書き（同上）、その事実を報告の「見てほしいこと」に入れて報告に進む。
+- **`exit 1`（タイムアウト）**: `gh api repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers` で Copilot が入っているかを確かめる。入っていなければ `gh api -X POST repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` で依頼して、もう一度だけ待つ。入っていた（依頼は届いているのに 20 分来なかった）とき、または依頼し直しても来なかったときは、待ち直さない。`state.json` の `copilot.timed_out` を `true`、`copilot.status` に理由を書き（同上）、その事実を報告の「見てほしいこと」に入れて報告に進む。
 - `jq` を使う（`gh api --paginate --slurp` は `--jq` と併用できないため）。
 
 ### 対応する
@@ -279,7 +280,7 @@ echo "timeout" && exit 1
    - 従わない指摘は、判断役に回すか（重要度 中以上）、理由を `decisions.md` に書いたうえで（低）、その理由を返信する。
 3. メインが確かめ、**指摘ごとに**コミットし、`/review-respond` の Phase 4 の形で返信し（`in_reply_to` を付けてスレッドに返す。直したものは `<short-sha> で修正 — <説明>`）、push する。
 4. 各指摘を `reviews.md` に「Copilot」の周として記録する（重要度、指摘、場所、対応、コミット、返信したか）。重要度は、実装役・判断役の分析をもとにメインが MUST / SHOULD / MAY で付ける（直さなければ不具合や規則違反になるものが MUST）。
-5. コードを直したときは、[4. レビュー](#4-レビュー) を**新しいレビュー役で 1 周**行う（`origin/main` からの差分の全体を渡す。`docs/dev/` は除く）。MUST が出たら実装役に直させ、確かめてコミットし push する。MUST 0 になるまで繰り返す。Copilot の再レビューは待たない。
+5. `docs/dev/` の記録以外（コード・ドキュメント・スキルなど）を直したときは、[4. レビュー](#4-レビュー) を**新しいレビュー役で**行う（`origin/main` からの差分の全体を渡す。除外は 4. と同じ）。終わり方と上限は 4. の手順 5 と同じで、周の上限はこの対応のぶんとして数え直す。周の番号は版の中の通し番号で続け、`reviews` の各周と `review_outcomes` に `"after": "copilot"` を付ける（4. のレビューの打ち切りや 4 周目以降の MUST と混ざらないように）。MUST が出たら実装役に直させ、確かめてコミットし push する。Copilot の再レビューは待たない。
 6. `/review-respond` の Phase 5・6 の手順で、再発防止のパターンを `.claude/review-lessons.md` に記録・統合し、コミットして push する（手順 5 のレビュー役に、指摘と直し方の記録を見せないため、レビューのあとに行う）。
 7. 対応している間に新しいレビューが届いていないかを確かめる。[待つ](#待つ) の「待つ前に」の確認を、`<前の件数>` を手順 1 で控えた件数にして走らせ、どちらかに当たれば手順 1 に戻る。
 8. 当たらなければ、`copilot.reviews_seen` を手順 1 で控えた件数（戻ったときは最後に控えた件数）にする。記録の更新をコミットして push し、[報告のページ](#報告のページ)を更新する（`status` は `報告準備中`）。
@@ -288,7 +289,7 @@ echo "timeout" && exit 1
 
 ### 判断役
 
-- 実装中に判断が要る場面（設計の選び方、指摘に従うか、テストが通らない、依存を足すか、など）は、**判断役**に任せる。判断役は、経緯を知らないエージェントを `Agent`（`model: "fable"`）で**判断のたびに新しく**立てる。プロンプトは [templates/judge-prompt.md](templates/judge-prompt.md) を使う。
+- 実装中に判断が要る場面（設計の選び方、指摘に従うか、テストが通らない、依存を足すか、など）は、**判断役**に任せる。判断役は、経緯を知らないエージェントを `Agent` で**判断のたびに新しく**立てる。プロンプトは [templates/judge-prompt.md](templates/judge-prompt.md) を使う。
 - 渡すのは、何を決めるか、選べる案、関係するコード・PRD・CLAUDE.md。**自分の「こうしたい」は渡さない。**
 - 結果が手元（ブランチ・worktree・PR）に収まらない判断も、判断役に任せる。ただし記録の重要度を **高** にする。
 - 判断役が決めても、[しないこと](#ユーザーに確認する場面) は解禁しない。
@@ -314,7 +315,7 @@ echo "timeout" && exit 1
    - `pr` は `{ "number": 123, "url": "https://github.com/..." }`
    - `revision` は `1`、`revisions` は第 1 版の 1 件 `[{ "revision": 1, "date": "<報告日>", "kind": "最初の報告", "request": "最初の開発", "changes": "<要点>" }]` にする（報告後の修正で版を足したとき、ページの改訂履歴に第 1 版から並ぶようにするため）。`state.json` の `revisions` にも同じ 1 件を入れる
    - `copilot` は `{ "status": "<1 文>", "timed_out": false, "comments": [{ "id", "location", "text", "response", "outcome", "commit" }] }`。`outcome` は `fixed`（直した）/ `reply`（返信のみ）/ `declined`（従わなかった）のどれか。指摘 0 件・タイムアウトも `status` に書く
-   - `reviews` の各周に `reviewer`（`fable` / `Copilot`）を付ける。Copilot の周の `must` / `should` / `may` は、`reviews.md` の Copilot の表の「重要度」（実装役・判断役の分析をもとにメインが付けたもの）を数える。0 件のまま入れると、ページに「指摘なし」と出るため
+   - `reviews` の各周に `reviewer`（`レビュー役` / `Copilot`）を付ける。Copilot の周の `must` / `should` / `may` は、`reviews.md` の Copilot の表の「重要度」（実装役・判断役の分析をもとにメインが付けたもの）を数える。0 件のまま入れると、ページに「指摘なし」と出るため
    - `attention`（見てほしいこと）には、重要度 高 の判断、人が決めるべきとされたこと、満たしていない・一部の受け入れ基準、Copilot に従わなかった指摘、手で動作を確かめてほしいこと（Neovim 上での見た目・操作）を入れる
    - 値は `acceptance.result` が `met`/`partial`/`unmet`、`tests.result` が `pass`/`fail`/`skip`、`decisions.severity` が `高`/`中`/`低`
 3. [報告のページ](#報告のページ)の手順で、同じページを公開し直す。ページの見た目は固定なので、デザインは考えなくてよい。
@@ -322,7 +323,7 @@ echo "timeout" && exit 1
    1. `state.json` の `report_url`（変わっていれば）・`phase: "done"`・`updated_at` を書き、`phase_history` に `done` を追記する。
    2. [指標](#指標)を作る（`done` までの時間が入るよう、`state.json` を書いたあとに作る）。
       ```sh
-      python3 -I ${CLAUDE_SKILL_DIR}/scripts/build-metrics.py docs/dev/<dir>
+      python3 -I "${CLAUDE_SKILL_DIR}/scripts/build-metrics.py" docs/dev/<dir>
       ```
    3. `state.json`・`metrics.json` をコミットして push する。
 5. **ページの URL、PR の URL、Copilot への対応の件数、ユーザーに見てほしいこと**を短く伝える。
@@ -333,9 +334,9 @@ echo "timeout" && exit 1
 
 - **作り方**: `scripts/build-metrics.py` が `report.json` と `state.json` から機械的に数える。メインが数字を書かないので、自己申告の揺れが入らない。欠けている記録は `null` になる。
 - **中身**: ヒアリング（質問の数、PRD を示した回数、承認後の PRD 変更）、実装（レビューの周数、周ごとの MUST、受け入れ基準の未達）、繰り返し（周をまたいだ指摘の種類、全数点検の回数・件数・再発）、判断（判断役に回した数、重要度 高、人への差し戻し）、Copilot（直した数 = レビュー役の見逃しの目安）、レビューの終わり方（MUST 0 で終えたか、上限・判断役の結論で打ち切ったか、4 周目以降に MUST が出たか）、報告後の修正（手直し / 要件の変更）、段階ごとの時間。
-- **そのために記録するもの**（`state.json`）: `phase_history`、`hearing.questions_asked`・`hearing.prd_drafts`、`review_kinds`、`sweeps`。`report.json` の `copilot.comments[].outcome` と `copilot.timed_out`。
+- **そのために記録するもの**（`state.json`）: `phase_history`、`hearing.questions_asked`・`hearing.prd_drafts`、`review_kinds`、`sweeps`、`review_outcomes`。`report.json` の `reviews[].after`。`report.json` の `copilot.comments[].outcome` と `copilot.timed_out`。
 - **集計**: 複数の開発をまとめて見るのは `/harness-audit` で行う（`scripts/aggregate-metrics.py`）。このスキルの中では集計しない。
-- **周の上限の見直し**: 上限 5 は、指標を見て下げていく前提の仮の値。集計が「直近 10 件で 4 周目以降に MUST が出た開発が無い」と出したら 4 に下げることを、「上限で打ち切った開発が続く」と出したら周を増やすより HARNESS.md §4.2 案 4（レビュー役の観点別並列化）を検討する（どちらも `/harness-audit` でユーザーが決める）。
+- **周の上限の見直し**: 上限 5 は、指標を見て下げていく前提の仮の値。集計が「直近 10 件で 4 周目以降に MUST が出た開発も、打ち切った開発も無い」と出したら 4 に下げることを、「上限で打ち切った開発が続く」と出したら周を増やすより HARNESS.md §4.2 案 4（レビュー役の観点別並列化）を検討する（どちらも `/harness-audit` でユーザーが決める）。
 
 ## 8. 報告後の修正
 
@@ -358,24 +359,25 @@ echo "timeout" && exit 1
 
 ### 3. 直す
 
-- `state.json` と `report.json` の `revision` を 1 つ進め、`state.json` の `phase` を `revising` にする（最初の報告が第 1 版。ページの版と指標は `report.json` の `revision` を読む）。`revisions` に依頼を足す。
+- `state.json` と `report.json` の `revision` を 1 つ進め、`state.json` の `phase` を `revising`、`revising_step` を `fix` にする（`revising_step` は、この節の 3〜6 のどこにいるかを `fix` / `review` / `copilot` / `report` で表し、各小節に入るときに書き換える。[再開](#再開) で続きの位置を決めるため）（最初の報告が第 1 版。ページの版と指標は `report.json` の `revision` を読む）。`revisions` に依頼を足す。
 - 依頼を `decisions.md` に記録する（決めた人＝ユーザー、段階＝報告後の修正 第 N 版）。
 - そのあとは [3. 実装](#3-実装) と同じ（タスク表の表示、実装役への依頼、確かめてからのコミット）。同じセッションに元の範囲の実装役が残っていれば、`SendMessage` で続けて頼む。
 
 ### 4. レビュー
 
-- [4. レビュー](#4-レビュー) と同じ。新しいレビュー役に渡すのは、**更新した PRD と、`origin/main` からの差分の全体（`docs/dev/` を除く）**。修正だけを見せると、直したことで既存の部分が壊れても気づけないため。
+- `revising_step` を `review` にする。[4. レビュー](#4-レビュー) と同じ。新しいレビュー役に渡すのは、**更新した PRD と、`origin/main` からの差分の全体（`docs/dev/` を除く）**。修正だけを見せると、直したことで既存の部分が壊れても気づけないため。
 - 「今回の修正はこのコミットの範囲」という事実は伝えてよい。修正の意図や判断は渡さない。
 - `reviews.md` には「第 N 版 第 M 周」として記録する。
 
 ### 5. push と Copilot
 
+- `revising_step` を `copilot` にし、`state.json` の `copilot.timed_out` を `false`、`copilot.status` を `null` に戻す（前の版のタイムアウトを引きずらないため）。
 - push したあと、Copilot の再レビューを依頼する（[6. Copilot](#6-copilot) のタイムアウト時と同じ API）。
 - [6. Copilot](#6-copilot) と同じく待って対応する（`<前の件数>` は `copilot.reviews_seen`）。
 
 ### 6. 報告
 
-1. `prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。コミットして push する。
+1. `revising_step` を `report` にする。`prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。コミットして push する。
 2. [報告のページ](#報告のページ)の手順で、**同じ URL のページを更新する**。
 3. 公開できてから、[7. 報告](#7-報告) の 4. と同じく記録を締める（`phase` を `done` に戻し、`phase_history` に追記、`build-metrics.py` で `metrics.json` を作り直し、コミットして push）。
 4. 更新したことと、見てほしいことを伝える。
@@ -384,7 +386,7 @@ echo "timeout" && exit 1
 
 続きは、まず **Claude Code のセッションの再開**（`claude --resume` / `/resume`）で行う。会話ごと戻るので、ヒアリングの経緯も残っている。セッションを再開したときも、次の 3 つは自動では戻らないので手当てする。
 
-- **Copilot を待つループ**: セッションを閉じると止まる。`phase` が `copilot` なら、[待つ](#待つ) の「待つ前に」の確認からやり直す。
+- **Copilot を待つループ**: セッションを閉じると止まる。`phase` が `copilot`、または `phase` が `revising` で `revising_step` が `copilot` なら、[待つ](#待つ) の「待つ前に」の確認からやり直す。
 - **実装役**: 前のサブエージェントに `SendMessage` で続けて頼めるとは限らない。届かなければ、新しい実装役に、そのタスクの説明と途中までの状態（`git diff --stat`、`state.json` のタスク）を渡して頼む。
 - **会話の要約**: 長い開発で会話が要約に置き換わっていたら、細部は記録のほうが正確。`state.json`・`prd.md`・`decisions.md`・`reviews.md` を読み直し、タスク一覧を表示してから続ける。
 
@@ -393,6 +395,6 @@ echo "timeout" && exit 1
 - **対象は同じマシンだけ**（worktree が残っていること）。別のマシンからの再開は扱わない。
 - `git worktree list` で worktree とそのブランチを並べ、各 worktree の `docs/dev/*/state.json` のうち、`branch` がその worktree のブランチと一致するものだけを候補にする（main にマージ済みの過去の開発の記録は、どの worktree にも入っているため）。slug が無く候補が複数あれば聞く。
 - `phase` が `done` で、修正の依頼が添えられていれば [8. 報告後の修正](#8-報告後の修正) へ。依頼が無ければ、何を直したいかを聞く。
-- それ以外は、上の 3 つの手当てをしてから `state.json` の `phase` の続きを行う。`phase` が `pr` / `copilot` なら、`state.json` の `pr` から PR の状態を確かめる。
+- それ以外は、上の 3 つの手当てをしてから `state.json` の `phase` の続きを行う。`phase` が `revising` なら、[8. 報告後の修正](#8-報告後の修正) の `revising_step` の小節から続ける。`phase` が `pr` / `copilot` / `revising` なら、`state.json` の `pr` から PR の状態を確かめる。
 
 記録は、段階が変わったとき、タスクの状態が変わったとき、レビューの周が終わったとき、PR を作ったとき、Copilot の対応が終わったときに `state.json` を更新して残す。記録は報告のページと [指標](#指標) の材料でもあるので、再開に使わなくても省かない。

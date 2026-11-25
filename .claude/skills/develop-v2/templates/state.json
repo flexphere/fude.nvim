@@ -2,6 +2,8 @@
   "slug": "example-slug",
   "title": "作るものの名前",
   "phase": "hearing",
+  "revising_step": null,
+  "_revising_step_note": "phase が revising のときだけ使う: fix | review | copilot | report",
   "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | copilot | reporting | done | revising",
   "phase_history": [
     {
@@ -33,6 +35,8 @@
   "review_round": 0,
   "review_kinds": [],
   "_review_kinds_note": "1 件の形: {\"revision\": 1, \"round\": 1, \"kind\": \"指摘の本質を 1 文で\", \"severity\": \"MUST\"}",
+  "review_outcomes": [],
+  "_review_outcomes_note": "レビューのループが終わるたびに {\"revision\": 1, \"after\": null | \"copilot\", \"ended\": \"must0\" | \"capped\", \"rounds\": 3} を足す",
   "sweeps": [],
   "pr": {
     "number": null,

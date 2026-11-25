@@ -2,7 +2,7 @@
 
 <!-- 1 周分
 
-## 第 1 版 第 1 周（2026-01-01、レビュー役: fable、テスト: 通過／失敗）
+## 第 1 版 第 1 周（2026-01-01、レビュー役、テスト: 通過／失敗）
 
 点検の範囲: lua/fude/foo.lua（全数）、CLAUDE.md の Architecture（抜き取り: comments.lua・ui.lua の項）
 
@@ -16,8 +16,8 @@
 
 | 区画 | 点検役 | 件数 | 問題なしと確かめた範囲 | コミット |
 |---|---|---|---|---|
-| CLAUDE.md Architecture: init.lua〜gh.lua | opus | 2 | 残りの全文 | def5678 |
-| CLAUDE.md Architecture: util.lua〜diff.lua | opus | 0 | 全文 | |
+| CLAUDE.md Architecture: init.lua〜gh.lua | 点検役 1 | 2 | 残りの全文 | def5678 |
+| CLAUDE.md Architecture: util.lua〜diff.lua | 点検役 2 | 0 | 全文 | |
 
 ## 第 1 版 Copilot（2026-01-01、PR #123）
 

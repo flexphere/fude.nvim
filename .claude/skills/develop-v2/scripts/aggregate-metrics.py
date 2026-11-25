@@ -17,7 +17,9 @@ import pathlib
 import re
 import subprocess
 
-FIX_RE = re.compile(r"^(fix|revert)(\(.+?\))?!?:", re.I)
+FIX_RE = re.compile(r"^((fix|revert)(\(.+?\))?!?:|Revert \")", re.I)
+# どの PR でも触る共有のドキュメント。これらに触れた fix まで候補にすると、ほぼ常に候補が立つため照合から外す
+SHARED_PREFIXES = ("docs/dev/", "doc/", ".claude/", "CLAUDE.md", "README.md")
 
 
 def git(root, *args):
@@ -39,7 +41,7 @@ def post_merge_fixes(root, pr_number, days):
     files = [
         f
         for f in git(root, "show", "--format=", "--name-only", sha).splitlines()
-        if f and not f.startswith("docs/dev/")
+        if f and not f.startswith(SHARED_PREFIXES)
     ]
     if not files:
         return []
