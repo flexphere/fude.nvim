@@ -1844,6 +1844,30 @@ Options:
                   branch is not pushed, `gh pr create` fails and a float
                   shows its error and points to this option.
 
+`chat.cmd`          The claude command the AI chat runs, a name on `$PATH`
+                  or a path (default: "claude").
+
+`chat.width`        Width of the chat panel in columns (default: 60).
+
+`chat.position`     Side of the tabpage the chat panel opens on: "right" or
+                  "left" (default: "right").
+
+`chat.allowed_tools`
+                  Tools claude may use, in the form of claude's
+                  `--allowedTools` (default: `Read`, `Grep`, `Glob`,
+                  `Bash(git diff:*)`, `Bash(git log:*)`, `Bash(git show:*)`,
+                  `Bash(git status:*)`, `Bash(git blame:*)`,
+                  `Bash(gh pr view:*)`, `Bash(gh pr diff:*)`). A built-in
+                  tool that is not named here does not exist for the chat,
+                  so with the default list no tool can write a file. A list
+                  given here replaces the default one.
+
+`chat.args`         Extra arguments appended to the claude command line
+                  (default: {}).
+
+`chat.keymaps`      Keys of the chat panel: `submit` (default: "<CR>"),
+                  `cancel` (default: "<C-c>"), `close` (default: "q").
+
 
 ==============================================================================
 7. STATUSLINE                                        *fude-statusline*

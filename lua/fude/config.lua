@@ -180,6 +180,33 @@ M.defaults = {
 		-- branch fails in `gh pr create` with a float pointing to this option.
 		push_before_create = false,
 	},
+	-- AI chat panel for review mode (:FudeReviewChat). Needs the claude CLI.
+	chat = {
+		cmd = "claude", -- Path or name of the claude command
+		width = 60, -- Panel width in columns
+		position = "right", -- "right" or "left"
+		-- Tools claude may use. Read-only by default: a tool that is not named
+		-- here does not exist for the session, and Bash runs only in the listed forms.
+		allowed_tools = {
+			"Read",
+			"Grep",
+			"Glob",
+			"Bash(git diff:*)",
+			"Bash(git log:*)",
+			"Bash(git show:*)",
+			"Bash(git status:*)",
+			"Bash(git blame:*)",
+			"Bash(gh pr view:*)",
+			"Bash(gh pr diff:*)",
+		},
+		-- Extra arguments appended to the claude command line (e.g. { "--model", "sonnet" })
+		args = {},
+		keymaps = {
+			submit = "<CR>", -- Send the input (normal mode, input pane)
+			cancel = "<C-c>", -- Stop the answer in progress
+			close = "q", -- Close the panel
+		},
+	},
 }
 
 M.state = {
