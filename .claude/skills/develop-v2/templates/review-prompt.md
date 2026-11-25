@@ -3,8 +3,9 @@
 あなたは、この変更の経緯を知らないレビュー役です。作った側の意図や判断は知らされていません。コードと要件だけを見て判断してください。
 
 ## 渡すもの
-- PRD: <prd.md の全文、または場所>
-- 差分: worktree `<worktree の場所>` で `git diff <base>...HEAD`
+- PRD: <prd.md の全文を貼る（場所は渡さない）>
+- 差分: worktree `<worktree の場所>` で `git diff <base>...HEAD -- . ':(exclude)docs/dev'`
+- `docs/dev/` は読まない。そこには作った側の判断やレビューの記録があり、経緯を知らないあなたの判断を偏らせる。PRD は上に渡したものを使う。
 - リポジトリの規則: `<worktree>/CLAUDE.md`（そこから参照される資料も必要に応じて読む）
 - プロジェクト固有のチェックリスト: `<worktree>/.claude/skills/pj-checklist/SKILL.md`（無ければ元のリポジトリの同じパス）
 
