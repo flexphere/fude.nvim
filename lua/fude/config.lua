@@ -257,6 +257,9 @@ M.state = {
 	overview_cache = nil, -- Overview data prefetched at review start / reload: { pr_info, pr_comments } (overview.lua)
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
 	sidepanel = nil, -- { win, buf, scope_entries, file_entries, section_map, augroup }
+	chat_panel = nil, -- { log_win, log_buf, input_win, input_buf, augroup, prev_win, split } (ui/chat_panel.lua)
+	chat_live = nil, -- Chat exchange being answered: { key, prompt, text, streamed, activity }
+	chat_input = nil, -- Unsent chat input lines kept while the chat panel is closed
 }
 
 M.opts = {}
@@ -321,6 +324,9 @@ function M.reset_state()
 		overview_cache = nil,
 		gitsigns_reset = false,
 		sidepanel = nil,
+		chat_panel = nil,
+		chat_live = nil,
+		chat_input = nil,
 	}
 end
 

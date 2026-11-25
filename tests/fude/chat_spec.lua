@@ -182,24 +182,17 @@ describe("chat.build_system_prompt", function()
 		assert.truthy(text:find("Head branch: feat/x", 1, true))
 	end)
 
-	it("describes a local review by branch, base branch and scope", function()
+	it("describes a local review by its branch only, leaving out what can change", function()
 		local text = data.build_system_prompt({
 			review_mode = "local",
 			local_session = { branch = "feat/y", base_ref = "develop", scope = "uncommitted" },
 		})
 		assert.truthy(text:find("local review", 1, true))
 		assert.truthy(text:find("Branch: feat/y", 1, true))
-		assert.truthy(text:find("Base branch: develop", 1, true))
-		assert.truthy(text:find("Current scope: uncommitted", 1, true))
 		assert.is_nil(text:find("pull request #", 1, true))
-	end)
-
-	it("names the commit in the local commit scope", function()
-		local text = data.build_system_prompt({
-			review_mode = "local",
-			local_session = { branch = "b", base_ref = "main", scope = "commit", scope_commit_sha = "abc123" },
-		})
-		assert.truthy(text:find("Current scope: commit abc123", 1, true))
+		-- the base branch and the scope travel with each question instead
+		assert.is_nil(text:find("develop", 1, true))
+		assert.is_nil(text:find("uncommitted", 1, true))
 	end)
 
 	it("skips fields that are missing or JSON null", function()
@@ -213,6 +206,50 @@ describe("chat.build_system_prompt", function()
 		assert.is_nil(data.build_system_prompt(nil))
 		assert.is_nil(data.build_system_prompt({}))
 		assert.is_nil(data.build_system_prompt({ review_mode = "local" }))
+	end)
+end)
+
+describe("chat.build_prompt_context", function()
+	it("adds nothing in a GitHub review", function()
+		assert.are.same({}, data.build_prompt_context({ review_mode = "github", pr_number = 1, base_ref = "main" }))
+		assert.are.same({}, data.build_prompt_context(nil))
+		assert.are.same({}, data.build_prompt_context({ review_mode = "local" }))
+	end)
+
+	it("gives the base branch and the scope of a local review in one line", function()
+		local lines = data.build_prompt_context({
+			review_mode = "local",
+			local_session = { branch = "feat/y", base_ref = "develop", scope = "uncommitted" },
+		})
+		assert.are.equal(1, #lines)
+		assert.truthy(lines[1]:find("base branch: develop", 1, true))
+		assert.truthy(lines[1]:find("scope: uncommitted", 1, true))
+	end)
+
+	it("names the commit in the local commit scope", function()
+		local lines = data.build_prompt_context({
+			review_mode = "local",
+			local_session = { base_ref = "main", scope = "commit", scope_commit_sha = "abc123" },
+		})
+		assert.truthy(lines[1]:find("scope: commit abc123", 1, true))
+	end)
+
+	it("skips what is missing", function()
+		local lines = data.build_prompt_context({ review_mode = "local", local_session = { scope = "base" } })
+		assert.truthy(lines[1]:find("scope: base", 1, true))
+		assert.is_nil(lines[1]:find("base branch:", 1, true))
+		assert.are.same({}, data.build_prompt_context({ review_mode = "local", local_session = {} }))
+	end)
+end)
+
+describe("chat.build_prompt_input", function()
+	it("puts the context lines and a blank line before the question", function()
+		assert.are.equal("[ctx]\n\nwhy?\nreally", data.build_prompt_input({ "[ctx]" }, "why?\nreally"))
+	end)
+
+	it("returns the question alone without context", function()
+		assert.are.equal("why?", data.build_prompt_input({}, "why?"))
+		assert.are.equal("why?", data.build_prompt_input(nil, "why?"))
 	end)
 end)
 
@@ -630,6 +667,32 @@ describe("chat.send", function()
 		local prompt = cmd[index_of(cmd, "--append-system-prompt") + 1]
 		assert.truthy(prompt:find("pull request #7", 1, true))
 		assert.truthy(prompt:find("Head branch: feat", 1, true))
+	end)
+
+	it("sends the local scope and base with the question, but keeps them out of the stored chat", function()
+		config.reset_state()
+		config.state.active = true
+		config.state.review_mode = "local"
+		config.state.local_session =
+			{ id = "s1", worktree_root = "/repo", branch = "feat", base_ref = "main", scope = "unpushed" }
+		chat.send("why?", handlers())
+		local stdin = runs[1].opts.stdin
+		assert.truthy(stdin:find("base branch: main", 1, true))
+		assert.truthy(stdin:find("scope: unpushed", 1, true))
+		assert.are.equal("\n\nwhy?", stdin:sub(-#"\n\nwhy?"))
+		local system = runs[1].cmd[index_of(runs[1].cmd, "--append-system-prompt") + 1]
+		assert.is_nil(system:find("unpushed", 1, true))
+
+		-- the scope changes: the next question carries the new one
+		runs[1].chunk(init_line() .. "\n" .. success_line("a") .. "\n")
+		runs[1].exit(0, "")
+		assert.are.equal("why?", done_result().prompt)
+		config.state.local_session.scope = "uncommitted"
+		chat.send("and now?", handlers())
+		assert.truthy(runs[2].opts.stdin:find("scope: uncommitted", 1, true))
+
+		local stored = chat.load(chat.current_key())
+		assert.are.equal("why?", stored.messages[1].text)
 	end)
 
 	it("streams text as it arrives, across chunk boundaries", function()

@@ -123,16 +123,13 @@ end
 
 -- === System prompt ===
 
---- What each local review scope compares, for the system prompt.
-local LOCAL_SCOPE_TEXT = {
-	base = "base (the whole branch: working tree against the merge-base with the base branch)",
-	unpushed = "unpushed (working tree against the upstream branch)",
-	uncommitted = "uncommitted (staged and unstaged changes against HEAD)",
-}
-
---- Build the text appended to claude's system prompt: what is being reviewed.
---- GitHub review: PR number, URL, base and head branch. Local review: branch,
---- base branch and the current scope.
+--- Build the text appended to claude's system prompt: the parts of the
+--- review target that do not change during a conversation. GitHub review: PR
+--- number, URL, base and head branch. Local review: the branch. What can
+--- change (the local scope and base branch) is not here: claude records the
+--- system prompt on a conversation's first request and reuses that record on
+--- every `--resume`, so it goes with each question instead
+--- (`build_prompt_context`).
 --- @param st table|nil config.state-shaped table
 --- @return string|nil text, nil when there is no review target
 function M.build_system_prompt(st)
@@ -156,13 +153,7 @@ function M.build_system_prompt(st)
 		end
 		table.insert(lines, "Review target: local review of a branch (no pull request)")
 		add("Branch", session.branch)
-		add("Base branch", session.base_ref)
-		if session.scope == "commit" then
-			local sha = type(session.scope_commit_sha) == "string" and session.scope_commit_sha or "?"
-			add("Current scope", "commit " .. sha .. " (that single commit against its parent; it is checked out)")
-		else
-			add("Current scope", LOCAL_SCOPE_TEXT[session.scope] or session.scope)
-		end
+		table.insert(lines, "Each question starts with the base branch and the scope under review at that moment.")
 		return table.concat(lines, "\n")
 	end
 	if type(st.pr_number) ~= "number" and type(st.pr_number) ~= "string" then
@@ -173,6 +164,56 @@ function M.build_system_prompt(st)
 	add("Base branch", st.base_ref)
 	add("Head branch", st.head_ref)
 	return table.concat(lines, "\n")
+end
+
+--- What each local review scope compares, for the question's context lines.
+local LOCAL_SCOPE_TEXT = {
+	base = "base (the whole branch: working tree against the merge-base with the base branch)",
+	unpushed = "unpushed (working tree against the upstream branch)",
+	uncommitted = "uncommitted (staged and unstaged changes against HEAD)",
+}
+
+--- Lines put in front of a question: the parts of the review target that can
+--- change during a conversation — in local review the base branch and the
+--- current scope (the commit's SHA in the commit scope). A GitHub review has
+--- none.
+--- @param st table|nil config.state-shaped table
+--- @return string[] lines (empty when there is nothing to add)
+function M.build_prompt_context(st)
+	if type(st) ~= "table" or st.review_mode ~= "local" then
+		return {}
+	end
+	local session = st.local_session
+	if type(session) ~= "table" then
+		return {}
+	end
+	local parts = {}
+	if type(session.base_ref) == "string" and session.base_ref ~= "" then
+		table.insert(parts, "base branch: " .. session.base_ref)
+	end
+	if session.scope == "commit" then
+		local sha = type(session.scope_commit_sha) == "string" and session.scope_commit_sha or "?"
+		table.insert(parts, "scope: commit " .. sha .. " (that single commit against its parent; it is checked out)")
+	elseif type(session.scope) == "string" and session.scope ~= "" then
+		table.insert(parts, "scope: " .. (LOCAL_SCOPE_TEXT[session.scope] or session.scope))
+	end
+	if #parts == 0 then
+		return {}
+	end
+	return { "[Review context — " .. table.concat(parts, "; ") .. "]" }
+end
+
+--- The text sent to claude for a question: the context lines, a blank line,
+--- then the question as the user wrote it. Only this text carries the
+--- context; the conversation log and the stored chat keep the bare question.
+--- @param context string[]|nil see build_prompt_context
+--- @param prompt string the user's question
+--- @return string
+function M.build_prompt_input(context, prompt)
+	if type(context) ~= "table" or #context == 0 then
+		return prompt
+	end
+	return table.concat(context, "\n") .. "\n\n" .. prompt
 end
 
 -- === stream-json ===
@@ -472,6 +513,138 @@ function M.deserialize_chat(text)
 		end
 	end
 	return chat
+end
+
+-- === Panel text ===
+
+--- Headings of the two speakers in the conversation log.
+M.USER_HEADING = "## You"
+M.ASSISTANT_HEADING = "## Claude"
+--- Line marking an answer that was stopped midway.
+M.CANCELLED_MARK = "*(interrupted)*"
+--- Line telling that claude's session was gone and a new one was started.
+M.NEW_SESSION_NOTE = "*(The previous claude session was not found. Started a new one.)*"
+--- Name shown for a buffer without a file name.
+M.NO_NAME = "[No Name]"
+
+--- Split a text into lines, accepting CRLF / CR line ends.
+--- @param text string|nil
+--- @return string[]
+local function text_lines(text)
+	text = (text or ""):gsub("\r\n", "\n")
+	text = text:gsub("\r", "\n")
+	return vim.split(text, "\n", { plain = true })
+end
+
+--- Lines opening one exchange in the log: the question under its heading,
+--- then the answer's heading and an empty line the answer's text is written
+--- onto.
+--- @param prompt string
+--- @return string[]
+function M.format_question_lines(prompt)
+	local lines = { M.USER_HEADING, "" }
+	vim.list_extend(lines, text_lines(vim.trim(prompt or "")))
+	-- The last, empty line is where the answer's text starts.
+	vim.list_extend(lines, { "", M.ASSISTANT_HEADING, "", "" })
+	return lines
+end
+
+--- Lines that end an answer in the log, after its text.
+--- @param status "done"|"cancelled"|"error"
+--- @param err string|nil error text (status "error")
+--- @param has_text boolean|nil whether the log's last line holds text (a blank line is put before the mark then)
+--- @return string[]
+function M.format_answer_end_lines(status, err, has_text)
+	local lines = {}
+	if status == "cancelled" then
+		if has_text then
+			table.insert(lines, "")
+		end
+		table.insert(lines, M.CANCELLED_MARK)
+	elseif status == "error" then
+		if has_text then
+			table.insert(lines, "")
+		end
+		local err_lines = text_lines(vim.trim(err or "unknown error"))
+		table.insert(lines, "**Error:** " .. err_lines[1])
+		for i = 2, #err_lines do
+			table.insert(lines, err_lines[i])
+		end
+	end
+	table.insert(lines, "")
+	return lines
+end
+
+--- Lines of a stored conversation for the log buffer.
+--- @param messages table[]|nil stored messages ({ role, text, status })
+--- @return string[]
+function M.format_chat_lines(messages)
+	local lines = {}
+	for _, m in ipairs(messages or {}) do
+		if m.role == "user" then
+			vim.list_extend(lines, M.format_question_lines(m.text))
+		else
+			-- The answer starts on the empty line the question lines end with.
+			if lines[#lines] == "" then
+				table.remove(lines)
+			end
+			local body = text_lines(m.text)
+			vim.list_extend(lines, body)
+			vim.list_extend(lines, M.format_answer_end_lines(m.status or "done", nil, body[#body] ~= ""))
+		end
+	end
+	return lines
+end
+
+--- Text pasted into the chat input for a selection: a `<path>:L<start>-L<end>`
+--- line (`<path>:L<line>` for one line) and the selected lines in a code fence
+--- tagged with the filetype. The fence is longer than any backtick run in the
+--- selection (at least three), so a selection holding a fence stays intact.
+--- @param path string|nil repo-relative path; the caller passes the full path
+---   for a file outside the repository and nil for an unnamed buffer (`[No Name]`)
+--- @param start_line number 1-based first line
+--- @param end_line number 1-based last line
+--- @param lines string[] the selected lines
+--- @param filetype string|nil
+--- @return string[] lines to append to the input
+function M.build_selection_text(path, start_line, end_line, lines, filetype)
+	if start_line > end_line then
+		start_line, end_line = end_line, start_line
+	end
+	local name = (type(path) == "string" and path ~= "") and path or M.NO_NAME
+	local range = start_line == end_line and ("L" .. start_line) or ("L" .. start_line .. "-L" .. end_line)
+	local longest = 0
+	for _, line in ipairs(lines or {}) do
+		for run in line:gmatch("`+") do
+			longest = math.max(longest, #run)
+		end
+	end
+	local fence = string.rep("`", math.max(3, longest + 1))
+	local out = { name .. ":" .. range, fence .. (type(filetype) == "string" and filetype or "") }
+	vim.list_extend(out, lines or {})
+	table.insert(out, fence)
+	return out
+end
+
+--- Smallest width the chat panel is given when the editor allows it.
+M.MIN_PANEL_WIDTH = 20
+
+--- Width of the chat panel: the configured width, at least MIN_PANEL_WIDTH,
+--- but never more than half the editor's columns (that bound wins), and at
+--- least one column.
+--- @param width any configured `chat.width`
+--- @param columns number editor columns
+--- @return number
+function M.calculate_panel_width(width, columns)
+	local wanted = math.max(M.MIN_PANEL_WIDTH, math.floor(tonumber(width) or 60))
+	return math.max(1, math.min(wanted, math.floor(columns / 2)))
+end
+
+--- nvim_open_win split side for a `chat.position`.
+--- @param position any "right" | "left" (anything else → "right")
+--- @return "right"|"left"
+function M.find_panel_split(position)
+	return position == "left" and "left" or "right"
 end
 
 return M

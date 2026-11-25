@@ -137,6 +137,11 @@ local function when_local(state)
 	return state.active == true and state.review_mode == "local"
 end
 
+--- In a review, and only when the claude command the chat runs exists.
+local function when_chat(state)
+	return state.active == true and require("fude.chat").is_available()
+end
+
 ----------------------------------------------------------------
 -- Command bodies too large for an inline `run`
 ----------------------------------------------------------------
@@ -556,6 +561,35 @@ M.list = {
 		available = when_active,
 		run = function()
 			require("fude.ui.sidepanel").toggle()
+		end,
+	},
+	{
+		name = "FudeReviewChat",
+		desc = "Toggle AI chat panel (focus it when open, close it when focused)",
+		category = "View",
+		available = when_chat,
+		run = function()
+			require("fude.ui.chat_panel").toggle()
+		end,
+	},
+	{
+		name = "FudeReviewChatAdd",
+		desc = "Add current line/selection to the AI chat input",
+		category = "View",
+		available = when_chat,
+		range = true,
+		run = function(opts)
+			-- Without a range, line1 and line2 are both the cursor line.
+			require("fude.ui.chat_panel").add_selection(opts.line1, opts.line2)
+		end,
+	},
+	{
+		name = "FudeReviewChatNew",
+		desc = "Start a new AI chat (discard this review's conversation)",
+		category = "View",
+		available = when_chat,
+		run = function()
+			require("fude.ui.chat_panel").new_chat()
 		end,
 	},
 	{

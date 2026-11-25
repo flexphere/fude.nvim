@@ -953,12 +953,15 @@ local PANEL_WIN_OPTIONS = {
 	list = false,
 }
 
---- Whether `win` is the only non-floating window in its tabpage.
+--- Whether `win` is the only non-floating window in its tabpage, not counting
+--- the chat panel's windows: like the side panel they are no place to open a
+--- file in.
 --- @param win number
 --- @return boolean
 function M.is_last_normal_window(win)
+	local chat_panel = require("fude.ui.chat_panel")
 	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(vim.api.nvim_win_get_tabpage(win))) do
-		if w ~= win and vim.api.nvim_win_get_config(w).relative == "" then
+		if w ~= win and vim.api.nvim_win_get_config(w).relative == "" and not chat_panel.is_panel_window(w) then
 			return false
 		end
 	end
@@ -988,12 +991,24 @@ function M.ensure_editor_window(panel)
 	if not (panel.win and vim.api.nvim_win_is_valid(panel.win)) or not M.is_last_normal_window(panel.win) then
 		return
 	end
-	local buf = last_used_listed_buf() or vim.api.nvim_create_buf(true, false)
 	local enter = vim.api.nvim_get_current_win() == panel.win
-	-- A split opened from the panel copies the panel's window options; reset them
-	-- to the global values so the new window looks like any other editor window.
-	local new_win = vim.api.nvim_open_win(buf, enter, { split = OPPOSITE_SPLIT[panel.split] or "right", win = panel.win })
-	for name in pairs(PANEL_WIN_OPTIONS) do
+	panel.prev_win = M.open_editor_window({ split = OPPOSITE_SPLIT[panel.split] or "right", win = panel.win }, enter)
+end
+
+--- Open a window showing the most recently used listed buffer (or a new empty
+--- one) that looks like any other editor window. A split copies the window
+--- options of the window it is opened from — a panel here — so the options a
+--- panel sets are reset to their global values. Shared with the chat panel.
+--- @param win_config table nvim_open_win config of the split
+--- @param enter boolean whether to focus the new window
+--- @return number win
+function M.open_editor_window(win_config, enter)
+	local buf = last_used_listed_buf() or vim.api.nvim_create_buf(true, false)
+	local new_win = vim.api.nvim_open_win(buf, enter, win_config)
+	local names = vim.tbl_keys(PANEL_WIN_OPTIONS)
+	-- Set by the chat panel only.
+	table.insert(names, "linebreak")
+	for _, name in ipairs(names) do
 		vim.api.nvim_set_option_value(name, vim.api.nvim_get_option_value(name, { scope = "global" }), {
 			scope = "local",
 			win = new_win,
@@ -1002,7 +1017,7 @@ function M.ensure_editor_window(panel)
 	for _, name in ipairs({ "winfixwidth", "winfixheight" }) do
 		vim.api.nvim_set_option_value(name, false, { scope = "local", win = new_win })
 	end
-	panel.prev_win = new_win
+	return new_win
 end
 
 --- Quit the panel window when a :quit left it alone in its tabpage, so the quit
@@ -1013,6 +1028,8 @@ function M.quit_if_alone(panel)
 	if not (panel.win and vim.api.nvim_win_is_valid(panel.win)) or not M.is_last_normal_window(panel.win) then
 		return
 	end
+	-- The chat panel's windows would keep the tabpage (and Neovim) open.
+	require("fude.ui.chat_panel").close()
 	local ok, err = pcall(function()
 		vim.api.nvim_set_current_win(panel.win)
 		vim.cmd("quit")
@@ -1545,9 +1562,10 @@ function M.find_target_window(panel_win)
 			end
 		end
 	end
-	-- Fallback: any window that isn't the panel or preview
+	-- Fallback: any window that isn't the panel, the preview or the chat panel
+	local chat_panel = require("fude.ui.chat_panel")
 	for _, win in ipairs(tab_wins) do
-		if win ~= panel_win and win ~= state.preview_win then
+		if win ~= panel_win and win ~= state.preview_win and not chat_panel.is_panel_window(win) then
 			return win
 		end
 	end

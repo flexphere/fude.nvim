@@ -1182,6 +1182,22 @@ File opening position                                 *fude-file-position*
     default is controlled by `sidepanel.file_tree`.
     Requires the side panel to be open.
 
+:FudeReviewChat                                    *:FudeReviewChat*
+    Toggle the AI chat panel: opens it when closed, focuses its input
+    when it is open but another window is focused, and closes it when
+    one of its panes is the current window. Requires an active review
+    session and the claude command (`chat.cmd`).
+
+:[range]FudeReviewChatAdd                       *:FudeReviewChatAdd*
+    Append the selected lines (the current line without a range) to the
+    chat input as a `<path>:L<start>-L<end>` line and a code fence,
+    opening the chat panel when it is closed.
+
+:FudeReviewChatNew                              *:FudeReviewChatNew*
+    Discard this review target's claude session and conversation, so
+    the next question starts a new session. An answer in progress is
+    stopped first.
+
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
     Toggle gitsigns base between the review base and HEAD.
     By default during review mode, gitsigns uses the review base — the

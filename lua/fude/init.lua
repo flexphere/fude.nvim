@@ -520,6 +520,7 @@ function M.stop()
 		vim.api.nvim_del_augroup_by_id(state.augroup)
 	end
 
+	require("fude.ui.chat_panel").teardown()
 	require("fude.ui.sidepanel").close()
 	require("fude.all_diffs").close()
 	require("fude.preview").close_preview()

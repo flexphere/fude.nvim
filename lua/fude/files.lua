@@ -433,8 +433,10 @@ local function goto_adjacent(direction, unviewed_only)
 	end
 
 	local panel = state.sidepanel
-	if panel and panel.win == vim.api.nvim_get_current_win() then
-		local target_win = require("fude.ui.sidepanel").find_target_window(panel.win)
+	local current_win = vim.api.nvim_get_current_win()
+	-- :edit in the side panel or the chat panel would replace that panel with the file.
+	if (panel and panel.win == current_win) or require("fude.ui.chat_panel").is_panel_window(current_win) then
+		local target_win = require("fude.ui.sidepanel").find_target_window(panel and panel.win)
 		if not target_win then
 			vim.notify("fude.nvim: No source window available", vim.log.levels.WARN)
 			return

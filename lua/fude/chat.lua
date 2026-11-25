@@ -17,6 +17,8 @@ M.is_uuid = data.is_uuid
 M.build_tool_names = data.build_tool_names
 M.build_claude_args = data.build_claude_args
 M.build_system_prompt = data.build_system_prompt
+M.build_prompt_context = data.build_prompt_context
+M.build_prompt_input = data.build_prompt_input
 M.split_stream_chunk = data.split_stream_chunk
 M.parse_stream_line = data.parse_stream_line
 M.is_session_not_found = data.is_session_not_found
@@ -27,6 +29,12 @@ M.build_empty_chat = data.build_empty_chat
 M.build_message = data.build_message
 M.serialize_chat = data.serialize_chat
 M.deserialize_chat = data.deserialize_chat
+M.format_question_lines = data.format_question_lines
+M.format_answer_end_lines = data.format_answer_end_lines
+M.format_chat_lines = data.format_chat_lines
+M.build_selection_text = data.build_selection_text
+M.calculate_panel_width = data.calculate_panel_width
+M.find_panel_split = data.find_panel_split
 
 -- Directory override for tests (nil = use stdpath("state")/fude).
 M._dir = nil
@@ -350,7 +358,9 @@ start_process = function(job)
 	-- (or of a killed one) is dropped.
 	local token = {}
 	job.token = token
-	local handle, err = M.run(args, { cwd = job.root, stdin = job.prompt }, function(chunk)
+	-- The context lines go to claude only: job.prompt stays the user's own text.
+	local input = data.build_prompt_input(data.build_prompt_context(job.state), job.prompt)
+	local handle, err = M.run(args, { cwd = job.root, stdin = input }, function(chunk)
 		if job.finished or job.token ~= token then
 			return
 		end

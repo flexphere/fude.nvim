@@ -99,7 +99,7 @@ ranges get a separate draft row. The shared `build_comment_map` remains line-bas
 
 | Field | W (Write) | R (Read) |
 |-------|-----------|----------|
-| `active` | init, local/session | comments, comments/sync, comments/local_sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser, local/session, local/tracker, stack, commands, reactions, all_diffs |
+| `active` | init, local/session | comments, comments/sync, comments/local_sync, ui/extmarks, files, scope, preview, overview, ui/sidepanel, init, pr, ui/comment_browser, local/session, local/tracker, stack, commands, reactions, all_diffs, ui/chat_panel |
 | `review_mode` | init, local/session | init, scope, comments, overview, files, preview, ui, ui/comment_browser, ui/sidepanel, local/session, local/tracker, stack, commands, drafts, pr, all_diffs |
 | `local_session` | local/session | comments, comments/local_sync, files, scope, preview, ui/sidepanel, local/session, drafts, all_diffs |
 | `pr_number` | init | init, comments, comments/sync, files, scope, pr, ui/comment_browser, drafts, stack, overview, ui/sidepanel |
@@ -141,7 +141,10 @@ ranges get a separate draft row. The shared `build_comment_map` remains line-bas
 | `resolving_thread` | comments/sync | comments/sync |
 | `overview_cache` | overview | overview |
 | `gitsigns_reset` | init, scope, local/session | init |
-| `sidepanel` | ui/sidepanel | init, files, ui/sidepanel, all_diffs |
+| `sidepanel` | ui/sidepanel | init, files, ui/sidepanel, all_diffs, ui/chat_panel |
+| `chat_panel` | ui/chat_panel | ui/chat_panel |
+| `chat_live` | ui/chat_panel | ui/chat_panel |
+| `chat_input` | ui/chat_panel | ui/chat_panel |
 | `augroup` | init | init, local/session |
 | `original_diffopt` | init, local/session | init, local/session |
 
