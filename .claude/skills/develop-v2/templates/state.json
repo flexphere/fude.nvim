@@ -1,0 +1,43 @@
+{
+  "slug": "example-slug",
+  "title": "作るものの名前",
+  "phase": "hearing",
+  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | copilot | reporting | done | revising",
+  "worktree": "/path/to/fude.nvim-dev-example-slug",
+  "branch": "feat/example-slug",
+  "base": "origin/main",
+  "test_commands": [
+    "make all"
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "タスク",
+      "status": "待ち",
+      "owner": null,
+      "depends_on": [],
+      "files": []
+    }
+  ],
+  "review_round": 0,
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "copilot": {
+    "reviews_seen": 0,
+    "status": null
+  },
+  "revision": 1,
+  "revisions": [
+    {
+      "revision": 2,
+      "date": "2026-01-02",
+      "request": "修正の依頼",
+      "kind": "手直し | 要件の変更",
+      "decision": "D-010"
+    }
+  ],
+  "report_url": null,
+  "updated_at": "2026-01-01T00:00:00+09:00"
+}
