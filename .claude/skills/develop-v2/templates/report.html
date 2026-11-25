@@ -280,13 +280,15 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   if (D.pr && /^https:\/\/github\.com\//.test(String(D.pr.url || ""))) { const a = h("a", null, "PR #" + (D.pr.number || "?")); a.href = D.pr.url; a.target = "_blank"; a.rel = "noopener"; const s = h("span"); s.append(a); eb.append(s); }
   const tests = arr(D.tests);
   const failed = tests.filter(t => t.result === "fail").length;
+  const passed = tests.filter(t => t.result === "pass").length;
+  const notPassed = tests.length - passed - failed;
   const acc = arr(D.acceptance);
   const met = acc.filter(a => a.result === "met").length;
   const highs = arr(D.decisions).filter(d => d.severity === "高").length;
   const rounds = arr(D.reviews);
   const facts = h("div", "facts");
   [["状態", D.status || "—"], ["受け入れ基準", acc.length ? `${met} / ${acc.length} 満たした` : "—"],
-   ["テスト", tests.length ? (failed ? `${failed} 件失敗` : `${tests.length} 件すべて通過`) : "—"],
+   ["テスト", !tests.length ? "—" : failed ? `${failed} 件失敗` + (notPassed ? `・${notPassed} 件未実行` : "") : notPassed ? `${passed} 件通過・${notPassed} 件未実行` : `${tests.length} 件すべて通過`],
    ["コミット", D.commits != null ? `${D.commits} 件` : "—"], ["レビュー", rounds.length ? `${rounds.length} 周` : "—"],
    ["重要度 高の判断", `${highs} 件`]].forEach(([k, v]) => { const f = h("div", "fact"); add(f, h("span", "k", k), h("span", "v", v)); facts.append(f); });
   add(hero, eb, h("h1", null, title), h("p", "summary", D.summary), facts);
