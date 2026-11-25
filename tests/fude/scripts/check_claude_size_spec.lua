@@ -1,0 +1,47 @@
+local check = require("check_claude_size")
+
+describe("check_claude_size.LIMIT", function()
+	it("defaults to 40000", function()
+		assert.are.equal(40000, check.LIMIT)
+	end)
+end)
+
+describe("check_claude_size.count_chars", function()
+	it("counts ASCII characters", function()
+		assert.are.equal(5, check.count_chars("hello"))
+	end)
+
+	it("counts a multibyte character as one", function()
+		assert.are.equal(1, check.count_chars("あ"))
+		assert.are.equal(4, check.count_chars("aあい✓"))
+	end)
+
+	it("returns 0 for an empty string", function()
+		assert.are.equal(0, check.count_chars(""))
+	end)
+end)
+
+describe("check_claude_size.check", function()
+	it("passes at exactly the limit", function()
+		local ok, count = check.check(string.rep("a", 10), 10)
+		assert.is_true(ok)
+		assert.are.equal(10, count)
+	end)
+
+	it("fails at limit + 1", function()
+		local ok, count = check.check(string.rep("a", 11), 10)
+		assert.is_false(ok)
+		assert.are.equal(11, count)
+	end)
+
+	it("counts multibyte characters against the limit, not bytes", function()
+		local ok, count = check.check(string.rep("あ", 10), 10)
+		assert.is_true(ok)
+		assert.are.equal(10, count)
+	end)
+
+	it("uses LIMIT when no limit is given", function()
+		assert.is_true((check.check(string.rep("a", check.LIMIT))))
+		assert.is_false((check.check(string.rep("a", check.LIMIT + 1))))
+	end)
+end)

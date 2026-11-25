@@ -21,4 +21,7 @@ nvim --headless -l scripts/check_purity.lua
 echo "=> check-docs"
 nvim --headless -l scripts/check_docs.lua
 
+echo "=> check-claude-size"
+nvim --headless -l scripts/check_claude_size.lua
+
 echo "All checks passed."
