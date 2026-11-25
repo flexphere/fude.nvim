@@ -111,6 +111,7 @@ def main():
         ("レビュー周", lambda m: g(m, "implementation", "review_rounds")),
         ("MUST/周", lambda m: "-".join(map(str, g(m, "implementation", "must_by_round", default=[]))) or None),
         ("打ち切り", lambda m: g(m, "implementation", "review_end", "capped_revisions")),
+        ("Copilot 後の打ち切り", lambda m: g(m, "implementation", "review_end", "capped_after_copilot")),
         ("4 周目以降の MUST", lambda m: g(m, "implementation", "review_end", "late_must_rounds")),
         ("繰り返した種類", lambda m: len(g(m, "recurring", "kinds", default=[]))),
         ("全数点検", lambda m: g(m, "recurring", "sweeps")),
@@ -165,7 +166,11 @@ def main():
     esc = [m for m in recent if g(m, "decisions", "escalated_to_user", default=0) > 0]
     if len(esc) >= 3:
         signals.append(f"人への差し戻し: 直近 {k} 件中 {len(esc)} 件で判断役が「人が決めるべき」と返した → ヒアリングで先に決めるべき論点の見直しを検討")
-    capped = [m for m in recent if g(m, "implementation", "review_end", "capped_revisions", default=0) > 0]
+    capped = [
+        m for m in recent
+        if g(m, "implementation", "review_end", "capped_revisions", default=0) > 0
+        or g(m, "implementation", "review_end", "capped_after_copilot", default=0) > 0
+    ]
     if len(capped) >= 2:
         signals.append(
             f"レビューの打ち切り: 直近 {k} 件中 {len(capped)} 件で、MUST 0 の周で終えられなかった → "
@@ -175,6 +180,7 @@ def main():
     if len(last10) >= 10 and not any(
         g(m, "implementation", "review_end", "late_must_rounds", default=0) > 0
         or g(m, "implementation", "review_end", "capped_revisions", default=0) > 0
+        or g(m, "implementation", "review_end", "capped_after_copilot", default=0) > 0
         for m in last10
     ):
         signals.append(

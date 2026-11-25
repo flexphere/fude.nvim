@@ -99,7 +99,16 @@ def review_end(agent_rounds, outcomes):
         max_round = max(max_round, len(rs))
     if outs:
         capped = sum(1 for o in outs if o.get("ended") == "capped")
-    return {"capped_revisions": capped, "max_rounds": max_round, "late_must_rounds": late}
+    # Copilot 対応のあとのレビューも同じ上限で打ち切りうるので、別の欄で数える
+    capped_after = sum(
+        1 for o in arr(outcomes) if isinstance(o, dict) and o.get("after") == "copilot" and o.get("ended") == "capped"
+    )
+    return {
+        "capped_revisions": capped,
+        "capped_after_copilot": capped_after,
+        "max_rounds": max_round,
+        "late_must_rounds": late,
+    }
 
 
 def build(report, state):
