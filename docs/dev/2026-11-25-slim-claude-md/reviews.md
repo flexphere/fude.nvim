@@ -67,3 +67,19 @@
 ## 第 1 版 Copilot（2026-11-25、PR #329）
 
 Copilot は「Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota」と返し、レビューしなかった。指摘は 0 件。再依頼しても同じクォータ不足になるので、再依頼はしていない。
+
+## 第 2 版 全数点検 第 1 回（2026-11-25、種類: 要約が元の記述の限定を落とし、モジュール全体の決まりのように読める）
+
+範囲: `CLAUDE.md` の Module Responsibilities の要約 36 項目すべて。照らす元は各モジュールの `docs/architecture/<path>.md`（移動前の CLAUDE.md の本文）と実コード（`completion/blink`・`cmp` は詳細ファイルと実コード）。点検役に渡した例: R2-1（comments/sync のコールバック）、R3-1（gh の changed_files の書き手）、R3-2（extmarks の line_hl_group）。
+
+| 区画 | モジュール | 点検役 | 列挙した主張 | 問題あり | 迷い | 問題なしと確かめた範囲 | コミット |
+|---|---|---|---|---|---|---|---|
+| S1 | commands, palette, init, config, gh, util | fable | 31 | 3 | 2 | 残り 26 件 | (修正後に記入) |
+| S2 | drafts, diff, local/store, local/session, local/tracker, comments/local_sync | fable | 49 | 3 | 2 | 残り 44 件 | (修正後に記入) |
+| S3 | preview, all_diffs, comments, comments/data, comments/sync, comments/pickers | fable | 36 | 3 | 2 | 残り 31 件 | (修正後に記入) |
+| S4 | ui, ui/avatars, ui/format, ui/inline, ui/comment_browser, ui/sidepanel | fable | 28 | 6 | 2 | 残り 20 件 | (修正後に記入) |
+| S5 | ui/sidepanel/tree, ui/extmarks, files, scope, stack, overview | fable | 38 | 2 | 3 | 残り 33 件 | (修正後に記入) |
+| S6 | ui/toggle_picker, reactions, completion/init, completion/blink, completion/cmp, pr | fable | 33 | 2 | 3 | 残り 28 件 | (修正後に記入) |
+| 計 | 36 項目 | | 215 | 19 | 14 | 182 件 | |
+
+迷いの 14 件も同じ形（限定の脱落）なので、問題ありの 19 件とあわせて実装役に直させた。点検役の詳細な結果（場所・元の記述・置き換え案）は作業用のメモに残した。

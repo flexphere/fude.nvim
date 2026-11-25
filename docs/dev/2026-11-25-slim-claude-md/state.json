@@ -1,7 +1,7 @@
 {
   "slug": "slim-claude-md",
   "title": "CLAUDE.md のスリム化と肥大化の再発防止",
-  "phase": "done",
+  "phase": "revising",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-slim-claude-md",
   "branch": "docs/slim-claude-md",
   "base": "origin/main",
@@ -84,8 +84,16 @@
     "reviews_seen": 1,
     "status": "Copilot はクォータ不足でレビューできなかった（指摘 0 件）"
   },
-  "revision": 1,
-  "revisions": [],
+  "revision": 2,
+  "revisions": [
+    {
+      "revision": 2,
+      "date": "2026-11-25",
+      "request": "要約が元の記述の限定を落とす MUST について、通読の代わりに全数点検で直す",
+      "kind": "手直し",
+      "decision": "D-007"
+    }
+  ],
   "report_url": "https://claude.ai/artifact/LSWswhZaC467EHUGpn5iaa",
   "updated_at": "2026-11-25T00:00:00+09:00"
 }
