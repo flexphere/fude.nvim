@@ -4,13 +4,33 @@
   "date": "2026-11-26",
   "branch": "docs/slim-claude-md-trial",
   "base": "origin/main",
-  "status": "レビュー対応中",
+  "status": "完了",
   "generatedBy": "/develop-v2",
-  "summary": "実装とレビュー（MUST 0 件）が済み、PR #330 を ready for review にしました。Copilot のレビューを待っています（届かなければそのまま報告に進みます）。",
+  "summary": "実装・レビュー（3 周、MUST は一度も出ず）・PR（#330、CI 通過）が済みました。残るのは持ち主による動作確認です。ヒアリング・PRD の承認はユーザー代理のサブエージェントが行った試行です。",
   "attention": [
     {
-      "text": "同じ課題の PR #329 とは独立に進める試行です（#329 には触りません）",
+      "text": "動作確認 1: PR #330 のブランチで Claude Code を起動し、「CLAUDE.md is over the 150.0k-char limit」の警告が出ないことを見る（CLAUDE.md は 16,241 文字）",
+      "ref": "AC1"
+    },
+    {
+      "text": "動作確認 2: CLAUDE.md の「Module Responsibilities」を開き、要約と docs/architecture/ のファイル名から、知りたいモジュールの詳細にたどり着けるかを見る",
+      "ref": "AC3"
+    },
+    {
+      "text": "動作確認 3: `make check-claude-md` が OK を出すこと",
+      "ref": "AC4"
+    },
+    {
+      "text": "同じ課題の PR #329 があります。どちらを採るかを決めてください（この PR は /develop-v2 の試行として独立に作りました）",
       "ref": ""
+    },
+    {
+      "text": "Copilot はレビューできないと返したため、Copilot のレビューは受けていません",
+      "ref": ""
+    },
+    {
+      "text": "判断役の結論で、上限チェックを pre-commit と CI にも足しました（PRD の AC4 は make all だけを求めていました）",
+      "ref": "D-002 · 重要度 中"
     }
   ],
   "acceptance": [
@@ -306,5 +326,10 @@
   "pr": {
     "number": 330,
     "url": "https://github.com/flexphere/fude.nvim/pull/330"
+  },
+  "copilot": {
+    "status": "Copilot はレビューできないと返しました（割り当て不足）。Copilot のレビューは受けていません。",
+    "timed_out": true,
+    "comments": []
   }
 }
