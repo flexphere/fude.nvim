@@ -1,7 +1,7 @@
 {
   "slug": "slim-claude-md",
   "title": "CLAUDE.md のスリム化と肥大化の再発防止",
-  "phase": "copilot",
+  "phase": "reporting",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-slim-claude-md",
   "branch": "docs/slim-claude-md",
   "base": "origin/main",
@@ -81,8 +81,8 @@
     "url": "https://github.com/flexphere/fude.nvim/pull/329"
   },
   "copilot": {
-    "reviews_seen": 0,
-    "status": null
+    "reviews_seen": 1,
+    "status": "Copilot はクォータ不足でレビューできなかった（指摘 0 件）"
   },
   "revision": 1,
   "revisions": [],

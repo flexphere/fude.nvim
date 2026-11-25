@@ -63,3 +63,7 @@
 | R4-10 | MAY | `drafts.lua` のキーの括弧書きが網羅的に読める | CLAUDE.md:38 | 「e.g.」を付けた | (R4 修正) |
 | R4-11 | MAY | `pr.lua`「never branch names」は `--base` で branch 名を渡す | CLAUDE.md:67 | 「親を branch 引数で渡さない」に限定 | (R4 修正) |
 | R4-12 | MAY | `commands.lua` の記録に `repeatable = false` の例外 | CLAUDE.md:32 | 例外を書いた | (R4 修正) |
+
+## 第 1 版 Copilot（2026-11-25、PR #329）
+
+Copilot は「Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota」と返し、レビューしなかった。指摘は 0 件。再依頼しても同じクォータ不足になるので、再依頼はしていない。
