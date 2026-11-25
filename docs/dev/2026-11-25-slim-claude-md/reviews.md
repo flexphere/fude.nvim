@@ -23,3 +23,24 @@
 | R2-2 | SHOULD | HARNESS.md §4.1 の導入 PR 列が「(本 PR)」のまま | .claude/HARNESS.md:107 | PR 作成後に番号へ置き換える | (PR 作成後) |
 | R2-3 | MAY | Writing CLAUDE.md 節の後に空行が 2 つ | CLAUDE.md:85-86 | 直した | (R2 修正) |
 | R2-4 | MAY | `check_claude_size.lua` の `main()` にテストが無い | scripts/check_claude_size.lua | 見送り（R1-8 と同じ） | |
+
+## 第 1 版 第 3 周（2026-11-25、レビュー役: fable、テスト: 通過 — make all、plenary 2614 件成功）
+
+指摘の本質: 要約が、元の記述の対象（GitHub フローだけ、範囲表示だけ、など）を落として、モジュール全体の不変条件のように書いている。指摘の箇所に加え、要約中の every / only / never / must / no を含む主張を全項目で洗い直した。
+
+| # | 重要度 | 指摘 | 場所 | 対応 | コミット |
+|---|---|---|---|---|---|
+| R3-1 | MUST | `gh.lua`「every `state.changed_files` writer goes through `build_changed_files`」が GitHub フローの限定を落としている（local は別関数） | CLAUDE.md:36 | 「every GitHub-flow writer」に戻し、local の関数を明記 | (R3 修正) |
+| R3-2 | MUST | `ui/extmarks.lua`「no `line_hl_group` or sign」は範囲表示だけの話（`flash_line` などは使う） | CLAUDE.md:57 | 複数行の範囲表示に限定 | (R3 修正) |
+| R3-3 | SHOULD | `util.lua`「every fude picker goes through」に反例（`reactions.show_people`） | CLAUDE.md:37 | 「used by fude's pickers」に弱めた（詳細側の誤りはスコープ外のため残す） | (R3 修正) |
+| R3-4 | SHOULD | `drafts.lua`「must use `remove_if_unchanged`」は説明を規則に格上げしている | CLAUDE.md:38 | 「再保存され得る場合に guards する」という説明に戻した | (R3 修正) |
+| R3-5 | SHOULD | `ui/sidepanel.lua`「files never open in the panel」に `:quit` の例外 | CLAUDE.md:55 | 例外を書いた | (R3 修正) |
+| R3-6 | SHOULD | `gh.lua` の slug の主張が広い | CLAUDE.md:36 | slug を取る呼び出しを限定し、他は cwd から解決と明記 | (R3 修正) |
+| R3-7 | MAY | `pr.lua`「linked with PR URLs」は半分だけ正しい（stack 番号も渡す） | CLAUDE.md:67 | 「PR URL / stack number」に直した | (R3 修正) |
+| R3-8 | MAY | `ui/avatars.lua` の ImageMagick は任意、gate に snacks も含む | CLAUDE.md:51 | 直した | (R3 修正) |
+| R3-9 | MAY | `comments/data.md` の「below」の指す節が移った | docs/architecture/comments/data.md | 末尾に移った先への注記を足した（本文は AC2 のため改変しない） | (R3 修正) |
+| R3-10 | MAY | CLAUDE.md 冒頭「詳細を扱います」が実態とずれる | CLAUDE.md:5 | 「要約」と `docs/architecture/` への案内に直した | (R3 修正) |
+| R3-11 | MAY | `check_claude_size.lua` は読めないときも exit 1（他は 2） | scripts/check_claude_size.lua | 見送り（ヘッダに明記、害なし） | |
+| R3-12 | MAY | pre-commit が `scripts/` を lint しない | .githooks/pre-commit | 見送り（R1-9 と同じ） | |
+
+ほかに洗い直しで直したもの: `diff.lua`「helpers taking `cwd` must be given the repo root」→ local session が worktree root を渡す、という事実に、`ui.lua`「Spinners … never buffer changes」→ overview の spinner に限定。
