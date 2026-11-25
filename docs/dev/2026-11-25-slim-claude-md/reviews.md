@@ -20,7 +20,7 @@
 | # | 重要度 | 指摘 | 場所 | 対応 | コミット |
 |---|---|---|---|---|---|
 | R2-1 | MUST | `comments/sync.lua` の要約「gh callbacks drop responses after `reset_state()`」がモジュール全体の不変条件に読めるが、実際は `toggle_resolved`（と `create_single_comment`）だけ | CLAUDE.md:48 | `toggle_resolved` に限定し、全コールバックではないと明記した。他の要約の同種の一般化（`reset_state`・refuse・only）も grep で確認し、該当なし | (R2 修正) |
-| R2-2 | SHOULD | HARNESS.md §4.1 の導入 PR 列が「(本 PR)」のまま | .claude/HARNESS.md:107 | PR 作成後に番号へ置き換える | (PR 作成後) |
+| R2-2 | SHOULD | HARNESS.md §4.1 の導入 PR 列が「(本 PR)」のまま | .claude/HARNESS.md:107 | PR #329 の番号に置き換えた | (PR 作成後) |
 | R2-3 | MAY | Writing CLAUDE.md 節の後に空行が 2 つ | CLAUDE.md:85-86 | 直した | (R2 修正) |
 | R2-4 | MAY | `check_claude_size.lua` の `main()` にテストが無い | scripts/check_claude_size.lua | 見送り（R1-8 と同じ） | |
 

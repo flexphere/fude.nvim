@@ -1,7 +1,7 @@
 {
   "slug": "slim-claude-md",
   "title": "CLAUDE.md のスリム化と肥大化の再発防止",
-  "phase": "pr",
+  "phase": "copilot",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-slim-claude-md",
   "branch": "docs/slim-claude-md",
   "base": "origin/main",
@@ -77,8 +77,8 @@
   ],
   "review_round": 4,
   "pr": {
-    "number": null,
-    "url": null
+    "number": 329,
+    "url": "https://github.com/flexphere/fude.nvim/pull/329"
   },
   "copilot": {
     "reviews_seen": 0,
