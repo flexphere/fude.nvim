@@ -96,3 +96,7 @@ Copilot は「Copilot was unable to review this pull request because the user wh
 | V2R1-4 | MAY | 要約が元の記述の限定を落としている | local/session の VimLeavePre の強制不可条件が 1 つしか書かれていない（書かれていることは偽ではない） | CLAUDE.md:41 | 見送り | |
 
 MUST 0 件。全数点検の後のレビューで、同じ種類の MUST は出なかった。
+
+## 第 2 版 Copilot（2026-11-25、PR #329）
+
+再依頼したが、Copilot は第 1 版と同じく「insufficient remaining quota」と返し、レビューしなかった。指摘は 0 件。

@@ -5,14 +5,14 @@
  "branch": "docs/slim-claude-md",
  "base": "main",
  "status": "PR 作成済み（レビュー待ち）",
- "commits": 11,
- "summary": "CLAUDE.md を 158,255 文字から 29,803 文字に減らしました。モジュールごとの詳細は docs/architecture/<module>.md（36 ファイル）に欠けなく移し、CLAUDE.md には責務と壊しやすい不変条件の要約を残しています。上限 40,000 文字の検査（make check-claude-size）を make all・pre-commit・CI に入れ、ドキュメント更新の規則も「詳細は docs/architecture/、CLAUDE.md は要約だけ」に書き換えました。",
+ "commits": 16,
+ "summary": "CLAUDE.md を 158,255 文字から 32,273 文字に減らしました。モジュールごとの詳細は docs/architecture/<module>.md（36 ファイル）に欠けなく移し、CLAUDE.md には責務と壊しやすい不変条件の要約を残しています。上限 40,000 文字の検査（make check-claude-size）を make all・pre-commit・CI に入れ、ドキュメント更新の規則も書き換えました。第 2 版では、要約が元の記述の限定を落とす問題を全数点検で洗い出し、36 項目・215 主張を元の記述と照らして 33 か所を直しました。",
  "generatedBy": "/develop-v2",
  "tests": [
   {
    "command": "make all",
    "result": "pass",
-   "detail": "plenary 2614 件成功。lint・format-check・check-state-deps・check-purity・check-docs・check-claude-size（29,803 / 40,000）も通過"
+   "detail": "plenary 2614 件成功。lint・format-check・check-state-deps・check-purity・check-docs・check-claude-size（32,273 / 40,000）も通過"
   },
   {
    "command": "tests/fude/scripts/check_claude_size_spec.lua",
@@ -36,12 +36,16 @@
    "ref": "D-005 · 重要度 高"
   },
   {
-   "text": "Copilot は「依頼したユーザーの残りクォータが足りない」と返し、レビューしませんでした。クォータが戻ったら、再依頼するかどうか決めてください。",
-   "ref": "Copilot"
+   "text": "要約の全数点検の結果: 36 項目を 6 区画に分け、点検役 6 人が 215 主張を元の記述（docs/architecture/）・実コードと 1 文ずつ照らしました。区画ごとの件数（問題あり / 迷い / 主張数）は S1 commands〜util 3/2/31、S2 drafts〜comments/local_sync 3/2/49、S3 preview〜comments/pickers 3/2/36、S4 ui〜ui/sidepanel 6/2/28、S5 ui/sidepanel/tree〜overview 2/3/38、S6 ui/toggle_picker〜pr 2/3/33 です。問題あり 19 件と迷い 14 件をすべて直し、残りの 182 件は問題なしと確かめました。その後の新しいレビュー役の 1 周で MUST は 0 件、同じ種類の指摘は MAY 3 件（元の記述から引き継いだ曖昧さなど）だけでした。",
+   "ref": "D-007 · 全数点検"
   },
   {
-   "text": "CLAUDE.md の要約では、元の記述の限定（GitHub フローだけ、特定の関数だけ）が落ちて、モジュール全体の不変条件のように読める誤りが続けて見つかりました（2〜4 周目で MUST 6 件）。4 周目（最終周）で直したのは gh.lua の 2 点（slug の扱い、`gh pr view` を detached HEAD で走らせないこと）と ui/extmarks.lua の line_hl_group の 1 点です。要約は一度通読して、違和感がないか確かめてください。",
-   "ref": "D-006 · R4-1〜R4-3"
+   "text": "要約は限定を戻した分だけ長くなり、最長 1,119 文字と「Writing CLAUDE.md」の「a few lines」を超えています。削ると限定の脱落がまた起きやすいので直していません。上限の 9 割（36,000 文字）を超えたら見直します。",
+   "ref": "D-008 · V2R1-1"
+  },
+  {
+   "text": "Copilot は「依頼したユーザーの残りクォータが足りない」と返し、レビューしませんでした。クォータが戻ったら、再依頼するかどうか決めてください。",
+   "ref": "Copilot"
   },
   {
    "text": "今後、機能を変えたときは docs/architecture/<module>.md を更新します。CLAUDE.md の要約に手を入れるのは、責務か不変条件が変わったときだけです（CLAUDE.md の「Writing CLAUDE.md」節）。上限を超える PR は make all・pre-commit・CI で落ちます。",
@@ -61,7 +65,7 @@
    "id": "AC1",
    "text": "CLAUDE.md が 40,000 文字以下になる",
    "result": "met",
-   "how": "make check-claude-size: 29,803 / 40,000 文字（移動前 158,255）"
+   "how": "make check-claude-size: 32,273 / 40,000 文字（移動前 158,255）"
   },
   {
    "id": "AC2",
@@ -73,7 +77,7 @@
    "id": "AC3",
    "text": "CLAUDE.md の各モジュールの項目は、責務と壊しやすい不変条件の要約（目安 1〜5 行）と詳細ファイルへのリンクになっている。lua/fude/ の全モジュールに項目がある",
    "result": "met",
-   "how": "36 モジュールすべてに要約とリンク。限定の脱落は 4 周のレビューで直した"
+   "how": "36 モジュールすべてに要約とリンク。第 2 版の全数点検で 215 主張を照らし、限定の脱落 33 か所を直した"
   },
   {
    "id": "AC4",
@@ -251,6 +255,45 @@
    "impact": "レビューの進め方。4 周目は同じ形の MUST が 3 件で、直して PR へ進んだ",
    "revisit": "マージ後に、要約の誤りが原因で実装を誤った例が出たとき",
    "refs": "AC3, R4-1〜R4-3"
+  },
+  {
+   "id": "D-007",
+   "title": "報告後の修正 第 2 版: 要約の限定の脱落を全数点検で直す",
+   "at": "2026-11-25",
+   "phase": "報告後の修正 第 2 版",
+   "severity": "中",
+   "severityReason": "CLAUDE.md の要約全体が対象。ただしドキュメントだけで PRD は変えない",
+   "by": "ユーザー",
+   "background": "第 1 版で通読を依頼したが、ユーザーは全数点検を求めた。同じ種類の MUST が 2〜4 周目に続いていた。",
+   "options": [
+    "手直しとして全数点検する",
+    "要件の変更として扱う"
+   ],
+   "decided": "手直しとして全数点検する（6 区画・点検役 6 人、修正は実装役）",
+   "reason": "抜き取りのレビューを重ねても、散らばった同じ形の問題は出尽くさない。",
+   "impact": "CLAUDE.md の要約、reviews.md、報告ページ",
+   "revisit": "全数点検の後のレビューで同じ種類の MUST が出たとき",
+   "refs": "AC3, R2-1, R3-1, R3-2, R4-1〜R4-3"
+  },
+  {
+   "id": "D-008",
+   "title": "要約の長さの指摘（SHOULD）は直さない",
+   "at": "2026-11-25",
+   "phase": "報告後の修正 第 2 版",
+   "severity": "低",
+   "severityReason": "上限 40,000 に対し 32,273 で余裕があり、後から削れる",
+   "by": "作業する側",
+   "background": "限定を戻した結果、要約が長くなり「a few lines」を超えた。",
+   "options": [
+    "長い項目を削る",
+    "「a few lines」の文言を緩める",
+    "直さず上限の検査に任せる"
+   ],
+   "decided": "直さず上限の検査に任せる",
+   "reason": "今回の目的は要約の正確さで、短さは check-claude-size が守る。削ると限定の脱落がまた起きやすい。",
+   "impact": "要約がやや長いまま",
+   "revisit": "CLAUDE.md が 36,000 文字を超えたとき",
+   "refs": "AC3, V2R1-1"
   }
  ],
  "reviews": [
@@ -293,6 +336,26 @@
    "may": 4,
    "revision": 1,
    "reviewer": "fable"
+  },
+  {
+   "round": "全数点検",
+   "revision": 2,
+   "date": "2026-11-25",
+   "tests": "pass",
+   "must": 19,
+   "should": 0,
+   "may": 0,
+   "reviewer": "fable ×6（点検役）"
+  },
+  {
+   "round": 1,
+   "revision": 2,
+   "date": "2026-11-25",
+   "tests": "pass",
+   "must": 0,
+   "should": 1,
+   "may": 3,
+   "reviewer": "fable"
   }
  ],
  "unresolved": [
@@ -319,6 +382,30 @@
    "severity": "MAY",
    "text": "check_claude_size.lua は読めないときも exit 1（他のスクリプトは 2）",
    "reason": "見送り。ヘッダに明記してあり害は無い"
+  },
+  {
+   "id": "V2R1-1",
+   "severity": "SHOULD",
+   "text": "要約の長さが目安（a few lines）を超える",
+   "reason": "D-008。削ると限定の脱落がまた起きやすい"
+  },
+  {
+   "id": "V2R1-2",
+   "severity": "MAY",
+   "text": "local/tracker の「(marks cleared)」が on_buf_write にも掛かって読める",
+   "reason": "見送り。元の記述から引き継いだ曖昧さ"
+  },
+  {
+   "id": "V2R1-3",
+   "severity": "MAY",
+   "text": "diff の cwd を取らない関数の括弧が例外の全数に読める",
+   "reason": "見送り。local session が使う関数の中では正しい"
+  },
+  {
+   "id": "V2R1-4",
+   "severity": "MAY",
+   "text": "VimLeavePre の強制不可条件が 1 つしか書かれていない",
+   "reason": "見送り。書かれていることは偽ではない"
   }
  ],
  "tasks": [
@@ -353,7 +440,7 @@
    "owner": "main"
   }
  ],
- "revision": 1,
+ "revision": 2,
  "revisions": [
   {
    "revision": 1,
@@ -362,6 +449,14 @@
    "request": "",
    "changes": "最初の報告",
    "refs": ""
+  },
+  {
+   "revision": 2,
+   "date": "2026-11-25",
+   "kind": "手直し",
+   "request": "要約が元の記述の限定を落とす MUST を、通読の代わりに全数点検で直す",
+   "changes": "要約 36 項目を 6 区画に分けて全数点検（215 主張）。問題あり 19 件と迷い 14 件を実装役が直した（2492334）。新しいレビュー役の 1 周で MUST 0",
+   "refs": "D-007 · D-008 · AC3"
   }
  ],
  "pr": {
@@ -369,7 +464,7 @@
   "url": "https://github.com/flexphere/fude.nvim/pull/329"
  },
  "copilot": {
-  "status": "Copilot はクォータ不足でレビューできませんでした（指摘 0 件）。",
+  "status": "Copilot は第 1 版・第 2 版（再依頼）ともクォータ不足でレビューできませんでした（指摘 0 件）。",
   "comments": []
  }
 }
