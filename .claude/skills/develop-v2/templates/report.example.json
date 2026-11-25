@@ -275,8 +275,8 @@
       "revision": 1,
       "date": "2026-11-25",
       "kind": "最初の報告",
-      "request": "",
-      "changes": "最初の報告",
+      "request": "最初の開発",
+      "changes": "期間・状態の絞り込みを足した",
       "refs": ""
     },
     {
@@ -296,7 +296,7 @@
     "status": "Copilot のレビュー 2 件に対応しました。",
     "comments": [
       {
-        "id": "C1",
+        "id": "C1-1",
         "location": "lua/fude/foo.lua:42",
         "text": "nil のときにエラーになる",
         "response": "直した",
@@ -304,7 +304,7 @@
         "outcome": "fixed"
       },
       {
-        "id": "C2",
+        "id": "C1-2",
         "location": "README.md:10",
         "text": "表記の揺れ",
         "response": "返信のみ（既存の表記に合わせている）",

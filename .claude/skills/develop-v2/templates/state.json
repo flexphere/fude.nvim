@@ -13,7 +13,6 @@
     "questions_asked": 0,
     "prd_drafts": 0
   },
-  "worktree": "/path/to/fude.nvim-dev-example-slug",
   "branch": "feat/example-slug",
   "base": "origin/main",
   "test_commands": [

@@ -30,9 +30,23 @@ def parse_time(s):
     if not isinstance(s, str) or not s:
         return None
     try:
-        return datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        t = datetime.datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
         return None
+    # オフセットの無い時刻は UTC とみなす（有りと無しが混ざっても引き算できるように）
+    return t if t.tzinfo else t.replace(tzinfo=datetime.timezone.utc)
+
+
+def num(v, default=None):
+    """数か数を表す文字列を int にする。それ以外は default（記録の揺れで止まらないため）。"""
+    if isinstance(v, bool):
+        return default
+    if isinstance(v, int):
+        return v
+    try:
+        return int(str(v).strip())
+    except (TypeError, ValueError):
+        return default
 
 
 def phase_hours(history):
@@ -51,8 +65,8 @@ def recurring_kinds(review_kinds):
     for k in arr(review_kinds):
         if not isinstance(k, dict) or k.get("severity") != "MUST" or not k.get("kind"):
             continue
-        key = (k.get("revision") or 1, k["kind"])
-        rounds.setdefault(key, set()).add(k.get("round"))
+        key = (num(k.get("revision"), 1), k["kind"])
+        rounds.setdefault(key, set()).add(num(k.get("round")))
     out = set()
     for (_, kind), rs in rounds.items():
         nums = sorted(r for r in rs if isinstance(r, int))
@@ -69,7 +83,7 @@ def build(report, state):
     acc = [a for a in arr(report.get("acceptance")) if isinstance(a, dict)]
     decs = [d for d in arr(report.get("decisions")) if isinstance(d, dict)]
     revs = [r for r in arr(state.get("revisions") or report.get("revisions")) if isinstance(r, dict)]
-    revs = [r for r in revs if (r.get("revision") or 1) > 1]
+    revs = [r for r in revs if num(r.get("revision"), 1) > 1]
     copilot = report.get("copilot") if isinstance(report.get("copilot"), dict) else None
     cc = [c for c in arr(copilot.get("comments") if copilot else None) if isinstance(c, dict)]
     sweeps = [s for s in arr(state.get("sweeps")) if isinstance(s, dict)]
@@ -96,8 +110,8 @@ def build(report, state):
             "tasks": len(arr(report.get("tasks") or state.get("tasks"))),
             "commits": report.get("commits"),
             "review_rounds": len(agent_rounds),
-            "must_by_round": [r.get("must") or 0 for r in agent_rounds],
-            "must_total": sum(r.get("must") or 0 for r in agent_rounds),
+            "must_by_round": [num(r.get("must"), 0) for r in agent_rounds],
+            "must_total": sum(num(r.get("must"), 0) for r in agent_rounds),
             "acceptance": {
                 "total": len(acc),
                 "met": count(acc, lambda a: a.get("result") == "met"),
@@ -109,8 +123,8 @@ def build(report, state):
         "recurring": {
             "kinds": recurring_kinds(state.get("review_kinds")),
             "sweeps": len(sweeps),
-            "sweep_regions": sum(s.get("regions") or 0 for s in sweeps),
-            "sweep_found": sum(s.get("found") or 0 for s in sweeps),
+            "sweep_regions": sum(num(s.get("regions"), 0) for s in sweeps),
+            "sweep_found": sum(num(s.get("found"), 0) for s in sweeps),
             "sweep_recurred": count(sweeps, lambda s: s.get("recurred") is True),
         },
         "decisions": {

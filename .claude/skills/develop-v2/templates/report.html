@@ -407,7 +407,7 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   if (D.copilot) {
     const cc = arr(D.copilot.comments);
     const sC = section("copilot", "Copilot のレビュー", cc.length);
-    sC.append(h("p", "note", D.copilot.status || (cc.length ? null : "指摘はありませんでした。")));
+    sC.append(h("p", "note", D.copilot.status || (cc.length ? null : (D.status === "Copilot レビュー待ち" ? "レビューを待っています。" : "結果はまだありません。"))));
     if (cc.length) sC.append(table([
       { label: "#", key: "id", cls: "id" },
       { label: "場所", key: "location", cls: "mono" },
