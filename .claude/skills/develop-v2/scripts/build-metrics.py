@@ -20,6 +20,8 @@ def load(path):
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
+    except ValueError as e:
+        sys.exit(f"{path} の JSON が読めません: {e}")
 
 
 def arr(v):

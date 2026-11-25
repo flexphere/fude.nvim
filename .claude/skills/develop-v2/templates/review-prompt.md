@@ -3,7 +3,7 @@
 あなたは、この変更の経緯を知らないレビュー役です。作った側の意図や判断は知らされていません。コードと要件だけを見て判断してください。
 
 ## 渡すもの
-- PRD: <prd.md の全文を貼る（場所は渡さない）>
+- PRD: <prd.md の全文を貼る。変更履歴の「理由」の列は除く（場所は渡さない）>
 - 差分: worktree `<worktree の場所>` で `git diff <base>...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'`（Bash の命令は毎回 `cd "<worktree の場所>" && ...` で始める（作業ディレクトリの外への `cd` は次の呼び出しに残らないため））
 - `docs/dev/` と `.claude/review-lessons.md` は読まない。そこには作った側の判断やレビューの記録があり、経緯を知らないあなたの判断を偏らせる。PRD は上に渡したものを使う。
 - リポジトリの規則: `<worktree>/CLAUDE.md`（そこから参照される資料も必要に応じて読む）
