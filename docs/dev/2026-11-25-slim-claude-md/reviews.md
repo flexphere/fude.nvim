@@ -44,3 +44,22 @@
 | R3-12 | MAY | pre-commit が `scripts/` を lint しない | .githooks/pre-commit | 見送り（R1-9 と同じ） | |
 
 ほかに洗い直しで直したもの: `diff.lua`「helpers taking `cwd` must be given the repo root」→ local session が worktree root を渡す、という事実に、`ui.lua`「Spinners … never buffer changes」→ overview の spinner に限定。
+
+## 第 1 版 第 4 周（2026-11-25、レビュー役: fable、範囲: CLAUDE.md の要約と docs/architecture・実コードの突き合わせのみ（D-006）、テスト: 通過 — make all、plenary 2614 件成功）
+
+同じ形（限定の脱落）の MUST が 3 件だったので、D-006 に従い直して PR に進む。直した箇所は報告の「見てほしいこと」に挙げる。
+
+| # | 重要度 | 指摘 | 場所 | 対応 | コミット |
+|---|---|---|---|---|---|
+| R4-1 | MUST | `gh.lua`「other REST calls resolve the repo from the cwd」は詳細に無く、reaction 系が反例（第 3 周の修正で入った） | CLAUDE.md:36 | 括弧を消し、slug は任意で nil なら cwd 解決のテンプレート、と詳細どおりに直した | (R4 修正) |
+| R4-2 | MUST | `gh.lua`「never runs `gh pr view` without a branch」がモジュール全体に読める（overview の fetcher は呼び出し側任せ） | CLAUDE.md:36 | `get_pr_info` と `view_pr` に限定し、overview の fetcher は呼び出し側が番号を渡す前提と明記 | (R4 修正) |
+| R4-3 | MUST | `ui/extmarks.lua`「line-number highlights only」が EOL マーカーと `flash_line`/`highlight_comment_lines` の `line_hl_group` と合わない（第 3 周の修正がまだ不正確） | CLAUDE.md:57 | 持続する範囲マークに限定し、EOL マーカーと一時的な `line_hl_group` を明記 | (R4 修正) |
+| R4-4 | SHOULD | `util.lua`「must reuse」は説明を規則に格上げ | CLAUDE.md:37 | 「Shared helpers:」に戻した | (R4 修正) |
+| R4-5 | SHOULD | `comments/sync.lua`「serializes resolve toggles」は順番待ちに読める（実際は拒否） | CLAUDE.md:48 | 「refuses a second resolve toggle」に直した | (R4 修正) |
+| R4-6 | SHOULD | `local/session.lua` の `checkout_blocker` は `VimLeavePre` で force される | CLAUDE.md:41 | 例外を書いた | (R4 修正) |
+| R4-7 | SHOULD | `ui/toggle_picker.lua`「never reorders or moves the selection」は Telescope/snacks だけ | CLAUDE.md:62 | 対象を限定し、`vim.ui.select` の挙動を明記 | (R4 修正) |
+| R4-8 | SHOULD | `comments/sync.lua` の `load_comments` が常に 4 つを並列に取ると読める | CLAUDE.md:48 | 条件付きの取得を書いた | (R4 修正) |
+| R4-9 | MAY | `init.lua`「stop() restores the original HEAD」に commit scope の限定が無い | CLAUDE.md:34 | 直した | (R4 修正) |
+| R4-10 | MAY | `drafts.lua` のキーの括弧書きが網羅的に読める | CLAUDE.md:38 | 「e.g.」を付けた | (R4 修正) |
+| R4-11 | MAY | `pr.lua`「never branch names」は `--base` で branch 名を渡す | CLAUDE.md:67 | 「親を branch 引数で渡さない」に限定 | (R4 修正) |
+| R4-12 | MAY | `commands.lua` の記録に `repeatable = false` の例外 | CLAUDE.md:32 | 例外を書いた | (R4 修正) |
