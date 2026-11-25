@@ -16,6 +16,7 @@
 - リポジトリの規則: <worktree>/CLAUDE.md
 - `docs/dev/` と `.claude/review-lessons.md` は読まない（作った側の判断や希望が書かれている）。PRD は上に渡したものを使う
 - 事実（テストの出力、レビューの指摘の原文など）: <貼る>
+- worktree: `<worktree の絶対パス>`（Bash の命令は毎回 `cd "<worktree>" && ...` で始める）
 
 ## 返す形
 - 結論（どの案か）

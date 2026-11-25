@@ -1,10 +1,10 @@
 {
   "slug": "example-slug",
   "title": "作るものの名前",
+  "branch": "feat/example-slug",
+  "worktree": "/abs/path/fude.nvim-dev-example-slug",
   "phase": "hearing",
-  "revising_step": null,
-  "_revising_step_note": "phase が revising のときだけ使う: fix | review | copilot | report",
-  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | copilot | reporting | done | revising",
+  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done",
   "phase_history": [
     {
       "phase": "hearing",
@@ -15,47 +15,17 @@
     "questions_asked": 0,
     "prd_drafts": 0
   },
-  "branch": "feat/example-slug",
-  "base": "origin/main",
-  "test_commands": [
-    "make all"
-  ],
-  "tasks": [
-    {
-      "id": "T1",
-      "title": "タスク",
-      "status": "待ち",
-      "owner": "impl-1",
-      "depends_on": [],
-      "files": [],
-      "agent_id": null,
-      "_owner_note": "owner は表示用の名前、agent_id は SendMessage で続けて頼むための ID（セッションをまたぐと使えない）"
-    }
-  ],
-  "review_round": 0,
-  "review_head": null,
-  "reviewer_agent_id": null,
-  "judge_agent_id": null,
-  "_agent_ids_note": "レビュー役・判断役に SendMessage で続けて頼むための ID（セッションをまたぐと使えない）。版が変わったらレビュー役は立て直す",
-  "review_kinds": [],
-  "_review_kinds_note": "1 件の形: {\"revision\": 1, \"round\": 1, \"kind\": \"指摘の本質を 1 文で\", \"severity\": \"MUST\"}",
+  "agents": {
+    "reviewer": null,
+    "judge": null,
+    "_note": "SendMessage で続けて頼むための ID（セッションをまたぐと使えない）"
+  },
   "review_outcomes": [],
-  "_review_outcomes_note": "レビューのループが終わるたびに {\"revision\": 1, \"after\": null | \"copilot\", \"ended\": \"must0\" | \"capped\", \"rounds\": 3} を足す",
-  "sweeps": [],
+  "_review_outcomes_note": "レビューが終わるたびに {\"revision\": 1, \"ended\": \"must0\" | \"capped\", \"rounds\": 3} を足す（Copilot 対応のあとのレビューには \"after\": \"copilot\" も付ける）",
   "pr": {
     "number": null,
     "url": null
   },
-  "copilot": {
-    "reviews_seen": 0,
-    "unable_seen": 0,
-    "status": null,
-    "timed_out": false,
-    "_note": "timed_out・status は報告のときに report.json の copilot へ写す（指標は report.json から数える）"
-  },
   "revision": 1,
-  "revisions": [],
-  "_revisions_note": "報告のときに第 1 版 {\"revision\": 1, \"date\": \"<報告日>\", \"kind\": \"最初の報告\", \"request\": \"最初の開発\"} を入れ、報告後の修正のたびに {\"revision\": 2, \"date\": \"...\", \"request\": \"修正の依頼\", \"kind\": \"手直し | 要件の変更\", \"decision\": \"D-010\"} を足す",
-  "report_url": null,
-  "updated_at": "2026-01-01T00:00:00+09:00"
+  "report_url": null
 }

@@ -64,22 +64,6 @@ def phase_hours(history):
     return hours or None
 
 
-def recurring_kinds(review_kinds):
-    """同じ版で、連続する 2 周以上に MUST として出た種類を返す。"""
-    rounds = {}
-    for k in arr(review_kinds):
-        if not isinstance(k, dict) or k.get("severity") != "MUST" or not k.get("kind"):
-            continue
-        key = (num(k.get("revision"), 1), k["kind"])
-        rounds.setdefault(key, set()).add(num(k.get("round")))
-    out = set()
-    for (_, kind), rs in rounds.items():
-        nums = sorted(r for r in rs if isinstance(r, int))
-        if any(b - a == 1 for a, b in zip(nums, nums[1:])):
-            out.add(kind)
-    return sorted(out)
-
-
 def review_end(agent_rounds, outcomes):
     """4. のレビュー（Copilot 対応後の周 `after: "copilot"` を除く）の終わり方。
 
@@ -131,7 +115,6 @@ def build(report, state):
     revs = [r for r in revs if num(r.get("revision"), 1) > 1]
     copilot = report.get("copilot") if isinstance(report.get("copilot"), dict) else None
     cc = [c for c in arr(copilot.get("comments") if copilot else None) if isinstance(c, dict)]
-    sweeps = [s for s in arr(state.get("sweeps")) if isinstance(s, dict)]
     hearing = state.get("hearing") if isinstance(state.get("hearing"), dict) else {}
     prd = report.get("prd") if isinstance(report.get("prd"), dict) else {}
 
@@ -169,23 +152,12 @@ def build(report, state):
             },
             "tests_failed": count(arr(report.get("tests")), lambda t: isinstance(t, dict) and t.get("result") == "fail"),
         },
-        "recurring": {
-            "kinds": recurring_kinds(state.get("review_kinds")),
-            "sweeps": len(sweeps),
-            "sweep_regions": sum(num(s.get("regions"), 0) for s in sweeps),
-            "sweep_found": sum(num(s.get("found"), 0) for s in sweeps),
-            "sweep_recurred": count(sweeps, lambda s: s.get("recurred") is True),
-        },
         "decisions": {
             "total": len(decs),
             "by_judge": count(decs, lambda d: d.get("by") == "判断役"),
             "high": count(decs, lambda d: d.get("severity") == "高"),
-            # ヒアリングと報告後の修正の依頼以外でユーザーが決めたもの = 判断役が「人が決めるべき」と返したもの
-            "escalated_to_user": count(
-                decs,
-                lambda d: d.get("by") == "ユーザー"
-                and not str(d.get("phase") or "").startswith(("ヒアリング", "報告後の修正")),
-            ),
+            # 判断役が「人が決めるべき」と返したもの（判断の記録に escalated: true を付ける）
+            "escalated_to_user": count(decs, lambda d: d.get("escalated") is True),
         },
         "copilot": None
         if copilot is None

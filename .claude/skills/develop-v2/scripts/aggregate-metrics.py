@@ -114,8 +114,6 @@ def main():
         ("打ち切り", lambda m: g(m, "implementation", "review_end", "capped_revisions")),
         ("Copilot 後の打ち切り", lambda m: g(m, "implementation", "review_end", "capped_after_copilot")),
         ("4 周目以降の MUST", lambda m: g(m, "implementation", "review_end", "late_must_rounds")),
-        ("繰り返した種類", lambda m: len(g(m, "recurring", "kinds", default=[]))),
-        ("全数点検", lambda m: g(m, "recurring", "sweeps")),
         ("判断役", lambda m: g(m, "decisions", "by_judge")),
         ("人へ", lambda m: g(m, "decisions", "escalated_to_user")),
         ("Copilot 直した", lambda m: g(m, "copilot", "fixed")),
@@ -157,12 +155,6 @@ def main():
         signals.append(
             f"要件の手戻り: 直近 {k} 件中 {len(req)} 件で、承認後の PRD 変更か「要件の変更」の修正がある → "
             "ヒアリングの手順、または §4.2 案 5（重要度 高 の判断を判断役 2 人に）を検討"
-        )
-    rec = [m for m in recent if g(m, "recurring", "kinds", default=[]) or g(m, "recurring", "sweep_recurred", default=0)]
-    if len(rec) >= 2:
-        signals.append(
-            f"繰り返す指摘: 直近 {k} 件中 {len(rec)} 件で、同じ種類の MUST が周をまたいだ → "
-            "§4.2 案 6（前に扱った指摘の照合）、全数点検の区画の取り方、実装役への依頼の書き方を検討"
         )
     esc = [m for m in recent if g(m, "decisions", "escalated_to_user", default=0) > 0]
     if len(esc) >= 3:
