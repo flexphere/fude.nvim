@@ -1,0 +1,375 @@
+{
+ "title": "CLAUDE.md スリム化",
+ "slug": "slim-claude-md",
+ "date": "2026-11-25",
+ "branch": "docs/slim-claude-md",
+ "base": "main",
+ "status": "PR 作成済み（レビュー待ち）",
+ "commits": 11,
+ "summary": "CLAUDE.md を 158,255 文字から 29,803 文字に減らしました。モジュールごとの詳細は docs/architecture/<module>.md（36 ファイル）に欠けなく移し、CLAUDE.md には責務と壊しやすい不変条件の要約を残しています。上限 40,000 文字の検査（make check-claude-size）を make all・pre-commit・CI に入れ、ドキュメント更新の規則も「詳細は docs/architecture/、CLAUDE.md は要約だけ」に書き換えました。",
+ "generatedBy": "/develop-v2",
+ "tests": [
+  {
+   "command": "make all",
+   "result": "pass",
+   "detail": "plenary 2614 件成功。lint・format-check・check-state-deps・check-purity・check-docs・check-claude-size（29,803 / 40,000）も通過"
+  },
+  {
+   "command": "tests/fude/scripts/check_claude_size_spec.lua",
+   "result": "pass",
+   "detail": "8 件通過（上限ちょうど・超過・マルチバイトを 1 文字として数える）"
+  },
+  {
+   "command": "AC2 の照合スクリプト",
+   "result": "pass",
+   "detail": "移動前の 51 行（約 148k 文字）すべてが docs/architecture/ に含まれる。レビュー役 4 人も独立に照合"
+  },
+  {
+   "command": "新しいセッションで上限警告が出ないこと",
+   "result": "skip",
+   "detail": "マージ後に手で確かめてください"
+  }
+ ],
+ "attention": [
+  {
+   "text": "PR #328（develop-v2 スキル）の .claude/skills/develop-v2/SKILL.md の 27・133・161 行目は「CLAUDE.md（Architecture、State Dependencies）を更新」「Architecture の関数名を突き合わせる」のままです。docs/architecture/ に合わせた直しが要ります。どちらの PR が先にマージされても必要です。",
+   "ref": "D-005 · 重要度 高"
+  },
+  {
+   "text": "Copilot は「依頼したユーザーの残りクォータが足りない」と返し、レビューしませんでした。クォータが戻ったら、再依頼するかどうか決めてください。",
+   "ref": "Copilot"
+  },
+  {
+   "text": "CLAUDE.md の要約では、元の記述の限定（GitHub フローだけ、特定の関数だけ）が落ちて、モジュール全体の不変条件のように読める誤りが続けて見つかりました（2〜4 周目で MUST 6 件）。4 周目（最終周）で直したのは gh.lua の 2 点（slug の扱い、`gh pr view` を detached HEAD で走らせないこと）と ui/extmarks.lua の line_hl_group の 1 点です。要約は一度通読して、違和感がないか確かめてください。",
+   "ref": "D-006 · R4-1〜R4-3"
+  },
+  {
+   "text": "今後、機能を変えたときは docs/architecture/<module>.md を更新します。CLAUDE.md の要約に手を入れるのは、責務か不変条件が変わったときだけです（CLAUDE.md の「Writing CLAUDE.md」節）。上限を超える PR は make all・pre-commit・CI で落ちます。",
+   "ref": "D-001 · D-003"
+  },
+  {
+   "text": "develop-v2 スキルの Copilot 待機スクリプトにバグがあります。awk '{s+=is}' は '{s+=$1}' の書き間違いで、件数がいつまでも 0 になり、必ずタイムアウトします。今回は直したものを使いました。#328 で直してください。",
+   "ref": "スキルの不具合"
+  },
+  {
+   "text": "マージ後、新しいセッションで「CLAUDE.md is over the 150.0k-char limit」が出なくなったかを確かめてください。",
+   "ref": "手で確認"
+  }
+ ],
+ "acceptance": [
+  {
+   "id": "AC1",
+   "text": "CLAUDE.md が 40,000 文字以下になる",
+   "result": "met",
+   "how": "make check-claude-size: 29,803 / 40,000 文字（移動前 158,255）"
+  },
+  {
+   "id": "AC2",
+   "text": "Module Responsibilities の各モジュールの今の記述が docs/architecture/<lua/fude からの相対パス>.md（例: local/session.lua → docs/architecture/local/session.md）に欠けなく移っている。Comment browser thread identity と、モジュール一覧の前にある 2 段落（sidepanel の commit review marks、Overview metadata contract）も関係するファイルへ移す",
+   "result": "met",
+   "how": "照合スクリプトで欠落 0。レビュー役 4 人も独立に照合"
+  },
+  {
+   "id": "AC3",
+   "text": "CLAUDE.md の各モジュールの項目は、責務と壊しやすい不変条件の要約（目安 1〜5 行）と詳細ファイルへのリンクになっている。lua/fude/ の全モジュールに項目がある",
+   "result": "met",
+   "how": "36 モジュールすべてに要約とリンク。限定の脱落は 4 周のレビューで直した"
+  },
+  {
+   "id": "AC4",
+   "text": "State Dependencies 表は CLAUDE.md に残り、make check-state-deps が通る",
+   "result": "met",
+   "how": "make check-state-deps 通過"
+  },
+  {
+   "id": "AC5",
+   "text": "CLAUDE.md が上限（40,000 文字）を超えると失敗する make check-claude-size（scripts/check_claude_size.lua）があり、make all・.githooks/pre-commit・CI に入っている",
+   "result": "met",
+   "how": "check_claude_size_spec.lua 8 件。make all・pre-commit・CI に組み込み"
+  },
+  {
+   "id": "AC6",
+   "text": "「CLAUDE.md の Architecture を更新」と書いている規則（Quality Rules、pj-checklist、develop / self-review / review-respond / harness-audit、CONTRIBUTING.md、HARNESS.md）を、詳細は docs/architecture/、CLAUDE.md は責務と不変条件だけ、という書き分けに更新する。CLAUDE.md に何を書くか・書かないかの指針を置く",
+   "result": "met",
+   "how": "grep で古い指示なし。develop-v2 は D-005 で対象外（#328 で対応）"
+  },
+  {
+   "id": "AC7",
+   "text": "make all が通る",
+   "result": "met",
+   "how": "make all 通過"
+  }
+ ],
+ "prd": {
+  "approvedAt": "2026-11-25",
+  "purpose": "CLAUDE.md が約 160k 文字に膨らみ、Claude Code が「CLAUDE.md is over the 150.0k-char limit」を出している。毎セッション読み込まれるコンテキストを減らし、再び膨らまないようにする。うまくいった状態: CLAUDE.md が 40k 文字以下で、モジュールごとの責務と壊しやすい不変条件はそこから分かり、関数単位の詳細は必要なときだけ読める。上限を超える変更は make all で落ちる。",
+  "users": "fude.nvim で作業する Claude Code（毎セッション CLAUDE.md を読み、詳細が要るときは docs/architecture/ を読む）と、PR のたびにドキュメントを更新する開発者。",
+  "outOfScope": [
+   "docs/architecture/ に移した詳細の書き直し・事実確認（Markdown として読みやすくする程度の整形のみ）",
+   "README.md・doc/fude.txt のスリム化",
+   "docs/architecture/ とコードの整合性の機械検査",
+   "State Dependencies 表を CLAUDE.md から出すこと"
+  ],
+  "constraints": [
+   "scripts/check_state_deps.lua は CLAUDE.md の | Field | 表を読むので、表の形と場所を変えない",
+   "comments/data.lua・ui/format.lua が pure であるという記述（check_purity.lua が参照）を要約に残す",
+   "Lua を足したら stylua / luacheck を通し、既存の tests/fude/scripts/*_spec.lua に合わせてテストを足す",
+   "文字数は UTF-8 のバイトではなく「文字」で数える"
+  ],
+  "changes": [
+   {
+    "date": "2026-11-25",
+    "change": "AC6 の対象から develop-v2 を外す",
+    "reason": "D-005。develop-v2 は origin/main に無く、未マージの #328 にだけあるため"
+   }
+  ],
+  "verification": [
+   "固定のテスト: make all",
+   "足すテスト: tests/fude/scripts/check_claude_size_spec.lua",
+   "手動: 移す前の CLAUDE.md の各箇条書きが docs/architecture/ に含まれるかを使い捨てのスクリプトで照合（AC2）",
+   "手動: 新しいセッションで CLAUDE.md の上限の警告が出ないこと"
+  ],
+  "openQuestions": []
+ },
+ "decisions": [
+  {
+   "id": "D-001",
+   "title": "詳細は消さずに docs/architecture/ へ移し、CLAUDE.md は要約にする",
+   "at": "2026-11-25",
+   "phase": "ヒアリング",
+   "severity": "中",
+   "severityReason": "今後のすべての開発でドキュメントの置き場所が変わる",
+   "by": "ユーザー",
+   "background": "Module Responsibilities の約 135k 文字が上限超過の原因。",
+   "options": [
+    "要約＋詳細を別ファイルへ",
+    "要約のみ（詳細は削除）",
+    "すべて別ファイルへ（CLAUDE.md は索引のみ）"
+   ],
+   "decided": "要約＋詳細を別ファイルへ",
+   "reason": "情報を保ったままコンテキストを減らせる。",
+   "impact": "CLAUDE.md、docs/architecture/、ドキュメント更新の規則",
+   "revisit": "docs/architecture/ が更新されずに古くなる、または読まれないとき",
+   "refs": "AC2, AC3"
+  },
+  {
+   "id": "D-002",
+   "title": "CLAUDE.md の目標は 40k 文字以下",
+   "at": "2026-11-25",
+   "phase": "ヒアリング",
+   "severity": "低",
+   "severityReason": "数値は後から変えられる",
+   "by": "ユーザー",
+   "background": "上限 150k に対してどこまで減らすか。",
+   "options": [
+    "40k",
+    "20k（State Dependencies 表の移動が要る）",
+    "100k"
+   ],
+   "decided": "40k",
+   "reason": "要約と State Dependencies 表を残しても、今後増える分の余裕がある。",
+   "impact": "check-claude-size の上限",
+   "revisit": "上限に頻繁に当たるとき",
+   "refs": "AC1, AC5"
+  },
+  {
+   "id": "D-003",
+   "title": "規則の書き換えと文字数の検査の両方で再発を防ぐ",
+   "at": "2026-11-25",
+   "phase": "ヒアリング",
+   "severity": "中",
+   "severityReason": "make all / pre-commit / CI に検査が増える",
+   "by": "ユーザー",
+   "background": "「CLAUDE.md の Architecture を更新」という規則が肥大化の原因。",
+   "options": [
+    "ルール＋サイズ検査",
+    "ルールのみ",
+    "何もしない"
+   ],
+   "decided": "ルール＋サイズ検査",
+   "reason": "規則だけでは守られなかった実績がある。",
+   "impact": "Makefile、pre-commit、CI、スキル群",
+   "revisit": "検査が開発の妨げになるとき",
+   "refs": "AC5, AC6"
+  },
+  {
+   "id": "D-004",
+   "title": "移す単位と置き場所の細部",
+   "at": "2026-11-25",
+   "phase": "実装",
+   "severity": "低",
+   "severityReason": "PRD の AC2 から一意に決まり、後から動かせる",
+   "by": "作業する側",
+   "background": "モジュール見出しを持たない段落の置き場所を決める必要があった。",
+   "options": [
+    "関係するモジュールのファイルへ入れる",
+    "docs/architecture/ 直下に共通ファイルを作る"
+   ],
+   "decided": "関係するモジュールのファイルへ見出し付きで入れる。Key Patterns は CLAUDE.md に残す。本文は改変しない",
+   "reason": "変更するモジュールの詳細ファイルを読めば、関係する記述がすべて見つかる。",
+   "impact": "docs/architecture/ の構成",
+   "revisit": "横断的な詳細が増えて、特定のモジュールに収まらなくなったとき",
+   "refs": "AC2"
+  },
+  {
+   "id": "D-005",
+   "title": "AC6 の対象から develop-v2 を外し、PR #328 の修正はユーザーに委ねる",
+   "at": "2026-11-25",
+   "phase": "レビュー",
+   "severity": "高",
+   "severityReason": "残る作業がこのブランチの外の PR #328 にあり、受け入れ基準を狭める変更でもある",
+   "by": "判断役",
+   "background": "AC6 は develop-v2 を書き換え対象に挙げたが、develop-v2 は未マージの #328 にだけある。レビュー第 1 周の MUST（R1-3）。",
+   "options": [
+    "#328 に push して直す",
+    "#328 には手を出さず報告でユーザーに渡す",
+    "#328 を取り込む",
+    "AC6 を一部のまま残す"
+   ],
+   "decided": "#328 には手を出さず報告でユーザーに渡す",
+   "reason": "AC6 の前提が事実と合っていなかった。別 PR への push には取り決めが無い。肥大化そのものは check-claude-size が止める。",
+   "impact": "PRD の AC6 と変更履歴",
+   "revisit": "#328 が先に main に入ったとき。ユーザーが #328 への push を許したとき",
+   "refs": "AC6, R1-3"
+  },
+  {
+   "id": "D-006",
+   "title": "4 周目は要約の全称・限定の主張に絞って行い、最終周とする",
+   "at": "2026-11-25",
+   "phase": "レビュー",
+   "severity": "中",
+   "severityReason": "誤った不変条件は毎セッション読まれて気づかれにくいが、ドキュメントだけなので後から直せる",
+   "by": "判断役",
+   "background": "3 周目でも MUST が 2 件出た。2〜3 周目はすべて「要約が元の記述の限定を落とす」形だった。",
+   "options": [
+    "全体を MUST 0 まで続ける",
+    "要約の突き合わせだけに絞った 4 周目",
+    "打ち切って Copilot と報告に回す"
+   ],
+   "decided": "要約の突き合わせだけに絞った 4 周目（同じ形の MUST が 3 件以下なら直して PR へ）",
+   "reason": "作った側の洗い直しは、2 周目でも 3 周目の指摘を防げなかった。独立の確認が要る。",
+   "impact": "レビューの進め方。4 周目は同じ形の MUST が 3 件で、直して PR へ進んだ",
+   "revisit": "マージ後に、要約の誤りが原因で実装を誤った例が出たとき",
+   "refs": "AC3, R4-1〜R4-3"
+  }
+ ],
+ "reviews": [
+  {
+   "round": 1,
+   "date": "2026-11-25",
+   "tests": "pass",
+   "must": 3,
+   "should": 4,
+   "may": 3,
+   "revision": 1,
+   "reviewer": "fable"
+  },
+  {
+   "round": 2,
+   "date": "2026-11-25",
+   "tests": "pass",
+   "must": 1,
+   "should": 1,
+   "may": 2,
+   "revision": 1,
+   "reviewer": "fable"
+  },
+  {
+   "round": 3,
+   "date": "2026-11-25",
+   "tests": "pass",
+   "must": 2,
+   "should": 4,
+   "may": 6,
+   "revision": 1,
+   "reviewer": "fable"
+  },
+  {
+   "round": 4,
+   "date": "2026-11-25",
+   "tests": "pass",
+   "must": 3,
+   "should": 5,
+   "may": 4,
+   "revision": 1,
+   "reviewer": "fable"
+  }
+ ],
+ "unresolved": [
+  {
+   "id": "R1-8",
+   "severity": "MAY",
+   "text": "check_claude_size.lua の main() にテストが無い",
+   "reason": "見送り。純粋部分（count_chars / check）は境界値までテスト済み"
+  },
+  {
+   "id": "R1-9",
+   "severity": "MAY",
+   "text": "pre-commit の luacheck / stylua が scripts/ を見ない",
+   "reason": "見送り。以前からの挙動で範囲外（make all と CI では見る）"
+  },
+  {
+   "id": "R1-10",
+   "severity": "MAY",
+   "text": "docs/architecture/*.md の 1 段落が長い",
+   "reason": "見送り。PRD のスコープ外"
+  },
+  {
+   "id": "R3-11",
+   "severity": "MAY",
+   "text": "check_claude_size.lua は読めないときも exit 1（他のスクリプトは 2）",
+   "reason": "見送り。ヘッダに明記してあり害は無い"
+  }
+ ],
+ "tasks": [
+  {
+   "id": "T1",
+   "title": "各モジュールの詳細を docs/architecture/ へそのまま移す",
+   "status": "完了",
+   "owner": "main"
+  },
+  {
+   "id": "T2",
+   "title": "CLAUDE.md 用のモジュール要約を書く",
+   "status": "完了",
+   "owner": "sub-1〜3"
+  },
+  {
+   "id": "T3",
+   "title": "check_claude_size.lua・テスト・Makefile / pre-commit / CI",
+   "status": "完了",
+   "owner": "sub-4"
+  },
+  {
+   "id": "T4",
+   "title": "規則の書き換え（Quality Rules・スキル・CONTRIBUTING・HARNESS）",
+   "status": "完了",
+   "owner": "main"
+  },
+  {
+   "id": "T5",
+   "title": "CLAUDE.md を組み立て、AC2 を照合して make all",
+   "status": "完了",
+   "owner": "main"
+  }
+ ],
+ "revision": 1,
+ "revisions": [
+  {
+   "revision": 1,
+   "date": "2026-11-25",
+   "kind": "最初の報告",
+   "request": "",
+   "changes": "最初の報告",
+   "refs": ""
+  }
+ ],
+ "pr": {
+  "number": 329,
+  "url": "https://github.com/flexphere/fude.nvim/pull/329"
+ },
+ "copilot": {
+  "status": "Copilot はクォータ不足でレビューできませんでした（指摘 0 件）。",
+  "comments": []
+ }
+}
