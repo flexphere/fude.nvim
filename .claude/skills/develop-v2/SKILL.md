@@ -131,7 +131,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
    python3 -I ${CLAUDE_SKILL_DIR}/templates/build-report.py docs/dev/<dir>/report.json <scratchpad>/report-<slug>.html
    ```
    （`${CLAUDE_SKILL_DIR}` が使えなければ、元のリポジトリの `.claude/skills/develop-v2/templates/build-report.py`。worktree は `origin/main` から切るので、このスキルがまだ入っていないことがある）
-3. 初回は Artifact で公開し（`icon: "report"`、`description` は 1 文の概要）、URL を `state.json` の `report_url` に書く。2 回目からは同じファイルのパスで公開し直す（URL が変わらない）。別のセッションなら `report_url` を `url` に指定して公開する。
+3. 初回は Artifact で公開し（`icon: "report"`、`description` は 1 文の概要）、URL を `state.json` の `report_url` に書く（次のコミット、PRD の承認のコミットに含める）。2 回目からは同じファイルのパスで公開し直す（URL が変わらない）。別のセッションなら `report_url` を `url` に指定して公開する。
 4. `report.json` は、承認のコミットのときから記録と一緒にコミットする（別のセッションから続けるときに使う）。
 
 ## 3. 実装
@@ -282,11 +282,14 @@ echo "timeout" && exit 1
    - `reviews` の各周に `reviewer`（`fable` / `Copilot`）を付ける
    - `attention`（見てほしいこと）には、重要度 高 の判断、人が決めるべきとされたこと、満たしていない・一部の受け入れ基準、Copilot に従わなかった指摘、手で動作を確かめてほしいこと（Neovim 上での見た目・操作）を入れる
    - 値は `acceptance.result` が `met`/`partial`/`unmet`、`tests.result` が `pass`/`fail`/`skip`、`decisions.severity` が `高`/`中`/`低`
-3. [指標](#指標)を作り、コミットして push する。
-   ```sh
-   python3 -I ${CLAUDE_SKILL_DIR}/scripts/build-metrics.py docs/dev/<dir>
-   ```
-4. [報告のページ](#報告のページ)の手順で、同じページを公開し直す。ページの見た目は固定なので、デザインは考えなくてよい。
+3. [報告のページ](#報告のページ)の手順で、同じページを公開し直す。ページの見た目は固定なので、デザインは考えなくてよい。
+4. **公開できてから**、記録を締める。報告より前に push まで済ませ、別の環境から再開しても最新の記録を読めるようにする。
+   1. `state.json` の `report_url`（変わっていれば）・`phase: "done"`・`updated_at` を書き、`phase_history` に `done` を追記する。
+   2. [指標](#指標)を作る（`done` までの時間が入るよう、`state.json` を書いたあとに作る）。
+      ```sh
+      python3 -I ${CLAUDE_SKILL_DIR}/scripts/build-metrics.py docs/dev/<dir>
+      ```
+   3. `state.json`・`metrics.json` をコミットして push する。
 5. **ページの URL、PR の URL、Copilot への対応の件数、ユーザーに見てほしいこと**を短く伝える。
 
 ## 指標
@@ -336,9 +339,10 @@ echo "timeout" && exit 1
 
 ### 6. 報告
 
-- `prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。`build-metrics.py` で `metrics.json` を作り直し、コミットして push する。
-- [報告のページ](#報告のページ)の手順で、**同じ URL のページを更新する**。
-- `phase` を `done` に戻し、更新したことと、見てほしいことを伝える。
+1. `prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。コミットして push する。
+2. [報告のページ](#報告のページ)の手順で、**同じ URL のページを更新する**。
+3. 公開できてから、[7. 報告](#7-報告) の 4. と同じく記録を締める（`phase` を `done` に戻し、`phase_history` に追記、`build-metrics.py` で `metrics.json` を作り直し、コミットして push）。
+4. 更新したことと、見てほしいことを伝える。
 
 ## 再開
 
