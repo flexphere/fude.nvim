@@ -17,9 +17,9 @@
 
 | # | 基準 | 確かめる方法 | 結果 |
 |---|---|---|---|
-| AC1 | `CLAUDE.md` が 40,000 文字以下になる | `make check-claude-size` | 満たした（29,803 文字。移動前 158,255 文字） |
+| AC1 | `CLAUDE.md` が 40,000 文字以下になる | `make check-claude-size` | 満たした（32,273 文字。移動前 158,255 文字。第 2 版で限定を戻して 29,803 から増えた） |
 | AC2 | 「Module Responsibilities」の各モジュールの現在の記述が、`docs/architecture/<lua/fude からの相対パス>.md`（例: `local/session.lua` → `docs/architecture/local/session.md`）に失われずに移っている。「Comment browser thread identity」と、モジュール一覧の前にある 2 段落（sidepanel の commit review marks、Overview metadata contract）も関係するファイルへ移す | 移す前の各箇条書きの本文が、移した先に文字列として含まれることをスクリプトで確かめる | 満たした（作業側の照合で欠落 0、レビュー役 4 人も独立に照合） |
-| AC3 | `CLAUDE.md` の各モジュールの項目は、責務と壊しやすい不変条件の要約（目安 1〜5 行）と、詳細ファイルへのリンクになっている。`lua/fude/` の全モジュールに項目がある | 目視。`lua/fude/**/*.lua` の一覧と突き合わせる | 満たした（36 モジュールすべてに項目とリンク。要約の限定の脱落は 4 周のレビューで直した） |
+| AC3 | `CLAUDE.md` の各モジュールの項目は、責務と壊しやすい不変条件の要約（目安 1〜5 行）と、詳細ファイルへのリンクになっている。`lua/fude/` の全モジュールに項目がある | 目視。`lua/fude/**/*.lua` の一覧と突き合わせる | 満たした（36 モジュールすべてに項目とリンク。要約の限定の脱落は第 2 版の全数点検で 215 主張を照らして直した） |
 | AC4 | State Dependencies 表は `CLAUDE.md` に残り、`make check-state-deps` が通る | `make all` | 満たした |
 | AC5 | `CLAUDE.md` の文字数が上限（40,000）を超えると失敗する `make check-claude-size`（`scripts/check_claude_size.lua`）があり、`make all`・`.githooks/pre-commit`・CI に入っている | `tests/fude/scripts/check_claude_size_spec.lua`（上限ちょうど・超過・文字数をバイトでなく文字で数える） | 満たした（8 件通過） |
 | AC6 | 「CLAUDE.md の Architecture を更新」と書いている規則（`CLAUDE.md` の Quality Rules、`pj-checklist`、`develop` / `self-review` / `review-respond` / `harness-audit` スキル、`CONTRIBUTING.md`、`.claude/HARNESS.md`）が、「詳細は `docs/architecture/` に、`CLAUDE.md` には責務と不変条件だけ」という書き分けに更新されている。`CLAUDE.md` に何を書くか・書かないかの指針が書かれている | grep で古い指示が残っていないこと | 満たした（develop-v2 は D-005 で対象外） |

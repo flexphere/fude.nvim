@@ -83,3 +83,16 @@ Copilot は「Copilot was unable to review this pull request because the user wh
 | 計 | 36 項目 | | 215 | 19 | 14 | 182 件 | |
 
 迷いの 14 件も同じ形（限定の脱落）なので、問題ありの 19 件とあわせて実装役に直させた。点検役の詳細な結果（場所・元の記述・置き換え案）は作業用のメモに残した。
+
+## 第 2 版 第 1 周（2026-11-25、レビュー役: fable、テスト: 通過 — make all、plenary 2614 件成功、check-claude-size 32,273 / 40,000）
+
+点検の範囲: PRD（全文）、CLAUDE.md（全文。Key Patterns / State Dependencies / PR Conventions は origin/main との一致をスクリプトで確認）、AC2 の移動（全数・スクリプト）、要約 36 項目（全項目を元の記述と読み比べ、うち 24 項目の主張を実コードで確認。palette・config・util・local/store・comments/local_sync・ui・ui/inline・ui/sidepanel/tree・scope・overview・completion/init・completion/cmp は元の記述との読み比べのみ）、scripts・spec・Makefile・pre-commit・ci.yml・CONTRIBUTING・HARNESS・develop・pj-checklist の差分（全数）、self-review / review-respond / harness-audit / pr スキル（grep のみ）。docs/architecture の本文の正しさは見ていない（スコープ外）。
+
+| # | 重要度 | 種類 | 指摘 | 場所 | 対応 | コミット |
+|---|---|---|---|---|---|---|
+| V2R1-1 | SHOULD | 要約が長い | 要約の長さが AC3 の目安と「Writing CLAUDE.md」の「a few lines」を超える（最長 1,119 文字、中央値約 630） | CLAUDE.md:32-67 | 直さない（D-008） | |
+| V2R1-2 | MAY | 要約が元の記述の限定を落としている | local/tracker の「(marks cleared)」が on_buf_write にも掛かって読める（元の記述から引き継いだ曖昧さ） | CLAUDE.md:42 | 見送り | |
+| V2R1-3 | MAY | 要約が元の記述の限定を落としている | diff の「(not get_current_branch/get_git_user)」が例外の全数に読める | CLAUDE.md:39 | 見送り（local session が使う関数の中では正しい） | |
+| V2R1-4 | MAY | 要約が元の記述の限定を落としている | local/session の VimLeavePre の強制不可条件が 1 つしか書かれていない（書かれていることは偽ではない） | CLAUDE.md:41 | 見送り | |
+
+MUST 0 件。全数点検の後のレビューで、同じ種類の MUST は出なかった。
