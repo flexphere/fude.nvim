@@ -1,0 +1,279 @@
+{
+  "title": "レビューモードの AI チャットパネル",
+  "slug": "ai-chat-panel",
+  "date": "2026-11-26",
+  "branch": "feat/ai-chat-panel",
+  "base": "origin/main",
+  "status": "実装中",
+  "commits": 0,
+  "summary": "PRD が承認され、実装に入りました。チャットの中核 → パネルとコマンド → ドキュメントの順に進め、終わったら draft の PR を作ってレビューに回します。",
+  "generatedBy": "/develop-v2",
+  "tests": [],
+  "attention": [],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": ":FudeReviewChat で右端の縦 split にチャットパネル（上: 会話ログ、下: 入力欄）が開く。:FudeReviewPanel と同じ toggle。幅と位置は設定で変えられる",
+      "result": "",
+      "how": "結合テスト、手動確認"
+    },
+    {
+      "id": "AC2",
+      "text": "入力欄の送信キー（既定: normal モードの <CR>）で claude -p がリポジトリのルートで起動し、応答が会話ログに逐次追記される",
+      "result": "",
+      "how": "Unit テスト（stream-json のパース）、結合テスト、手動確認"
+    },
+    {
+      "id": "AC3",
+      "text": "レビュー対象ごとに、最初の送信は --session-id、2 回目以降は同じ ID の --resume。別の対象の ID は混ざらない",
+      "result": "",
+      "how": "Unit テスト"
+    },
+    {
+      "id": "AC4",
+      "text": "セッション ID と会話ログが stdpath(\"state\")/fude/ 以下に保存され、再起動後も過去の会話が表示されて同じセッションが続く",
+      "result": "",
+      "how": "Unit テスト、手動確認"
+    },
+    {
+      "id": "AC5",
+      "text": ":FudeReviewChatNew でその対象のセッション ID と会話ログを破棄し、次の送信が新しいセッションで始まる",
+      "result": "",
+      "how": "結合テスト"
+    },
+    {
+      "id": "AC6",
+      "text": ":'<,'>FudeReviewChatAdd で「相対パス:L開始-L終了」とコードフェンス付きの選択行が入力欄の末尾に追記される。パネルが閉じていれば開く",
+      "result": "",
+      "how": "Unit テスト、結合テスト"
+    },
+    {
+      "id": "AC7",
+      "text": "claude コマンドが実行可能でないとき、3 つのコマンドは WARN を出して何もせず、コマンドパレットにも出ない",
+      "result": "",
+      "how": "Unit テスト"
+    },
+    {
+      "id": "AC8",
+      "text": "claude のツールは既定で読み取り専用（Read / Grep / Glob と git・gh の参照系 Bash）。設定で変えられる",
+      "result": "",
+      "how": "Unit テスト、手動確認"
+    },
+    {
+      "id": "AC9",
+      "text": "レビュー対象の情報（PR 番号・URL・base / head、ローカルは base・ブランチ・scope）が --append-system-prompt で毎回渡る",
+      "result": "",
+      "how": "Unit テスト"
+    },
+    {
+      "id": "AC10",
+      "text": "応答中はスピナーとツール実行の内容が出る。応答中の送信は拒否。キャンセルキー（既定 <C-c>）で止まり、そこまでの応答は残る",
+      "result": "",
+      "how": "結合テスト、手動確認"
+    },
+    {
+      "id": "AC11",
+      "text": "claude が失敗したとき、エラーが会話ログに出て入力は入力欄に戻る。--resume のセッションが見つからないときは新しい ID で 1 回だけやり直す",
+      "result": "",
+      "how": "結合テスト"
+    },
+    {
+      "id": "AC12",
+      "text": "レビューを止めたとき、実行中の claude は止まりパネルは閉じる。遅れて届いた出力は新しいセッションに触れない",
+      "result": "",
+      "how": "結合テスト"
+    },
+    {
+      "id": "AC13",
+      "text": "会話ログは編集不可・filetype markdown。末尾を見ていれば追従スクロールし、途中を読んでいれば動かさない",
+      "result": "",
+      "how": "結合テスト、手動確認"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-26",
+    "purpose": "レビュー中に、コードや diff について AI（claude）に質問できる場所を Neovim の中に持つ。今は別のターミナルで claude を開き、対象のファイルや行を手で伝え直す必要がある。レビュー対象ごとに会話が続き、選択した範囲をそのまま質問に添えられる状態を目指す。",
+    "users": "fude.nvim でレビューする人（GitHub レビュー・ローカルレビューの両方）。diff を読みながら変更の意図や呼び出し元を尋ねる場面、選択したコードについて質問する場面で使う。",
+    "outOfScope": [
+      "claude 以外のエージェント",
+      "ファイルを編集させること（既定では許可しない）",
+      "diff や開いているファイルの自動添付",
+      "1 つのレビュー対象に複数のセッションを持つこと・過去のセッションの選び直し",
+      "AI の応答をレビューコメントとして投稿すること",
+      "レビューモードの外でのチャット",
+      "claude 自身のセッションログ（~/.claude/projects/）を読むこと"
+    ],
+    "constraints": [
+      "コマンドは commands.lua のレジストリに足す",
+      "純粋関数を副作用のあるコードと分け、命名規則に従う",
+      "状態は config.state に置き、State Dependencies 表を更新する",
+      "外部プロセスは vim.system() で非同期に起動し、コールバックは起動時の config.state と一致するかを確かめる",
+      "スピナーはバッファを書き換えずに描く",
+      "side panel と共存し、チャットのウィンドウを通常のウィンドウと見なさない",
+      "下書きの形式と既存コマンドの挙動は変えない",
+      "依存は増やさない（Neovim >= 0.10 と claude CLI だけ）",
+      "テストは実際の claude を呼ばない",
+      "README.md・doc/fude.txt・CLAUDE.md を更新する"
+    ],
+    "changes": [],
+    "verification": [
+      "固定のテスト: make all",
+      "Unit: 引数の組み立て、stream-json のパース、貼り付けテキスト、プロンプト、保存と復元",
+      "結合: パネルの開閉、送信から逐次表示、キャンセル、失敗、レビュー停止時の後始末",
+      "手動: 実際の claude で 質問 → 応答 → 再起動 → 継続、選択範囲の貼り付け、編集を頼んでも書き換わらないこと"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "パネルは右端の縦 split（上: 会話ログ、下: 入力欄）",
+      "at": "2026-11-26 08:08",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "見た目と操作の基本形。位置と幅は設定で変えられる",
+      "by": "ユーザー",
+      "background": "チャットをどこに開くかを決める必要があった。",
+      "options": [
+        "右端の split",
+        "中央の float",
+        "下端の split"
+      ],
+      "decided": "右端の split",
+      "reason": "コードと diff を見ながら対話でき、選択範囲の貼り付けと相性が良い。",
+      "impact": "新しいパネルのモジュール、side panel との共存",
+      "revisit": "diff preview と並べて狭いという声が出たとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-002",
+      "title": "claude のツールは既定で読み取り専用",
+      "at": "2026-11-26 08:08",
+      "phase": "ヒアリング",
+      "severity": "高",
+      "severityReason": "レビュー中の worktree を確認なしで書き換えうるかどうかを決める",
+      "by": "ユーザー",
+      "background": "claude -p は実行中に権限確認を出せないため、許可するツールを先に決める必要があった。",
+      "options": [
+        "読み取り専用",
+        "編集も許可",
+        "ツールなし"
+      ],
+      "decided": "読み取り専用（Read / Grep / Glob と git・gh の参照系 Bash）。設定で上書きできる",
+      "reason": "レビューの用途では読むだけで足り、確認なしの書き換えを避けられる。",
+      "impact": "claude の引数、chat 設定",
+      "revisit": "チャットから修正を頼みたいという要望が出たとき",
+      "refs": "AC8"
+    },
+    {
+      "id": "D-003",
+      "title": "応答はストリーミングで表示する",
+      "at": "2026-11-26 08:08",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "実装の複雑さ（stream-json のパース、途中キャンセル）が増える",
+      "by": "ユーザー",
+      "background": "応答を逐次出すか、終わってからまとめて出すかを決める必要があった。",
+      "options": [
+        "ストリーミング",
+        "完了後に一括"
+      ],
+      "decided": "ストリーミング（--output-format stream-json）",
+      "reason": "長い応答やツール実行の待ち時間が見える。",
+      "impact": "出力のパーサ、会話ログの更新",
+      "revisit": "stream-json の形式が変わって壊れたとき",
+      "refs": "AC2, AC10"
+    },
+    {
+      "id": "D-004",
+      "title": "会話ログは fude 側で個別に保存する",
+      "at": "2026-11-26 08:14",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "保存形式を持つことになるが、後から読み方を変えられる",
+      "by": "ユーザー",
+      "background": "ユーザーから「claude のセッションログは使えるか」と問われ、実際に確かめた。~/.claude/projects/<cwd を変換した名前>/<session-id>.jsonl に発言はあるが、非公開の内部形式で、46 行のうち発言は 5 行、置き場所は cwd の変換規則に依存していた。",
+      "options": [
+        "fude 側で個別に保存",
+        "claude のログを読む",
+        "復元しない"
+      ],
+      "decided": "fude 側で個別に保存（stdpath(\"state\")/fude/ 以下、対象ごと）",
+      "reason": "claude のバージョンアップで形式や置き場所が変わっても壊れない。",
+      "impact": "保存と復元のコード",
+      "revisit": "claude が公開のログ取得手段を用意したとき",
+      "refs": "AC4"
+    },
+    {
+      "id": "D-005",
+      "title": "セッションの継続は 初回 --session-id、以後 --resume",
+      "at": "2026-11-26 08:12",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "claude の仕様に従うだけ",
+      "by": "作業する側",
+      "background": "claude 2.1.332 で確かめたところ、同じ --session-id を 2 回目に渡すと「Session ID … is already in use」で失敗し、--resume <id> なら文脈が続いた。",
+      "options": [
+        "初回 --session-id・以後 --resume",
+        "毎回 --session-id"
+      ],
+      "decided": "初回 --session-id・以後 --resume。--resume が「見つからない」で失敗したら新しい ID で 1 回やり直す",
+      "reason": "毎回 --session-id は動かない。セッションは cwd ごとに保存されるため、見つからない場合の逃げ道が要る。",
+      "impact": "引数の組み立て、失敗時の処理",
+      "revisit": "claude の仕様が変わったとき",
+      "refs": "AC3, AC11"
+    },
+    {
+      "id": "D-006",
+      "title": "レビュー対象の単位は下書きと同じにする",
+      "at": "2026-11-26 08:15",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "既存の単位の流用",
+      "by": "作業する側",
+      "background": "「レビュー対象ごと」の単位を決める必要があった。",
+      "options": [
+        "下書きと同じ（GitHub: リポジトリ + PR、ローカル: worktree + ブランチ）",
+        "scope（コミット）ごとに分ける"
+      ],
+      "decided": "下書きと同じ",
+      "reason": "drafts.build_draft_scope が既にこの単位を定めており、レビューを止めても続く。コミットごとに分けると会話が細切れになる。",
+      "impact": "保存のキー",
+      "revisit": "コミットごとに会話を分けたいという要望が出たとき",
+      "refs": "AC3"
+    }
+  ],
+  "reviews": [],
+  "unresolved": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "チャットの中核（引数の組み立て・stream-json のパース・保存と復元・claude の実行）とテスト",
+      "status": "進行中",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "チャットパネル・コマンド・設定・レビュー停止時の後始末とテスト",
+      "status": "未着手",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T3",
+      "title": "README.md・doc/fude.txt・CLAUDE.md の更新",
+      "status": "未着手",
+      "owner": "impl-1"
+    }
+  ],
+  "revision": 1,
+  "revisions": [],
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "copilot": {
+    "status": "",
+    "comments": [],
+    "timed_out": false
+  }
+}
