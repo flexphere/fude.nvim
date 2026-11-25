@@ -78,6 +78,22 @@ def recurring_kinds(review_kinds):
     return sorted(out)
 
 
+def review_end(agent_rounds):
+    """版ごとのレビューの終わり方。最後の周が MUST 0 でない版は「打ち切り」（上限・判断役の結論で終えた）。"""
+    by_rev = {}
+    for r in agent_rounds:
+        by_rev.setdefault(num(r.get("revision"), 1), []).append(r)
+    capped = 0
+    max_round = 0
+    for rs in by_rev.values():
+        rs = sorted(rs, key=lambda r: num(r.get("round"), 0))
+        if num(rs[-1].get("must"), 0) > 0:
+            capped += 1
+        max_round = max(max_round, len(rs))
+    late = sum(1 for r in agent_rounds if num(r.get("round"), 0) >= 4 and num(r.get("must"), 0) > 0)
+    return {"capped_revisions": capped, "max_rounds": max_round, "late_must_rounds": late}
+
+
 def build(report, state):
     report = report or {}
     state = state or {}
@@ -115,6 +131,8 @@ def build(report, state):
             "review_rounds": len(agent_rounds),
             "must_by_round": [num(r.get("must"), 0) for r in agent_rounds],
             "must_total": sum(num(r.get("must"), 0) for r in agent_rounds),
+            # capped_revisions: MUST 0 の周で終えられなかった版の数 / late_must_rounds: 4 周目以降で MUST が出た周の数
+            "review_end": review_end(agent_rounds),
             "acceptance": {
                 "total": len(acc),
                 "met": count(acc, lambda a: a.get("result") == "met"),

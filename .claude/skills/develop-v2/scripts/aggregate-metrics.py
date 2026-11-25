@@ -108,6 +108,8 @@ def main():
         ("承認後の PRD 変更", lambda m: g(m, "hearing", "prd_changes_after_approval")),
         ("レビュー周", lambda m: g(m, "implementation", "review_rounds")),
         ("MUST/周", lambda m: "-".join(map(str, g(m, "implementation", "must_by_round", default=[]))) or None),
+        ("打ち切り", lambda m: g(m, "implementation", "review_end", "capped_revisions")),
+        ("4 周目以降の MUST", lambda m: g(m, "implementation", "review_end", "late_must_rounds")),
         ("繰り返した種類", lambda m: len(g(m, "recurring", "kinds", default=[]))),
         ("全数点検", lambda m: g(m, "recurring", "sweeps")),
         ("判断役", lambda m: g(m, "decisions", "by_judge")),
@@ -161,6 +163,22 @@ def main():
     esc = [m for m in recent if g(m, "decisions", "escalated_to_user", default=0) > 0]
     if len(esc) >= 3:
         signals.append(f"人への差し戻し: 直近 {k} 件中 {len(esc)} 件で判断役が「人が決めるべき」と返した → ヒアリングで先に決めるべき論点の見直しを検討")
+    capped = [m for m in recent if g(m, "implementation", "review_end", "capped_revisions", default=0) > 0]
+    if len(capped) >= 2:
+        signals.append(
+            f"レビューの打ち切り: 直近 {k} 件中 {len(capped)} 件で、MUST 0 の周で終えられなかった → "
+            "周の上限を増やすより §4.2 案 4（レビュー役の観点別並列化）を検討"
+        )
+    last10 = [m for m in items[-10:] if g(m, "implementation", "review_end") is not None]
+    if len(last10) >= 10 and not any(
+        g(m, "implementation", "review_end", "late_must_rounds", default=0) > 0
+        or g(m, "implementation", "review_end", "capped_revisions", default=0) > 0
+        for m in last10
+    ):
+        signals.append(
+            "周の上限: 直近 10 件で 4 周目以降に MUST が出た開発も、打ち切った開発も無い → "
+            "/develop-v2 の周の上限を 5 から 4 に下げることを検討"
+        )
     print("\n## シグナル（目安）\n")
     print("\n".join(f"- {s}" for s in signals) if signals else "- 着手のきっかけに当たる傾向は見つかりませんでした。")
 

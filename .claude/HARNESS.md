@@ -23,7 +23,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 |------|------|------|------|
 | 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
 | 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR→Copilot レビュー対応の一貫ワークフロー（計画合意後は自律実行） | `.claude/skills/develop/` |
-| 推論的 | `/develop-v2` skill | エージェント主導の開発。メインはヒアリング・進捗報告役で、実装役・レビュー役・判断役・点検役はサブエージェント。ヒアリング→PRD 承認→実装→経緯を知らないレビュー役（MUST 0 まで。同じ種類の MUST が 2 周続けば点検役による区画ごとの全数点検）→PR→Copilot 対応→判断の履歴つき報告ページ。記録は `docs/dev/` | `.claude/skills/develop-v2/` |
+| 推論的 | `/develop-v2` skill | エージェント主導の開発。メインはヒアリング・進捗報告役で、実装役・レビュー役・判断役・点検役はサブエージェント。ヒアリング→PRD 承認→実装→経緯を知らないレビュー役（MUST 0 の周まで、上限 5 周。同じ種類の MUST が 2 周続けば点検役による区画ごとの全数点検）→PR→Copilot 対応→判断の履歴つき報告ページ。記録は `docs/dev/` | `.claude/skills/develop-v2/` |
 | 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
 | 推論的 | `/self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/self-review/` |
 | 推論的 | `/pr` skill | コミット分割と draft PR 作成 | `.claude/skills/pr/` |
@@ -52,7 +52,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
-| 計算的 | `/develop-v2` の指標 (`docs/dev/*/metrics.json`、`aggregate-metrics.py`) | `/develop-v2` の報告時に生成・`/harness-audit` で集計 | 開発ごとのヒアリングの手戻り、レビューの周数と MUST、繰り返した指摘、全数点検、判断役・人への差し戻し、Copilot で直した数（レビュー役の見逃しの目安）、報告後の修正、マージ後の fix 候補 |
+| 計算的 | `/develop-v2` の指標 (`docs/dev/*/metrics.json`、`aggregate-metrics.py`) | `/develop-v2` の報告時に生成・`/harness-audit` で集計 | 開発ごとのヒアリングの手戻り、レビューの周数と MUST、繰り返した指摘、全数点検、判断役・人への差し戻し、Copilot で直した数（レビュー役の見逃しの目安）、レビューの打ち切り・4 周目以降の MUST（周の上限の見直し）、報告後の修正、マージ後の fix 候補 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
 | 推論的 | 人間レビュー | PR | プロジェクト視点・組織的判断 |
 
@@ -119,7 +119,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 | 5 | **`/develop-v2` の重要度 高 の判断を判断役 2 人に** — 互いを知らない判断役を 2 人立て、結論が一致すれば従い、割れたらユーザーに聞く（中・低は 1 人のまま） | Inf Guide | 小 | 判断役の結論を後から覆す（報告後の修正で「要件の変更」になる、`decisions.md` の見直すきっかけに当たる）ことが続いたら |
 | 6 | **`/develop-v2` で前に扱った指摘を照合** — レビュー役には履歴を渡さないまま、メインが新しい指摘を `decisions.md` と過去の `reviews.md` に照らし、前に判断役が退けたものと同じで新しい根拠が無ければ「D-xxx で判断済み」と記録する | Process | 小 | 同じ指摘が周をまたいで繰り返され、判断役への回送やレビューの周が増えるようになったら |
 
-案 4〜6 の着手のきっかけは、`/harness-audit` で `/develop-v2` の指標（§2）を集計したときの「シグナル」で確かめる。
+案 4〜6 の着手のきっかけは、`/harness-audit` で `/develop-v2` の指標（§2）を集計したときの「シグナル」で確かめる。`/develop-v2` のレビューの周の上限（5 周）も仮の値で、同じ集計のシグナルを見て下げる（直近 10 件で 4 周目以降の MUST も打ち切りも無ければ 4 へ）。打ち切りが続くときは、周を増やすより案 4 を検討する。
 
 ### 4.3 やらないこと
 
