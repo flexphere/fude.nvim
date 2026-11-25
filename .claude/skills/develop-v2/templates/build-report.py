@@ -25,6 +25,6 @@ if not marker.search(tpl):
 out = marker.sub(lambda m: m.group(1) + payload + m.group(3), tpl, count=1)
 
 title = data.get("title") or "開発報告"
-out = re.sub(r"<title>.*?</title>", lambda m: f"<title>{html.escape(title)}</title>", out, count=1)
+out = re.sub(r"<title>.*?</title>", lambda m: f"<title>{html.escape(str(title))}</title>", out, count=1)
 out_path.write_text(out, encoding="utf-8")
 print(f"wrote {out_path} ({out_path.stat().st_size:,} bytes)")

@@ -87,6 +87,7 @@ def main():
     ap.add_argument("--days", type=int, default=30)
     ap.add_argument("--last", type=int, default=5)
     a = ap.parse_args()
+    a.last = max(1, a.last)  # items[-0:] は全件になるため
     root = pathlib.Path(a.root).resolve()
     items = load_all(root)
     if not items:
@@ -181,6 +182,7 @@ def main():
         g(m, "implementation", "review_end", "late_must_rounds", default=0) > 0
         or g(m, "implementation", "review_end", "capped_revisions", default=0) > 0
         or g(m, "implementation", "review_end", "capped_after_copilot", default=0) > 0
+        or g(m, "implementation", "review_end", "long_after_copilot", default=0) > 0
         for m in last10
     ):
         signals.append(

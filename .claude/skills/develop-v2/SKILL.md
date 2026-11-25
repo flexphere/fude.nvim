@@ -133,7 +133,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
    ```sh
    python3 -I "${CLAUDE_SKILL_DIR}/templates/build-report.py" docs/dev/<dir>/report.json <scratchpad>/report-<slug>.html
    ```
-   （`${CLAUDE_SKILL_DIR}` が使えなければ、元のリポジトリ（上の `$root`）の `.claude/skills/develop-v2/`。worktree は `origin/main` から切るので、このスキルがまだ入っていないことがある。`scripts/` のスクリプトも同じ）
+   （`${CLAUDE_SKILL_DIR}` が使えなければ、元のリポジトリの `.claude/skills/develop-v2/`。場所は `"$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/.claude/skills/develop-v2"` をその場で書く（0. の `$root` は別の Bash の呼び出しには残らない）。worktree は `origin/main` から切るので、このスキルがまだ入っていないことがある。`scripts/` のスクリプトも同じ）
 3. 初回は Artifact で公開し（`icon: "report"`、`description` は 1 文の概要）、URL を `state.json` の `report_url` に書く（次のコミット、PRD の承認のコミットに含める）。2 回目からは同じファイルのパスで公開し直す（URL が変わらない）。別のセッションなら、先に `report_url` を Artifact の `read` で読んでから、`url` に指定して公開する（読んでいない artifact への公開は断られる）。
 4. `report.json` は、承認のコミットのときから記録と一緒にコミットする（セッションが無くなったときに [再開](#再開) で使う）。
 
@@ -177,8 +177,8 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 
 1. 1 周目は、経緯を知らないレビュー役を `Agent` で立てる（その `agentId` を `state.json` の `reviewer_agent_id` に書く）。2 周目からは、同じレビュー役に `SendMessage` で「直したので、もう一度レビューしてほしい」と頼み、直したコミットの範囲（`<前の周の HEAD>..HEAD`）を伝える。届かない（セッションが変わった）ときは、新しく立てて 1 周目と同じものを渡す。プロンプトは [templates/review-prompt.md](templates/review-prompt.md) を使い、渡すのは **PRD（`prd.md` の全文）、差分（`origin/main` との差。`docs/dev/` を除く）、CLAUDE.md、worktree の場所、`/pj-checklist` の場所** だけ。
    - **判断の記録、前の回の指摘、自分の見立ては渡さない。** 差分は `git diff origin/main...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で取る。`docs/dev/` にはコミット済みの判断・レビュー・報告の記録があり、`.claude/review-lessons.md` にはこの開発で受けた指摘と直し方を追記していくため、差分や worktree からそれが見えると経緯を知らないという前提が崩れるため、レビュー役には「`docs/dev/` は読まない」とも指示する（[開発記録を見せない](#開発記録を見せない)）。
-2. レビュー役は、毎周、Claude Code に同梱の `/code-review` を `high` で呼んで不具合を探し（対象はこのブランチ）、そのうえで自分で PRD の受け入れ基準との照合と `/pj-checklist` を行い、`make all` も走らせる。`/code-review` の指摘と自分の指摘を合わせて MUST / SHOULD / MAY に分け直して返す（`/code-review` の `important` / `nit` / `pre_existing` はそのまま使わない）。あわせて、**どこをどう見たか**（ファイル・節ごとに、全数を見たか抜き取りか）を返す。
-   - `/code-review` は差分から `docs/dev/` などを除けないので、それらを根拠にした指摘はレビュー役が捨てる。
+2. レビュー役は、毎周、Claude Code に同梱の `/code-review` を `high` で呼んで不具合を探し（対象は、ブランチではなく `docs/dev/` と `.claude/review-lessons.md` を除いた変更ファイルのパス）、そのうえで自分で PRD の受け入れ基準との照合と `/pj-checklist` を行い、`make all` も走らせる。`/code-review` の指摘と自分の指摘を合わせて MUST / SHOULD / MAY に分け直して返す（`/code-review` の `important` / `nit` / `pre_existing` はそのまま使わない）。あわせて、**どこをどう見たか**（ファイル・節ごとに、全数を見たか抜き取りか）を返す。
+   - `/code-review` には除外の指定が無く、ブランチを対象にすると作った側の記録まで読んで要約に書き写すので、対象をパスで渡す（手順は [templates/review-prompt.md](templates/review-prompt.md)）。それでも記録の中身を含む指摘が返ったら、レビュー役が捨てる。
    - effort は `high` を既定にする（サブエージェントの中では、`/code-review` は観点を 1 人で順に回す形で動く）。指標を見て見直す。
 3. 指摘を `reviews.md` に記録し、対応する。各指摘には、メインが**種類**（指摘の本質を 1 文にしたもの。例: 「要約が元の記述の限定を落としている」）を付け、レビュー役が返した点検の範囲も周ごとに残す。MUST と SHOULD の指摘は、`state.json` の `review_kinds` にも `{ "revision", "round", "kind", "severity" }` で追記する（周をまたいで繰り返した種類を数えるため。種類の言い回しは、同じ問題なら前の周と揃える）。
    - 重要度は「起きたときの影響 × 起こりやすさ」で付ける（定義は [templates/review-prompt.md](templates/review-prompt.md)）。普通の使い方で成果物を壊すもの・受け入れ基準を満たさないもの・規則違反が MUST で、端の場面だけの誤動作や記録・指標の正確さは SHOULD。
@@ -279,9 +279,9 @@ echo "timeout" && exit 1
 1. メインが、その時点の `cnt_valid` を控えてから、未対応の行コメントを取得する（`gh api repos/{owner}/{repo}/pulls/<PR番号>/comments --paginate`。既定の 1 ページは 30 件で、古い順に返るため、`--paginate` が無いと新しい指摘を取りこぼす）。未対応の指摘が 0 件なら、手順 7 へ進む。`docs/dev/` の記録への指摘も同じく扱う（記録が事実と食い違っていれば直し、そうでなければ返信のみ）。
 2. 指摘を、その場所を受け持った実装役に `SendMessage` で送り、**妥当かどうかの分析と、妥当なら修正**を頼む（同じ形の問題を他の場所でも探して直す。`make all` まで）。実装役は指摘ごとに「直した / 返信のみ（理由）/ 判断が要る（理由）」を返す。
    - 「判断が要る」もの、仕様・設計方針の変更を求めるもの、PRD と矛盾するもの、直し方を 1 つに絞れないものは、**判断役**に回す。判断役が「人が決めるべき」と答えたときだけユーザーに聞く。
-   - 従わない指摘は、判断役に回すか（重要度 中以上）、理由を `decisions.md` に書いたうえで（低）、その理由を返信する。
+   - 従わない指摘は、判断役に回すか（その判断の重要度が中以上のとき。[判断と記録](#判断と記録) の高・中・低）、理由を `decisions.md` に書いたうえで（低のとき）、その理由を返信する。
 3. メインが確かめ、**指摘ごとに**コミットし、`/review-respond` の Phase 4 の形で返信し（`in_reply_to` を付けてスレッドに返す。直したものは `<short-sha> で修正 — <説明>`）、push する。
-4. 各指摘を `reviews.md` に「Copilot」の周として記録する（重要度、指摘、場所、対応、コミット、返信したか）。重要度は、実装役・判断役の分析をもとにメインが MUST / SHOULD / MAY で付ける（直さなければ不具合や規則違反になるものが MUST）。
+4. 各指摘を `reviews.md` に「Copilot」の周として記録する（重要度、指摘、場所、対応、コミット、返信したか）。重要度は、実装役・判断役の分析をもとにメインが MUST / SHOULD / MAY で付ける。基準はレビュー役と同じ「影響 × 起こりやすさ」（[templates/review-prompt.md](templates/review-prompt.md)）。
 5. `docs/dev/` の記録以外（コード・ドキュメント・スキルなど）を直したときは、[4. レビュー](#4-レビュー) を、同じレビュー役に頼んで行う（`origin/main` からの差分の全体を見てもらう。除外は 4. と同じ）。終わり方と上限は 4. の手順 5 と同じで、周の上限はこの対応のぶんとして数え直す。周の番号は版の中の通し番号で続け、`reviews` の各周と `review_outcomes` に `"after": "copilot"` を付ける（4. のレビューの打ち切りや 4 周目以降の MUST と混ざらないように）。MUST が出たら実装役に直させ、確かめてコミットし push する。Copilot の再レビューは待たない。
 6. `/review-respond` の Phase 5・6 の手順で、再発防止のパターンを `.claude/review-lessons.md` に記録・統合し、コミットして push する（手順 5 のレビュー役に、指摘と直し方の記録を見せないため、レビューのあとに行う）。
 7. 対応している間に新しいレビューが届いていないかを確かめる。[待つ](#待つ) の「待つ前に」の確認を、`<前の件数>` を手順 1 で控えた件数にして走らせ、どちらかに当たれば手順 1 に戻る。

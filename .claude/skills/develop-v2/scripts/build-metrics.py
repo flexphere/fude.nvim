@@ -53,7 +53,7 @@ def phase_hours(history):
     """phase_history（[{phase, at}]、時刻順）から段階ごとの経過時間（時間）を足し合わせる。"""
     hours = {}
     items = [(h.get("phase"), parse_time(h.get("at"))) for h in arr(history) if isinstance(h, dict)]
-    items = [(p, t) for p, t in items if p and t]
+    items = sorted(((p, t) for p, t in items if p and t), key=lambda x: x[1])  # 手で直した記録が順不同でも負の時間にしない
     for (phase, start), (_, end) in zip(items, items[1:]):
         # done は報告から修正の依頼までの待ち時間なので数えない
         if phase == "done":
@@ -103,9 +103,15 @@ def review_end(agent_rounds, outcomes):
     capped_after = sum(
         1 for o in arr(outcomes) if isinstance(o, dict) and o.get("after") == "copilot" and o.get("ended") == "capped"
     )
+    # Copilot 対応のあとのレビューで 4 周以上かかったループ（上限を下げる判断に使う）
+    long_after = sum(
+        1 for o in arr(outcomes)
+        if isinstance(o, dict) and o.get("after") == "copilot" and num(o.get("rounds"), 0) >= 4
+    )
     return {
         "capped_revisions": capped,
         "capped_after_copilot": capped_after,
+        "long_after_copilot": long_after,
         "max_rounds": max_round,
         "late_must_rounds": late,
     }
