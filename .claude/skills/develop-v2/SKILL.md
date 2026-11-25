@@ -50,7 +50,7 @@ argument-hint: "[作りたいものの説明・issue の URL]"
 |---|---|
 | `prd.md` | 要件（[書式](templates/prd.md)）。レビュー役に渡す唯一の資料 |
 | `report.json` | それ以外のすべての記録（タスク、テスト、判断、レビューの周、PR、見てほしいこと）。報告のページと指標の元。形は [例](templates/report.example.json) に合わせる |
-| `state.json` | 進行の記録（[書式](templates/state.json)）。段階が変わるたびに `phase` と `phase_history` を更新する |
+| `state.json` | 進行の記録（[書式](templates/state.json)）。段階が変わるたびに `python3 -I "${CLAUDE_SKILL_DIR}/scripts/set-phase.py" docs/dev/<dir> <phase>` で進める（手で書くと履歴が抜け、時間の指標が欠ける） |
 | `metrics.json` | 指標。スクリプトが作る（手で書かない） |
 
 - **判断**は、したその場で `report.json` の `decisions` に足す（背景、選べた案、決めたこと、決めた人、理由、重要度、見直すきっかけ）。
@@ -64,9 +64,9 @@ argument-hint: "[作りたいものの説明・issue の URL]"
 |---|---|---|
 | 1. ヒアリング | `hearing` | PRD の全欄が具体的に書けた |
 | 2. PRD の承認 | `prd_approval` | ユーザーが承認した |
-| 3. 実装 | `implementing` | 全タスクが済み、固定のチェックが通り、コミットした |
-| 4. レビュー | `reviewing` | レビュー役が MUST 0 件を返した |
-| 5. PR | `pr` | PR があり、ready for review になっている |
+| 3. 実装 | `implementing` | 全タスクが済み、固定のチェックが通り、コミットして draft の PR を作った |
+| 4. レビュー | `reviewing` | レビュー役が MUST 0 件を返し、CI が通っている |
+| 5. PR | `pr` | PR が ready for review になっている |
 | 6. 報告 | `reporting` → `done` | ページが最終版になり、指標を作って push した |
 | 7. 報告後の修正 | `revising` → `done` | 同上（依頼のたびに繰り返す） |
 
@@ -95,23 +95,25 @@ argument-hint: "[作りたいものの説明・issue の URL]"
 - タスクの一覧を表でチャットに示し、状態が変わったら示し直す。
 - 実装役はコミットしない。戻ってきたらメインが確かめ、タスクごとにコミットする。固定のチェックが通らない状態をコミットしない。
 - 実装役が「判断が要る」と返したら、判断役に回して結論を伝える。
+- 全タスクをコミットしたら push し、**draft の PR を作る**（書き方は CLAUDE.md と `../pr/pr-template.md`）。PR の番号が決まり、CI の結果をレビューのあいだに見られる。番号と URL を `state.json` と `report.json` に書く。
 
 ### 4. レビュー
 
-- レビュー役に PRD と差分の取り方を渡す。レビュー役は `/code-review` で不具合を探し、PRD の受け入れ基準と照らし、固定のチェックを走らせ、指摘を MUST / SHOULD / MAY で返す。**重要度はレビュー役が決める。** 異論は判断役に回す。
+- レビュー役に `prd.md` の場所（読んでよいのはこのファイルだけ）と差分の取り方を渡す。レビュー役は `/code-review` で不具合を探し、PRD の受け入れ基準と照らし、固定のチェックを走らせ、指摘を MUST / SHOULD / MAY で返す。**重要度はレビュー役が決める。** 異論は判断役に回す。
 - MUST は直す。SHOULD は原則直し、直さないものは理由を判断として記録する。MAY は任意。直すのは、その場所を受け持った実装役（同じ形の問題を他の場所でも探してもらう）。
-- **何かを直したら、必ずもう 1 周見せる。MUST 0 件の周で終わる。** 上限は 5 周。
+- **MUST 0 件の周で終わる。** MUST を直したら、必ず全体をもう 1 周見せる。MUST が無く SHOULD・MAY だけを直したときは、直した箇所だけの確認を 1 回頼み、新しい MUST が無ければ終える（小さな修正のたびに全体を回すと、終わらない）。上限は 5 周。
+- 直すたびに push し、CI が通ることを `gh pr checks` で確かめる。
 - 次のどちらかに当たったら、周を重ねずに判断役に「どう収めるか」を決めさせる: 同じ問題が 2 周続けて MUST で残った／5 周しても MUST が残る。
 - 終わったら `state.json` の `review_outcomes` に `{ "revision", "ended": "must0" | "capped", "rounds" }` を足す。`capped` のときは、残った MUST を報告の「見てほしいこと」に入れる。
 
 ### 5. PR
 
-- 記録をコミットして push し、draft で PR を作り（書き方は CLAUDE.md と `../pr/pr-template.md`）、ready for review にする。PR の番号と URL を `state.json` と `report.json` に書く。
+- 記録をコミットして push し、PR の本文を最新にして、ready for review にする。
 - **Copilot のレビューは、届けば対応するが、必須ではない。**
   ```sh
   bash "${CLAUDE_SKILL_DIR}/scripts/copilot-wait.sh" <PR番号> 10
   ```
-  をバックグラウンドで走らせる（今の HEAD へのレビューを最大 10 分待つ）。待つあいだに報告の準備を進めてよい。
+  をバックグラウンドで走らせる（今のコードへのレビューを最大 10 分待つ。記録だけのコミットを後から push しても見落とさない）。待つあいだに報告の準備を進めてよい。
   - `reviewed`: `bash "${CLAUDE_SKILL_DIR}/scripts/copilot-comments.sh" <PR番号>` で返信していない指摘を取り、実装役に「妥当かの分析と、妥当なら修正」を頼む。指摘ごとにコミットし、スレッドに返信して push する。コードやドキュメントを直したら、レビュー役にもう 1 周見せる。対応は `report.json` の `copilot` に書く。**待つのは 1 回だけ**（対応の push へのレビューは待たない）。
   - `unable` / `timeout`: そのことを `report.json` の `copilot.status` と「見てほしいこと」に書いて先へ進む。
 

@@ -4,7 +4,7 @@
   "branch": "feat/example-slug",
   "worktree": "/abs/path/fude.nvim-dev-example-slug",
   "phase": "hearing",
-  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done",
+  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done（scripts/set-phase.py で進める）",
   "phase_history": [
     {
       "phase": "hearing",
