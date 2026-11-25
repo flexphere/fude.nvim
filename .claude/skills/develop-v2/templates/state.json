@@ -14,9 +14,11 @@
       "id": "T1",
       "title": "タスク",
       "status": "待ち",
-      "owner": null,
+      "owner": "impl-1",
       "depends_on": [],
-      "files": []
+      "files": [],
+      "agent_id": null,
+      "_owner_note": "owner は表示用の名前、agent_id は SendMessage で続けて頼むための ID（セッションをまたぐと使えない）"
     }
   ],
   "review_round": 0,
