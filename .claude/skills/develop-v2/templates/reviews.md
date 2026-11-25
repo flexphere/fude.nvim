@@ -16,8 +16,8 @@
 
 | 区画 | 点検役 | 件数 | 問題なしと確かめた範囲 | コミット |
 |---|---|---|---|---|
-| CLAUDE.md Architecture: init.lua〜gh.lua | fable | 2 | 残りの全文 | def5678 |
-| CLAUDE.md Architecture: util.lua〜diff.lua | fable | 0 | 全文 | |
+| CLAUDE.md Architecture: init.lua〜gh.lua | opus | 2 | 残りの全文 | def5678 |
+| CLAUDE.md Architecture: util.lua〜diff.lua | opus | 0 | 全文 | |
 
 ## 第 1 版 Copilot（2026-01-01、PR #123）
 
