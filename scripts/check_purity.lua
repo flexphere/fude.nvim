@@ -2,8 +2,9 @@
 --
 -- Computational Architecture Fitness Sensor.
 --
--- Verifies that modules declared "pure" in CLAUDE.md (no side effects, no
--- vim API, no config.state access) actually contain no forbidden patterns.
+-- Verifies that modules declared "pure" in docs/architecture/ (comments.md,
+-- ui.md; summarized in CLAUDE.md's module map) -- no side effects, no vim API,
+-- no config.state access -- actually contain no forbidden patterns.
 -- Target files: lua/fude/**/data.lua, lua/fude/**/format.lua.
 --
 -- See .claude/HARNESS.md for the conceptual framing.

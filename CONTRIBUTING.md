@@ -65,10 +65,11 @@ make lint              # luacheck
 make format            # stylua（自動修正）
 make format-check      # stylua --check
 make test              # plenary-busted テスト
-make all               # lint + format-check + test + check-state-deps + check-purity + check-docs
+make all               # lint + format-check + test + check-state-deps + check-purity + check-docs + check-claude-md
 make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
 make check-purity      # `*/data.lua` `*/format.lua` の純粋性 (vim API / state 不参照) 検証
 make check-docs        # lua/fude/commands.lua / plugin/fude.lua のコマンド登録と doc/fude.txt のタグの双方向整合性検証
+make check-claude-md   # CLAUDE.md が 50,000 文字以下であることの検証（モジュールの詳細は docs/architecture/ に書く）
 make coverage          # luacov でテストカバレッジ計測 (要 `luarocks install --local luacov`)
 ```
 
@@ -96,7 +97,7 @@ push 前に `make all` が通ることを必ず確認してください。`make 
 
 - `README.md`（Features / Commands / Configuration）
 - `doc/fude.txt`
-- モジュールの責務が変わる場合は `CLAUDE.md` の Architecture セクション
+- モジュールの責務が変わる場合は `docs/architecture/` の該当モジュールのファイル（関数一覧・挙動の詳細）。モジュールの追加・削除・役割の変更は `CLAUDE.md` の Module Responsibilities（1〜2 行の要約）にも反映
 
 `doc/fude.txt` 編集後は help タグを再生成:
 
@@ -132,4 +133,4 @@ Claude Code を使わない場合も、上記と同等のチェック（`make al
 
 ## アーキテクチャ
 
-モジュール別の責務、主要パターン（非同期フロー、state 管理、純粋関数の抽出）、`config.state` の読み書きマトリクスは [`CLAUDE.md`](./CLAUDE.md) の Architecture セクションを参照してください。
+モジュールの一覧と要約、主要パターン（非同期フロー、state 管理、純粋関数の抽出）、`config.state` の読み書きマトリクスは [`CLAUDE.md`](./CLAUDE.md) の Architecture セクションを参照してください。モジュール別の詳細な責務は [`docs/architecture/`](./docs/architecture/) にモジュール群ごとのファイルとして置いています（どのファイルにどのモジュールがあるかは `CLAUDE.md` の Module Responsibilities にあります）。

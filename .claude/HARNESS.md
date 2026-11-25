@@ -6,7 +6,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 **Guides（フィードフォワード制御）** と **Sensors（フィードバック制御）** に分類し、それらを継続的に
 改善する **Steering Loop** の運用ルールを明示する。
 
-詳細な実装規約は `CLAUDE.md` と各 skill に委ね、本ドキュメントは **俯瞰と運用** に絞る。
+詳細な実装規約は `CLAUDE.md`・`docs/architecture/` と各 skill に委ね、本ドキュメントは **俯瞰と運用** に絞る。
 
 ## 用語の最低限のおさらい
 
@@ -21,7 +21,8 @@ Martin Fowler "Harness Engineering for Coding Agents"
 
 | 種別 | 実体 | 役割 | 場所 |
 |------|------|------|------|
-| 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
+| 推論的 | `CLAUDE.md` | アーキテクチャの概要（モジュールの地図＝各モジュール 1〜2 行の要約と詳細ファイルのパス、主要パターン）、状態依存テーブル、品質ルール | repo root |
+| 推論的 | `docs/architecture/*.md` | モジュール群ごとの詳細な責務（関数一覧、契約、エッジケース）。触るモジュールのファイルを実装前に読み、変更時に更新する | `docs/architecture/` |
 | 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR→Copilot レビュー対応の一貫ワークフロー（計画合意後は自律実行） | `.claude/skills/develop/` |
 | 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
 | 推論的 | `/self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/self-review/` |
@@ -33,7 +34,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `.stylua.toml` | フォーマット規約 | repo root |
 | 計算的 | `.luacheckrc` | Lint 規約 | repo root |
 
-**設計原則**: skill は **再利用可能な軽量プロセス記述** を保ち、プロジェクト固有の知識は `CLAUDE.md` と
+**設計原則**: skill は **再利用可能な軽量プロセス記述** を保ち、プロジェクト固有の知識は `CLAUDE.md`・`docs/architecture/` と
 `pj-checklist` に集中させる。新たに skill を増やすときは「既存 skill の一部に書けないか」をまず疑う。
 
 ## 2. 現状の Sensors（フィードバック）
@@ -46,9 +47,10 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
 | 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
 | 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `lua/fude/commands.lua` のレジストリ + `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性、および `lua/fude/config.lua` `M.defaults` の top-level 設定キーが `doc/fude.txt` に backtick 形式で文書化されているかの forward 検証 |
+| 計算的 | `make check-claude-md` (`scripts/check_claude_md.lua`) | 開発中・pre-commit・CI | `CLAUDE.md` が 50,000 文字を超えていないか（モジュールの詳細は `docs/architecture/` に書く） |
 | 計算的 | `make coverage` (luacov) | 開発中（手動）・CI | `lua/fude/` のテストカバレッジ計測。`make all` には未組み込み（報告のみ・閾値強制なし）。CI artifact `coverage-report` に保管 |
-| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 6 つを順次実行する **ローカルゲート** |
-| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
+| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 7 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 8 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
@@ -84,7 +86,7 @@ PR レビュー指摘
 
 ### 既存 skill との連携ポイント
 
-- `/develop` Phase 1 は `CLAUDE.md` と `review-lessons.md` を参照する。**本ドキュメント (HARNESS.md) も
+- `/develop` Phase 1 は `CLAUDE.md`・関連モジュールの `docs/architecture/` のファイルと `review-lessons.md` を参照する。**本ドキュメント (HARNESS.md) も
   俯瞰用として軽く目を通す**ことで「今どこを触っているか」をハーネス全体地図の上で位置付けできる
 - `/review-respond` Phase 6 は `review-lessons.md` のエントリ統合と削除を行う。一定数を超えたら
   `/harness-audit` の起動を提案する
@@ -102,6 +104,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 | `check_state_deps` | #134-#135 | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性 | multi-LHS 代入 `state.a, state.b = ...` は最後の LHS のみ W 検出、動的フィールド `state[key]` は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の可能性（現コードベースに該当ケースなし） |
 | `check_purity` | #136 | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
 | `check_docs` | #137, #140, #206 | (1) `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 (PR #137。PR #206 から `lua/fude/commands.lua` のレジストリも抽出元に追加)、(2) `config.lua` の `M.defaults` top-level キーが doc に backtick 形式で文書化されているか forward 検証 (PR #140) | config option は **forward のみ** (doc backtick は関数名等を含むため reverse 不適)。nested key (`signs.comment` 等) と default value の整合性は未対応。keymap 検証は §4.2 #4 で別 PR 化 |
+| `check_claude_md` | (本 PR) | `CLAUDE.md` の文字数が 50,000 以下であること（起動時に毎回読み込まれるため。モジュールの詳細は `docs/architecture/` に置く） | 文字数だけを見る。`docs/architecture/` のファイルの実在や CLAUDE.md からの参照漏れは検証しない |
 | `luacov` (`make coverage`) | #138 | `lua/fude/` のテストカバレッジ計測（line-hit 率）。報告のみ、閾値強制なし。CI artifact から取得 | 初期は 45-50% 程度の見込み。閾値強制は段階 3（将来 PR）で検討。`/harness-audit` の sensor 発火率指標とは別の独立メトリクス |
 
 ### 4.2 次に着手する PR 候補
