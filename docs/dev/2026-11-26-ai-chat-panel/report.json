@@ -4,11 +4,17 @@
   "date": "2026-11-26",
   "branch": "feat/ai-chat-panel",
   "base": "origin/main",
-  "status": "実装中",
-  "commits": 0,
-  "summary": "PRD が承認され、実装に入りました。チャットの中核 → パネルとコマンド → ドキュメントの順に進め、終わったら draft の PR を作ってレビューに回します。",
+  "status": "レビュー対応中",
+  "commits": 7,
+  "summary": "実装とドキュメントが済み、draft の PR #331 を作りました。経緯を知らないレビュー役が全体を見ています。MUST が無くなり CI が通ったら ready for review にします。",
   "generatedBy": "/develop-v2",
-  "tests": [],
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint（警告 0）・format-check・テスト（40 ファイル、失敗 0）・check-state-deps・check-purity・check-docs すべて通過"
+    }
+  ],
   "attention": [],
   "acceptance": [
     {
@@ -376,6 +382,121 @@
       "revisit": "claude の snapshot の既定や意味が変わったとき。添えた行に claude が毎回言及してうるさいとき",
       "refs": "AC9",
       "escalated": true
+    },
+    {
+      "id": "D-013",
+      "title": "パネルを閉じても応答中の claude は止めない",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "中",
+      "severityReason": "閉じても裏で動くことは利用者の費用に関わる。あとから変えられる",
+      "by": "判断役",
+      "background": "PRD に定めが無かった。",
+      "options": [
+        "止めない",
+        "閉じたら止める"
+      ],
+      "decided": "止めない。閉じているあいだに成功で終わったら INFO を 1 回出す",
+      "reason": "応答を待つあいだ閉じて diff を読むのは自然な使い方。止める手段（キャンセルキー、:FudeReviewChatNew、レビュー停止、終了）は別にある。",
+      "impact": "chat_panel の close",
+      "revisit": "「閉じたのに動いていて費用がかかった」という声が出たとき",
+      "refs": "AC10, AC12"
+    },
+    {
+      "id": "D-014",
+      "title": "追従スクロールは「ログのカーソルが最終行にあるか」で判定する",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "表示だけ",
+      "by": "判断役",
+      "background": "AC13 の「末尾を見ていれば」の判定方法。",
+      "options": [
+        "カーソルが最終行",
+        "最終行が画面内に見えている"
+      ],
+      "decided": "カーソルが最終行",
+      "reason": "画面の下端だけで判定すると、再描画の前に次の断片が届いたとき追従が切れうる。",
+      "impact": "chat_panel のスクロール",
+      "revisit": "下端に戻しても追従しない、などが気になったとき（OR 条件にする）",
+      "refs": "AC13"
+    },
+    {
+      "id": "D-015",
+      "title": "入力欄はコマンドでフォーカスしたとき insert モードで始める",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "好みの面が大きく、あとから変えても何も壊さない",
+      "by": "判断役",
+      "background": "実装役は normal モードで開いていた。",
+      "options": [
+        "normal",
+        "insert"
+      ],
+      "decided": "insert（開く・toggle でのフォーカス・:FudeReviewChatAdd。ウィンドウ移動では変えない）。パネルを閉じるときは stopinsert",
+      "reason": "既存の入力欄（コメント入力、PR 作成）が startinsert で始まり normal の <CR> で送るのと揃える。",
+      "impact": "chat_panel の focus_input",
+      "revisit": "ログを読もうと開いただけで入力に入るのが煩わしいとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-016",
+      "title": "未送信の入力はパネルを閉じても残す（メモリ上。レビュー停止で消える）",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "保存形式に触れない",
+      "by": "判断役",
+      "background": "PRD に定めが無かった。",
+      "options": [
+        "残す",
+        "閉じたら捨てる",
+        "ディスクにも残す"
+      ],
+      "decided": "残す（config.state.chat_input）",
+      "reason": "閉じて diff を読む使い方と噛み合う。ディスクへの保存は範囲外。",
+      "impact": "state.chat_input",
+      "revisit": "長い書きかけを失ったという声が出たとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-017",
+      "title": ":FudeReviewChatAdd の表記（1 行は path:L12、base ペインは (base version)、特殊バッファは拒否）",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "貼る文の形だけで、送る前に見て直せる",
+      "by": "判断役",
+      "background": "AC6 は範囲の形だけを定めていた。判断役は今の表記を認めたうえで、ファイルでないバッファの扱いを確かめるよう求めた。",
+      "options": [
+        "今のまま",
+        "変える"
+      ],
+      "decided": "1 行は path:L12、無名バッファは [No Name]、リポジトリ外は ~ 始まりのフルパス、フェンスは選択内のバッククォートの最長の連続 + 1。diff の base ペインは「<path> (base version):L…」、side panel などの名前付き特殊バッファ（buftype が空でない）は WARN で拒否",
+      "reason": "base ペインの行番号は base 版の行なので、ただのパスに見えると誤解を生む。",
+      "impact": "build_selection_text、resolve_selection_path",
+      "revisit": "claude が貼った範囲を別の版の行と取り違えたとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-018",
+      "title": "ローカルレビューで質問に添える行は角括弧の 1 行",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "次の質問から変えられる",
+      "by": "判断役",
+      "background": "D-012 の実装の形。",
+      "options": [
+        "今のまま",
+        "変える"
+      ],
+      "decided": "「[Review context — base branch: …; scope: …]」の 1 行 + 空行 + 質問",
+      "reason": "1 行で質問と区別でき、システムプロンプトにも先頭に付くと書いてある。",
+      "impact": "build_prompt_context",
+      "revisit": "claude が毎回この行に言及するとき。「/」で始まる質問の扱いがモードで変わると分かったとき",
+      "refs": "AC9"
     }
   ],
   "reviews": [],
@@ -390,21 +511,21 @@
     {
       "id": "T2",
       "title": "チャットパネル・コマンド・設定・レビュー停止時の後始末とテスト",
-      "status": "進行中",
+      "status": "完了",
       "owner": "impl-1"
     },
     {
       "id": "T3",
       "title": "README.md・doc/fude.txt・CLAUDE.md の更新",
-      "status": "未着手",
+      "status": "完了",
       "owner": "impl-1"
     }
   ],
   "revision": 1,
   "revisions": [],
   "pr": {
-    "number": null,
-    "url": null
+    "number": 331,
+    "url": "https://github.com/flexphere/fude.nvim/pull/331"
   },
   "copilot": {
     "status": "",
