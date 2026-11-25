@@ -18,7 +18,7 @@
 - 新しく作るリソース（autocmd、timer、extmark、window）が既存の後始末でカバーされるか確かめる。
 - テスト: 変える対象の既存テストを読み、書き方とヘルパー（`tests/helpers.lua`）に合わせて `tests/fude/*_spec.lua` にテストを足す。機能を無効にすると落ちるか、`it()` の説明が中身と合っているかを見る。
 - Lua を編集したら `stylua lua/ plugin/ tests/` を走らせる。
-- 最後に `make all` を走らせ、通るまで直す。
+- 最後に `make all` を走らせ、通るまで直す。ただし「並列で動いている」と伝えられたときは、他の実装役が同じ worktree で書きかけなので、`stylua` は自分の触ったファイルだけにかけ、`make all` の代わりに `bash run_tests.sh tests/fude/<name>_spec.lua` と `luacheck <触ったファイル>` を走らせる。
 - **コミット・push はしない。** `git reset` / `git checkout .` / `git clean` など、変更を捨てる操作もしない。
 - 判断が要る場面（PRD から答えが一意に決まらない、触ってよいファイルの外に触る必要がある、既存の挙動を変える必要がある）では、勝手に決めずに手を止め、「判断が要ること」として返す。
 
