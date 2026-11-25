@@ -222,20 +222,43 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 
 ### 待つ
 
-Copilot のレビューが届くまで待つ。次を Bash の `run_in_background: true` で実行し、完了の通知を待つ（30 秒ごと、上限 20 分）。`<前の件数>` は `state.json` の `copilot.reviews_seen`（最初は 0）。届いたら件数を `reviews_seen` に書く。
+`state.json` の `copilot` には次の 2 つを持つ。どちらも**対応を終えてから**進める（受け取った時点では進めない。対応の途中で中断して再開したときに、届いている未対応のレビューを見落とさないため）。
+
+- `reviews_seen`: 対応を終えた Copilot のレビューの件数（最初は 0）
+- `unable_seen`: 「unable to review」（割り当て不足などでレビューできなかった）の返事の件数（最初は 0）。レビューとしては数えない
+
+**待つ前に、まだ対応していないものが届いていないかを確かめる**（`phase: copilot` から再開したときも必ず行う）。次のどちらかに当たれば、待たずに [対応する](#対応する) へ進む。
 
 ```bash
+# 対応を終えていないレビューがあるか: 下の cnt valid が reviews_seen より大きい
+# 返信していない Copilot の行コメントの数
+gh api "repos/{owner}/{repo}/pulls/<PR番号>/comments" --paginate --slurp | jq 'add
+  | [.[] | select(.user.login == "Copilot" and .in_reply_to_id == null) | .id] as $roots
+  | [.[] | .in_reply_to_id // empty] as $replied
+  | [$roots[] | select(. as $r | $replied | index($r) | not)] | length'
+```
+
+当たらなければ、次を Bash の `run_in_background: true` で実行し、完了の通知を待つ（30 秒ごと、上限 20 分）。`<前の件数>` は `reviews_seen`、`<前の失敗件数>` は `unable_seen`。
+
+```bash
+cnt() {  # $1: valid（レビュー）| unable（レビューできなかった返事）
+  gh api "repos/{owner}/{repo}/pulls/<PR番号>/reviews" --paginate --jq "[.[]
+    | select(.user.login == \"copilot-pull-request-reviewer[bot]\")
+    | select(((.body // \"\") | test(\"unable to review\"; \"i\")) == $([ "$1" = unable ] && echo true || echo false))
+  ] | length" | awk '{s+=$1} END {print s+0}'
+}
 for i in $(seq 1 40); do
-  n=$(gh api "repos/{owner}/{repo}/pulls/<PR番号>/reviews" --paginate \
-    --jq '[.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")] | length' | awk '{s+=$1} END {print s+0}')
-  [ "$n" -gt <前の件数> ] && echo "copilot reviewed ($n)" && exit 0
+  [ "$(cnt valid)" -gt <前の件数> ] && echo "copilot reviewed" && exit 0
+  [ "$(cnt unable)" -gt <前の失敗件数> ] && echo "copilot unable to review" && exit 2
   sleep 30
 done
 echo "timeout" && exit 1
 ```
 
 - 待っている間に、`report.json` の最終版の下書きを進めてよい。
-- タイムアウトしたら `gh api repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers` で Copilot が入っているかを確かめる。入っていなければ `gh api -X POST repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` で依頼して、もう一度だけ待つ。それでも来なければ、その事実を報告の「見てほしいこと」に入れて報告に進む。
+- **`exit 2`（レビューできなかった）**: 返事の本文を確かめ、`unable_seen` を今の件数にする。割り当て不足のように待っても解決しないものは、待ち直さない。`copilot.timed_out` を `true`、`copilot.status` に理由を書き、その事実を報告の「見てほしいこと」に入れて先へ進む。
+- **`exit 1`（タイムアウト）**: `gh api repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers` で Copilot が入っているかを確かめる。入っていなければ `gh api -X POST repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` で依頼して、もう一度だけ待つ。それでも来なければ、`copilot.timed_out` を `true` にし、その事実を報告の「見てほしいこと」に入れて報告に進む。
+- `jq` を使う（`gh api --paginate --slurp` は `--jq` と併用できないため）。
 
 ### 対応する
 
@@ -248,7 +271,7 @@ echo "timeout" && exit 1
 3. メインが確かめ、**指摘ごとに**コミットし、`/review-respond` の Phase 4 の形で返信し（`in_reply_to` を付けてスレッドに返す。直したものは `<short-sha> で修正 — <説明>`）、push する。続けて `/review-respond` の Phase 5・6 の手順で、再発防止のパターンを `.claude/review-lessons.md` に記録・統合する。
 4. 各指摘を `reviews.md` に「Copilot」の周として記録する（指摘、場所、対応、コミット、返信したか）。
 5. コードを直したときは、[4. レビュー](#4-レビュー) を**新しいレビュー役で 1 周**行う（`origin/main` からの差分の全体を渡す。`docs/dev/` は除く）。MUST が出たら実装役に直させ、確かめてコミットし push する。MUST 0 になるまで繰り返す。Copilot の再レビューは待たない。
-6. 記録の更新をコミットして push し、[報告のページ](#報告のページ)を更新する（`status` は `報告準備中`）。
+6. `copilot.reviews_seen` を、対応を終えた時点の Copilot のレビューの件数（`cnt valid`）にする。記録の更新をコミットして push し、[報告のページ](#報告のページ)を更新する（`status` は `報告準備中`）。
 
 ## 判断と記録
 
@@ -348,5 +371,5 @@ echo "timeout" && exit 1
 
 - `/develop-v2 resume [slug]` で再開する。`git worktree list` と各 worktree の `docs/dev/*/state.json` から対象を探す。slug が無く候補が複数あれば聞く。
 - `phase` が `done` で、修正の依頼が添えられていれば [8. 報告後の修正](#8-報告後の修正) へ。依頼が無ければ、何を直したいかを聞く。
-- それ以外は `state.json` の `phase` から続ける。`prd.md`・`decisions.md`・`reviews.md` を読み直し、タスク一覧を表示してから始める。前のセッションの実装役は残っていないので、続きは新しい実装役に、そのタスクの説明と途中までの状態（`git diff --stat`、`state.json` のタスク）を渡して頼む。`phase` が `pr` / `copilot` なら `state.json` の `pr` から PR の状態を確かめて続ける。
+- それ以外は `state.json` の `phase` から続ける。`prd.md`・`decisions.md`・`reviews.md` を読み直し、タスク一覧を表示してから始める。前のセッションの実装役は残っていないので、続きは新しい実装役に、そのタスクの説明と途中までの状態（`git diff --stat`、`state.json` のタスク）を渡して頼む。`phase` が `pr` / `copilot` なら `state.json` の `pr` から PR の状態を確かめて続ける。`copilot` なら、[待つ](#待つ) の「待つ前に」の確認から始める。
 - 段階が変わったとき、タスクの状態が変わったとき、レビューの周が終わったとき、PR を作ったとき、Copilot の対応が終わったときに、`state.json` を更新する。

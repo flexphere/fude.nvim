@@ -47,6 +47,7 @@
   },
   "copilot": {
     "reviews_seen": 0,
+    "unable_seen": 0,
     "status": null
   },
   "revision": 1,
