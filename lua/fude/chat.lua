@@ -32,6 +32,7 @@ M.deserialize_chat = data.deserialize_chat
 M.format_question_lines = data.format_question_lines
 M.format_answer_end_lines = data.format_answer_end_lines
 M.format_chat_lines = data.format_chat_lines
+M.format_base_path = data.format_base_path
 M.build_selection_text = data.build_selection_text
 M.calculate_panel_width = data.calculate_panel_width
 M.find_panel_split = data.find_panel_split

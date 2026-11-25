@@ -317,6 +317,9 @@ function handlers.on_done(result)
 		if not panel then
 			vim.notify("fude.nvim: Chat failed: " .. tostring(result.error), vim.log.levels.ERROR)
 		end
+	elseif result.status == "done" and not panel then
+		-- The panel was closed meanwhile: say when it is worth opening again.
+		vim.notify("fude.nvim: The chat answer is ready (:FudeReviewChat)", vim.log.levels.INFO)
 	end
 	if result.save_error then
 		vim.notify("fude.nvim: Could not save the chat: " .. tostring(result.save_error), vim.log.levels.WARN)
@@ -347,6 +350,36 @@ local function ensure_active()
 	end
 	vim.notify("fude.nvim: Not active", vim.log.levels.WARN)
 	return false
+end
+
+--- Focus the input pane in insert mode, like the comment inputs: it is where
+--- a command put the user to type. Not used for plain window movement.
+--- @param panel table
+local function focus_input(panel)
+	vim.api.nvim_set_current_win(panel.input_win)
+	vim.cmd("startinsert")
+end
+
+--- Path to write for a selection in `buf`.
+--- @param buf number
+--- @return string|nil path nil for an unnamed buffer
+--- @return boolean refused true when the buffer is not something to quote lines from
+local function resolve_selection_path(buf)
+	local name = vim.api.nvim_buf_get_name(buf)
+	-- The diff preview's base pane, named "[base] <path>": base-version lines.
+	if buf == config.state.preview_buf then
+		return data.format_base_path(name:match("%[base%] (.+)$")), false
+	end
+	if name == "" then
+		return nil, false
+	end
+	-- A named special buffer (side panel, comment browser, terminal, …): its
+	-- name is no path claude could read.
+	if vim.bo[buf].buftype ~= "" then
+		return nil, true
+	end
+	-- Outside the repository: the path as the user would type it.
+	return require("fude.local.session").relative_path(name) or vim.fn.fnamemodify(name, ":~"), false
 end
 
 --- Send the input pane's text as a question.
@@ -474,7 +507,7 @@ local function quit_if_alone(panel)
 	end
 end
 
---- Open the chat panel at the tabpage edge and focus its input.
+--- Open the chat panel at the tabpage edge and focus its input (insert mode).
 function M.open()
 	if not ensure_active() or not ensure_available() then
 		return
@@ -579,7 +612,7 @@ function M.open()
 
 	setup_keymaps(panel)
 	render_log(panel)
-	vim.api.nvim_set_current_win(input_win)
+	focus_input(panel)
 end
 
 --- Close the chat panel. An answer in progress keeps running and is stored
@@ -602,6 +635,10 @@ function M.close()
 	end
 
 	local was_focused = M.is_panel_window(vim.api.nvim_get_current_win())
+	if was_focused then
+		-- Insert mode belongs to the input pane, not to the window focus returns to.
+		vim.cmd("stopinsert")
+	end
 	for _, win in ipairs({ panel.log_win, panel.input_win }) do
 		if vim.api.nvim_win_is_valid(win) then
 			local ok, err = pcall(vim.cmd, "noautocmd call nvim_win_close(" .. win .. ", v:true)")
@@ -635,7 +672,7 @@ function M.toggle()
 		M.close()
 	else
 		panel.prev_win = vim.api.nvim_get_current_win()
-		vim.api.nvim_set_current_win(panel.input_win)
+		focus_input(panel)
 	end
 end
 
@@ -683,11 +720,10 @@ function M.add_selection(line1, line2)
 		line1, line2 = line2, line1
 	end
 	local lines = vim.api.nvim_buf_get_lines(buf, line1 - 1, line2, false)
-	local name = vim.api.nvim_buf_get_name(buf)
-	local path = nil
-	if name ~= "" then
-		-- Outside the repository: the path as the user would type it.
-		path = require("fude.local.session").relative_path(name) or vim.fn.fnamemodify(name, ":~")
+	local path, refused = resolve_selection_path(buf)
+	if refused then
+		vim.notify("fude.nvim: This buffer is not a file to quote lines from", vim.log.levels.WARN)
+		return
 	end
 	local text = data.build_selection_text(path, line1, line2, lines, vim.bo[buf].filetype)
 
@@ -716,7 +752,7 @@ function M.add_selection(line1, line2)
 	-- A line to type the question on.
 	table.insert(new_lines, "")
 	vim.api.nvim_buf_set_lines(panel.input_buf, 0, -1, false, new_lines)
-	vim.api.nvim_set_current_win(panel.input_win)
+	focus_input(panel)
 	pcall(vim.api.nvim_win_set_cursor, panel.input_win, { #new_lines, 0 })
 end
 

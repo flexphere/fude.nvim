@@ -596,6 +596,15 @@ function M.format_chat_lines(messages)
 	return lines
 end
 
+--- Path written for a selection taken from the diff preview's base pane: its
+--- lines and line numbers are those of the base version, not of the file on
+--- disk, and the text must say so.
+--- @param path string|nil repo-relative path the base pane shows
+--- @return string
+function M.format_base_path(path)
+	return ((type(path) == "string" and path ~= "") and path or "?") .. " (base version)"
+end
+
 --- Text pasted into the chat input for a selection: a `<path>:L<start>-L<end>`
 --- line (`<path>:L<line>` for one line) and the selected lines in a code fence
 --- tagged with the filetype. The fence is longer than any backtick run in the

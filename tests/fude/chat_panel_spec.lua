@@ -140,6 +140,13 @@ describe("chat.build_selection_text", function()
 	end)
 end)
 
+describe("chat.format_base_path", function()
+	it("says that the path is the base version", function()
+		assert.are.equal("lua/x.lua (base version)", data.format_base_path("lua/x.lua"))
+		assert.are.equal("? (base version)", data.format_base_path(nil))
+	end)
+end)
+
 describe("chat.calculate_panel_width", function()
 	it("uses the configured width when the editor is wide enough", function()
 		assert.are.equal(60, data.calculate_panel_width(60, 200))
@@ -176,6 +183,7 @@ describe("chat panel", function()
 	local runs
 	local notes
 	local available
+	local insert_starts
 
 	local function panel()
 		return config.state.chat_panel
@@ -264,6 +272,16 @@ describe("chat panel", function()
 		helpers.mock(vim, "notify", function(msg, level)
 			table.insert(notes, { msg = msg, level = level })
 		end)
+		-- Count :startinsert instead of running it: insert mode would outlive the test.
+		insert_starts = 0
+		local real_cmd = vim.cmd
+		helpers.mock(vim, "cmd", function(command)
+			if command == "startinsert" then
+				insert_starts = insert_starts + 1
+				return
+			end
+			return real_cmd(command)
+		end)
 	end)
 
 	after_each(function()
@@ -333,6 +351,21 @@ describe("chat panel", function()
 			assert.is_false(vim.api.nvim_win_is_valid(p.log_win))
 			assert.is_false(vim.api.nvim_win_is_valid(p.input_win))
 			assert.are.equal(editor, vim.api.nvim_get_current_win())
+		end)
+
+		it("starts insert mode when a command focuses the input, not on plain window movement", function()
+			local editor = vim.api.nvim_get_current_win()
+			chat_panel.toggle()
+			assert.are.equal(1, insert_starts)
+			vim.api.nvim_set_current_win(editor)
+			vim.api.nvim_set_current_win(panel().input_win)
+			assert.are.equal(1, insert_starts)
+			vim.api.nvim_set_current_win(editor)
+			chat_panel.toggle()
+			assert.are.equal(2, insert_starts)
+			-- closing starts nothing
+			chat_panel.toggle()
+			assert.are.equal(2, insert_starts)
 		end)
 
 		it("closes from the log pane too", function()
@@ -636,6 +669,31 @@ describe("chat panel", function()
 			assert.is_nil(config.state.chat_live)
 		end)
 
+		it("says that the answer is ready when it ends while the panel is closed", function()
+			chat_panel.open()
+			set_input({ "q" })
+			chat_panel.submit()
+			chat_panel.close()
+			runs[1].chunk(text_line("a") .. success_line("a"))
+			runs[1].exit(0, "")
+			local ready = 0
+			for _, n in ipairs(notes) do
+				if n.level == vim.log.levels.INFO and n.msg:find("answer is ready", 1, true) then
+					ready = ready + 1
+				end
+			end
+			assert.are.equal(1, ready)
+		end)
+
+		it("does not announce an answer that ends in the open panel", function()
+			chat_panel.open()
+			set_input({ "q" })
+			chat_panel.submit()
+			runs[1].chunk(success_line("a"))
+			runs[1].exit(0, "")
+			assert.is_false(notified(vim.log.levels.INFO, "answer is ready"))
+		end)
+
 		it("keeps the question for the next open when the panel was closed meanwhile", function()
 			chat_panel.open()
 			set_input({ "q" })
@@ -722,6 +780,8 @@ describe("chat panel", function()
 
 		before_each(function()
 			buf = helpers.create_buf({ "local a = 1", "local b = 2", "return a + b" }, "/repo/lua/x.lua")
+			-- a file buffer, not the scratch buffer the helper makes
+			vim.bo[buf].buftype = ""
 			vim.bo[buf].filetype = "lua"
 			vim.api.nvim_set_current_buf(buf)
 			helpers.mock_diff({ ["/repo/lua/x.lua"] = "lua/x.lua" })
@@ -733,6 +793,8 @@ describe("chat panel", function()
 			assert.are.same({ "lua/x.lua:L1-L2", "```lua", "local a = 1", "local b = 2", "```", "" }, input_lines())
 			assert.are.equal(panel().input_win, vim.api.nvim_get_current_win())
 			assert.are.equal(6, vim.api.nvim_win_get_cursor(panel().input_win)[1])
+			-- once for opening the panel, once for the paste
+			assert.are.equal(2, insert_starts)
 		end)
 
 		it("appends after existing input in an open panel", function()
@@ -745,6 +807,26 @@ describe("chat panel", function()
 			assert.are.equal(p, panel())
 			assert.are.same({ "Compare this:", "", "lua/x.lua:L3", "```lua", "return a + b", "```", "" }, input_lines())
 			assert.are.equal(p.input_win, vim.api.nvim_get_current_win())
+			assert.are.equal(2, insert_starts)
+		end)
+
+		it("marks lines taken from the diff preview's base pane as the base version", function()
+			local base = helpers.create_buf({ "old a", "old b", "old c" })
+			vim.bo[base].buftype = "nofile"
+			vim.bo[base].filetype = "lua"
+			pcall(vim.api.nvim_buf_set_name, base, "[base] lua/x.lua")
+			config.state.preview_buf = base
+			vim.api.nvim_set_current_buf(base)
+			chat_panel.add_selection(2, 3)
+			assert.are.same({ "lua/x.lua (base version):L2-L3", "```lua", "old b", "old c", "```", "" }, input_lines())
+		end)
+
+		it("refuses a named special buffer such as the side panel", function()
+			sidepanel.open()
+			assert.are.equal(config.state.sidepanel.win, vim.api.nvim_get_current_win())
+			chat_panel.add_selection(1, 1)
+			assert.is_nil(panel())
+			assert.is_true(notified(vim.log.levels.WARN, "not a file"))
 		end)
 
 		it("names a buffer without a file and a file outside the repository", function()
@@ -756,6 +838,7 @@ describe("chat panel", function()
 			config.state.chat_input = nil
 
 			local outside = helpers.create_buf({ "y" }, "/elsewhere/notes.txt")
+			vim.bo[outside].buftype = ""
 			vim.api.nvim_set_current_buf(outside)
 			chat_panel.add_selection(1, 1)
 			assert.are.equal("/elsewhere/notes.txt:L1", input_lines()[1])
