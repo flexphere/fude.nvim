@@ -24,7 +24,7 @@
   },
   "agents": {
     "reviewer": null,
-    "judge": null
+    "judge": "a6de5e78b77ecd3f7"
   },
   "review_outcomes": [],
   "pr": {

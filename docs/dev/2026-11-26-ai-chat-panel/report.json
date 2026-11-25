@@ -55,13 +55,13 @@
     },
     {
       "id": "AC8",
-      "text": "claude のツールは既定で読み取り専用（Read / Grep / Glob と git・gh の参照系 Bash）。設定で変えられる",
+      "text": "claude のツールは既定で読み取り専用（Read / Grep / Glob と git・gh の参照系 Bash）。利用者が自分の claude の設定で許した操作と MCP は効く。設定で変えられる",
       "result": "",
       "how": "Unit テスト、手動確認"
     },
     {
       "id": "AC9",
-      "text": "レビュー対象の情報（PR 番号・URL・base / head、ローカルは base・ブランチ・scope）が --append-system-prompt で毎回渡る",
+      "text": "変わらない情報（PR 番号・URL・ブランチ）は --append-system-prompt で、変わりうる情報（ローカルの scope・base）は毎回の質問の先頭に添えて渡る",
       "result": "",
       "how": "Unit テスト"
     },
@@ -73,7 +73,7 @@
     },
     {
       "id": "AC11",
-      "text": "claude が失敗したとき、エラーが会話ログに出て入力は入力欄に戻る。--resume のセッションが見つからないときは新しい ID で 1 回だけやり直す",
+      "text": "claude が失敗したとき、エラーが会話ログに出て入力は入力欄に戻る。--resume のセッションが見つからないときは新しい ID で 1 回だけやり直す。「使用中」のときは同じ ID の --resume で 1 回やり直す",
       "result": "",
       "how": "結合テスト"
     },
@@ -115,7 +115,23 @@
       "テストは実際の claude を呼ばない",
       "README.md・doc/fude.txt・CLAUDE.md を更新する"
     ],
-    "changes": [],
+    "changes": [
+      {
+        "date": "2026-11-26",
+        "change": "AC9: 変わりうる情報（ローカルの scope・base）は毎回の質問に添える",
+        "reason": "D-012"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: 利用者自身の claude の設定（allow ルール・MCP）は効く、という例外を明記",
+        "reason": "D-008"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC11: 「セッション ID は使用中」のときの --resume でのやり直しを追記",
+        "reason": "D-010"
+      }
+    ],
     "verification": [
       "固定のテスト: make all",
       "Unit: 引数の組み立て、stream-json のパース、貼り付けテキスト、プロンプト、保存と復元",
@@ -241,6 +257,125 @@
       "impact": "保存のキー",
       "revisit": "コミットごとに会話を分けたいという要望が出たとき",
       "refs": "AC3"
+    },
+    {
+      "id": "D-007",
+      "title": "質問は引数でなく stdin で claude に渡す",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "内部の呼び出し方",
+      "by": "判断役",
+      "background": "実装役が、可変長の --allowedTools に飲み込まれる・「-」で始まる質問がオプションと読まれる・貼り付けで引数長が伸びる、として stdin を選んだ。",
+      "options": [
+        "stdin",
+        "-p の引数"
+      ],
+      "decided": "stdin",
+      "reason": "コードを貼る機能なので長い入力や「-」で始まる行は普通に起きる。stdin で動くことは実機で確認済み。",
+      "impact": "build_claude_args、実行関数",
+      "revisit": "claude が -p の stdin 入力をやめたとき",
+      "refs": "AC2"
+    },
+    {
+      "id": "D-008",
+      "title": "ツールの制限は --tools・--allowedTools・dontAsk。利用者の claude の設定は尊重する",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "高",
+      "severityReason": "利用者の環境で実際に走るコマンドの範囲を決める。広い allow ルールや書き込み系 MCP を持つ利用者では、読み取り専用は文字どおりには成り立たない",
+      "by": "ユーザー",
+      "background": "--permission-mode dontAsk で「許可に無いものは拒否」にしたが、利用者自身の settings.json の allow ルールと MCP の許可はそのまま効く。判断役は「今のまま」を選びつつ、AC8 に例外を明記する必要があるため人が決めるべきとした。",
+      "options": [
+        "利用者の設定を尊重（穴は文書に書く）",
+        "--setting-sources / --strict-mcp-config を既定で付けて厳密に閉じる",
+        "dontAsk を付けない"
+      ],
+      "decided": "利用者の設定を尊重し、AC8 に例外を明記。閉じ方の例を文書に書く",
+      "reason": "user 設定を外すと env・apiKeyHelper・モデル指定・hooks も消え、認証が壊れる利用者が出うる。残る穴は利用者が自分で許可した操作で、fude が新しく開ける穴ではない。",
+      "impact": "AC8 の文言、README・doc",
+      "revisit": "「編集しないはずが書き換わった」という報告が出たとき。認証を落とさずに allow だけを無効にする手段が claude にできたとき",
+      "refs": "AC8",
+      "escalated": true
+    },
+    {
+      "id": "D-009",
+      "title": "失敗したやり取りは会話ログに保存しない",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "あとから保存する側に変えても互換を壊さない",
+      "by": "判断役",
+      "background": "失敗時は入力が入力欄に戻る（AC11）。保存すると再送で質問が二重になる。",
+      "options": [
+        "保存しない",
+        "保存する"
+      ],
+      "decided": "保存しない。パネルは失敗時に届いていた文字を消さず、エラーと一緒に見せる",
+      "reason": "AC11 が求めるのは表示と入力の保持で、永続化ではない。",
+      "impact": "保存の対象",
+      "revisit": "「エラーが消えて何が起きたか分からない」という声が出たとき",
+      "refs": "AC4, AC11"
+    },
+    {
+      "id": "D-010",
+      "title": "「セッション ID は使用中」のときは同じ ID の --resume で 1 回やり直す",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "中",
+      "severityReason": "無いと会話が詰まるが、起きる条件は狭い",
+      "by": "判断役",
+      "background": "init の前に中断や終了が起きると「fude は未開始、claude は作成済み」になり、以後の送信がすべて失敗する。PRD が求めていたのは not found のやり直しだけ。",
+      "options": [
+        "やり直す",
+        "PRD に無いので消す"
+      ],
+      "decided": "やり直す（not found と共通で 1 回まで）。AC11 に追記",
+      "reason": "無いと :FudeReviewChatNew で会話を捨てるしか抜け道がない。",
+      "impact": "find_session_retry、AC11",
+      "revisit": "claude のエラー文が変わったとき",
+      "refs": "AC11"
+    },
+    {
+      "id": "D-011",
+      "title": "パネルの幅の既定は 60 桁",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "設定 1 行で変えられる",
+      "by": "判断役",
+      "background": "PRD に数値が無かった。side panel は 40 桁。",
+      "options": [
+        "60",
+        "別の値"
+      ],
+      "decided": "60。実際の幅はエディタの桁数の半分まで",
+      "reason": "文章とコードフェンスには 40 桁では狭く、80 桁では diff が狭くなる。",
+      "impact": "chat.width",
+      "revisit": "並べたときに diff が読めないとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-012",
+      "title": "会話の途中で変わる情報（ローカルの scope・base）は質問の先頭に添える",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "高",
+      "severityReason": "今のままだと scope を切り替えた利用者に誤った前提の答えが黙って返る。AC9 の文言も変わる",
+      "by": "ユーザー",
+      "background": "claude は --append-system-prompt を含むシステムプロンプトを会話の最初に記録し、--resume では別の文を渡しても使い回す（claude --help）。判断役は案を選びつつ、AC9 が手段まで書いているため人が決めるべきとした。",
+      "options": [
+        "変わる情報は質問に添える",
+        "--system-prompt-snapshot off",
+        "今のまま（文書に書く）",
+        "変わる情報を渡さない"
+      ],
+      "decided": "変わらない情報はシステムプロンプト、変わる情報は毎回の質問の先頭に添える（表示と保存には混ぜない）",
+      "reason": "snapshot off はキャッシュが外れやすく費用が見合わない。commit scope で古い前提の答えは誤答になる。",
+      "impact": "build_system_prompt、stdin に入れる文、AC9",
+      "revisit": "claude の snapshot の既定や意味が変わったとき。添えた行に claude が毎回言及してうるさいとき",
+      "refs": "AC9",
+      "escalated": true
     }
   ],
   "reviews": [],
@@ -249,13 +384,13 @@
     {
       "id": "T1",
       "title": "チャットの中核（引数の組み立て・stream-json のパース・保存と復元・claude の実行）とテスト",
-      "status": "進行中",
+      "status": "完了",
       "owner": "impl-1"
     },
     {
       "id": "T2",
       "title": "チャットパネル・コマンド・設定・レビュー停止時の後始末とテスト",
-      "status": "未着手",
+      "status": "進行中",
       "owner": "impl-1"
     },
     {
