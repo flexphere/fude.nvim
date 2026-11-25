@@ -44,7 +44,7 @@ def post_merge_fixes(root, pr_number, days):
         if f and not f.startswith(SHARED_PREFIXES)
     ]
     if not files:
-        return []
+        return None  # 共有のファイルだけを触った PR は調べていない（0 件ではない）
     since = datetime.datetime.fromisoformat(when)
     until = since + datetime.timedelta(days=days)
     out = git(

@@ -33,6 +33,7 @@
     }
   ],
   "review_round": 0,
+  "review_head": null,
   "reviewer_agent_id": null,
   "judge_agent_id": null,
   "_agent_ids_note": "レビュー役・判断役に SendMessage で続けて頼むための ID（セッションをまたぐと使えない）。版が変わったらレビュー役は立て直す",

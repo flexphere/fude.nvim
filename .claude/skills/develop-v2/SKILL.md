@@ -81,7 +81,7 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
    root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")   # 元のリポジトリのルート（どの worktree から起動しても同じ）
    git -C "$root" worktree add --no-track "$root/../fude.nvim-dev-<slug>" -b <種類>/<slug> origin/main
    ```
-   - 以降の作業はすべてその worktree で行う。種類はヒアリングで変わったら、PR 作成前に `git branch -m` で直し、`state.json` の `branch` も直す（[再開](#再開) の候補は `branch` で探すため）。
+   - 以降の作業はすべてその worktree で行う。**Bash の命令は毎回 `cd "<worktree の絶対パス>" && ...` で始める**（git は `git -C "<worktree の絶対パス>"` でもよい）。Claude Code の Bash は、作業ディレクトリの外への `cd` を次の呼び出しに持ち越さないので、付け忘れると `make all`・`git push`・`gh pr create`・記録のスクリプトが元のチェックアウトで走る。このスキルの命令の例（`docs/dev/<dir>/...` の相対パスを含む）は、すべて worktree の中で走らせる前提で書いてある。サブエージェントにも worktree の絶対パスを渡し、同じく `cd` を付けるよう伝える。種類はヒアリングで変わったら、PR 作成前に `git branch -m` で直し、`state.json` の `branch` も直す（[再開](#再開) の候補は `branch` で探すため）。
 5. worktree の中に作業ディレクトリ `docs/dev/<YYYY-MM-DD>-<slug>/` を作る。中身（PR に一緒に入る）:
    - `state.json`（[書式](templates/state.json)）
    - `prd.md`（[書式](templates/prd.md)）
@@ -175,12 +175,12 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 
 ## 4. レビュー
 
-1. 1 周目は、経緯を知らないレビュー役を `Agent` で立てる（その `agentId` を `state.json` の `reviewer_agent_id` に書く）。2 周目からは、同じレビュー役に `SendMessage` で「直したので、もう一度レビューしてほしい」と頼み、直したコミットの範囲（`<前の周の HEAD>..HEAD`）を伝える。届かない（セッションが変わった）ときは、新しく立てて 1 周目と同じものを渡す。プロンプトは [templates/review-prompt.md](templates/review-prompt.md) を使い、渡すのは **PRD（`prd.md` の全文）、差分（`origin/main` との差。`docs/dev/` を除く）、CLAUDE.md、worktree の場所、`/pj-checklist` の場所** だけ。
+1. 1 周目は、経緯を知らないレビュー役を `Agent` で立てる（その `agentId` を `state.json` の `reviewer_agent_id` に書く）。2 周目からは、同じレビュー役に `SendMessage` で「直したので、もう一度レビューしてほしい」と頼み、直したコミットの範囲（`<state.json の review_head>..HEAD`）を伝える。届かない（セッションが変わった）ときは、新しく立てて 1 周目と同じものを渡す。プロンプトは [templates/review-prompt.md](templates/review-prompt.md) を使い、渡すのは **PRD（`prd.md` の全文）、差分（`origin/main` との差。`docs/dev/` を除く）、CLAUDE.md、worktree の場所、`/pj-checklist` の場所** だけ。
    - **判断の記録、前の回の指摘、自分の見立ては渡さない。** 差分は `git diff origin/main...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で取る。`docs/dev/` にはコミット済みの判断・レビュー・報告の記録があり、`.claude/review-lessons.md` にはこの開発で受けた指摘と直し方を追記していくため、差分や worktree からそれが見えると経緯を知らないという前提が崩れるため、レビュー役には「`docs/dev/` は読まない」とも指示する（[開発記録を見せない](#開発記録を見せない)）。
 2. レビュー役は、毎周、Claude Code に同梱の `/code-review` を `high` で呼んで不具合を探し（対象は、ブランチではなく `docs/dev/` と `.claude/review-lessons.md` を除いた変更ファイルのパス）、そのうえで自分で PRD の受け入れ基準との照合と `/pj-checklist` を行い、`make all` も走らせる。`/code-review` の指摘と自分の指摘を合わせて MUST / SHOULD / MAY に分け直して返す（`/code-review` の `important` / `nit` / `pre_existing` はそのまま使わない）。あわせて、**どこをどう見たか**（ファイル・節ごとに、全数を見たか抜き取りか）を返す。
    - `/code-review` には除外の指定が無く、ブランチを対象にすると作った側の記録まで読んで要約に書き写すので、対象をパスで渡す（手順は [templates/review-prompt.md](templates/review-prompt.md)）。それでも記録の中身を含む指摘が返ったら、レビュー役が捨てる。
    - effort は `high` を既定にする（サブエージェントの中では、`/code-review` は観点を 1 人で順に回す形で動く）。指標を見て見直す。
-3. 指摘を `reviews.md` に記録し、対応する。各指摘には、メインが**種類**（指摘の本質を 1 文にしたもの。例: 「要約が元の記述の限定を落としている」）を付け、レビュー役が返した点検の範囲も周ごとに残す。MUST と SHOULD の指摘は、`state.json` の `review_kinds` にも `{ "revision", "round", "kind", "severity" }` で追記する（周をまたいで繰り返した種類を数えるため。種類の言い回しは、同じ問題なら前の周と揃える）。
+3. 指摘を `reviews.md` に記録し、`state.json` の `review_round` をこの周の番号に、`review_head` をこの周に見せた HEAD のコミットにする（[再開](#再開) で、周の数と次の周に伝える範囲 `<review_head>..HEAD` を記録から決めるため）。そのうえで対応する。各指摘には、メインが**種類**（指摘の本質を 1 文にしたもの。例: 「要約が元の記述の限定を落としている」）を付け、レビュー役が返した点検の範囲も周ごとに残す。MUST と SHOULD の指摘は、`state.json` の `review_kinds` にも `{ "revision", "round", "kind", "severity" }` で追記する（周をまたいで繰り返した種類を数えるため。種類の言い回しは、同じ問題なら前の周と揃える）。
    - 重要度は「起きたときの影響 × 起こりやすさ」で付ける（定義は [templates/review-prompt.md](templates/review-prompt.md)）。普通の使い方で成果物を壊すもの・受け入れ基準を満たさないもの・規則違反が MUST で、端の場面だけの誤動作や記録・指標の正確さは SHOULD。
    - MUST: 直す。
    - SHOULD: 原則直す。直さないものは、理由を `decisions.md` に書く。

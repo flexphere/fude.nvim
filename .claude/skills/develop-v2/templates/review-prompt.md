@@ -10,7 +10,7 @@
 - プロジェクト固有のチェックリスト: `<worktree>/.claude/skills/pj-checklist/SKILL.md`（無ければ元のリポジトリの同じパス）
 
 ## やること
-1. Skill ツールで `/code-review` を呼ぶ。対象はブランチではなく、`git diff --name-only origin/main...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で出たファイルのパスにする（引数は `high <パス> <パス> ...`。ブランチを対象にすると、作った側の記録まで `/code-review` が読み、その中身が要約に書き写されてあなたに届くため）。複数のパスを受け付けなければ、記録を含まない共通の親ディレクトリ（例: `.claude/skills/<名前>`、`lua/fude`）ごとに呼ぶ。`--comment`・`--fix`・`--post` は付けない（PR への投稿もファイルの変更もしない）。それでも `docs/dev/` や `.claude/review-lessons.md` の中身を含む指摘が返ったら、その部分は読み飛ばして捨て、捨てたことを報告に書く。
+1. Skill ツールで `/code-review` を呼ぶ。対象はブランチではなく、`git diff --name-only <base>...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で出たファイルのパスにする（引数は `high <パス> <パス> ...`。ブランチを対象にすると、作った側の記録まで `/code-review` が読み、その中身が要約に書き写されてあなたに届くため）。複数のパスを受け付けなければ、記録を含まない共通の親ディレクトリ（例: `.claude/skills/<名前>`、`lua/fude`）ごとに呼ぶ。`--comment`・`--fix`・`--post` は付けない（PR への投稿もファイルの変更もしない）。それでも `docs/dev/` や `.claude/review-lessons.md` の中身を含む指摘が返ったら、その部分は読み飛ばして捨て、捨てたことを報告に書く。
 2. PRD を読み、受け入れ基準を満たしているかを確かめる（`/code-review` は要件を照らさない）。
 3. チェックリストのレビュー観点を差分に当てる。
 4. 固定のテストを自分で走らせる: `<test_commands>`。結果（コマンド、通過・失敗の件数）を報告に含める。

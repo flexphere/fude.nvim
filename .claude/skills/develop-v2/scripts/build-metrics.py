@@ -122,6 +122,7 @@ def build(report, state):
     state = state or {}
     reviews = [r for r in arr(report.get("reviews")) if isinstance(r, dict)]
     agent_rounds = [r for r in reviews if r.get("reviewer") != "Copilot"]
+    main_rounds = [r for r in agent_rounds if r.get("after") != "copilot"]
     acc = [a for a in arr(report.get("acceptance")) if isinstance(a, dict)]
     decs = [d for d in arr(report.get("decisions")) if isinstance(d, dict)]
     revs = [r for r in arr(state.get("revisions") or report.get("revisions")) if isinstance(r, dict)]
@@ -151,9 +152,11 @@ def build(report, state):
         "implementation": {
             "tasks": len(arr(report.get("tasks") or state.get("tasks"))),
             "commits": report.get("commits"),
-            "review_rounds": len(agent_rounds),
-            "must_by_round": [num(r.get("must"), 0) for r in agent_rounds],
-            "must_total": sum(num(r.get("must"), 0) for r in agent_rounds),
+            # Copilot 対応のあとの周（after: copilot）は別に数え、4. のレビューの物差しと揃える
+            "review_rounds": len(main_rounds),
+            "must_by_round": [num(r.get("must"), 0) for r in main_rounds],
+            "must_total": sum(num(r.get("must"), 0) for r in main_rounds),
+            "rounds_after_copilot": len(agent_rounds) - len(main_rounds),
             # capped_revisions: MUST 0 の周で終えられなかった版の数 / late_must_rounds: 4 周目以降で MUST が出た周の数
             "review_end": review_end(agent_rounds, state.get("review_outcomes")),
             "acceptance": {
