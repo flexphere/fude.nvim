@@ -79,7 +79,7 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
    root=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")   # 元のリポジトリのルート（どの worktree から起動しても同じ）
    git -C "$root" worktree add --no-track "$root/../fude.nvim-dev-<slug>" -b <種類>/<slug> origin/main
    ```
-   - 以降の作業はすべてその worktree で行う。種類はヒアリングで変わったら、PR 作成前に `git branch -m` で直す。
+   - 以降の作業はすべてその worktree で行う。種類はヒアリングで変わったら、PR 作成前に `git branch -m` で直し、`state.json` の `branch` も直す（[再開](#再開) の候補は `branch` で探すため）。
 5. worktree の中に作業ディレクトリ `docs/dev/<YYYY-MM-DD>-<slug>/` を作る。中身（PR に一緒に入る）:
    - `state.json`（[書式](templates/state.json)）
    - `prd.md`（[書式](templates/prd.md)）
@@ -174,7 +174,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 ## 4. レビュー
 
 1. **毎回新しく**、経緯を知らないレビュー役を `Agent`（`model: "fable"`）で立てる。プロンプトは [templates/review-prompt.md](templates/review-prompt.md) を使い、渡すのは **PRD（`prd.md` の全文）、差分（`origin/main` との差。`docs/dev/` を除く）、CLAUDE.md、worktree の場所、`/pj-checklist` の場所** だけ。
-   - **判断の記録、前の回の指摘、自分の見立ては渡さない。** 差分は `git diff origin/main...HEAD -- . ':(exclude)docs/dev'` で取る。`docs/dev/` にはコミット済みの判断・レビュー・報告の記録があり、差分や worktree からそれが見えると経緯を知らないという前提が崩れるため、レビュー役には「`docs/dev/` は読まない」とも指示する（[開発記録を見せない](#開発記録を見せない)）。
+   - **判断の記録、前の回の指摘、自分の見立ては渡さない。** 差分は `git diff origin/main...HEAD -- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` で取る。`docs/dev/` にはコミット済みの判断・レビュー・報告の記録があり、`.claude/review-lessons.md` にはこの開発で受けた指摘と直し方を追記していくため、差分や worktree からそれが見えると経緯を知らないという前提が崩れるため、レビュー役には「`docs/dev/` は読まない」とも指示する（[開発記録を見せない](#開発記録を見せない)）。
 2. レビュー役は、`make all` を自分でも走らせ、指摘を MUST / SHOULD / MAY に分けて返す。あわせて、**どこをどう見たか**（ファイル・節ごとに、全数を見たか抜き取りか）を返す。
    - **MUST**: バグ、受け入れ基準を満たさない、テストが落ちる、セキュリティ、CLAUDE.md の規則違反（テスト・ドキュメント・State Dependencies の不足を含む）
    - **SHOULD**: 保守性・分かりやすさ
@@ -193,7 +193,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
 
 レビュー役・点検役・判断役は、経緯を知らないことが前提。`docs/dev/<dir>/` の `decisions.md`・`reviews.md`・`state.json`・`report.json`・`metrics.json` は、その前提を崩すので見せない。
 
-- 差分は `-- . ':(exclude)docs/dev'` を付けて取る。PRD は `prd.md` の全文を別に渡す（判断役には、必要な事実だけをプロンプトに書く）。
+- 差分は `-- . ':(exclude)docs/dev' ':(exclude).claude/review-lessons.md'` を付けて取る（`review-lessons.md` の追記も、受けた指摘と直し方の記録だから）。PRD は `prd.md` の全文を別に渡す（判断役には、必要な事実だけをプロンプトに書く）。
 - プロンプトに「`docs/dev/` は読まない。PRD は渡されたものを使う」と書く（各テンプレートに書いてある）。
 
 ### 全数点検
@@ -269,14 +269,13 @@ echo "timeout" && exit 1
 
 ### 対応する
 
-指摘が 0 件なら、この節の手順 7 へ進む（届いていないかの確認、記録と `reviews_seen` の更新だけ行う）。
 
-1. メインが、その時点の `cnt_valid` を控えてから、未対応の行コメントを取得する（`gh api repos/{owner}/{repo}/pulls/<PR番号>/comments --paginate`。既定の 1 ページは 30 件で、古い順に返るため、`--paginate` が無いと新しい指摘を取りこぼす）。`docs/dev/` の記録への指摘も同じく扱う（記録が事実と食い違っていれば直し、そうでなければ返信のみ）。
+1. メインが、その時点の `cnt_valid` を控えてから、未対応の行コメントを取得する（`gh api repos/{owner}/{repo}/pulls/<PR番号>/comments --paginate`。既定の 1 ページは 30 件で、古い順に返るため、`--paginate` が無いと新しい指摘を取りこぼす）。未対応の指摘が 0 件なら、手順 7 へ進む。`docs/dev/` の記録への指摘も同じく扱う（記録が事実と食い違っていれば直し、そうでなければ返信のみ）。
 2. 指摘を、その場所を受け持った実装役に `SendMessage` で送り、**妥当かどうかの分析と、妥当なら修正**を頼む（同じ形の問題を他の場所でも探して直す。`make all` まで）。実装役は指摘ごとに「直した / 返信のみ（理由）/ 判断が要る（理由）」を返す。
    - 「判断が要る」もの、仕様・設計方針の変更を求めるもの、PRD と矛盾するもの、直し方を 1 つに絞れないものは、**判断役**に回す。判断役が「人が決めるべき」と答えたときだけユーザーに聞く。
    - 従わない指摘は、判断役に回すか（重要度 中以上）、理由を `decisions.md` に書いたうえで（低）、その理由を返信する。
 3. メインが確かめ、**指摘ごとに**コミットし、`/review-respond` の Phase 4 の形で返信し（`in_reply_to` を付けてスレッドに返す。直したものは `<short-sha> で修正 — <説明>`）、push する。
-4. 各指摘を `reviews.md` に「Copilot」の周として記録する（指摘、場所、対応、コミット、返信したか）。
+4. 各指摘を `reviews.md` に「Copilot」の周として記録する（重要度、指摘、場所、対応、コミット、返信したか）。重要度は、実装役・判断役の分析をもとにメインが MUST / SHOULD / MAY で付ける（直さなければ不具合や規則違反になるものが MUST）。
 5. コードを直したときは、[4. レビュー](#4-レビュー) を**新しいレビュー役で 1 周**行う（`origin/main` からの差分の全体を渡す。`docs/dev/` は除く）。MUST が出たら実装役に直させ、確かめてコミットし push する。MUST 0 になるまで繰り返す。Copilot の再レビューは待たない。
 6. `/review-respond` の Phase 5・6 の手順で、再発防止のパターンを `.claude/review-lessons.md` に記録・統合し、コミットして push する（手順 5 のレビュー役に、指摘と直し方の記録を見せないため、レビューのあとに行う）。
 7. 対応している間に新しいレビューが届いていないかを確かめる。[待つ](#待つ) の「待つ前に」の確認を、`<前の件数>` を手順 1 で控えた件数にして走らせ、どちらかに当たれば手順 1 に戻る。
@@ -355,7 +354,7 @@ echo "timeout" && exit 1
 
 ### 3. 直す
 
-- `state.json` の `phase` を `revising` にし、`revision` を 1 つ進める（最初の報告が第 1 版）。`revisions` に依頼を足す。
+- `state.json` と `report.json` の `revision` を 1 つ進め、`state.json` の `phase` を `revising` にする（最初の報告が第 1 版。ページの版と指標は `report.json` の `revision` を読む）。`revisions` に依頼を足す。
 - 依頼を `decisions.md` に記録する（決めた人＝ユーザー、段階＝報告後の修正 第 N 版）。
 - そのあとは [3. 実装](#3-実装) と同じ（タスク表の表示、実装役への依頼、確かめてからのコミット）。同じセッションに元の範囲の実装役が残っていれば、`SendMessage` で続けて頼む。
 

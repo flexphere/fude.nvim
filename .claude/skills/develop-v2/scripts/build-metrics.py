@@ -55,6 +55,9 @@ def phase_hours(history):
     items = [(h.get("phase"), parse_time(h.get("at"))) for h in arr(history) if isinstance(h, dict)]
     items = [(p, t) for p, t in items if p and t]
     for (phase, start), (_, end) in zip(items, items[1:]):
+        # done は報告から修正の依頼までの待ち時間なので数えない
+        if phase == "done":
+            continue
         hours[phase] = round(hours.get(phase, 0) + (end - start).total_seconds() / 3600, 2)
     return hours or None
 
