@@ -65,10 +65,11 @@ make lint              # luacheck
 make format            # stylua（自動修正）
 make format-check      # stylua --check
 make test              # plenary-busted テスト
-make all               # lint + format-check + test + check-state-deps + check-purity + check-docs
+make all               # lint + format-check + test + check-state-deps + check-purity + check-docs + check-claude-size
 make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
 make check-purity      # `*/data.lua` `*/format.lua` の純粋性 (vim API / state 不参照) 検証
 make check-docs        # lua/fude/commands.lua / plugin/fude.lua のコマンド登録と doc/fude.txt のタグの双方向整合性検証
+make check-claude-size # CLAUDE.md が 40,000 文字以下かの検証（詳細は docs/architecture/ へ）
 make coverage          # luacov でテストカバレッジ計測 (要 `luarocks install --local luacov`)
 ```
 
@@ -96,7 +97,8 @@ push 前に `make all` が通ることを必ず確認してください。`make 
 
 - `README.md`（Features / Commands / Configuration）
 - `doc/fude.txt`
-- モジュールの責務が変わる場合は `CLAUDE.md` の Architecture セクション
+- モジュールの挙動を変えた場合は `docs/architecture/<module>.md`（`lua/fude/` からのパスに対応。関数単位の挙動とその理由）
+- モジュールの責務や壊しやすい不変条件が変わる場合は `CLAUDE.md` の Architecture セクションの要約（関数単位の詳細は書かない。`make check-claude-size` が 40,000 文字の上限を検査します）
 
 `doc/fude.txt` 編集後は help タグを再生成:
 
@@ -132,4 +134,4 @@ Claude Code を使わない場合も、上記と同等のチェック（`make al
 
 ## アーキテクチャ
 
-モジュール別の責務、主要パターン（非同期フロー、state 管理、純粋関数の抽出）、`config.state` の読み書きマトリクスは [`CLAUDE.md`](./CLAUDE.md) の Architecture セクションを参照してください。
+モジュール別の責務、主要パターン（非同期フロー、state 管理、純粋関数の抽出）、`config.state` の読み書きマトリクスは [`CLAUDE.md`](./CLAUDE.md) の Architecture セクションを、モジュールごとの詳細な設計メモは [`docs/architecture/`](./docs/architecture/) を参照してください。

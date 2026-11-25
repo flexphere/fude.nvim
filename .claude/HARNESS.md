@@ -21,7 +21,8 @@ Martin Fowler "Harness Engineering for Coding Agents"
 
 | 種別 | 実体 | 役割 | 場所 |
 |------|------|------|------|
-| 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
+| 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務の要約と不変条件、状態依存テーブル、品質ルール（毎セッション読み込まれるため 40,000 文字以下に保つ） | repo root |
+| 推論的 | `docs/architecture/<module>.md` | モジュールごとの詳細な設計メモ（関数単位の挙動とその理由）。必要なときだけ読む | `docs/architecture/` |
 | 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR→Copilot レビュー対応の一貫ワークフロー（計画合意後は自律実行） | `.claude/skills/develop/` |
 | 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
 | 推論的 | `/self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/self-review/` |
@@ -45,10 +46,11 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `bash run_tests.sh` (plenary busted) | 開発中・pre-commit・CI | 単体・統合テスト失敗 |
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
 | 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
+| 計算的 | `make check-claude-size` (`scripts/check_claude_size.lua`) | 開発中・pre-commit・CI | `CLAUDE.md` が 40,000 文字（バイトではなく文字）を超えていないか。詳細の書き込みによる肥大化を防ぐ |
 | 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `lua/fude/commands.lua` のレジストリ + `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性、および `lua/fude/config.lua` `M.defaults` の top-level 設定キーが `doc/fude.txt` に backtick 形式で文書化されているかの forward 検証 |
 | 計算的 | `make coverage` (luacov) | 開発中（手動）・CI | `lua/fude/` のテストカバレッジ計測。`make all` には未組み込み（報告のみ・閾値強制なし）。CI artifact `coverage-report` に保管 |
-| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 6 つを順次実行する **ローカルゲート** |
-| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
+| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 7 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 8 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
@@ -84,7 +86,7 @@ PR レビュー指摘
 
 ### 既存 skill との連携ポイント
 
-- `/develop` Phase 1 は `CLAUDE.md` と `review-lessons.md` を参照する。**本ドキュメント (HARNESS.md) も
+- `/develop` Phase 1 は `CLAUDE.md`、関連モジュールの `docs/architecture/<module>.md`、`review-lessons.md` を参照する。**本ドキュメント (HARNESS.md) も
   俯瞰用として軽く目を通す**ことで「今どこを触っているか」をハーネス全体地図の上で位置付けできる
 - `/review-respond` Phase 6 は `review-lessons.md` のエントリ統合と削除を行う。一定数を超えたら
   `/harness-audit` の起動を提案する
