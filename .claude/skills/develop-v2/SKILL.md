@@ -44,7 +44,7 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
 | 7. 報告 | 同じページを最終版にし、PRD・判断・レビュー・PR・Copilot 対応をまとめて報告する | ページを最終版に更新した |
 | 8. 報告後の修正 | 修正の依頼を分け、直し、レビューし、push し、同じページを更新する | ページを更新した（何度でも繰り返せる） |
 
-段階が変わるたびに状態ファイルを更新します（[再開](#再開)）。
+段階が変わるたびに状態ファイルを更新し、`phase_history` に `{ "phase": "<新しい段階>", "at": "<ISO 8601 の時刻>" }` を追記します（[再開](#再開)、[指標](#指標)）。
 
 ### 役割
 
@@ -94,7 +94,7 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
    - CLAUDE.md の設計制約（純粋関数の分離、`config.state` の W/R 表、namespace、非同期の state 捕捉など）に反しないか
    - `/pj-checklist` のエッジケースの節に当てはまるもの
    - 影響モジュールが 4 つ以上、または新しいモジュールを足すなら、PR を分けることを提案する
-4. 先に決めた方がよいことが残っていれば、`AskUserQuestion` で **1 回に 3〜4 問まで、選択肢と推奨（先頭に置き「(推奨)」を付ける）つき**で聞く。技術的な選択肢もそのまま見せてよい。
+4. 先に決めた方がよいことが残っていれば、`AskUserQuestion` で **1 回に 3〜4 問まで、選択肢と推奨（先頭に置き「(推奨)」を付ける）つき**で聞く。技術的な選択肢もそのまま見せてよい。聞いた問いの数を `state.json` の `hearing.questions_asked` に足す。
 5. 2〜4 を、PRD の欄がすべて埋まるまで繰り返す。
 
 「十分な情報が揃った」の判断は、感覚ではなく **PRD の各欄（目的・利用者・受け入れ基準・スコープ外・制約・確認方法）が具体的に書けたか** で行う。受け入れ基準は、確かめられる形（「〜したとき〜になる」）で書き、できるだけ `tests/fude/` のテストで確かめられるようにする。
@@ -104,7 +104,7 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
 ## 2. PRD の承認
 
 - `prd.md` を書き、[報告のページ](#報告のページ)を作って公開する（`status` は `PRD 承認待ち`）。
-- チャットには、ページの URL と要点（目的、受け入れ基準、スコープ外、確認方法、更新するドキュメント、未決事項）を示して承認を求める。
+- チャットには、ページの URL と要点（目的、受け入れ基準、スコープ外、確認方法、更新するドキュメント、未決事項）を示して承認を求める。示すたびに `state.json` の `hearing.prd_drafts` を 1 つ進める。
 - 直しが入れば `prd.md` を直し、ページを公開し直して（URL は変わらない）もう一度示す。**承認をもらうまで実装に入らない。**
 - 承認したら `prd.md` の「状態」を「承認」にし、承認した日付を書いてコミットする（`docs: add PRD for <slug>`）。ページも `status` を `実装中` にして公開し直す。以降の PRD の変更は「変更履歴」に追記する。
 
@@ -178,7 +178,7 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
    - **MUST**: バグ、受け入れ基準を満たさない、テストが落ちる、セキュリティ、CLAUDE.md の規則違反（テスト・ドキュメント・State Dependencies の不足を含む）
    - **SHOULD**: 保守性・分かりやすさ
    - **MAY**: 好みや細かい点
-3. 指摘を `reviews.md` に記録し、対応する。各指摘には、メインが**種類**（指摘の本質を 1 文にしたもの。例: 「要約が元の記述の限定を落としている」）を付け、レビュー役が返した点検の範囲も周ごとに残す。
+3. 指摘を `reviews.md` に記録し、対応する。各指摘には、メインが**種類**（指摘の本質を 1 文にしたもの。例: 「要約が元の記述の限定を落としている」）を付け、レビュー役が返した点検の範囲も周ごとに残す。MUST と SHOULD の指摘は、`state.json` の `review_kinds` にも `{ "revision", "round", "kind", "severity" }` で追記する（周をまたいで繰り返した種類を数えるため。種類の言い回しは、同じ問題なら前の周と揃える）。
    - MUST: 直す。
    - SHOULD: 原則直す。直さないものは、理由を `decisions.md` に書く。
    - MAY: 任意。直さなかったものも、一覧で報告に載せる。
@@ -197,8 +197,8 @@ PRD の承認から最後の報告まで、**同じページ（同じ URL）を�
    - 点検役は、区画の中の**すべての**該当箇所（要約なら 1 文ずつ）を元と照らし、問題のある箇所を全件、問題が無いと確かめた範囲と一緒に返す。コードは変えない。
    - 点検役を Opus にするのは、探す種類と範囲が決まっていて照らす相手もある仕事では、モデルの能力より 1 人が見る量の少なさが漏れのなさに効くため。浮いた費用は区画を細かくするのに使う。見落としは、このあとの Fable のレビュー役が拾う。
 3. 見つかった箇所を、その場所を受け持った実装役にまとめて `SendMessage` で送り、すべて直させる。メインが確かめてコミットする。
-4. `reviews.md` に「全数点検」として、種類、区画の一覧、区画ごとの件数、直したコミットを記録する。
-5. そのあと 1. に戻り、新しいレビュー役で 1 周行う（点検したことは渡さない）。同じ種類の MUST がまた出たら、区画の取り方か照らし方を見直して、もう 1 回だけ全数点検する。それでも出るなら判断役に回す。
+4. `reviews.md` に「全数点検」として、種類、区画の一覧、区画ごとの件数、直したコミットを記録する。`state.json` の `sweeps` にも `{ "kind", "regions": <区画の数>, "found": <見つかった件数>, "recurred": false }` を追記する。
+5. そのあと 1. に戻り、新しいレビュー役で 1 周行う（点検したことは渡さない）。同じ種類の MUST がまた出たら、その全数点検の `recurred` を `true` にし、区画の取り方か照らし方を見直して、もう 1 回だけ全数点検する。それでも出るなら判断役に回す。
 6. 全数点検は、レビューの周（3 周の上限）には数えない。
 
 ## 5. PR
@@ -271,12 +271,25 @@ echo "timeout" && exit 1
 1. `prd.md` を最終版にする（承認版＋変更履歴、受け入れ基準ごとの「結果」）。`decisions.md`・`reviews.md` を整え、コミットして push する。
 2. `report.json` を最終版にし（`status` は `完了`）、コミットして push する。形は [templates/report.example.json](templates/report.example.json) と同じにする（`title`・`summary`・`tests`・`attention`・`acceptance`・`prd`・`decisions`・`reviews`・`unresolved`・`tasks`・`pr`・`copilot` など）。中身は `prd.md`・`decisions.md`・`reviews.md`・`state.json`・PR から写し、新しく作文しない。
    - `pr` は `{ "number": 123, "url": "https://github.com/..." }`
-   - `copilot` は `{ "status": "<1 文>", "comments": [{ "id", "location", "text", "response", "commit" }] }`。指摘 0 件・タイムアウトも `status` に書く
+   - `copilot` は `{ "status": "<1 文>", "timed_out": false, "comments": [{ "id", "location", "text", "response", "outcome", "commit" }] }`。`outcome` は `fixed`（直した）/ `reply`（返信のみ）/ `declined`（従わなかった）のどれか。指摘 0 件・タイムアウトも `status` に書く
    - `reviews` の各周に `reviewer`（`fable` / `Copilot`）を付ける
    - `attention`（見てほしいこと）には、重要度 高 の判断、人が決めるべきとされたこと、満たしていない・一部の受け入れ基準、Copilot に従わなかった指摘、手で動作を確かめてほしいこと（Neovim 上での見た目・操作）を入れる
    - 値は `acceptance.result` が `met`/`partial`/`unmet`、`tests.result` が `pass`/`fail`/`skip`、`decisions.severity` が `高`/`中`/`低`
-3. [報告のページ](#報告のページ)の手順で、同じページを公開し直す。ページの見た目は固定なので、デザインは考えなくてよい。
-4. **ページの URL、PR の URL、Copilot への対応の件数、ユーザーに見てほしいこと**を短く伝える。
+3. [指標](#指標)を作り、コミットして push する。
+   ```sh
+   python3 -I ${CLAUDE_SKILL_DIR}/scripts/build-metrics.py docs/dev/<dir>
+   ```
+4. [報告のページ](#報告のページ)の手順で、同じページを公開し直す。ページの見た目は固定なので、デザインは考えなくてよい。
+5. **ページの URL、PR の URL、Copilot への対応の件数、ユーザーに見てほしいこと**を短く伝える。
+
+## 指標
+
+開発ごとに `docs/dev/<dir>/metrics.json` を残し、開発を重ねるにつれてボトルネックや改善の余地が見えるようにする。
+
+- **作り方**: `scripts/build-metrics.py` が `report.json` と `state.json` から機械的に数える。メインが数字を書かないので、自己申告の揺れが入らない。欠けている記録は `null` になる。
+- **中身**: ヒアリング（質問の数、PRD を示した回数、承認後の PRD 変更）、実装（レビューの周数、周ごとの MUST、受け入れ基準の未達）、繰り返し（周をまたいだ指摘の種類、全数点検の回数・件数・再発）、判断（判断役に回した数、重要度 高、人への差し戻し）、Copilot（直した数 = レビュー役の見逃しの目安）、報告後の修正（手直し / 要件の変更）、段階ごとの時間。
+- **そのために記録するもの**（`state.json`）: `phase_history`、`hearing.questions_asked`・`hearing.prd_drafts`、`review_kinds`、`sweeps`。`report.json` の `copilot.comments[].outcome` と `copilot.timed_out`。
+- **集計**: 複数の開発をまとめて見るのは `/harness-audit` で行う（`scripts/aggregate-metrics.py`）。このスキルの中では集計しない。
 
 ## 8. 報告後の修正
 
@@ -316,7 +329,7 @@ echo "timeout" && exit 1
 
 ### 6. 報告
 
-- `prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。
+- `prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。`build-metrics.py` で `metrics.json` を作り直し、コミットして push する。
 - [報告のページ](#報告のページ)の手順で、**同じ URL のページを更新する**。
 - `phase` を `done` に戻し、更新したことと、見てほしいことを伝える。
 

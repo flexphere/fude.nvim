@@ -305,15 +305,18 @@
         "location": "lua/fude/foo.lua:42",
         "text": "nil のときにエラーになる",
         "response": "直した",
-        "commit": "abc1234"
+        "commit": "abc1234",
+        "outcome": "fixed"
       },
       {
         "id": "C2",
         "location": "README.md:10",
         "text": "表記の揺れ",
         "response": "返信のみ（既存の表記に合わせている）",
-        "commit": ""
+        "commit": "",
+        "outcome": "reply"
       }
-    ]
+    ],
+    "timed_out": false
   }
 }

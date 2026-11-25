@@ -52,6 +52,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
+| 計算的 | `/develop-v2` の指標 (`docs/dev/*/metrics.json`、`aggregate-metrics.py`) | `/develop-v2` の報告時に生成・`/harness-audit` で集計 | 開発ごとのヒアリングの手戻り、レビューの周数と MUST、繰り返した指摘、全数点検、判断役・人への差し戻し、Copilot で直した数（レビュー役の見逃しの目安）、報告後の修正、マージ後の fix 候補 |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
 | 推論的 | 人間レビュー | PR | プロジェクト視点・組織的判断 |
 
@@ -117,6 +118,8 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 | 4 | **`/develop-v2` のレビュー役を観点別に並列化** — 1 周ごとに新しいレビュー役を「正しさ（バグ・エッジケース・非同期・`config.state`・`/pj-checklist`）」「規則（テスト・ドキュメント・State Dependencies・CLAUDE.md）」「要件（PRD の受け入れ基準・利用者から見た挙動と文言）」の 3 人で立て、全員 MUST 0 で終える | Inf Sensor | 小 | `/develop-v2` で作った PR に、Copilot や人のレビュー、マージ後の不具合で MUST 相当の見落としが続いたら。1 周のトークンが 3 倍近くになる |
 | 5 | **`/develop-v2` の重要度 高 の判断を判断役 2 人に** — 互いを知らない判断役を 2 人立て、結論が一致すれば従い、割れたらユーザーに聞く（中・低は 1 人のまま） | Inf Guide | 小 | 判断役の結論を後から覆す（報告後の修正で「要件の変更」になる、`decisions.md` の見直すきっかけに当たる）ことが続いたら |
 | 6 | **`/develop-v2` で前に扱った指摘を照合** — レビュー役には履歴を渡さないまま、メインが新しい指摘を `decisions.md` と過去の `reviews.md` に照らし、前に判断役が退けたものと同じで新しい根拠が無ければ「D-xxx で判断済み」と記録する | Process | 小 | 同じ指摘が周をまたいで繰り返され、判断役への回送やレビューの周が増えるようになったら |
+
+案 4〜6 の着手のきっかけは、`/harness-audit` で `/develop-v2` の指標（§2）を集計したときの「シグナル」で確かめる。
 
 ### 4.3 やらないこと
 

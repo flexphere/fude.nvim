@@ -3,6 +3,16 @@
   "title": "作るものの名前",
   "phase": "hearing",
   "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | copilot | reporting | done | revising",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-01-01T10:00:00+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 0,
+    "prd_drafts": 0
+  },
   "worktree": "/path/to/fude.nvim-dev-example-slug",
   "branch": "feat/example-slug",
   "base": "origin/main",
@@ -22,6 +32,15 @@
     }
   ],
   "review_round": 0,
+  "review_kinds": [
+    {
+      "revision": 1,
+      "round": 1,
+      "kind": "指摘の本質を 1 文で",
+      "severity": "MUST"
+    }
+  ],
+  "sweeps": [],
   "pr": {
     "number": null,
     "url": null
