@@ -36,12 +36,12 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
 |---|---|---|
 | 0. 準備 | 引数を読む。CLAUDE.md を読む。`resume` なら再開 | worktree・作業ディレクトリ・状態ファイルがある |
 | 1. ヒアリング | 何を作りたいかを聞き、決めることを詰める | PRD の各欄が埋まった |
-| 2. PRD の承認 | PRD を示して承認をもらう | ユーザーが承認した |
+| 2. PRD の承認 | PRD をページにして示し、承認をもらう | ユーザーが承認した・ページの URL を渡した |
 | 3. 実装 | タスクに分け、並列にできるものは並列で実装し、テスト・ドキュメントも足してコミットする | 全タスク完了・`make all` が通る |
 | 4. レビュー | 経緯を知らないエージェントにレビューさせ、直す | MUST が 0 件 |
 | 5. PR | push し、PR を作り、ready for review にする | PR の URL がある |
 | 6. Copilot | Copilot のレビューを待ち、指摘に対応して push する | 全指摘に対応・返信し、MUST 0 を保っている |
-| 7. 報告 | PRD・判断・レビュー・PR・Copilot 対応をページにまとめて報告する | ページの URL を渡した |
+| 7. 報告 | 同じページを最終版にし、PRD・判断・レビュー・PR・Copilot 対応をまとめて報告する | ページを最終版に更新した |
 | 8. 報告後の修正 | 修正の依頼を分け、直し、レビューし、push し、同じページを更新する | ページを更新した（何度でも繰り返せる） |
 
 段階が変わるたびに状態ファイルを更新します（[再開](#再開)）。
@@ -87,9 +87,36 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
 
 ## 2. PRD の承認
 
-- `prd.md` を書き、要点（目的、受け入れ基準、スコープ外、確認方法、更新するドキュメント）をユーザーに示して承認を求める。
-- 直しが入れば直してもう一度示す。**承認をもらうまで実装に入らない。**
-- 承認したら `prd.md` の「状態」を「承認」にし、承認した日付を書いてコミットする（`docs: add PRD for <slug>`）。以降の PRD の変更は「変更履歴」に追記する。
+- `prd.md` を書き、[報告のページ](#報告のページ)を作って公開する（`status` は `PRD 承認待ち`）。
+- チャットには、ページの URL と要点（目的、受け入れ基準、スコープ外、確認方法、更新するドキュメント、未決事項）を示して承認を求める。
+- 直しが入れば `prd.md` を直し、ページを公開し直して（URL は変わらない）もう一度示す。**承認をもらうまで実装に入らない。**
+- 承認したら `prd.md` の「状態」を「承認」にし、承認した日付を書いてコミットする（`docs: add PRD for <slug>`）。ページも `status` を `実装中` にして公開し直す。以降の PRD の変更は「変更履歴」に追記する。
+
+## 報告のページ
+
+PRD の承認から最後の報告まで、**同じページ（同じ URL）を育てていく**。
+
+| いつ更新するか | `status` | 主に増えるもの |
+|---|---|---|
+| 2. PRD の承認を求めるとき | `PRD 承認待ち` | PRD、受け入れ基準（確かめる方法まで）、ヒアリングで決めたこと、`attention` に「PRD の承認」と未決事項 |
+| 2. 承認をもらったとき | `実装中` | 承認日 |
+| 5. PR を作ったとき | `Copilot レビュー待ち` | タスク、テスト、レビューの周、判断、`pr` |
+| 6. Copilot の対応が終わったとき | `報告準備中` | `copilot`、Copilot の周 |
+| 7. 報告 | `完了` | 受け入れ基準の結果、最終版のすべて |
+| 8. 報告後の修正のあと | `完了` | `revisions` |
+
+作り方:
+
+1. 作業ディレクトリの `report.json` を、その時点の `prd.md`・`decisions.md`・`reviews.md`・`state.json`・PR から作り直す。形は [templates/report.example.json](templates/report.example.json) と同じにする（詳しい欄は [7. 報告](#7-報告)）。まだ無い欄は空の配列にするか省く（空の欄は「まだ〜していません」などと表示される）。`summary` には今どの段階で、次に何が起きるかを 1〜2 文で書く。
+   - PRD の「確認方法」は `prd.verification`、「未決事項」は `prd.openQuestions`（どちらも文字列の配列）に入れる。
+   - 受け入れ基準の `how` には確かめる方法を書き、`result` は報告まで空にする。
+2. スクリプトで HTML を作る。**テンプレートは読まない。**
+   ```sh
+   python3 -I ${CLAUDE_SKILL_DIR}/templates/build-report.py docs/dev/<dir>/report.json <scratchpad>/report-<slug>.html
+   ```
+   （`${CLAUDE_SKILL_DIR}` が使えなければ、元のリポジトリの `.claude/skills/develop-v2/templates/build-report.py`。worktree は `origin/main` から切るので、このスキルがまだ入っていないことがある）
+3. 初回は Artifact で公開し（`icon: "report"`、`description` は 1 文の概要）、URL を `state.json` の `report_url` に書く。2 回目からは同じファイルのパスで公開し直す（URL が変わらない）。別のセッションなら `report_url` を `url` に指定して公開する。
+4. `report.json` は、承認のコミットのときから記録と一緒にコミットする（別のセッションから続けるときに使う）。
 
 ## 3. 実装
 
@@ -163,7 +190,7 @@ CLAUDE.md の「Development Tools」「Quality Rules」「PR/Commit Conventions�
    - タイトルは日本語で、変更の要点を 1 行に（既存の PR に合わせ `feat(<scope>): ...` の形）。
    - 本文は [../pr/pr-template.md](../pr/pr-template.md) の形で日本語。「概要」に PRD の目的、「テスト計画」に受け入れ基準と確かめた方法、「備考」に重要度 高 の判断と `docs/dev/<dir>/` へのリンクを書く。末尾にシステムが指定する PR 用の署名行を付ける。
 4. `gh pr ready <PR番号>` で ready for review にする（Copilot は draft をレビューしない。このリポジトリでは Copilot が reviewer に自動で入り、ready にした時点でレビューが始まる）。
-5. PR の番号と URL を `state.json` の `pr` に書く。
+5. PR の番号と URL を `state.json` の `pr` に書き、[報告のページ](#報告のページ)を更新する（`status` は `Copilot レビュー待ち`）。
 
 ## 6. Copilot
 
@@ -181,7 +208,7 @@ done
 echo "timeout" && exit 1
 ```
 
-- 待っている間に、報告のデータ（[7. 報告](#7-報告)）の下書きを進めてよい。
+- 待っている間に、`report.json` の最終版の下書きを進めてよい。
 - タイムアウトしたら `gh api repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers` で Copilot が入っているかを確かめる。入っていなければ `gh api -X POST repos/{owner}/{repo}/pulls/<PR番号>/requested_reviewers -f 'reviewers[]=copilot-pull-request-reviewer[bot]'` で依頼して、もう一度だけ待つ。それでも来なければ、その事実を報告の「見てほしいこと」に入れて報告に進む。
 
 ### 対応する
@@ -191,7 +218,7 @@ echo "timeout" && exit 1
    - 従わない指摘は、判断役に回すか（重要度 中以上）、理由を `decisions.md` に書いたうえで（低）、その理由を返信する。
 2. 各指摘を `reviews.md` に「Copilot」の周として記録する（指摘、場所、対応、コミット、返信したか）。
 3. コードを直したときは、[4. レビュー](#4-レビュー) を**新しいレビュー役で 1 周**行う（`origin/main` からの差分の全体を渡す）。MUST が出たら直して push し、MUST 0 になるまで繰り返す。Copilot の再レビューは待たない。
-4. 記録の更新をコミットして push する。
+4. 記録の更新をコミットして push し、[報告のページ](#報告のページ)を更新する（`status` は `報告準備中`）。
 
 ## 判断と記録
 
@@ -219,19 +246,14 @@ echo "timeout" && exit 1
 ## 7. 報告
 
 1. `prd.md` を最終版にする（承認版＋変更履歴、受け入れ基準ごとの「結果」）。`decisions.md`・`reviews.md` を整え、コミットして push する。
-2. 報告のデータ `report.json` を作業ディレクトリに作り、コミットして push する（別のセッションから報告後の修正をするときに使う）。形は [templates/report.example.json](templates/report.example.json) と同じにする（`title`・`summary`・`tests`・`attention`・`acceptance`・`prd`・`decisions`・`reviews`・`unresolved`・`tasks`・`pr`・`copilot` など）。中身は `prd.md`・`decisions.md`・`reviews.md`・`state.json`・PR から写し、新しく作文しない。
+2. `report.json` を最終版にし（`status` は `完了`）、コミットして push する。形は [templates/report.example.json](templates/report.example.json) と同じにする（`title`・`summary`・`tests`・`attention`・`acceptance`・`prd`・`decisions`・`reviews`・`unresolved`・`tasks`・`pr`・`copilot` など）。中身は `prd.md`・`decisions.md`・`reviews.md`・`state.json`・PR から写し、新しく作文しない。
    - `pr` は `{ "number": 123, "url": "https://github.com/..." }`
    - `copilot` は `{ "status": "<1 文>", "comments": [{ "id", "location", "text", "response", "commit" }] }`。指摘 0 件・タイムアウトも `status` に書く
    - `reviews` の各周に `reviewer`（`fable` / `Copilot`）を付ける
    - `attention`（見てほしいこと）には、重要度 高 の判断、人が決めるべきとされたこと、満たしていない・一部の受け入れ基準、Copilot に従わなかった指摘、手で動作を確かめてほしいこと（Neovim 上での見た目・操作）を入れる
    - 値は `acceptance.result` が `met`/`partial`/`unmet`、`tests.result` が `pass`/`fail`/`skip`、`decisions.severity` が `高`/`中`/`低`
-3. ページを作って公開する。**テンプレートは読まずに**、スクリプトで差し込む。
-   ```sh
-   python3 -I ${CLAUDE_SKILL_DIR}/templates/build-report.py docs/dev/<dir>/report.json <scratchpad>/report-<slug>.html
-   ```
-   （`${CLAUDE_SKILL_DIR}` が使えなければ、元のリポジトリの `.claude/skills/develop-v2/templates/build-report.py`。worktree は `origin/main` から切るので、このスキルがまだ入っていないことがある）
-   できた HTML を Artifact で公開する（`icon: "report"`、`description` は 1 文の概要）。ページの見た目は固定なので、デザインは考えなくてよい。直したら同じファイルで公開し直す（URL が変わらない）。
-4. ページの URL を `state.json` の `report_url` に書き、**ページの URL、PR の URL、Copilot への対応の件数、ユーザーに見てほしいこと**を短く伝える。
+3. [報告のページ](#報告のページ)の手順で、同じページを公開し直す。ページの見た目は固定なので、デザインは考えなくてよい。
+4. **ページの URL、PR の URL、Copilot への対応の件数、ユーザーに見てほしいこと**を短く伝える。
 
 ## 8. 報告後の修正
 
@@ -272,7 +294,7 @@ echo "timeout" && exit 1
 ### 6. 報告
 
 - `prd.md`・`report.json` を最新にする。`report.json` の `revisions` に、この版の記録（版、日付、依頼、種類、直したこと、関係する判断）を足す。`reviews` には、この版の周を `revision` 付きで足す。`copilot.comments` にこの版の指摘を足す。
-- **同じ URL のページを更新する**（`state.json` の `report_url`）。HTML は同じパスに作って公開し直すか、別のセッションなら `url` を指定して公開する。
+- [報告のページ](#報告のページ)の手順で、**同じ URL のページを更新する**。
 - `phase` を `done` に戻し、更新したことと、見てほしいことを伝える。
 
 ## 再開

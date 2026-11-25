@@ -81,7 +81,12 @@
         "change": "AC4 を追加（1 万件の出力時間）",
         "reason": "D-006。ストリーム化に伴い基準を明示"
       }
-    ]
+    ],
+    "verification": [
+      "固定のテスト: make all",
+      "手動: 期間・状態の組み合わせ 6 通りで件数を確かめる"
+    ],
+    "openQuestions": []
   },
   "decisions": [
     {
