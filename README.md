@@ -764,6 +764,44 @@ Restart the watcher after switching branches, since each branch has its
 own review session. To send a follow-up request, add a reply or a new
 comment: edits to existing comment bodies do not trigger the watcher.
 
+### Set up fude-guide for Claude Code
+
+The `fude-guide` skill reads the PR description (or the commit messages when
+there is no PR) and the branch diff, then adds local review comments that
+start with `[guide 1/N]` on the changed lines. Read them from 1 to N to follow
+the change in order, e.g. definitions, then their callers, then tests. The
+bundled shell script requires `bash`, `jq`, and `uuidgen` on `PATH`; the skill
+uses `gh` to read the PR.
+
+Choose the [English](contrib/skills/fude-guide/SKILL.md) or
+[Japanese](contrib/skills/fude-guide/SKILL.ja.md) instructions and install
+them the same way as fude-watch:
+
+```bash
+fude_skill_dir=/path/to/fude.nvim/contrib/skills/fude-guide
+mkdir -p .claude/skills/fude-guide
+
+# Choose ONE: English or Japanese. Both are installed as SKILL.md.
+cp "$fude_skill_dir/SKILL.md" .claude/skills/fude-guide/SKILL.md
+# cp "$fude_skill_dir/SKILL.ja.md" .claude/skills/fude-guide/SKILL.md
+
+cp "$fude_skill_dir/fude-guide-comment.sh" .claude/skills/fude-guide/
+```
+
+1. In Neovim, check out the branch to review and run `:FudeReviewLocal main`
+   (replace `main` with the PR's base branch).
+2. Start Claude Code in the same repository and worktree, then ask it to
+   "Use fude-guide to add reading-order guide comments" or
+   "fude-guideで読む順番を付けて".
+3. In Neovim, run `:FudeReviewReload` (or wait for `auto_reload`). The guide
+   comments appear with an `[agent]` badge; `:FudeReviewListComments` lists
+   them.
+
+Running the skill again first deletes the guide comments it wrote before,
+so the guide is replaced. Comments and replies written by people stay. A
+guide comment that someone replied to is also kept, since deleting it would
+hide the reply; the skill tells you which ones it kept.
+
 ## Completion
 
 Comment input windows and the body pane of `:FudeCreatePR` / `:FudeEditPR` support `@user`, `#issue/PR`, and `_commit` completion. PR body completion works without starting a review session; the title pane does not offer these candidates.
