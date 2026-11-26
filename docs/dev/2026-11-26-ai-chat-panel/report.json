@@ -61,7 +61,7 @@
     },
     {
       "id": "AC8",
-      "text": "claude のツールは既定で Read / Grep / Glob と git・gh の参照系 Bash だけ。編集用のツールは渡さない。git の --output でファイルを書ける点と、利用者自身の claude の設定・MCP が効く点は許容し、文書に書く。設定で変えられる",
+      "text": "claude のツールは既定で Read / Grep / Glob と git・gh の参照系 Bash だけ。編集用のツールは渡さない。git の --output でファイルを書ける点と、利用者自身の claude の設定・MCP が効く点は許容し、文書に書く。設定で変えられる。GitHub レビューでは PR が持ち込むプロジェクトの claude 設定を既定で読まない",
       "result": "",
       "how": "Unit テスト、手動確認"
     },
@@ -141,6 +141,11 @@
         "date": "2026-11-26",
         "change": "AC8: 既定で許可する git の diff / log / show / blame が --output でファイルを書ける点は許容し、文書に書く",
         "reason": "D-019"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: GitHub レビューでは PR が持ち込むプロジェクトの設定を既定で読まない（--setting-sources user）",
+        "reason": "D-023"
       }
     ],
     "verification": [
@@ -524,6 +529,83 @@
       "impact": "README・doc の Tools and permissions、AC8 の文言",
       "revisit": "「レビュー中にファイルが書き換わった」という報告が出たとき。信頼できない PR を扱う利用者が増えたとき（既定で拒否ルールを足す・git を外す）",
       "refs": "R1-M1, AC8"
+    },
+    {
+      "id": "D-020",
+      "title": "claude の cwd は「今のレビューの開始時のリポジトリのルート」にする",
+      "at": "2026-11-26 10:30",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "誤ったディレクトリで答える経路を塞ぐ。設定には出ない",
+      "by": "判断役",
+      "background": "R1-S4 の修正で「最初の質問のときのルート」を会話に保存して固定したが、同じ PR を別の worktree でレビューすると古いディレクトリで動く（R2-S5 でも指摘）。",
+      "options": [
+        "最初の質問のときのルート",
+        "レビュー開始時のルートを state に持たせる"
+      ],
+      "decided": "レビュー開始時のルートを config.state に持たせて使う。保存済みの root は cwd の決定に使わない。ローカルは worktree_root",
+      "reason": "開始時のルートなら :cd の影響を受けず、別の worktree で再開したときは新しいセッションで始め直してその旨がログに出る（AC11）。",
+      "impact": "chat.send、init.start、State Dependencies",
+      "revisit": "別の worktree で再開したとき文脈を引き継ぎたいという声が出たとき",
+      "refs": "R1-S4, R2-S5, AC2"
+    },
+    {
+      "id": "D-021",
+      "title": "チャットのペインは winfixbuf で別のバッファを拒否する",
+      "at": "2026-11-26 10:30",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "新しいパネルだけの挙動",
+      "by": "判断役",
+      "background": "R1-M2 の修正。副作用として、ペインにいる状態で他プラグインのピッカーからファイルを開くと E1513 で拒否される。",
+      "options": [
+        "winfixbuf で拒否",
+        "編集ウィンドウへ移す方式に作り直す"
+      ],
+      "decided": "winfixbuf のまま。文書に 1 行書く",
+      "reason": "守るべき未送信の入力は守れている。fude 自身の経路は編集ウィンドウへ移る。",
+      "impact": "chat_panel",
+      "revisit": "E1513 が煩わしいという声が出たとき",
+      "refs": "R1-M2"
+    },
+    {
+      "id": "D-022",
+      "title": "side panel には winfixbuf を付けない",
+      "at": "2026-11-26 10:30",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "何も変えない",
+      "by": "判断役",
+      "background": "side panel で :edit するとパネルが置き換わる既存の挙動が残る。",
+      "options": [
+        "今のまま",
+        "side panel にも付ける"
+      ],
+      "decided": "今のまま",
+      "reason": "範囲外。既存の利用者に新しいエラーが出る。side panel は再描画できる一覧で失うものが無い。",
+      "impact": "なし",
+      "revisit": "side panel が置き換わることへの不満が出たとき",
+      "refs": "R1-M2"
+    },
+    {
+      "id": "D-023",
+      "title": "GitHub レビューでは PR が持ち込むプロジェクトの claude 設定を既定で読まない",
+      "at": "2026-11-26 10:35",
+      "phase": "レビュー",
+      "severity": "高",
+      "severityReason": "利用者の手元でコマンドが実行されるかどうかを決める。GitHub レビューではプロジェクトの allow ルールや hook が効かなくなる",
+      "by": "判断役",
+      "background": "レビュー 2 周目の MUST（R2-N1）。fude は PR のブランチを cwd として claude -p を起動するので、PR が持ち込んだ .claude/settings.json の hook や許可が読まれる。-p は workspace trust の確認を飛ばす（claude --help）。",
+      "options": [
+        "両モードで --setting-sources user",
+        "GitHub レビューのときだけ --setting-sources user",
+        "既定は変えず文書に書く"
+      ],
+      "decided": "GitHub レビューのときだけ既定で --setting-sources user を渡す。chat.args に --setting-sources があれば fude は出さない（戻せる）。ローカルレビューは今のまま",
+      "reason": "hook はモデルの判断を通らず起動しただけで実行されるので、D-019（モデルが指示文に従って初めて起きる経路）とは性質が違う。利用者が尊重すると決めたのは利用者自身の設定で、PR が持ち込んだ設定は当たらない。ローカルは自分のブランチなので最小の変更にとどめた。実機で --setting-sources user のとき hook が動かないことを確認（旗なしの対照は未確認）。",
+      "impact": "build_claude_args、README・doc、AC8",
+      "revisit": "自分のリポジトリの PR しか読まない利用者から不便という声が出たとき。.mcp.json やプロジェクトの skills 経由で同じ種類の実行が起きると分かったとき",
+      "refs": "R2-N1, AC8"
     }
   ],
   "reviews": [
@@ -541,49 +623,109 @@
           "id": "R1-M1",
           "severity": "MUST",
           "text": "既定で許可した git diff / log / show が --output=<path> でファイルを書ける（AC8、実機で確認）",
-          "response": "既定は変えず、文書を直す（D-019。利用者の決定）"
+          "response": "文書を直した。既定は変えない（D-019。利用者の決定）"
         },
         {
           "id": "R1-M2",
           "severity": "MUST",
           "text": "チャットのペインからピッカーやコメントブラウザでファイルを開くと、ペインがファイルに置き換わり未送信の入力を失う",
-          "response": "修正中"
+          "response": "直した（leave_panel_window と winfixbuf）"
         },
         {
           "id": "R1-S1",
           "severity": "SHOULD",
           "text": "side panel が別のタブページにあると、チャットの「最後のウィンドウ」処理が働かない",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-S2",
           "severity": "SHOULD",
           "text": "GitHub の stop が HEAD の復元に失敗してもチャットは片付いてしまう",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-S3",
           "severity": "SHOULD",
           "text": "終了コード 0 で本文があっても stderr に出力があると失敗扱いになる",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-S4",
           "severity": "SHOULD",
           "text": "GitHub モードで claude の cwd が Neovim の cwd に依存する",
-          "response": "修正中"
+          "response": "直した（R2-S5 で起点を見直し）"
         },
         {
           "id": "R1-Y1",
           "severity": "MAY",
           "text": "チャットのペインから :only すると、ペイン用のオプションを持った空のウィンドウが残る",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-Y2",
           "severity": "MAY",
           "text": "GitHub の commit scope を claude に伝えていない（AC9 の要件の外）",
+          "response": "見送り（AC9 の要件の外）"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 2,
+      "should": 3,
+      "may": 3,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R2-M1",
+          "severity": "MUST",
+          "text": "（継続）既定の設定で、PR の中身に誘導された claude が git --output でファイルを上書きできる。文書は直った",
+          "response": "対応しない（D-019。利用者が既定のままと決定）"
+        },
+        {
+          "id": "R2-N1",
+          "severity": "MUST",
+          "text": "信頼できない PR のチェックアウトで claude -p を動かすと、PR が持ち込んだ .claude/settings.json（hook・許可）が読まれる",
+          "response": "修正中（D-023）"
+        },
+        {
+          "id": "R2-S5",
+          "severity": "SHOULD",
+          "text": "会話が、最初に質問したときのディレクトリに固定される",
+          "response": "修正中（D-020）"
+        },
+        {
+          "id": "R2-S6",
+          "severity": "SHOULD",
+          "text": "最後の編集ウィンドウを閉じたあと、パネルの幅が画面の半分になる",
+          "response": "修正中"
+        },
+        {
+          "id": "R2-S7",
+          "severity": "SHOULD",
+          "text": "<C-w>T でペインを別のタブに移すと、追跡されないウィンドウが残る",
+          "response": "修正中"
+        },
+        {
+          "id": "R2-Y2",
+          "severity": "MAY",
+          "text": "（継続）GitHub の commit scope を claude に伝えていない",
           "response": "見送り"
+        },
+        {
+          "id": "R2-Y3",
+          "severity": "MAY",
+          "text": "close() がペインを閉じる順序が決まらない（結果は同じ）",
+          "response": "見送り"
+        },
+        {
+          "id": "R2-Y4",
+          "severity": "MAY",
+          "text": "build_empty_chat の注釈に root が無い",
+          "response": "修正中"
         }
       ]
     }
