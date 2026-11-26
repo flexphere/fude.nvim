@@ -6,13 +6,18 @@
   "base": "origin/main",
   "status": "レビュー対応中",
   "commits": 7,
-  "summary": "レビューの規則が変わったため、新しいレビュー役で 1 周目からやり直しています。MUST 0 件の周で終え、CI を確かめてから ready for review にします。",
+  "summary": "レビューを MUST 0 件（やり直し後 2 周）で終え、CI も通りました。PR を ready for review にし、Copilot のレビューを最大 10 分待っています。",
   "generatedBy": "/develop-v2",
   "tests": [
     {
       "command": "make all",
       "result": "pass",
       "detail": "lint（警告 0）・format-check・テスト（40 ファイル、失敗 0）・check-state-deps・check-purity・check-docs すべて通過"
+    },
+    {
+      "command": "CI（PR #331）",
+      "result": "pass",
+      "detail": "StyLua・Luacheck・Tests（Neovim stable / v0.10.4 / v0.11.7）・Test Coverage・各チェックすべて通過"
     }
   ],
   "attention": [
@@ -864,9 +869,118 @@
           "response": "見送り（既存の問題）"
         }
       ]
+    },
+    {
+      "round": 2,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 4,
+      "may": 3,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R2-1",
+          "severity": "SHOULD",
+          "text": "GitHub レビューで scope 切り替えの最中（checkout 後、gh の応答待ち）に送った質問に、古い scope が添わる",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-2",
+          "severity": "SHOULD",
+          "text": "終了待ちの質問を中断すると、claude に届いていない質問が「中断」として保存される",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-3",
+          "severity": "SHOULD",
+          "text": "セッション開始後の失敗が保存できなかったとき、「記録済み」の注記が出るのに質問が入力欄に戻る（再送で claude 側が二重になる）",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-4",
+          "severity": "SHOULD",
+          "text": "レビュー停止時、claude を止める前に HEAD を戻すので、index.lock とぶつかると停止が中断される（セッションは残る）",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-5",
+          "severity": "MAY",
+          "text": "resume のやり直しで、1 回目の途中の本文とやり直しの result が区切りなしでつながる",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-6",
+          "severity": "MAY",
+          "text": ":only で残すウィンドウが、ほかのタブにあるペインの分身まで含む",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-7",
+          "severity": "MAY",
+          "text": "config.lua のコメントが古い（chat_live.streamed、chat_panel の width）",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        }
+      ]
     }
   ],
-  "unresolved": [],
+  "unresolved": [
+    {
+      "id": "R2-1",
+      "severity": "SHOULD",
+      "text": "GitHub レビューで scope 切り替えの最中（checkout 後、gh の応答待ち）に送った質問に、古い scope が添わる",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-2",
+      "severity": "SHOULD",
+      "text": "終了待ちの質問を中断すると、claude に届いていない質問が「中断」として保存される",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-3",
+      "severity": "SHOULD",
+      "text": "セッション開始後の失敗が保存できなかったとき、「記録済み」の注記が出るのに質問が入力欄に戻る（再送で claude 側が二重になる）",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-4",
+      "severity": "SHOULD",
+      "text": "レビュー停止時、claude を止める前に HEAD を戻すので、index.lock とぶつかると停止が中断される（セッションは残る）",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-5",
+      "severity": "MAY",
+      "text": "resume のやり直しで、1 回目の途中の本文とやり直しの result が区切りなしでつながる",
+      "reason": "見送り"
+    },
+    {
+      "id": "R2-6",
+      "severity": "MAY",
+      "text": ":only で残すウィンドウが、ほかのタブにあるペインの分身まで含む",
+      "reason": "見送り"
+    },
+    {
+      "id": "R2-7",
+      "severity": "MAY",
+      "text": "config.lua のコメントが古い（chat_live.streamed、chat_panel の width）",
+      "reason": "見送り"
+    },
+    {
+      "id": "R1-14",
+      "severity": "MAY",
+      "text": "1 行の選択が path:L5 になる（AC6 の字面は L5-L5）",
+      "reason": "D-017。以前の判断どおり"
+    },
+    {
+      "id": "R1-18",
+      "severity": "MAY",
+      "text": "（既存）leave_panel_window が quickfix ウィンドウを選びうる",
+      "reason": "既存の問題で範囲外"
+    }
+  ],
   "tasks": [
     {
       "id": "T1",
