@@ -387,9 +387,21 @@ describe("chat panel", function()
 		it("closes both panes when one of them is closed", function()
 			chat_panel.open()
 			local p = panel()
+			-- from the other pane: it closes once the closing command has ended
 			vim.api.nvim_win_close(p.log_win, true)
-			assert.is_nil(panel())
+			assert.is_true(helpers.wait_for(function()
+				return panel() == nil
+			end))
 			assert.is_false(vim.api.nvim_win_is_valid(p.input_win))
+		end)
+
+		it("closes the other pane at once when a pane is closed from an editor window", function()
+			chat_panel.open()
+			local p = panel()
+			vim.api.nvim_set_current_win(p.prev_win)
+			vim.api.nvim_win_close(p.input_win, true)
+			assert.is_nil(panel())
+			assert.is_false(vim.api.nvim_win_is_valid(p.log_win))
 		end)
 
 		it("refuses outside review mode", function()
@@ -901,6 +913,22 @@ describe("chat panel", function()
 			assert.are.equal("cancelled", chat.load(KEY).messages[2].status)
 		end)
 
+		it("keeps the chat when a GitHub stop fails to restore HEAD and the session continues", function()
+			chat_panel.open()
+			set_input({ "q" })
+			chat_panel.submit()
+			local p = panel()
+			config.state.scope = "commit"
+			config.state.original_head_ref = "fude-test-no-such-ref-5d1f0c"
+			require("fude").stop()
+			assert.is_true(notified(vim.log.levels.ERROR, "Failed to restore HEAD"))
+			assert.is_true(config.state.active)
+			assert.is_false(runs[1].killed)
+			assert.are.equal(p, panel())
+			assert.is_true(chat_panel.is_open())
+			assert.is_true(chat.is_running(KEY))
+		end)
+
 		it("stopping a local review tears the chat down", function()
 			local root = vim.fn.tempname()
 			vim.fn.mkdir(root, "p")
@@ -982,6 +1010,157 @@ describe("chat panel", function()
 			chat_panel.open()
 			require("fude.files").next_file()
 			assert.are.equal(editor, opened_in)
+		end)
+
+		it("opens a file chosen from a chat pane in an editor window and keeps the unsent question", function()
+			local editor = vim.api.nvim_get_current_win()
+			vim.fn.mkdir(tmp_dir, "p")
+			local file = tmp_dir .. "/a.lua"
+			vim.fn.writefile({ "return 1" }, file)
+			chat_panel.open()
+			set_input({ "unsent" })
+			local p = panel()
+			-- as a picker's confirm does, with focus back in the input pane
+			require("fude.files").open_file(file, { path = "a.lua", status = "modified" })
+			assert.are.equal(
+				vim.fn.resolve(file),
+				vim.fn.resolve(vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(editor)))
+			)
+			assert.are.equal(editor, vim.api.nvim_get_current_win())
+			assert.is_true(chat_panel.is_open())
+			assert.are.equal(p.input_buf, vim.api.nvim_win_get_buf(p.input_win))
+			assert.are.same({ "unsent" }, input_lines())
+		end)
+
+		it("leave_panel_window moves out of a chat pane and out of the side panel", function()
+			local editor = vim.api.nvim_get_current_win()
+			local files = require("fude.files")
+			assert.is_true(files.leave_panel_window())
+			assert.are.equal(editor, vim.api.nvim_get_current_win())
+			chat_panel.open()
+			vim.api.nvim_set_current_win(panel().log_win)
+			assert.is_true(files.leave_panel_window())
+			assert.are.equal(editor, vim.api.nvim_get_current_win())
+			sidepanel.open()
+			assert.are.equal(config.state.sidepanel.win, vim.api.nvim_get_current_win())
+			assert.is_true(files.leave_panel_window())
+			assert.are.equal(editor, vim.api.nvim_get_current_win())
+		end)
+
+		it("leave_panel_window refuses with a warning when only the panes are left", function()
+			local editor = vim.api.nvim_get_current_win()
+			chat_panel.open()
+			local input_win = panel().input_win
+			vim.api.nvim_win_close(editor, true)
+			-- before the scheduled editor window is opened
+			assert.is_false(require("fude.files").leave_panel_window())
+			assert.are.equal(input_win, vim.api.nvim_get_current_win())
+			assert.is_true(notified(vim.log.levels.WARN, "No source window available"))
+		end)
+
+		it("refuses :edit in a pane instead of replacing it", function()
+			if vim.fn.exists("+winfixbuf") ~= 1 then
+				return
+			end
+			vim.fn.mkdir(tmp_dir, "p")
+			local file = tmp_dir .. "/b.lua"
+			vim.fn.writefile({ "return 2" }, file)
+			chat_panel.open()
+			set_input({ "unsent" })
+			local p = panel()
+			for _, win in ipairs({ p.input_win, p.log_win }) do
+				vim.api.nvim_set_current_win(win)
+				local ok, err = pcall(vim.cmd, "edit " .. vim.fn.fnameescape(file))
+				assert.is_false(ok)
+				assert.truthy(tostring(err):find("E1513", 1, true))
+			end
+			assert.is_true(chat_panel.is_open())
+			assert.are.same({ "unsent" }, input_lines())
+		end)
+
+		it("leaves a window alone whose pane buffer was replaced by force", function()
+			if vim.fn.exists("+winfixbuf") ~= 1 then
+				return
+			end
+			local other = helpers.create_buf({ "mine" })
+			vim.bo[other].buftype = ""
+			chat_panel.open()
+			local p = panel()
+			vim.api.nvim_set_current_win(p.input_win)
+			vim.cmd("buffer! " .. other)
+			assert.is_false(chat_panel.is_open())
+			assert.is_false(chat_panel.is_panel_window(p.input_win))
+			-- the next toggle reopens the panel without closing that window
+			chat_panel.toggle()
+			assert.is_true(vim.api.nvim_win_is_valid(p.input_win))
+			assert.are.equal(other, vim.api.nvim_win_get_buf(p.input_win))
+			assert.is_false(vim.wo[p.input_win].winfixbuf)
+			assert.is_false(vim.wo[p.input_win].winfixheight)
+			assert.is_false(vim.api.nvim_win_is_valid(p.log_win))
+			assert.is_true(chat_panel.is_open())
+			assert.are_not.equal(p.input_win, panel().input_win)
+		end)
+
+		it("turns the pane :only left behind into an ordinary editor window", function()
+			chat_panel.open()
+			set_input({ "unsent" })
+			local p = panel()
+			vim.api.nvim_set_current_win(p.input_win)
+			vim.cmd("only")
+			assert.is_true(helpers.wait_for(function()
+				return config.state.chat_panel == nil
+			end))
+			local wins = vim.api.nvim_tabpage_list_wins(0)
+			assert.are.equal(1, #wins)
+			local win = wins[1]
+			assert.is_false(vim.wo[win].winfixwidth)
+			assert.is_false(vim.wo[win].winfixheight)
+			if vim.fn.exists("+winfixbuf") == 1 then
+				assert.is_false(vim.wo[win].winfixbuf)
+			end
+			assert.are.equal(vim.go.wrap, vim.wo[win].wrap)
+			assert.are.equal(vim.go.signcolumn, vim.wo[win].signcolumn)
+			assert.are.equal("", vim.bo[vim.api.nvim_win_get_buf(win)].buftype)
+			assert.are.same({ "unsent" }, config.state.chat_input)
+		end)
+
+		it("opens an editor window in its own tabpage while the side panel is in another one", function()
+			sidepanel.open()
+			vim.cmd("tabnew")
+			local editor = vim.api.nvim_get_current_win()
+			chat_panel.open()
+			local p = panel()
+			vim.api.nvim_win_close(editor, true)
+			local function editor_windows()
+				local wins = {}
+				for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+					if not chat_panel.is_panel_window(w) then
+						table.insert(wins, w)
+					end
+				end
+				return wins
+			end
+			assert.is_true(helpers.wait_for(function()
+				return #editor_windows() == 1
+			end))
+			assert.are.equal(p, panel())
+			assert.are.equal("", vim.bo[vim.api.nvim_win_get_buf(editor_windows()[1])].buftype)
+		end)
+
+		it("stays open when a :quit closes the side panel's tabpage", function()
+			local first_tab = vim.api.nvim_get_current_tabpage()
+			local editor = vim.api.nvim_get_current_win()
+			sidepanel.open()
+			vim.cmd("tabnew")
+			chat_panel.open()
+			local p = panel()
+			vim.api.nvim_set_current_win(editor)
+			vim.cmd("quit")
+			assert.is_true(helpers.wait_for(function()
+				return not vim.api.nvim_tabpage_is_valid(first_tab)
+			end))
+			assert.are.equal(p, panel())
+			assert.is_true(chat_panel.is_open())
 		end)
 
 		it("opens an editor window when its panes are the only windows left", function()

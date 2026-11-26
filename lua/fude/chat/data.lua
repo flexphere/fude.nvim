@@ -448,7 +448,7 @@ local MESSAGE_STATUSES = { done = true, cancelled = true }
 --- A chat with no session and no messages.
 --- @return { session_id: string|nil, started: boolean, messages: table[] }
 function M.build_empty_chat()
-	return { session_id = nil, started = false, messages = {} }
+	return { session_id = nil, started = false, root = nil, messages = {} }
 end
 
 --- Build one stored message.
@@ -476,6 +476,7 @@ function M.serialize_chat(chat, key)
 		key = key,
 		session_id = chat.session_id,
 		started = chat.started == true,
+		root = chat.root,
 		messages = messages,
 	})
 end
@@ -499,6 +500,9 @@ function M.deserialize_chat(text)
 	if M.is_uuid(obj.session_id) then
 		chat.session_id = obj.session_id
 		chat.started = obj.started == true
+	end
+	if type(obj.root) == "string" and obj.root ~= "" then
+		chat.root = obj.root
 	end
 	if type(obj.messages) == "table" then
 		for _, m in ipairs(obj.messages) do

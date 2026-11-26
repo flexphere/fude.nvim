@@ -134,6 +134,28 @@ describe("chat.build_claude_args", function()
 		assert.is_not_nil(index_of(args, "Bash(gh pr view:*)"))
 	end)
 
+	it("passes a deny rule given as extra arguments after the allowed tools, as its own option", function()
+		local extra = { "--disallowedTools", "Bash(git *--output*)" }
+		local args = data.build_claude_args({
+			session_id = ID,
+			allowed_tools = defaults.allowed_tools,
+			system_prompt = "ctx",
+			extra_args = extra,
+		})
+		local deny = index_of(args, "--disallowedTools")
+		assert.are.equal("Bash(git *--output*)", args[deny + 1])
+		assert.are.equal(deny + 1, #args)
+		-- the variadic --allowedTools list is closed by an option before it
+		assert.is_true(index_of(args, "--allowedTools") < deny)
+		assert.are.equal("ctx", args[deny - 1])
+		-- also without a system prompt: the option itself ends the allow list
+		local bare = data.build_claude_args({ session_id = ID, allowed_tools = { "Read" }, extra_args = extra })
+		assert.are.same(
+			{ "--allowedTools", "Read", "--disallowedTools", "Bash(git *--output*)" },
+			vim.list_slice(bare, #bare - 3)
+		)
+	end)
+
 	it("offers no tool at all for an empty allowed list", function()
 		local args = data.build_claude_args({ session_id = ID, allowed_tools = {} })
 		assert.are.equal("", args[index_of(args, "--tools") + 1])
@@ -421,6 +443,16 @@ describe("chat stored format", function()
 			},
 		}
 		assert.are.same(stored, data.deserialize_chat(data.serialize_chat(stored, "o/r:#1:chat")))
+	end)
+
+	it("round-trips the directory the conversation runs in", function()
+		local stored = { session_id = ID, started = true, root = "/work/repo", messages = {} }
+		assert.are.equal("/work/repo", data.deserialize_chat(data.serialize_chat(stored)).root)
+	end)
+
+	it("drops a root that is not a non-empty string", function()
+		assert.is_nil(data.deserialize_chat(vim.json.encode({ session_id = ID, root = 5 })).root)
+		assert.is_nil(data.deserialize_chat(vim.json.encode({ session_id = ID, root = "" })).root)
 	end)
 
 	it("round-trips an empty chat", function()
@@ -827,6 +859,94 @@ describe("chat.send", function()
 		runs[1].exit(1, "Not logged in\n")
 		assert.are.equal("error", done_result().status)
 		assert.are.equal("Not logged in", done_result().error)
+	end)
+
+	it("takes a clean exit with answer text as an answer despite stderr output", function()
+		chat.send("q", handlers())
+		runs[1].chunk(init_line() .. "\n" .. text_line("the answer") .. "\n")
+		runs[1].exit(0, "warning: something is deprecated\n")
+		assert.are.equal("done", done_result().status)
+		assert.are.equal("the answer", done_result().text)
+		assert.are.equal("the answer", chat.load(KEY).messages[2].text)
+	end)
+
+	it("reports stderr for a clean exit that produced no answer", function()
+		chat.send("q", handlers())
+		runs[1].exit(0, "something went wrong\n")
+		assert.are.equal("error", done_result().status)
+		assert.are.equal("something went wrong", done_result().error)
+	end)
+
+	it("reports stderr when a failed run produced partial text", function()
+		chat.send("q", handlers())
+		runs[1].chunk(text_line("partial") .. "\n")
+		runs[1].exit(1, "connection lost\n")
+		assert.are.equal("error", done_result().status)
+		assert.are.equal("connection lost", done_result().error)
+	end)
+
+	describe("working directory", function()
+		local dir_a, dir_b, current
+
+		before_each(function()
+			dir_a = vim.fn.tempname()
+			dir_b = vim.fn.tempname()
+			vim.fn.mkdir(dir_a, "p")
+			vim.fn.mkdir(dir_b, "p")
+			current = dir_a
+			helpers.mock(require("fude.diff"), "get_repo_root", function()
+				return current
+			end)
+		end)
+
+		after_each(function()
+			vim.fn.delete(dir_a, "rf")
+			vim.fn.delete(dir_b, "rf")
+		end)
+
+		local function answer(run)
+			run.chunk(init_line() .. "\n" .. success_line("a") .. "\n")
+			run.exit(0, "")
+		end
+
+		it("keeps the root of the first question after the repository root changed", function()
+			chat.send("q1", handlers())
+			assert.are.equal(dir_a, runs[1].opts.cwd)
+			assert.are.equal(dir_a, chat.load(KEY).root)
+			answer(runs[1])
+			-- e.g. :cd into another repository during a GitHub review
+			current = dir_b
+			chat.send("q2", handlers())
+			assert.are.equal(dir_a, runs[2].opts.cwd)
+			assert.are.equal(dir_a, chat.load(KEY).root)
+		end)
+
+		it("keeps the stored root when no repository root can be found any more", function()
+			chat.send("q1", handlers())
+			answer(runs[1])
+			current = nil
+			assert.is_true(chat.send("q2", handlers()))
+			assert.are.equal(dir_a, runs[2].opts.cwd)
+		end)
+
+		it("moves to the current root when the stored directory is gone", function()
+			chat.send("q1", handlers())
+			answer(runs[1])
+			vim.fn.delete(dir_a, "rf")
+			current = dir_b
+			chat.send("q2", handlers())
+			assert.are.equal(dir_b, runs[2].opts.cwd)
+			assert.are.equal(dir_b, chat.load(KEY).root)
+		end)
+
+		it("starts from the current root again after the chat was discarded", function()
+			chat.send("q1", handlers())
+			answer(runs[1])
+			chat.discard(KEY)
+			current = dir_b
+			chat.send("q2", handlers())
+			assert.are.equal(dir_b, runs[2].opts.cwd)
+		end)
 	end)
 
 	it("reports the exit code when a failed run said nothing", function()

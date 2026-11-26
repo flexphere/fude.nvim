@@ -131,12 +131,36 @@ function M.save_view(buf)
 	}
 end
 
+--- Move out of the side panel or a chat pane before a file is opened: `:edit`
+--- there would replace the panel with the file. Every path that opens a file
+--- in the current window goes through this (`open_file`, the comment browser's
+--- jump, next/previous file).
+--- @return boolean ok false (after a WARN) when the current window is a panel
+---   and the tabpage has no window to open the file in
+function M.leave_panel_window()
+	local panel = config.state.sidepanel
+	local current_win = vim.api.nvim_get_current_win()
+	if not ((panel and panel.win == current_win) or require("fude.ui.chat_panel").is_panel_window(current_win)) then
+		return true
+	end
+	local target_win = require("fude.ui.sidepanel").find_target_window(panel and panel.win)
+	if not target_win then
+		vim.notify("fude.nvim: No source window available", vim.log.levels.WARN)
+		return false
+	end
+	vim.api.nvim_set_current_win(target_win)
+	return true
+end
+
 --- Open a review file, centering its first hunk only for a new buffer.
 --- Restore existing buffers' views saved while the review was active.
 --- @param filename string absolute file path
 --- @param entry table|nil changed-file entry; otherwise resolved in the current scope
 function M.open_file(filename, entry)
 	local state = config.state
+	if not M.leave_panel_window() then
+		return
+	end
 	local win = vim.api.nvim_get_current_win()
 	M.save_view(vim.api.nvim_get_current_buf())
 	local buf = file_bufnr(filename)
@@ -432,18 +456,11 @@ local function goto_adjacent(direction, unviewed_only)
 		return
 	end
 
-	local panel = state.sidepanel
-	local current_win = vim.api.nvim_get_current_win()
-	-- :edit in the side panel or the chat panel would replace that panel with the file.
-	if (panel and panel.win == current_win) or require("fude.ui.chat_panel").is_panel_window(current_win) then
-		local target_win = require("fude.ui.sidepanel").find_target_window(panel and panel.win)
-		if not target_win then
-			vim.notify("fude.nvim: No source window available", vim.log.levels.WARN)
-			return
-		end
-		vim.api.nvim_set_current_win(target_win)
+	if not M.leave_panel_window() then
+		return
 	end
 
+	local panel = state.sidepanel
 	local tree_mode = ((panel and panel.file_tree_mode) or config.opts.sidepanel.file_tree) == "tree"
 	local nav_files = M.build_navigation_order(state.changed_files, tree_mode)
 

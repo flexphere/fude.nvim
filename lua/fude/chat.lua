@@ -305,12 +305,14 @@ local function handle_exit(job, code, stderr)
 	if result then
 		err = result.error
 	else
+		-- A clean exit with answer text is an answer, whatever was written to
+		-- stderr on the way (warnings, deprecation notices).
+		if code == 0 and job.text ~= "" then
+			finish(job, "done")
+			return
+		end
 		err = vim.trim(stderr or "")
 		if err == "" then
-			if code == 0 and job.text ~= "" then
-				finish(job, "done")
-				return
-			end
 			err = code == 0 and "claude returned no response" or ("claude exited with code " .. tostring(code))
 		end
 	end
@@ -394,7 +396,9 @@ end
 --- (`--session-id`); later ones resume it (`--resume`). When the resumed
 --- session no longer exists, the question is sent once more under a new id
 --- and `on_retry("new")` tells the caller. claude runs in the repository
---- root with the question on stdin.
+--- root the conversation's first question was asked in (kept in the stored
+--- chat; the current root when that directory is gone) with the question on
+--- stdin.
 ---
 --- Handlers run on the main loop, and only while the review session the
 --- question was asked in is still the active one:
@@ -419,15 +423,27 @@ function M.send(prompt, handlers)
 	if not key then
 		return false, M.ERR_NO_TARGET
 	end
-	local root = diff.get_repo_root()
-	if not root then
-		return false, M.ERR_NO_ROOT
-	end
-
 	local chat = M.load(key)
+	-- The conversation keeps the directory it started in: claude looks a
+	-- session up by its working directory, and a GitHub review's root would
+	-- otherwise follow Neovim's cwd. A directory that is gone is replaced by
+	-- the current root (the resume then fails and a new session starts).
+	local root = chat.root
+	local changed = false
+	if not root or vim.fn.isdirectory(root) ~= 1 then
+		root = diff.get_repo_root()
+		if not root then
+			return false, M.ERR_NO_ROOT
+		end
+		chat.root = root
+		changed = true
+	end
 	if not chat.session_id then
 		chat.session_id = store.generate_uuid()
 		chat.started = false
+		changed = true
+	end
+	if changed then
 		-- Stored before the run, so the id survives a Neovim exit mid-answer.
 		M.save(key, chat)
 	end

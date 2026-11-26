@@ -47,15 +47,19 @@ local SEND_ERRORS = {
 
 --- The open panel, or nil when it is closed or one of its parts is gone.
 --- @return table|nil
+--- Whether a window is still open on the pane buffer it was created for.
+--- 'winfixbuf' keeps the buffers in place, but a forced command (`:buffer!`)
+--- can still replace one: such a window is the user's then, not a pane.
+--- @param win number
+--- @param buf number
+--- @return boolean
+local function shows(win, buf)
+	return vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_win_get_buf(win) == buf
+end
+
 local function get_panel()
 	local panel = config.state.chat_panel
-	if
-		panel
-		and vim.api.nvim_win_is_valid(panel.log_win)
-		and vim.api.nvim_win_is_valid(panel.input_win)
-		and vim.api.nvim_buf_is_valid(panel.log_buf)
-		and vim.api.nvim_buf_is_valid(panel.input_buf)
-	then
+	if panel and shows(panel.log_win, panel.log_buf) and shows(panel.input_win, panel.input_buf) then
 		return panel
 	end
 	return nil
@@ -67,7 +71,19 @@ end
 --- @return boolean
 function M.is_panel_window(win)
 	local panel = config.state.chat_panel
-	return panel ~= nil and win ~= nil and (win == panel.log_win or win == panel.input_win)
+	if not panel or not win then
+		return false
+	end
+	return (win == panel.log_win and shows(win, panel.log_buf))
+		or (win == panel.input_win and shows(win, panel.input_buf))
+end
+
+--- The tabpage the open panel is in. The side panel uses it to tell whether
+--- the two panels share a tabpage (only then do they share its last window).
+--- @return number|nil
+function M.tabpage()
+	local panel = get_panel()
+	return panel and vim.api.nvim_win_get_tabpage(panel.log_win) or nil
 end
 
 --- Whether the panel is open.
@@ -464,6 +480,17 @@ local function is_alone(panel)
 	return true
 end
 
+--- Whether the side panel is open in the chat panel's tabpage.
+--- @param panel table
+--- @return boolean
+local function shares_tabpage_with_sidepanel(panel)
+	local side = config.state.sidepanel
+	return side ~= nil
+		and side.win ~= nil
+		and vim.api.nvim_win_is_valid(side.win)
+		and vim.api.nvim_win_get_tabpage(side.win) == vim.api.nvim_win_get_tabpage(panel.log_win)
+end
+
 --- Open an editor window beside the panel when the panel's panes are the
 --- only windows left, so the next file does not open in a pane (the side
 --- panel's rule). No-op otherwise.
@@ -543,6 +570,11 @@ function M.open()
 			vim.api.nvim_set_option_value(name, value, { scope = "local", win = win })
 		end
 		vim.api.nvim_set_option_value("winfixwidth", true, { scope = "local", win = win })
+		-- A file opened from a pane (:edit, a picker of another plugin) is refused
+		-- (E1513) instead of replacing the pane and wiping the unsent question.
+		if vim.fn.exists("+winfixbuf") == 1 then
+			vim.api.nvim_set_option_value("winfixbuf", true, { scope = "local", win = win })
+		end
 	end
 	vim.api.nvim_set_option_value("winfixheight", true, { scope = "local", win = input_win })
 
@@ -573,8 +605,19 @@ function M.open()
 		callback = function(ev)
 			local closed_win = tonumber(ev.match)
 			if closed_win == log_win or closed_win == input_win then
-				-- One pane is useless without the other.
-				M.close()
+				-- One pane is useless without the other. Closing the current
+				-- window from here would abort the command that closed the first
+				-- pane (`:only` from a pane: E855), so that waits for it to end.
+				local other = closed_win == log_win and input_win or log_win
+				if vim.api.nvim_get_current_win() == other then
+					vim.schedule(function()
+						if config.state.chat_panel == panel then
+							M.close()
+						end
+					end)
+				else
+					M.close()
+				end
 				return
 			end
 			local quitting = closed_win == panel.quitting_win
@@ -582,7 +625,8 @@ function M.open()
 			vim.schedule(function()
 				-- With the side panel open, it reopens the editor window (or
 				-- quits, closing this panel first): one of the two must own that.
-				if config.state.chat_panel ~= panel or config.state.sidepanel then
+				-- A side panel in another tabpage looks after that tabpage only.
+				if config.state.chat_panel ~= panel or not get_panel() or shares_tabpage_with_sidepanel(panel) then
 					return
 				end
 				if quitting then
@@ -639,12 +683,20 @@ function M.close()
 		-- Insert mode belongs to the input pane, not to the window focus returns to.
 		vim.cmd("stopinsert")
 	end
-	for _, win in ipairs({ panel.log_win, panel.input_win }) do
-		if vim.api.nvim_win_is_valid(win) then
+	-- A window whose buffer was replaced by force is not a pane any more.
+	for win, buf in pairs({ [panel.log_win] = panel.log_buf, [panel.input_win] = panel.input_buf }) do
+		if shows(win, buf) then
 			local ok, err = pcall(vim.cmd, "noautocmd call nvim_win_close(" .. win .. ", v:true)")
 			if not ok and type(err) == "string" and err:find("Cannot close last window") then
-				pcall(vim.cmd, "enew")
+				-- The pane stays as the editor's last window (e.g. `:only` from a
+				-- pane): it must not keep the pane's options, size and buffer pins.
+				require("fude.ui.sidepanel").reset_window_options(win)
+				vim.api.nvim_win_call(win, function()
+					pcall(vim.cmd, "enew")
+				end)
 			end
+		elseif vim.api.nvim_win_is_valid(win) then
+			require("fude.ui.sidepanel").reset_window_options(win)
 		end
 	end
 	state.chat_panel = nil

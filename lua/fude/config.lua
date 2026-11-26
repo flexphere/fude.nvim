@@ -185,8 +185,10 @@ M.defaults = {
 		cmd = "claude", -- Path or name of the claude command
 		width = 60, -- Panel width in columns
 		position = "right", -- "right" or "left"
-		-- Tools claude may use. Read-only by default: a tool that is not named
-		-- here does not exist for the session, and Bash runs only in the listed forms.
+		-- Tools claude may use: a tool that is not named here does not exist for
+		-- the session, and Bash runs only in the listed forms. Not strictly
+		-- read-only: the git commands write a file with --output=<path> (see
+		-- "Tools and permissions" in the README / :help fude-chat-tools).
 		allowed_tools = {
 			"Read",
 			"Grep",
