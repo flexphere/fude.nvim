@@ -5,11 +5,17 @@
   "branch": "feat/pr-guide-comments",
   "base": "origin/main",
   "status": "実装中",
-  "commits": 0,
+  "commits": 3,
   "summary": "PRDが承認されました。実装役がcontrib/skills/fude-guideを実装しています。",
   "generatedBy": "/develop-v2",
   "tests": [],
-  "attention": [],
+  "attention": [
+    {
+      "text": "承認後にAC7を変えました。人の返信が付いたガイドthreadは、再実行しても消さずに残し、skillがそのidと内容を伝えます（返信ごと消すと、返信が画面から見えなくなるため）。元に戻すには、AC7の追記とSKILL.mdの該当の1文を消し、スクリプトのclearで返信付きthreadも消すようにします。",
+      "ref": "D-007 · 重要度 中",
+      "kind": "PRD 変更"
+    }
+  ],
   "acceptance": [],
   "prd": {
     "approvedAt": "2026-11-26",
@@ -29,7 +35,14 @@
       "依存はbash・jq・uuidgenのみ",
       "CLAUDE.mdの品質ルール"
     ],
-    "changes": [],
+    "changes": [
+      {
+        "date": "2026-11-26",
+        "change": "AC7に、人の返信が付いたガイドthreadは残してidを知らせ、skillがユーザーに伝えることを追記",
+        "reason": "D-007",
+        "field": "AC7"
+      }
+    ],
     "verification": [
       "固定のテスト: make all",
       "ヘルパースクリプトを一時gitリポジトリで実行しlocal/storeで読むテスト",
@@ -151,11 +164,51 @@
       "impact": "state.jsonのworktree",
       "revisit": "",
       "refs": ""
+    },
+    {
+      "id": "D-007",
+      "title": "人の返信が付いたガイドthreadは再実行時に残し、ユーザーに伝える",
+      "at": "2026-11-26",
+      "phase": "実装",
+      "severity": "中",
+      "severityReason": "レビュワーの書いた返信の扱いに関わる。JSONLには行が残るのでデータは失われない",
+      "by": "判断役",
+      "background": "AC7の「前回のガイドを消す」と「人の返信は残る」が、返信付きthreadでぶつかる。先頭をdeleteするとmaterializeは返信も表示しない。",
+      "options": [
+        "残してstderrで知らせる",
+        "返信があっても消す",
+        "残し、SKILL.mdでユーザーに伝える手順にする"
+      ],
+      "decided": "残し、SKILL.mdでユーザーに伝える手順にする",
+      "reason": "AC7の「人の返信は残る」を守れ、古いガイドが並んでもユーザーが気づいて片付けられる。スクリプトの変更は不要。",
+      "impact": "AC7の文面、SKILL.md/SKILL.ja.md",
+      "revisit": "残ったthreadの重複が多いという報告が来たとき",
+      "refs": "AC7",
+      "prdChange": true
     }
   ],
   "reviews": [],
   "unresolved": [],
-  "tasks": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "ヘルパースクリプト（add/clear）とテスト",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "SKILL.md / SKILL.ja.md",
+      "status": "実行中",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T3",
+      "title": "README・doc/fude.txt",
+      "status": "待ち",
+      "owner": "impl-1"
+    }
+  ],
   "revision": 1,
   "revisions": [],
   "pr": {
