@@ -449,12 +449,15 @@ output. Only one question is answered at a time.
   claude runs in (the review's root, not Neovim's current directory); a file
   outside it is written with its full path. Lines taken from the diff
   preview's base pane are written as `<path> (base version):L…`, an unnamed
-  buffer as `[No Name]`, and other special buffers (side panel, terminal, …)
-  are refused. Use `:FudeReviewChatAdd<CR>` (not `<cmd>`) in a visual-mode
+  ordinary buffer as `[No Name]`, and other special buffers, named or not
+  (side panel, comment browser, comment input, overview, terminal, …), are
+  refused. Use `:FudeReviewChatAdd<CR>` (not `<cmd>`) in a visual-mode
   mapping so the range is passed.
 - **One conversation per review target** - GitHub: repository + PR number;
   local review: worktree + branch (the unit [comment drafts](#comment-drafts)
-  use). The first question starts a claude session (`--session-id`), later ones
+  use; on a detached HEAD the unit is the review session itself, so that
+  conversation is not continued after `:FudeReviewStop` and its file stays
+  on disk). The first question starts a claude session (`--session-id`), later ones
   continue it (`--resume`), also after `:FudeReviewStop` or a Neovim restart.
   The conversation shown in the panel is stored by fude under
   `stdpath("state")/fude/chat/` and is never pruned; `:FudeReviewChatNew`
@@ -465,24 +468,32 @@ output. Only one question is answered at a time.
   the same target from another worktree or clone, the stored conversation is
   still shown but claude starts a new session there (the conversation says so).
 - **What claude knows** - the PR number, URL and base/head branches (GitHub),
-  or the branch (local review), are appended to its system prompt. In local
-  review the base branch and the current scope can change during a
-  conversation, so they are sent in front of every question instead; that
-  line is not shown in the conversation. Diffs and files are not attached:
+  or the branch (local review), are appended to its system prompt. What can
+  change during a conversation is sent in front of every question instead:
+  the base branch and the current scope in local review, and in a GitHub
+  review the commit that is checked out while a commit scope is active
+  (nothing for the whole PR). That line is not shown in the conversation. Diffs and files are not attached:
   claude reads them itself, or you paste lines with `:FudeReviewChatAdd`.
 - **Closing and stopping** - closing the panel does not stop an answer (the
   cancel key does): it keeps running, is stored when it ends — a message tells
   you when it is ready — and is shown when you open the panel again. Unsent
   input is also kept while the panel is closed, however it was closed (the
   close key, `:q` in a pane, `:only`, …). An answer is
-  stopped by `<C-c>`, by `:FudeReviewChatNew`, when the review stops
-  (`:FudeReviewStop`, a stack switch) — the panel closes then — and when
-  Neovim exits; what had arrived is stored as an interrupted answer.
+  stopped by `<C-c>`, when the review stops (`:FudeReviewStop`, a stack
+  switch) — the panel closes then — and when Neovim exits; what had arrived
+  is stored as an interrupted answer. `:FudeReviewChatNew` stops it too, but
+  stores nothing of it. A question sent right after a stop starts once the
+  stopped claude process has exited.
 - **Failures** - when claude fails, the error is shown after whatever text had
-  arrived and your question is put back in the input pane. A failed exchange
-  is not stored. When the stored session no longer exists on claude's side,
-  the question is sent once more in a new session and the conversation says
-  so. Warnings claude prints while it answers successfully are not errors.
+  arrived. A failure before claude opened the session (not logged in, command
+  not found, …) stores nothing and puts your question back in the input pane.
+  A failure after that (e.g. the turn limit) is stored with the question and
+  the error, and the question is not put back: claude's session already holds
+  it, so sending it again would ask twice. When the stored session no longer
+  exists on claude's side, the question is sent once more in a new session
+  and the conversation says so (the note is stored with the answer). Warnings
+  claude prints while it answers successfully are not errors. When the
+  conversation cannot be written to disk, a warning says so with every answer.
 - **Windows** - the two panes keep their buffers (`'winfixbuf'`): you cannot
   open a file from a chat pane (`:edit` or another plugin's picker fails with
   E1513) — move to an editor window first. Files opened by fude from a pane
@@ -504,8 +515,10 @@ The default is not strictly read-only, though. `git diff`, `git log`,
 `git show` and `git blame` write their output to a file when given
 `--output=<path>`, and the default list allows those commands with any
 arguments. If claude follows an instruction hidden in a PR description or in
-the diff it reads, a file on your machine can be overwritten. Two ways to
-close this:
+the diff it reads, a file on your machine can be overwritten. Such an
+instruction can come from anywhere in what is under review — the PR
+description, the diff, a `CLAUDE.md` of the checkout — so for a PR you do not
+trust, use the setup without git (2). Two ways to close this:
 
 ```lua
 -- 1. Refuse git commands containing --output. Checked with claude 2.1.332:
@@ -527,8 +540,11 @@ its `.claude/settings.json` is not yours: a PR could add hooks or
 `--setting-sources user` in a GitHub review: the project's and the local
 settings files (their hooks and allow rules) are not read. (Checked with
 claude 2.1.332: `SessionStart` and `UserPromptSubmit` hooks of a project
-`.claude/settings.json` did not run with that flag. How the flag treats the
-project's `CLAUDE.md` and `.mcp.json` was not checked.) To read them again —
+`.claude/settings.json` did not run with that flag, and an MCP server
+declared in the checkout's `.mcp.json` was not started with it — so the MCP
+servers a PR brings along do not start in a GitHub review — while without
+the flag it was. How the flag treats the project's `CLAUDE.md` was not
+checked.) To read them again —
 for repositories you trust — set the option yourself; fude then leaves it to
 you:
 

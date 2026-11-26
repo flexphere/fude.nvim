@@ -1216,12 +1216,13 @@ File opening position                                 *fude-file-position*
     a single line. `<path>` is relative to the directory claude runs in
     (the root of the review, see |fude-chat|), whatever Neovim's current
     directory is; a file outside it — another repository or worktree —
-    is written with its full path (`~` for the home directory) and a
-    buffer without a name as `[No Name]`. Lines
+    is written with its full path (`~` for the home directory) and an
+    ordinary buffer without a name as `[No Name]`. Lines
     of the diff preview's base pane are written as
     `<path> (base version):L…`, since they and their numbers belong to
-    the base version; any other named special buffer (side panel,
-    comment browser, terminal, …) is refused with a warning. The
+    the base version; any other special buffer, named or not (side
+    panel, comment browser, comment input, overview, terminal, …) is
+    refused with a warning. The
     fence is tagged with the buffer's filetype and is made longer than
     any run of backticks in the selection. Input already in the pane is
     kept; an empty line for your question follows the block and the
@@ -1936,8 +1937,12 @@ Options:
                   Your own Claude Code settings still apply.
 
 `chat.args`         Extra arguments appended to the claude command line
-                  (default: {}). They come last, so they can override
-                  the arguments fude passes. Examples in
+                  (default: {}). They come after the arguments fude
+                  passes. An option that takes one value is thereby
+                  overridden; one that collects values (such as
+                  `--allowedTools` or `--disallowedTools`) may be
+                  added to fude's instead, so change the tool list
+                  with `chat.allowed_tools`. Examples in
                   |fude-chat-tools|.
 
 `chat.keymaps`      Normal-mode keys inside the chat panel. Set an entry
@@ -2224,6 +2229,9 @@ Sessions and storage~
 Every review target has one conversation: repository + PR number in a
 GitHub review, worktree + branch in a local review (the unit
 |fude-drafts| use), so conversations of different targets never mix.
+A local review on a detached HEAD has no branch: its unit is the review
+session itself, so that conversation is not continued after
+|:FudeReviewStop|, and its file stays on disk.
 The first question of a target starts a claude session under a new ID
 (`--session-id`); later questions continue it (`--resume`), also after
 |:FudeReviewStop| or a Neovim restart.
@@ -2246,10 +2254,12 @@ What claude is told~
 
 The parts of the review target that do not change are appended to
 claude's system prompt: PR number, URL, base and head branch in a GitHub
-review; the branch in a local review. In a local review the base branch
-and the current scope (the commit's SHA in the commit scope) can change
-during a conversation, so they are sent in front of every question
-instead. That line goes to claude only: it is not shown in the
+review; the branch in a local review. What can change during a
+conversation is sent in front of every question instead: in a local
+review the base branch and the current scope (the commit's SHA in the
+commit scope); in a GitHub review the commit that is checked out while a
+commit scope is active, and nothing while the whole pull request is
+under review. That line goes to claude only: it is not shown in the
 conversation and not stored. Diffs and file contents are not attached;
 claude reads what it needs with its tools.
 
@@ -2268,23 +2278,43 @@ An answer is stopped by `<C-c>`, by |:FudeReviewChatNew| (which stores
 nothing of it), when the review stops (|:FudeReviewStop|,
 |:FudeReviewStackSwitch|), and when Neovim exits. Except for
 |:FudeReviewChatNew|, what had arrived is stored as an interrupted
-answer. Stopping the review also closes the panel.
+answer. Stopping the review also closes the panel. A question sent
+right after a stop is accepted at once but starts only when the stopped
+claude process has exited (or after a few seconds if it does not), so
+two processes never write the same session.
 
 Failures~
 
-When claude fails (non-zero exit, or an error result), the conversation
-shows `**Error:** <message>` after whatever text had arrived, and the
-question is put back in the input pane (in front of anything typed
-meanwhile). A failed exchange is not stored, so it is gone once the
-panel is reopened. What claude writes to stderr is the error message of
-a failed run only: an answer that ended with exit code 0 is an answer,
-even if warnings were printed on the way.
+An answer succeeded when claude reported a successful result, or ended
+with exit code 0 after sending answer text; anything else is a failure:
+an error result (whatever the exit code), a non-zero exit without a
+successful result, or an exit without any answer. What claude writes to
+stderr is the error message of a failed run only: warnings printed on
+the way to an answer are not errors.
+
+On a failure the conversation shows `**Error:** <message>` after
+whatever text had arrived. What happens to the question depends on
+whether claude had opened its session for it:
+
+- Before that (command not found, not logged in, …): nothing is stored,
+  so the exchange is gone once the panel is reopened, and the question
+  is put back in the input pane, in front of anything typed meanwhile.
+- After that (the turn limit, an API error midway, …): the question, the
+  text that arrived and the error are stored and shown again when the
+  panel is reopened. The question is not put back, because claude's
+  session already holds it; sending it again would ask it twice.
 
 When the stored session no longer exists on claude's side, the question
 is sent once more in a new session and the conversation says so; the
-stored conversation is kept, but claude starts without it. When a first
-question finds its new session ID already in use (the session exists
-only on claude's side), it is resumed instead, once.
+note is part of the stored answer, the stored conversation is kept, but
+claude starts without it. When a first question finds its new session ID
+already in use (the session exists only on claude's side), it is resumed
+instead, once.
+
+When the conversation cannot be written to disk (e.g. the state
+directory is not writable), a warning says so with every answer; the
+next question then starts a new claude session, since the session ID
+was not kept.
 
 Windows~
 
@@ -2302,9 +2332,9 @@ and opens a new panel.
 
 Closing one pane closes the other, and so does moving a pane to another
 tabpage (`<C-w>T`): the panel is closed as a whole, with the unsent
-input kept for the next |:FudeReviewChat|. When closing leaves no window
-(`:only` from a pane), the pane stays as an ordinary empty editor
-window.
+input kept for the next |:FudeReviewChat|. `:only` from a pane closes
+the panel too, and the pane it was run in stays as an ordinary empty
+editor window, also when other tabpages exist.
 
 When the panes are the only windows left in their tabpage (e.g. after
 `:bdelete`), an editor window showing the most recently used listed
@@ -2340,6 +2370,9 @@ The default is not strictly read-only, though. `git diff`, `git log`,
 `--output=<path>`, and the default list allows those commands with any
 arguments. If claude follows an instruction hidden in a PR description
 or in the diff it reads, a file on your machine can be overwritten.
+Such an instruction can come from anywhere in what is under review: the
+PR description, the diff, a `CLAUDE.md` of the checkout. For a pull
+request you do not trust, use the setup without git (2 below).
 (`git status` has no such option, and `gh pr view` / `gh pr diff` have
 no option that writes a file.) Two ways to close this:
 
@@ -2366,9 +2399,11 @@ question (`claude -p` skips the workspace trust dialog). fude therefore
 passes `--setting-sources user` in a GitHub review: the project's and
 the local settings files, with their hooks and allow rules, are not
 read. Checked with claude 2.1.332: `SessionStart` and `UserPromptSubmit`
-hooks of a project `.claude/settings.json` did not run with that flag.
-How the flag treats the project's `CLAUDE.md` and `.mcp.json` was not
-checked. To read the project's settings again, for repositories you
+hooks of a project `.claude/settings.json` did not run with that flag,
+and an MCP server declared in the checkout's `.mcp.json` was not started
+with it, while it was without it: the MCP servers a pull request brings
+along do not start in a GitHub review. How the flag treats the
+project's `CLAUDE.md` was not checked. To read the project's settings again, for repositories you
 trust, set the option yourself; fude then passes only yours: >lua
     chat = { args = { "--setting-sources", "user,project,local" } }
 <In a local review the code is your own, and the project's settings are
