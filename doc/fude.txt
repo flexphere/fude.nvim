@@ -1213,9 +1213,11 @@ File opening position                                 *fude-file-position*
         <the selected lines>
         ```
 <    The first line is `<path>:L<start>-L<end>`, or `<path>:L<line>` for
-    a single line. `<path>` is relative to the repository root; a file
-    outside the repository is written with its full path (`~` for the
-    home directory) and a buffer without a name as `[No Name]`. Lines
+    a single line. `<path>` is relative to the directory claude runs in
+    (the root of the review, see |fude-chat|), whatever Neovim's current
+    directory is; a file outside it — another repository or worktree —
+    is written with its full path (`~` for the home directory) and a
+    buffer without a name as `[No Name]`. Lines
     of the diff preview's base pane are written as
     `<path> (base version):L…`, since they and their numbers belong to
     the base version; any other named special buffer (side panel,
@@ -2256,8 +2258,11 @@ Closing and stopping~
 Closing the panel (`q`, |:FudeReviewChat|) does not stop an answer in
 progress; the cancel key does. The answer keeps running and is stored
 when it ends, a message says that it is ready, and opening the panel
-again shows it, still streaming if it has not ended. Unsent input
-is kept while the panel is closed (until the review stops).
+again shows it, still streaming if it has not ended (the message also
+appears when the panel is open in another tabpage). Unsent input is
+kept while the panel is closed, however it was closed — the close key,
+`:q` or `:close` in a pane, `:bwipeout`, `:only`, `:tabclose` — until it
+is sent or the review stops.
 
 An answer is stopped by `<C-c>`, by |:FudeReviewChatNew| (which stores
 nothing of it), when the review stops (|:FudeReviewStop|,

@@ -606,6 +606,25 @@
       "impact": "build_claude_args、README・doc、AC8",
       "revisit": "自分のリポジトリの PR しか読まない利用者から不便という声が出たとき。.mcp.json やプロジェクトの skills 経由で同じ種類の実行が起きると分かったとき",
       "refs": "R2-N1, AC8"
+    },
+    {
+      "id": "D-024",
+      "title": ":FudeReviewChatNew は未送信の入力を消さない",
+      "at": "2026-11-26 11:55",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "1 行で変えられる",
+      "by": "作業する側",
+      "background": "R3-M3 の修正で、未送信の入力を「常に最新の写し」として持つ形にした。実装役から、:FudeReviewChatNew では以前から入力を消していないと報告があった（メインの依頼文が「消える」と誤っていた）。",
+      "options": [
+        "残す",
+        "消す"
+      ],
+      "decided": "残す（捨てるのは会話だけ）",
+      "reason": "書きかけの質問を新しい会話で送りたい場面のほうが自然。AC5 が破棄を求めているのはセッション ID と会話ログ。",
+      "impact": "new_chat",
+      "revisit": "新しい会話で前の入力が残るのが紛らわしいという声が出たとき",
+      "refs": "AC5, R3-M3"
     }
   ],
   "reviews": [
@@ -689,25 +708,25 @@
           "id": "R2-N1",
           "severity": "MUST",
           "text": "信頼できない PR のチェックアウトで claude -p を動かすと、PR が持ち込んだ .claude/settings.json（hook・許可）が読まれる",
-          "response": "修正中（D-023）"
+          "response": "直した（D-023）"
         },
         {
           "id": "R2-S5",
           "severity": "SHOULD",
           "text": "会話が、最初に質問したときのディレクトリに固定される",
-          "response": "修正中（D-020）"
+          "response": "直した（D-020）"
         },
         {
           "id": "R2-S6",
           "severity": "SHOULD",
           "text": "最後の編集ウィンドウを閉じたあと、パネルの幅が画面の半分になる",
-          "response": "修正中"
+          "response": "直した（side panel も揃えた）"
         },
         {
           "id": "R2-S7",
           "severity": "SHOULD",
           "text": "<C-w>T でペインを別のタブに移すと、追跡されないウィンドウが残る",
-          "response": "修正中"
+          "response": "直した（退行は R3-M3）"
         },
         {
           "id": "R2-Y2",
@@ -719,13 +738,73 @@
           "id": "R2-Y3",
           "severity": "MAY",
           "text": "close() がペインを閉じる順序が決まらない（結果は同じ）",
-          "response": "見送り"
+          "response": "直った"
         },
         {
           "id": "R2-Y4",
           "severity": "MAY",
           "text": "build_empty_chat の注釈に root が無い",
-          "response": "修正中"
+          "response": "解消（root を廃止）"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 3,
+      "may": 4,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R3-M3",
+          "severity": "MUST",
+          "text": "（R2-S7 の修正による退行）入力ペインを :q / :close で閉じると未送信の入力が消える",
+          "response": "直した"
+        },
+        {
+          "id": "R3-S8",
+          "severity": "SHOULD",
+          "text": "side panel とチャットが同じタブにあるとき、最後の編集ウィンドウを閉じるとレイアウトが崩れる",
+          "response": "直した"
+        },
+        {
+          "id": "R3-S9",
+          "severity": "SHOULD",
+          "text": ":cd のあとの :FudeReviewChatAdd が、claude の読むファイルと違うパスを書く",
+          "response": "直した"
+        },
+        {
+          "id": "R3-S10",
+          "severity": "SHOULD",
+          "text": "両方のパネルを開いた場合のテストが意図した配置を作っていない",
+          "response": "直した"
+        },
+        {
+          "id": "R3-Y2",
+          "severity": "MAY",
+          "text": "（継続）GitHub の commit scope を claude に伝えていない",
+          "response": "見送り"
+        },
+        {
+          "id": "R3-Y5",
+          "severity": "MAY",
+          "text": "パネルが別のタブで開いていると、応答の完了や失敗の通知が出ない",
+          "response": "直した"
+        },
+        {
+          "id": "R3-Y6",
+          "severity": "MAY",
+          "text": "get_panel の doc コメントの位置がずれている",
+          "response": "直した"
+        },
+        {
+          "id": "R3-Y7",
+          "severity": "MAY",
+          "text": "side panel の幅を戻す処理は範囲の外の変更",
+          "response": "そのまま（R2-S6 と同じ不具合を揃えて直したもの）"
         }
       ]
     }

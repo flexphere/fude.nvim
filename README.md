@@ -443,9 +443,11 @@ output. Only one question is answered at a time.
 | `q` (`chat.keymaps.close`) | both | Close the panel |
 
 - **Selections** - `:'<,'>FudeReviewChatAdd` (the current line without a range)
-  appends `<repo-relative path>:L<start>-L<end>` (`:L<line>` for one line) and
+  appends `<path>:L<start>-L<end>` (`:L<line>` for one line) and
   the lines in a code fence tagged with the filetype to the input, opening the
-  panel when needed. Existing input is kept. Lines taken from the diff
+  panel when needed. Existing input is kept. The path is relative to the root
+  claude runs in (the review's root, not Neovim's current directory); a file
+  outside it is written with its full path. Lines taken from the diff
   preview's base pane are written as `<path> (base version):L…`, an unnamed
   buffer as `[No Name]`, and other special buffers (side panel, terminal, …)
   are refused. Use `:FudeReviewChatAdd<CR>` (not `<cmd>`) in a visual-mode
@@ -471,7 +473,8 @@ output. Only one question is answered at a time.
 - **Closing and stopping** - closing the panel does not stop an answer (the
   cancel key does): it keeps running, is stored when it ends — a message tells
   you when it is ready — and is shown when you open the panel again. Unsent
-  input is also kept while the panel is closed. An answer is
+  input is also kept while the panel is closed, however it was closed (the
+  close key, `:q` in a pane, `:only`, …). An answer is
   stopped by `<C-c>`, by `:FudeReviewChatNew`, when the review stops
   (`:FudeReviewStop`, a stack switch) — the panel closes then — and when
   Neovim exits; what had arrived is stored as an interrupted answer.
