@@ -12,7 +12,7 @@
   "hearing": {
     "questions_asked": 4,
     "prd_drafts": 1,
-    "prd_changes_after_approval": 1
+    "prd_changes_after_approval": 2
   },
   "implementation": {
     "tasks": 3,
@@ -63,7 +63,8 @@
     "implementing": 0.14,
     "reviewing": 0.23,
     "pr": 0.01,
-    "reporting": 0.0
+    "reporting": 0.0,
+    "revising": 0.01
   },
   "unresolved": 6
 }

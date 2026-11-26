@@ -6,7 +6,7 @@
   "base": "origin/main",
   "status": "完了",
   "commits": 10,
-  "summary": "PR #335をready for reviewにしました。レビューは2周目でMUST 0件、CIも通っています。あとは「見てほしいこと」の手順で、実際のPRでガイドコメントの中身と表示を確かめてください。",
+  "summary": "PR #335をready for reviewにしました。報告後に出た「止めて開き直すとガイドが消える」依頼は、ローカルレビュー本体の挙動の変更なので、別のPRで扱います。",
   "generatedBy": "/develop-v2",
   "tests": [
     {
@@ -21,6 +21,11 @@
     }
   ],
   "attention": [
+    {
+      "text": "<leader>el（:FudeReviewLocalToggle）を2回押すとガイドが消える件は、:FudeReviewStopがセッションのポインタを消す既存の仕様が原因。このPRでは扱わず、停止しても再開するよう変える別のPRで直す。",
+      "ref": "報告後の依頼",
+      "kind": "その他"
+    },
     {
       "text": "skillを入れる: レビューしたいリポジトリのルートで `mkdir -p .claude/skills/fude-guide && cp /Users/kyu08/code/fude.nvim/worktree-ignored-feat-pr-guide-comments/contrib/skills/fude-guide/{SKILL.ja.md,fude-guide-comment.sh} .claude/skills/fude-guide/ && mv .claude/skills/fude-guide/SKILL.ja.md .claude/skills/fude-guide/SKILL.md` を実行する（READMEの手順と同じ）。",
       "ref": "AC1",
@@ -136,6 +141,12 @@
         "change": "AC7に、人の返信が付いたガイドthreadは残してidを知らせ、skillがユーザーに伝えることを追記",
         "reason": "D-007",
         "field": "AC7"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "スコープ外に「止めて開き直したときのセッションの再開（別のPRで扱う）」を追加",
+        "reason": "報告後の依頼。ユーザーの指示で別のPRに分けた",
+        "field": "スコープ外"
       }
     ],
     "verification": [
