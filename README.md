@@ -789,18 +789,21 @@ cp "$fude_skill_dir/fude-guide-comment.sh" .claude/skills/fude-guide/
 ```
 
 1. In Neovim, check out the branch to review and run `:FudeReviewLocal main`
-   (replace `main` with the PR's base branch).
+   (replace `main` with the PR's base branch). The `commit` scope does not
+   allow comments, so the skill refuses while it is active.
 2. Start Claude Code in the same repository and worktree, then ask it to
    "Use fude-guide to add reading-order guide comments" or
    "fude-guideで読む順番を付けて".
 3. In Neovim, run `:FudeReviewReload` (or wait for `auto_reload`). The guide
    comments appear with an `[agent]` badge; `:FudeReviewListComments` lists
-   them.
+   them. That list shows the newest comment first, so follow the numbers in
+   the comment bodies rather than the list order.
 
 Running the skill again first deletes the guide comments it wrote before,
 so the guide is replaced. Comments and replies written by people stay. A
 guide comment that someone replied to is also kept, since deleting it would
-hide the reply; the skill tells you which ones it kept.
+hide the reply; the skill tells you which ones it kept. A guide comment
+without such a reply is deleted even if you edited or resolved it.
 
 ## Completion
 

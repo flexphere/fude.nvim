@@ -97,7 +97,7 @@ describe("fude-guide-comment.sh", function()
 			assert.equals(4, event.end_line)
 			assert.equals("claude", event.author)
 			assert.equals("agent", event.author_type)
-			assert.is_truthy(event.created_at:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%dZ$"))
+			assert.is_truthy(event.created_at:match("^%d%d%d%d%-%d%d%-%d%dT%d%d:%d%d:%d%d%.%d%d%dZ$"))
 
 			local comments = store.materialize(events).comments
 			assert.equals(1, #comments)
@@ -159,6 +159,9 @@ describe("fude-guide-comment.sh", function()
 			{ "the file does not exist", { "lua/missing.lua", "1", "1" } },
 			{ "the path is outside the repository", { "/etc/hosts", "1", "1" } },
 			{ "the path climbs out with ..", { "lua/../../x", "1", "1" } },
+			{ "the path is under .git/", { ".git/HEAD", "1", "1" } },
+			{ "the path is under .fude/", { "./.fude/current.json", "1", "1" } },
+			{ "the path is empty", { "./", "1", "1" } },
 		}
 		for _, case in ipairs(invalid) do
 			guarded_it("fails without writing when " .. case[1], function()
@@ -177,6 +180,89 @@ describe("fude-guide-comment.sh", function()
 			local res = run("add", "lua/a.lua", "1", "1", body_file("\n  \n"))
 			assert.equals(1, res.code)
 			assert.equals(before, read_review())
+		end)
+
+		guarded_it("normalizes ./ and repeated / in the path to fude's repository-relative form", function()
+			local res = run("add", "./lua//./a.lua", "1", "1", body_file("[guide 1/1] x"))
+			assert.equals(0, res.code, res.stderr)
+			local events = store.parse_events(read_review())
+			assert.equals("lua/a.lua", events[2].path)
+		end)
+
+		guarded_it("drops surrounding whitespace and accepts a body that then starts with [guide", function()
+			local res = run("add", "lua/a.lua", "1", "1", body_file("\n  [guide 1/1] x\n\n"))
+			assert.equals(0, res.code, res.stderr)
+			assert.equals("[guide 1/1] x", store.parse_events(read_review())[2].body)
+		end)
+
+		guarded_it("fails without writing when the body does not start with [guide", function()
+			local before = read_review()
+			local res = run("add", "lua/a.lua", "1", "1", body_file("just a note"))
+			assert.equals(1, res.code)
+			assert.is_truthy(res.stderr:find("[guide ", 1, true))
+			assert.equals(before, read_review())
+		end)
+
+		guarded_it("gives comments added in quick succession increasing created_at", function()
+			assert.equals(0, run("add", "lua/a.lua", "1", "1", body_file("[guide 1/2] x")).code)
+			assert.equals(0, run("add", "lua/a.lua", "2", "2", body_file("[guide 2/2] y")).code)
+			local events = store.parse_events(read_review())
+			assert.is_true(events[2].created_at < events[3].created_at)
+		end)
+
+		guarded_it("fails without writing when the session id is not a plain file name", function()
+			write(repo .. "/.fude/current.json", { vim.json.encode({ feature = { id = "../evil" } }) })
+			local before = read_review()
+			local res = run("add", "lua/a.lua", "1", "1", body_file("[guide 1/1] x"))
+			assert.equals(1, res.code)
+			assert.is_truthy(res.stderr:find("invalid session id", 1, true))
+			assert.equals(before, read_review())
+		end)
+
+		guarded_it("fails with exit 1 and a reason when current.json is not JSON", function()
+			write(repo .. "/.fude/current.json", { "{not json" })
+			local res = run("add", "lua/a.lua", "1", "1", body_file("[guide 1/1] x"))
+			assert.equals(1, res.code)
+			assert.is_truthy(res.stderr:find("fude-guide: cannot parse", 1, true))
+		end)
+
+		local commit_scope_cases = {
+			{ "scope_commit_sha", "scope_commit_sha" },
+			{ "pending_from_sha (a commit switch in progress)", "pending_from_sha" },
+		}
+		for _, case in ipairs(commit_scope_cases) do
+			guarded_it("refuses in the commit scope when HEAD matches the entry's " .. case[1], function()
+				local head = git("rev-parse", "HEAD")
+				git("checkout", "-q", "--detach")
+				local entry = { id = SESSION_ID, branch = "feature", scope = "commit", original_branch = "feature" }
+				entry[case[2]] = head
+				-- a __detached__ entry must not be picked instead of reporting the commit scope
+				write(
+					repo .. "/.fude/current.json",
+					{ vim.json.encode({ feature = entry, __detached__ = { id = SESSION_ID } }) }
+				)
+				local before = read_review()
+				for _, args in ipairs({ { "add", "lua/a.lua", "1", "1", body_file("[guide 1/1] x") }, { "clear" } }) do
+					local res = run(unpack(args))
+					assert.equals(1, res.code)
+					assert.is_truthy(res.stderr:find("commit scope", 1, true))
+				end
+				assert.equals(before, read_review())
+			end)
+		end
+
+		guarded_it("uses the __detached__ entry when a commit-scope entry names another commit", function()
+			git("commit", "-q", "--allow-empty", "-m", "second")
+			local head = git("rev-parse", "HEAD")
+			git("checkout", "-q", "--detach", "HEAD~1")
+			write(repo .. "/.fude/current.json", {
+				vim.json.encode({
+					feature = { id = "other", scope = "commit", scope_commit_sha = head },
+					__detached__ = { id = SESSION_ID },
+				}),
+			})
+			local res = run("add", "lua/a.lua", "1", "1", body_file("[guide 1/1] x"))
+			assert.equals(0, res.code, res.stderr)
 		end)
 
 		guarded_it("exits 2 on a usage error", function()
@@ -265,6 +351,36 @@ describe("fude-guide-comment.sh", function()
 			assert.equals(before, read_review())
 			assert.is_truthy(res.stderr:find("g1", 1, true))
 			assert.is_true(visible_ids().g1)
+		end)
+
+		guarded_it("ignores fields of an unexpected type and still deletes the other guides", function()
+			local f = assert(io.open(review_file, "a"))
+			f:write(
+				'{"event":"comment","id":"n1","path":"lua/a.lua","start_line":1,"end_line":1,"body":5,"author_type":"agent"}\n'
+			)
+			f:write('{"event":"comment","id":"n2","body":"[guide x","author_type":7}\n')
+			f:write('{"event":"reply","id":"n3","in_reply_to":["g1"],"body":"odd","author_type":"human"}\n')
+			f:write('{"event":"comment","id":42,"body":"[guide 1/1] numeric id"}\n')
+			f:write("not json\n")
+			f:close()
+			append_events({
+				event("comment", { id = "g1", body = "[guide 1/1] a", author = "claude", author_type = "agent" }),
+			})
+			local res = run("clear")
+			assert.equals(0, res.code, res.stderr)
+			local deleted = {}
+			for _, e in ipairs(store.parse_events(res.stdout)) do
+				deleted[e.id] = true
+			end
+			assert.are.same({ g1 = true }, deleted)
+		end)
+
+		guarded_it("fails with exit 1 and a reason when the session file cannot be read", function()
+			vim.fn.setfperm(review_file, "---------")
+			local res = run("clear")
+			vim.fn.setfperm(review_file, "rw-r--r--")
+			assert.equals(1, res.code)
+			assert.is_truthy(res.stderr:find("fude-guide: cannot read", 1, true))
 		end)
 
 		guarded_it("writes nothing when there is no guide comment", function()

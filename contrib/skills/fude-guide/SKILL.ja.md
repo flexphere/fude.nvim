@@ -7,8 +7,8 @@ description: PR本文（PRが無ければコミットメッセージ）と差分
 
 PR本文（またはコミットメッセージ）とブランチの差分を読み、変更行に `[guide 1/5] ...` のような
 ローカルレビューのコメントを書き込むスキル。レビュワーは fude.nvim で 1 から N の順に辿れば
-変更の全体を掴める。**コピーして各プロジェクトの `.claude/skills/fude-guide/` に配置し、
-必要に応じて調整すること。**
+変更の全体を掴める。コピーして各プロジェクトの `.claude/skills/fude-guide/` に配置し、
+必要に応じて調整すること。
 
 コメントは同梱の `fude-guide-comment.sh` で、現在のブランチの `:FudeReviewLocal` セッションの
 JSONL に追記する。Neovim では `:FudeReviewReload`（または `auto_reload`）の後に `[agent]`
@@ -37,20 +37,30 @@ JSONL に追記する。Neovim では `:FudeReviewReload`（または `auto_relo
 2. `BASE_REF` は `.fude/current.json` の `[KEY]` エントリの `base_ref`。ユーザーが
    `:FudeReviewLocalBase` で base を変えるとここが更新される。無ければ、エントリの `id` から
    `.fude/reviews/<id>.jsonl` の `session` イベント（1行目）の `base_ref` を使う。
-3. `KEY` のエントリが無ければ、「このブランチで `:FudeReviewLocal <base>` を先に実行してください」と
-   伝えて終了する。セッションが `commit` スコープにあって HEAD が detached になっている場合は、
-   そのスコープではコメントを置けないので、先に `:FudeReviewLocalScope` で別のスコープへ
-   切り替えてもらう。
-4. `MERGE_BASE=$(git merge-base "$BASE_REF" HEAD)`。失敗したら `origin/$BASE_REF` で再試行する。
+3. 先に `commit` スコープかどうかを確かめる。このスコープでは fude がコミットをチェックアウトする
+   （HEAD が detached になる）。セッションはブランチ名のキーに残り、`scope: "commit"` と、HEAD と同じ
+   `scope_commit_sha`（コミットの切り替え中は `pending_from_sha`）を持つ。このスコープではコメントが
+   表示されないので、HEAD が detached でそのようなエントリがあれば、先に `:FudeReviewLocalScope` で
+   別のスコープへ切り替えてもらうよう伝えて終了する。スクリプトもこの場合は書き込まずに終わる
+   （exit 1、stderr に "commit scope"）。
+4. `KEY` のエントリが無ければ、「このブランチで `:FudeReviewLocal <base>` を先に実行してください」と
+   伝えて終了する。
+5. `MERGE_BASE=$(git merge-base "$BASE_REF" HEAD)`。失敗したら `origin/$BASE_REF` で再試行する。
    セッションの `base` スコープが比べる相手と同じになる。
 
 ### 2. 入力を集める
 
-- 説明: `gh pr view --json number,title,body,baseRefName` を実行する。PR があればタイトルと本文を使う。
-  `baseRefName` が `BASE_REF` と違うときはユーザーに伝え、`BASE_REF` を使い続ける。PR が無い
+- 説明: ブランチ上では `gh pr view --json number,title,body,baseRefName` を実行する。detached HEAD では
+  番号なしの `gh pr view` は PR を見つけられないので、先にコミットから番号を引く:
+  `gh pr list --search "$(git rev-parse HEAD)" --state all --json number --jq '.[0].number'`。
+  そのあと `gh pr view <number> --json number,title,body,baseRefName` を実行する。PR があればタイトルと
+  本文を使う。`baseRefName` が `BASE_REF` と違うときはユーザーに伝え、`BASE_REF` を使い続ける。PR が無い
   （または `gh` が失敗した）ときは `git log --format=%B "$MERGE_BASE"..HEAD` のコミットメッセージを使う。
-- 差分: `git diff "$MERGE_BASE"`（merge-base と作業ツリーの差分。行番号はディスク上のファイル＝head 側の番号になる）。
-- 未追跡ファイル: `git status --porcelain` で `??` から始まる行は、`git diff` に出ない新しいファイルである。
+- 差分: `git diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ "$MERGE_BASE"`（merge-base と
+  作業ツリーの差分。行番号はディスク上のファイル＝head 側の番号になる）。オプションは、ユーザーの
+  `diff.external`・色・`diff.noprefix` の設定で出力が変わらないようにするため。
+- 未追跡ファイル: `git ls-files --others --exclude-standard` が、`git diff` に出ない新しいファイルを1行に1つずつ
+  出す（fude と同じ一覧。`git status --porcelain` は新しいディレクトリを1行にまとめてしまう）。
   全行が追加されたものとして扱う。
 
 ### 3. ガイドを計画する
@@ -73,7 +83,8 @@ bash <スキルの base directory>/fude-guide-comment.sh clear
 ```
 
 前回このスキルが書いたガイドコメント（agent が書いた、本文が `[guide ` で始まる thread の先頭）ごとに
-`delete` イベントを追記する。人が書いたコメントと返信には触れない。
+`delete` イベントを追記する。人が書いたコメントと返信には触れない。人の返信が付いていないガイドは、
+人が編集や resolve をしていても消える。
 
 人の返信が付いたガイド thread は、先頭を消すと返信まで見えなくなるので残す。残した thread ごとに
 `fude-guide: kept guide thread <id> because it has a reply from someone else` のような行が stderr に出る。
@@ -84,7 +95,8 @@ bash <スキルの base directory>/fude-guide-comment.sh clear
 
 `n` の昇順に、各コメントについて次を行う:
 
-1. 本文を scratchpad の一時ファイルに書く。`[guide <n>/<N>] ` で始め、次を短く書く:
+1. 本文を scratchpad の一時ファイルに書く。`[guide <n>/<N>] ` で始め
+   （`clear` がこの接頭辞でガイドを見つけるので、スクリプトはほかの本文を受け付けない）、次を短く書く:
    - この行で何が変わったか
    - PR本文（またはコミットメッセージ）のどの説明に対応するか
    - 次に何を読むか（例: 「次: [guide 3/6] これを呼び出している箇所」）
@@ -96,7 +108,8 @@ bash <スキルの base directory>/fude-guide-comment.sh clear
    ```
 
    `<path>` はリポジトリのルートからの相対パス。成功すると追記した JSON の 1 行を stdout に出す。
-   非 0 で終わったときは何も書かれていない。理由（範囲が不正、ファイルが無い、セッションが無い）が
+   非 0 で終わったときは何も書かれていない。理由（範囲やパスが不正、ファイルが無い、本文に接頭辞が無い、
+   セッションが無い、commit スコープ中）が
    stderr に出るので、引数を直してそのコメントをやり直す。直せないときは、途中までのガイドが残らないよう
    `clear` を実行してから、ユーザーに問題を伝える。
 
@@ -106,7 +119,8 @@ JSONL は直接書き換えない。追記のみのファイルで、このス�
 
 書き込んだコメントの一覧（番号、`path:開始-終了`、それぞれの要点を1行）をユーザーに示す。
 Neovim で `:FudeReviewReload` を実行する（または `auto_reload` を待つ）と表示されること、
-`:FudeReviewListComments` で一覧できることを伝える。手順4で `clear` が残した thread があれば、それも含める。
+`:FudeReviewListComments` で一覧できることを伝える。この一覧は新しいコメントから並ぶので、ガイド `N` が
+一番上に来る。一覧の順ではなく本文の番号で辿るよう伝える。手順4で `clear` が残した thread があれば、それも含める。
 
 ## 注意
 
