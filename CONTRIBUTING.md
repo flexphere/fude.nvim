@@ -65,10 +65,11 @@ make lint              # luacheck
 make format            # stylua（自動修正）
 make format-check      # stylua --check
 make test              # plenary-busted テスト
-make all               # lint + format-check + test + check-state-deps + check-purity + check-docs
+make all               # lint + format-check + test + check-state-deps + check-purity + check-docs + check-doc-lang
 make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
 make check-purity      # `*/data.lua` `*/format.lua` の純粋性 (vim API / state 不参照) 検証
 make check-docs        # lua/fude/commands.lua / plugin/fude.lua のコマンド登録と doc/fude.txt のタグの双方向整合性検証
+make check-doc-lang    # 利用者向け文書 (README.md / doc/fude.txt / contrib/ の Markdown / CONTRIBUTING.md の Collaborator guide より前) に日本語が残っていないかの検証
 make coverage          # luacov でテストカバレッジ計測 (要 `luarocks install --local luacov`)
 ```
 
