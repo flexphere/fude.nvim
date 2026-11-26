@@ -1926,10 +1926,12 @@ Options:
                   `Bash(git blame:*)`, `Bash(gh pr view:*)`,
                   `Bash(gh pr diff:*)`). The built-in tools named here
                   are also the only ones passed to `--tools`, so with
-                  the default list fude gives claude no tool that writes
-                  files. A list given here replaces the default one; an
-                  empty list offers no built-in tool. Your own Claude
-                  Code settings still apply, see |fude-chat-tools|.
+                  the default list there is no `Edit` or `Write` tool.
+                  The default is not strictly read-only, though: the
+                  allowed git commands can write a file, see
+                  |fude-chat-tools|. A list given here replaces the
+                  default one; an empty list offers no built-in tool.
+                  Your own Claude Code settings still apply.
 
 `chat.args`         Extra arguments appended to the claude command line
                   (default: {}). They come last, so they can override
@@ -2222,8 +2224,15 @@ GitHub review, worktree + branch in a local review (the unit
 |fude-drafts| use), so conversations of different targets never mix.
 The first question of a target starts a claude session under a new ID
 (`--session-id`); later questions continue it (`--resume`), also after
-|:FudeReviewStop| or a Neovim restart. claude runs in the repository
-root, where it keeps its own session data.
+|:FudeReviewStop| or a Neovim restart.
+
+claude keeps its own session data per working directory, so a
+conversation stays in one directory: the repository root its first
+question was asked in (stored with the conversation), whatever Neovim's
+current directory is later. When that directory no longer exists, the
+current repository root takes its place; claude does not find the
+session there, so a new one starts (see Failures below).
+|:FudeReviewChatNew| also forgets the directory.
 
 The session ID and the conversation shown in the panel (questions and
 answers, not the tool activity) are stored by fude under
@@ -2262,7 +2271,9 @@ When claude fails (non-zero exit, or an error result), the conversation
 shows `**Error:** <message>` after whatever text had arrived, and the
 question is put back in the input pane (in front of anything typed
 meanwhile). A failed exchange is not stored, so it is gone once the
-panel is reopened.
+panel is reopened. What claude writes to stderr is the error message of
+a failed run only: an answer that ended with exit code 0 is an answer,
+even if warnings were printed on the way.
 
 When the stored session no longer exists on claude's side, the question
 is sent once more in a new session and the conversation says so; the
@@ -2272,13 +2283,28 @@ only on claude's side), it is resumed instead, once.
 
 Windows~
 
-The two panes are not editor windows: file navigation started from them
-(|:FudeReviewNextFile| etc.) opens the file in an editor window, and the
-side panel never opens a file in them. When the panes are the only
-windows left in their tabpage (e.g. after `:bdelete`), an editor window
-showing the most recently used listed buffer opens at the opposite edge,
-as for the side panel; when the last editor window is closed with
-`:quit`, the chat panel is closed too so the quit takes effect.
+The two panes are not editor windows, and each keeps its buffer
+('winfixbuf'): `:edit` in a pane, or a picker of another plugin opened
+from it, is refused (E1513) instead of replacing the pane and losing the
+unsent question. Files fude opens while a pane is focused — the changed
+files pickers (|:FudeReviewFiles|), the comment browser's jump, file
+navigation (|:FudeReviewNextFile| etc.) — open in an editor window, as
+they do from the side panel, and the side panel never opens a file in a
+pane. A pane whose buffer was replaced by force (`:buffer!`) is an
+ordinary window from then on; the next |:FudeReviewChat| leaves it open
+and opens a new panel.
+
+Closing one pane closes the other. When that leaves no window (`:only`
+from a pane), the pane stays as an ordinary empty editor window.
+
+When the panes are the only windows left in their tabpage (e.g. after
+`:bdelete`), an editor window showing the most recently used listed
+buffer opens at the opposite edge, as for the side panel; when the last
+editor window is closed with `:quit`, the chat panel is closed too so
+the quit takes effect. With both panels in one tabpage the side panel
+does this for both; a side panel in another tabpage has no part in it,
+and its own `:quit` handling leaves a chat panel in another tabpage
+open.
 
 Tools and permissions~                                  *fude-chat-tools*
 
@@ -2295,10 +2321,34 @@ claude is run non-interactively: >
 tools exist, `--allowedTools` allows them in the listed forms only, and
 `dontAsk` denies whatever is not allowed instead of asking. With the
 default `chat.allowed_tools` that is `Read`, `Grep`, `Glob`, and `Bash`
-for `git diff/log/show/status/blame` and `gh pr view/diff`: fude itself
-gives claude no tool that writes files.
+for `git diff/log/show/status/blame` and `gh pr view/diff`: there is no
+`Edit` or `Write` tool in the session.
 
-This is not a sandbox. fude does not override your own Claude Code
+The default is not strictly read-only, though. `git diff`, `git log`,
+`git show` and `git blame` write their output to a file when given
+`--output=<path>`, and the default list allows those commands with any
+arguments. If claude follows an instruction hidden in a PR description
+or in the diff it reads, a file on your machine can be overwritten.
+(`git status` has no such option, and `gh pr view` / `gh pr diff` have
+no option that writes a file.) Two ways to close this:
+
+1. Refuse git commands containing `--output` with a deny rule: >lua
+    chat = { args = { "--disallowedTools", "Bash(git *--output*)" } }
+<   Checked with claude 2.1.332: `git diff HEAD` still runs, and eight
+   ways of writing the option (plain, quoted, split by quotes or
+   escapes, built from a variable or a command substitution, a `>`
+   redirection) were all refused. The guarantee depends on claude's
+   permission check, so other versions may differ.
+
+2. Give claude no git at all, which is the most robust: >lua
+    chat = {
+      allowed_tools = {
+        "Read", "Grep", "Glob",
+        "Bash(gh pr view:*)", "Bash(gh pr diff:*)",
+      },
+    }
+<
+This is not a sandbox either. fude does not override your own Claude Code
 configuration, so what you allowed there still works in the chat:
 `permissions.allow` rules in your user or project `settings.json`, and
 MCP servers with the MCP tools you allowed. To close that as well, pass

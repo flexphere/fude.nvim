@@ -26,7 +26,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
 - **Create PR** - Create draft PRs from templates with a two-pane float (title + body), picking the base branch from a fuzzy finder (default branch preselected)
 - **Open in browser** - Open the PR in your browser, or press `o` on a comment (comment viewer, comment browser, PR overview) to open it, on the PR overview body to open the PR, or on a side panel commit row to open the commit in the PR
-- **AI chat panel** - `:FudeReviewChat` opens a chat with [Claude Code](https://claude.com/claude-code) (`claude`) in a split at the editor edge: the conversation on top, your input below. Each review target (PR, or local branch) keeps its own conversation across review stops and Neovim restarts, `:FudeReviewChatAdd` pastes the selected lines with their path and line range into the input, and claude can read the repository with read-only tools by default (see [AI chat panel](#ai-chat-panel))
+- **AI chat panel** - `:FudeReviewChat` opens a chat with [Claude Code](https://claude.com/claude-code) (`claude`) in a split at the editor edge: the conversation on top, your input below. Each review target (PR, or local branch) keeps its own conversation across review stops and Neovim restarts, `:FudeReviewChatAdd` pastes the selected lines with their path and line range into the input, and claude can read the repository with a small set of tools by default (`Read`, `Grep`, `Glob`, a few `git` / `gh` commands; see [AI chat panel](#ai-chat-panel))
 - **Gitsigns integration** - Automatically switches gitsigns diff base to the review base (PR base branch, or the local scope's base)
 
 ## Requirements
@@ -456,7 +456,11 @@ output. Only one question is answered at a time.
   continue it (`--resume`), also after `:FudeReviewStop` or a Neovim restart.
   The conversation shown in the panel is stored by fude under
   `stdpath("state")/fude/chat/` and is never pruned; `:FudeReviewChatNew`
-  discards the target's session and conversation.
+  discards the target's session and conversation. claude runs in the
+  repository root the conversation's first question was asked in, whatever
+  Neovim's current directory is later (claude finds a session by its
+  directory); when that directory no longer exists, the current repository
+  root takes its place and a new session starts.
 - **What claude knows** - the PR number, URL and base/head branches (GitHub),
   or the branch (local review), are appended to its system prompt. In local
   review the base branch and the current scope can change during a
@@ -474,7 +478,12 @@ output. Only one question is answered at a time.
   arrived and your question is put back in the input pane. A failed exchange
   is not stored. When the stored session no longer exists on claude's side,
   the question is sent once more in a new session and the conversation says
-  so.
+  so. Warnings claude prints while it answers successfully are not errors.
+- **Windows** - the two panes keep their buffers (`'winfixbuf'`): `:edit` in a
+  pane is refused instead of replacing it, and files opened by fude from a
+  pane (file pickers, the comment browser, next/previous file) open in an
+  editor window. When the panes are the only windows left in their tabpage, an
+  editor window opens beside them, as for the side panel.
 
 ### Tools and permissions
 
@@ -482,8 +491,30 @@ claude runs non-interactively (`claude -p`) in the repository root with
 `--permission-mode dontAsk`, `--tools` limited to the built-in tools named in
 `chat.allowed_tools`, and `--allowedTools` set to that list. With the default
 list that means `Read`, `Grep`, `Glob` and `Bash` restricted to
-`git diff/log/show/status/blame` and `gh pr view/diff`: fude itself gives
-claude no tool that writes files. This is not a sandbox, though. fude does not
+`git diff/log/show/status/blame` and `gh pr view/diff`: there is no `Edit` or
+`Write` tool in the session.
+
+The default is not strictly read-only, though. `git diff`, `git log`,
+`git show` and `git blame` write their output to a file when given
+`--output=<path>`, and the default list allows those commands with any
+arguments. If claude follows an instruction hidden in a PR description or in
+the diff it reads, a file on your machine can be overwritten. Two ways to
+close this:
+
+```lua
+-- 1. Refuse git commands containing --output. Checked with claude 2.1.332:
+--    eight ways of writing --output= (plain, quoted, split by quotes or
+--    escapes, built from a variable or a command substitution, …) were all
+--    refused. The guarantee depends on claude's permission check.
+chat = { args = { "--disallowedTools", "Bash(git *--output*)" } }
+
+-- 2. Give claude no git at all (the most robust)
+chat = {
+  allowed_tools = { "Read", "Grep", "Glob", "Bash(gh pr view:*)", "Bash(gh pr diff:*)" },
+}
+```
+
+This is not a sandbox either. fude does not
 override your own Claude Code configuration, so anything you allowed there —
 `permissions.allow` rules in your user or project `settings.json`, MCP servers
 and the MCP tools you allowed — still works in the chat. To close that too,
