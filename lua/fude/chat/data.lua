@@ -72,6 +72,26 @@ function M.build_tool_names(allowed_tools)
 	return names
 end
 
+--- Value of `--setting-sources` that leaves out the project's and the local
+--- settings files.
+M.USER_SETTING_SOURCES = "user"
+
+--- Whether a list of extra arguments sets `--setting-sources` itself, as
+--- `--setting-sources <value>` or `--setting-sources=<value>`.
+--- @param extra_args any
+--- @return boolean
+function M.has_setting_sources(extra_args)
+	if type(extra_args) ~= "table" then
+		return false
+	end
+	for _, arg in ipairs(extra_args) do
+		if type(arg) == "string" and (arg == "--setting-sources" or arg:sub(1, 18) == "--setting-sources=") then
+			return true
+		end
+	end
+	return false
+end
+
 --- Build the claude command line for one question. The question itself is
 --- not part of it: it goes to claude's stdin, so a prompt that starts with
 --- `-` is never read as an option and the variadic `--allowedTools` cannot
@@ -82,8 +102,16 @@ end
 --- Write tool at all), and `--allowedTools` plus `--permission-mode dontAsk`
 --- lets those tools run only in the listed forms (`Bash(git diff:*)`).
 --- `extra_args` come last, so they can override any of the above.
+---
+--- With `user_settings_only`, `--setting-sources user` keeps claude from
+--- loading the project's and the local settings files: in a GitHub review
+--- the checkout is somebody else's pull request, and its
+--- `.claude/settings.json` could add hooks or allow rules that take effect
+--- on the first question. Left out when `extra_args` set the option
+--- themselves (`has_setting_sources`), so the user's choice is the only one
+--- on the command line.
 --- @param opts { cmd: string|nil, session_id: string, resume: boolean|nil, allowed_tools: string[]|nil,
----   system_prompt: string|nil, extra_args: string[]|nil }
+---   system_prompt: string|nil, extra_args: string[]|nil, user_settings_only: boolean|nil }
 --- @return string[] argv
 function M.build_claude_args(opts)
 	opts = opts or {}
@@ -99,9 +127,13 @@ function M.build_claude_args(opts)
 		opts.session_id,
 		"--permission-mode",
 		M.PERMISSION_MODE,
-		"--tools",
-		table.concat(M.build_tool_names(opts.allowed_tools), ","),
 	}
+	if opts.user_settings_only and not M.has_setting_sources(opts.extra_args) then
+		table.insert(args, "--setting-sources")
+		table.insert(args, M.USER_SETTING_SOURCES)
+	end
+	table.insert(args, "--tools")
+	table.insert(args, table.concat(M.build_tool_names(opts.allowed_tools), ","))
 	local specs = clean_tool_specs(opts.allowed_tools)
 	if #specs > 0 then
 		table.insert(args, "--allowedTools")
@@ -119,6 +151,22 @@ function M.build_claude_args(opts)
 		end
 	end
 	return args
+end
+
+--- The directory claude runs in: the root of the review in progress. GitHub
+--- review: the repository root the review was started in; local review: the
+--- session's worktree root. Never Neovim's cwd at question time, which may
+--- be in another repository.
+--- @param review_mode string|nil "github" | "local"
+--- @param repo_root string|nil root the GitHub review was started in
+--- @param local_session table|nil local review session ({ worktree_root, ... })
+--- @return string|nil
+function M.find_chat_root(review_mode, repo_root, local_session)
+	local root = repo_root
+	if review_mode == "local" then
+		root = type(local_session) == "table" and local_session.worktree_root or nil
+	end
+	return (type(root) == "string" and root ~= "") and root or nil
 end
 
 -- === System prompt ===
@@ -448,7 +496,7 @@ local MESSAGE_STATUSES = { done = true, cancelled = true }
 --- A chat with no session and no messages.
 --- @return { session_id: string|nil, started: boolean, messages: table[] }
 function M.build_empty_chat()
-	return { session_id = nil, started = false, root = nil, messages = {} }
+	return { session_id = nil, started = false, messages = {} }
 end
 
 --- Build one stored message.
@@ -476,7 +524,6 @@ function M.serialize_chat(chat, key)
 		key = key,
 		session_id = chat.session_id,
 		started = chat.started == true,
-		root = chat.root,
 		messages = messages,
 	})
 end
@@ -500,9 +547,6 @@ function M.deserialize_chat(text)
 	if M.is_uuid(obj.session_id) then
 		chat.session_id = obj.session_id
 		chat.started = obj.started == true
-	end
-	if type(obj.root) == "string" and obj.root ~= "" then
-		chat.root = obj.root
 	end
 	if type(obj.messages) == "table" then
 		for _, m in ipairs(obj.messages) do

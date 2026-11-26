@@ -993,6 +993,15 @@ function M.ensure_editor_window(panel)
 	end
 	local enter = vim.api.nvim_get_current_win() == panel.win
 	panel.prev_win = M.open_editor_window({ split = OPPOSITE_SPLIT[panel.split] or "right", win = panel.win }, enter)
+	-- The split halves the panel, which had grown to the whole tabpage: give
+	-- it its configured size back (winfix* only protects a size from later changes).
+	local size = panel.size or {}
+	if size.width then
+		pcall(vim.api.nvim_win_set_width, panel.win, size.width)
+	end
+	if size.height then
+		pcall(vim.api.nvim_win_set_height, panel.win, size.height)
+	end
 end
 
 --- Give a window the options of an ordinary editor window: the options a
@@ -1120,6 +1129,7 @@ function M.open()
 	local panel = {
 		win = win,
 		buf = buf,
+		size = { width = split.win_config.width, height = split.win_config.height },
 		scope_entries = {},
 		file_entries = {},
 		tree_entries = nil,

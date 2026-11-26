@@ -156,6 +156,45 @@ describe("chat.build_claude_args", function()
 		)
 	end)
 
+	it("reads only the user's settings when asked to", function()
+		local args = data.build_claude_args({ session_id = ID, allowed_tools = { "Read" }, user_settings_only = true })
+		assert.are.equal("user", args[index_of(args, "--setting-sources") + 1])
+		-- in front of the variadic tool options
+		assert.is_true(index_of(args, "--setting-sources") < index_of(args, "--allowedTools"))
+	end)
+
+	it("does not restrict the settings sources unless asked to", function()
+		assert.is_nil(index_of(data.build_claude_args({ session_id = ID }), "--setting-sources"))
+		assert.is_nil(
+			index_of(data.build_claude_args({ session_id = ID, user_settings_only = false }), "--setting-sources")
+		)
+	end)
+
+	it("leaves the settings sources to the extra arguments when they set them", function()
+		for _, extra in ipairs({
+			{ "--setting-sources", "user,project,local" },
+			{ "--model", "sonnet", "--setting-sources=user,project,local" },
+		}) do
+			local args = data.build_claude_args({ session_id = ID, user_settings_only = true, extra_args = extra })
+			local count = 0
+			for _, arg in ipairs(args) do
+				if arg:find("^%-%-setting%-sources") then
+					count = count + 1
+				end
+			end
+			assert.are.equal(1, count)
+			assert.is_nil(index_of(args, "user"))
+		end
+	end)
+
+	it("recognises --setting-sources among extra arguments", function()
+		assert.is_true(data.has_setting_sources({ "--setting-sources", "user" }))
+		assert.is_true(data.has_setting_sources({ "--x", "--setting-sources=project" }))
+		assert.is_false(data.has_setting_sources({ "--setting-sourcesx", "--model", "sonnet", 5 }))
+		assert.is_false(data.has_setting_sources({}))
+		assert.is_false(data.has_setting_sources(nil))
+	end)
+
 	it("offers no tool at all for an empty allowed list", function()
 		local args = data.build_claude_args({ session_id = ID, allowed_tools = {} })
 		assert.are.equal("", args[index_of(args, "--tools") + 1])
@@ -445,14 +484,9 @@ describe("chat stored format", function()
 		assert.are.same(stored, data.deserialize_chat(data.serialize_chat(stored, "o/r:#1:chat")))
 	end)
 
-	it("round-trips the directory the conversation runs in", function()
-		local stored = { session_id = ID, started = true, root = "/work/repo", messages = {} }
-		assert.are.equal("/work/repo", data.deserialize_chat(data.serialize_chat(stored)).root)
-	end)
-
-	it("drops a root that is not a non-empty string", function()
-		assert.is_nil(data.deserialize_chat(vim.json.encode({ session_id = ID, root = 5 })).root)
-		assert.is_nil(data.deserialize_chat(vim.json.encode({ session_id = ID, root = "" })).root)
+	it("does not keep a directory with the conversation", function()
+		local text = vim.json.encode({ session_id = ID, started = true, root = "/old/worktree", messages = {} })
+		assert.is_nil(data.deserialize_chat(text).root)
 	end)
 
 	it("round-trips an empty chat", function()
@@ -650,9 +684,7 @@ describe("chat.send", function()
 		config.state.pr_url = "https://github.com/o/r/pull/7"
 		config.state.base_ref = "main"
 		config.state.head_ref = "feat"
-		helpers.mock(require("fude.diff"), "get_repo_root", function()
-			return "/repo"
-		end)
+		config.state.repo_root = "/repo"
 		-- Never start a real claude: record the call and let the test feed output.
 		helpers.mock(chat, "run", function(cmd, opts, on_chunk, on_exit)
 			local run = { cmd = cmd, opts = opts, chunk = on_chunk, exit = on_exit, killed = false }
@@ -831,10 +863,8 @@ describe("chat.send", function()
 		assert.is_false(chat.is_running())
 	end)
 
-	it("refuses without a review target or a repository root", function()
-		helpers.mock(require("fude.diff"), "get_repo_root", function()
-			return nil
-		end)
+	it("refuses without a review target or a review root", function()
+		config.state.repo_root = nil
 		assert.are.same({ false, chat.ERR_NO_ROOT }, { chat.send("q", handlers()) })
 		config.reset_state()
 		assert.are.same({ false, chat.ERR_NO_TARGET }, { chat.send("q", handlers()) })
@@ -885,67 +915,101 @@ describe("chat.send", function()
 		assert.are.equal("connection lost", done_result().error)
 	end)
 
+	describe("settings sources", function()
+		it("keeps the pull request's project settings out of a GitHub review", function()
+			chat.send("q", handlers())
+			local cmd = runs[1].cmd
+			assert.are.equal("user", cmd[index_of(cmd, "--setting-sources") + 1])
+		end)
+
+		it("reads the project settings in a local review", function()
+			config.reset_state()
+			config.state.active = true
+			config.state.review_mode = "local"
+			config.state.local_session =
+				{ id = "s1", worktree_root = "/repo", branch = "feat", base_ref = "main", scope = "base" }
+			chat.send("q", handlers())
+			assert.is_nil(index_of(runs[1].cmd, "--setting-sources"))
+		end)
+
+		it("passes only the user's own --setting-sources from chat.args", function()
+			config.setup({ chat = { args = { "--setting-sources", "user,project,local" } } })
+			chat.send("q", handlers())
+			local cmd = runs[1].cmd
+			assert.are.equal("user,project,local", cmd[index_of(cmd, "--setting-sources") + 1])
+			assert.is_nil(index_of(cmd, "user"))
+		end)
+
+		it("keeps the restriction on the retry of a question", function()
+			chat.save(KEY, { session_id = ID, started = true, messages = {} })
+			chat.send("q", handlers())
+			runs[1].chunk(not_found_line(ID) .. "\n")
+			runs[1].exit(1, "")
+			assert.are.equal("user", runs[2].cmd[index_of(runs[2].cmd, "--setting-sources") + 1])
+		end)
+	end)
+
 	describe("working directory", function()
-		local dir_a, dir_b, current
-
-		before_each(function()
-			dir_a = vim.fn.tempname()
-			dir_b = vim.fn.tempname()
-			vim.fn.mkdir(dir_a, "p")
-			vim.fn.mkdir(dir_b, "p")
-			current = dir_a
+		it("is the root the GitHub review was started in, not Neovim's current repository", function()
+			-- e.g. vim-rooter or a manual :cd moved the cwd into another repository
 			helpers.mock(require("fude.diff"), "get_repo_root", function()
-				return current
+				return "/elsewhere"
 			end)
+			chat.send("q", handlers())
+			assert.are.equal("/repo", runs[1].opts.cwd)
 		end)
 
-		after_each(function()
-			vim.fn.delete(dir_a, "rf")
-			vim.fn.delete(dir_b, "rf")
+		it("is the worktree root of a local review", function()
+			config.reset_state()
+			config.state.active = true
+			config.state.review_mode = "local"
+			config.state.repo_root = "/not-this"
+			config.state.local_session =
+				{ id = "s1", worktree_root = "/work/tree", branch = "feat", base_ref = "main", scope = "base" }
+			chat.send("q", handlers())
+			assert.are.equal("/work/tree", runs[1].opts.cwd)
 		end)
 
-		local function answer(run)
-			run.chunk(init_line() .. "\n" .. success_line("a") .. "\n")
-			run.exit(0, "")
-		end
-
-		it("keeps the root of the first question after the repository root changed", function()
+		it("follows the review to another worktree and starts a new session when claude has none there", function()
 			chat.send("q1", handlers())
-			assert.are.equal(dir_a, runs[1].opts.cwd)
-			assert.are.equal(dir_a, chat.load(KEY).root)
-			answer(runs[1])
-			-- e.g. :cd into another repository during a GitHub review
-			current = dir_b
+			runs[1].chunk(init_line() .. "\n" .. success_line("a1") .. "\n")
+			runs[1].exit(0, "")
+			local first_id = chat.load(KEY).session_id
+			-- the same PR reviewed later from another worktree (stop, :cd, start)
+			config.reset_state()
+			assert.is_nil(config.state.repo_root)
+			config.state.active = true
+			config.state.review_mode = "github"
+			config.state.pr_number = 7
+			config.state.pr_url = "https://github.com/o/r/pull/7"
+			config.state.repo_root = "/other-worktree"
+			events = {}
 			chat.send("q2", handlers())
-			assert.are.equal(dir_a, runs[2].opts.cwd)
-			assert.are.equal(dir_a, chat.load(KEY).root)
+			assert.are.equal("/other-worktree", runs[2].opts.cwd)
+			assert.are.equal(first_id, runs[2].cmd[index_of(runs[2].cmd, "--resume") + 1])
+			-- claude keeps sessions per directory: the resume finds nothing there
+			runs[2].chunk(not_found_line(first_id) .. "\n")
+			runs[2].exit(1, "")
+			assert.are.equal(3, #runs)
+			assert.are.equal("/other-worktree", runs[3].opts.cwd)
+			local new_id = runs[3].cmd[index_of(runs[3].cmd, "--session-id") + 1]
+			assert.are_not.equal(first_id, new_id)
+			assert.are.same({ "retry", "new" }, events[1])
+			runs[3].chunk(init_line() .. "\n" .. success_line("a2") .. "\n")
+			runs[3].exit(0, "")
+			assert.are.equal("done", done_result().status)
+			assert.are.equal(4, #chat.load(KEY).messages)
 		end)
+	end)
 
-		it("keeps the stored root when no repository root can be found any more", function()
-			chat.send("q1", handlers())
-			answer(runs[1])
-			current = nil
-			assert.is_true(chat.send("q2", handlers()))
-			assert.are.equal(dir_a, runs[2].opts.cwd)
-		end)
-
-		it("moves to the current root when the stored directory is gone", function()
-			chat.send("q1", handlers())
-			answer(runs[1])
-			vim.fn.delete(dir_a, "rf")
-			current = dir_b
-			chat.send("q2", handlers())
-			assert.are.equal(dir_b, runs[2].opts.cwd)
-			assert.are.equal(dir_b, chat.load(KEY).root)
-		end)
-
-		it("starts from the current root again after the chat was discarded", function()
-			chat.send("q1", handlers())
-			answer(runs[1])
-			chat.discard(KEY)
-			current = dir_b
-			chat.send("q2", handlers())
-			assert.are.equal(dir_b, runs[2].opts.cwd)
+	describe("chat.find_chat_root", function()
+		it("picks the review's root by mode and ignores unusable values", function()
+			assert.are.equal("/r", data.find_chat_root("github", "/r", nil))
+			assert.are.equal("/w", data.find_chat_root("local", "/r", { worktree_root = "/w" }))
+			assert.is_nil(data.find_chat_root("local", "/r", nil))
+			assert.is_nil(data.find_chat_root("local", "/r", { worktree_root = "" }))
+			assert.is_nil(data.find_chat_root("github", nil, { worktree_root = "/w" }))
+			assert.is_nil(data.find_chat_root("github", "", nil))
 		end)
 	end)
 

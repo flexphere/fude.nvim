@@ -83,6 +83,23 @@ describe("init integration", function()
 			assert.is_true(config.state.active)
 		end)
 
+		it("records the repository root the review was started in until the state is reset", function()
+			local root = "/started/here"
+			helpers.mock(require("fude.diff"), "get_repo_root", function()
+				return root
+			end)
+			init.start()
+			helpers.wait_for(function()
+				return config.state.active
+			end)
+			-- a later :cd into another repository does not move the review
+			root = "/elsewhere"
+			assert.are.equal("/started/here", config.state.repo_root)
+			config.state.scope = "full_pr"
+			init.stop()
+			assert.is_nil(config.state.repo_root)
+		end)
+
 		it("sets PR information in state", function()
 			init.start()
 

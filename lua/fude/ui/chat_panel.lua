@@ -502,6 +502,9 @@ local function ensure_editor_window(panel)
 	local enter = M.is_panel_window(vim.api.nvim_get_current_win())
 	panel.prev_win =
 		require("fude.ui.sidepanel").open_editor_window({ split = OPPOSITE_SPLIT[panel.split], win = -1 }, enter)
+	-- The new window takes half of the tabpage the panes had grown into: give
+	-- the panel its configured width back (the two panes share one column).
+	pcall(vim.api.nvim_win_set_width, panel.log_win, panel.width)
 end
 
 --- A :quit closed the last editor window: let it reach Neovim (or close the
@@ -555,11 +558,8 @@ function M.open()
 	vim.bo[input_buf].bufhidden = "wipe"
 
 	-- Top-level split: the panel sits at the tabpage edge whatever window is focused.
-	local log_win = vim.api.nvim_open_win(log_buf, true, {
-		split = split,
-		win = -1,
-		width = data.calculate_panel_width(opts.width, vim.o.columns),
-	})
+	local width = data.calculate_panel_width(opts.width, vim.o.columns)
+	local log_win = vim.api.nvim_open_win(log_buf, true, { split = split, win = -1, width = width })
 	local input_height = math.max(1, math.min(M.INPUT_HEIGHT, math.floor((vim.o.lines - vim.o.cmdheight) / 3)))
 	local input_win = vim.api.nvim_open_win(input_buf, true, { split = "below", win = log_win, height = input_height })
 
@@ -590,6 +590,7 @@ function M.open()
 		input_buf = input_buf,
 		prev_win = prev_win,
 		split = split,
+		width = width,
 	}
 	state.chat_panel = panel
 
@@ -609,7 +610,11 @@ function M.open()
 				-- window from here would abort the command that closed the first
 				-- pane (`:only` from a pane: E855), so that waits for it to end.
 				local other = closed_win == log_win and input_win or log_win
-				if vim.api.nvim_get_current_win() == other then
+				local current = vim.api.nvim_get_current_win()
+				local current_buf = vim.api.nvim_win_get_buf(current)
+				-- `<C-w>T` in a pane closes it after opening a new window on its
+				-- buffer in a new tabpage, which is the current window by now.
+				if current == other or current_buf == log_buf or current_buf == input_buf then
 					vim.schedule(function()
 						if config.state.chat_panel == panel then
 							M.close()
@@ -683,9 +688,13 @@ function M.close()
 		-- Insert mode belongs to the input pane, not to the window focus returns to.
 		vim.cmd("stopinsert")
 	end
-	-- A window whose buffer was replaced by force is not a pane any more.
-	for win, buf in pairs({ [panel.log_win] = panel.log_buf, [panel.input_win] = panel.input_buf }) do
-		if shows(win, buf) then
+	-- Every window on a pane buffer goes, not only the two the panel opened: a
+	-- pane moved to another tabpage (`<C-w>T`) or split is a new window on the
+	-- same buffer, and would stay behind without its panel.
+	local seen = {}
+	for _, buf in ipairs({ panel.log_buf, panel.input_buf }) do
+		for _, win in ipairs(vim.api.nvim_buf_is_valid(buf) and vim.fn.win_findbuf(buf) or {}) do
+			seen[win] = true
 			local ok, err = pcall(vim.cmd, "noautocmd call nvim_win_close(" .. win .. ", v:true)")
 			if not ok and type(err) == "string" and err:find("Cannot close last window") then
 				-- The pane stays as the editor's last window (e.g. `:only` from a
@@ -695,7 +704,12 @@ function M.close()
 					pcall(vim.cmd, "enew")
 				end)
 			end
-		elseif vim.api.nvim_win_is_valid(win) then
+		end
+	end
+	-- A window whose buffer was replaced by force is not a pane any more: it
+	-- stays open, as an ordinary window.
+	for _, win in ipairs({ panel.log_win, panel.input_win }) do
+		if not seen[win] and vim.api.nvim_win_is_valid(win) then
 			require("fude.ui.sidepanel").reset_window_options(win)
 		end
 	end

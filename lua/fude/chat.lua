@@ -8,7 +8,6 @@
 local M = {}
 local config = require("fude.config")
 local data = require("fude.chat.data")
-local diff = require("fude.diff")
 local drafts = require("fude.drafts")
 local store = require("fude.local.store")
 
@@ -16,6 +15,7 @@ local store = require("fude.local.store")
 M.is_uuid = data.is_uuid
 M.build_tool_names = data.build_tool_names
 M.build_claude_args = data.build_claude_args
+M.has_setting_sources = data.has_setting_sources
 M.build_system_prompt = data.build_system_prompt
 M.build_prompt_context = data.build_prompt_context
 M.build_prompt_input = data.build_prompt_input
@@ -24,6 +24,7 @@ M.parse_stream_line = data.parse_stream_line
 M.is_session_not_found = data.is_session_not_found
 M.is_session_in_use = data.is_session_in_use
 M.find_session_retry = data.find_session_retry
+M.find_chat_root = data.find_chat_root
 M.format_tool_use = data.format_tool_use
 M.build_empty_chat = data.build_empty_chat
 M.build_message = data.build_message
@@ -355,6 +356,8 @@ start_process = function(job)
 		allowed_tools = opts.allowed_tools,
 		system_prompt = data.build_system_prompt(job.state),
 		extra_args = opts.args,
+		-- A GitHub review's checkout is the pull request's: its settings are not the user's.
+		user_settings_only = job.state.review_mode ~= "local",
 	})
 	job.pending = ""
 	-- Each process gets its own token, so output of the one a retry replaced
@@ -395,10 +398,11 @@ end
 --- The first question of a target starts a session under a new UUID
 --- (`--session-id`); later ones resume it (`--resume`). When the resumed
 --- session no longer exists, the question is sent once more under a new id
---- and `on_retry("new")` tells the caller. claude runs in the repository
---- root the conversation's first question was asked in (kept in the stored
---- chat; the current root when that directory is gone) with the question on
---- stdin.
+--- and `on_retry("new")` tells the caller. claude runs in the root of the
+--- review in progress (`find_chat_root`) with the question on stdin. claude
+--- keeps its sessions per directory, so a target reviewed from another
+--- worktree or clone than last time does not find the stored session there
+--- and starts over this way.
 ---
 --- Handlers run on the main loop, and only while the review session the
 --- question was asked in is still the active one:
@@ -423,27 +427,18 @@ function M.send(prompt, handlers)
 	if not key then
 		return false, M.ERR_NO_TARGET
 	end
-	local chat = M.load(key)
-	-- The conversation keeps the directory it started in: claude looks a
-	-- session up by its working directory, and a GitHub review's root would
-	-- otherwise follow Neovim's cwd. A directory that is gone is replaced by
-	-- the current root (the resume then fails and a new session starts).
-	local root = chat.root
-	local changed = false
-	if not root or vim.fn.isdirectory(root) ~= 1 then
-		root = diff.get_repo_root()
-		if not root then
-			return false, M.ERR_NO_ROOT
-		end
-		chat.root = root
-		changed = true
+	-- The root of the review in progress, never Neovim's cwd (which may sit in
+	-- another repository) and never a directory remembered from an earlier
+	-- review of the same target (which may be another worktree or clone).
+	local root = data.find_chat_root(state.review_mode, state.repo_root, state.local_session)
+	if not root then
+		return false, M.ERR_NO_ROOT
 	end
+
+	local chat = M.load(key)
 	if not chat.session_id then
 		chat.session_id = store.generate_uuid()
 		chat.started = false
-		changed = true
-	end
-	if changed then
 		-- Stored before the run, so the id survives a Neovim exit mid-answer.
 		M.save(key, chat)
 	end

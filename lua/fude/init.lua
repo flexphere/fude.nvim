@@ -185,6 +185,8 @@ function M.start()
 		state.base_sha = type(pr_info.baseRefOid) == "string" and pr_info.baseRefOid ~= "" and pr_info.baseRefOid or nil
 		state.head_ref = pr_info.headRefName
 		state.pr_url = pr_info.url
+		-- Captured before the PR lookup: a :cd during it must not move the review.
+		state.repo_root = repo_root
 		state.pr_title = type(pr_info.title) == "string" and pr_info.title or nil
 
 		if pr_info.state and pr_info.state:upper() == "MERGED" then

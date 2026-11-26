@@ -244,6 +244,7 @@ describe("chat panel", function()
 		config.state.pr_url = "https://github.com/o/r/pull/7"
 		config.state.base_ref = "main"
 		config.state.head_ref = "feat"
+		config.state.repo_root = "/repo"
 	end
 
 	before_each(function()
@@ -1161,6 +1162,79 @@ describe("chat panel", function()
 			end))
 			assert.are.equal(p, panel())
 			assert.is_true(chat_panel.is_open())
+		end)
+
+		describe("on a wide screen", function()
+			local columns
+
+			before_each(function()
+				columns = vim.o.columns
+				vim.o.columns = 200
+			end)
+
+			after_each(function()
+				pcall(vim.cmd, "silent! only")
+				vim.o.columns = columns
+			end)
+
+			it("keeps the configured width when the editor window is reopened", function()
+				local editor = vim.api.nvim_get_current_win()
+				chat_panel.open()
+				local p = panel()
+				assert.are.equal(60, vim.api.nvim_win_get_width(p.log_win))
+				vim.api.nvim_win_close(editor, true)
+				assert.is_true(helpers.wait_for(function()
+					return #vim.api.nvim_tabpage_list_wins(0) == 3
+				end))
+				assert.are.equal(60, vim.api.nvim_win_get_width(p.log_win))
+				assert.are.equal(60, vim.api.nvim_win_get_width(p.input_win))
+			end)
+
+			it("keeps the side panel's configured width when its editor window is reopened", function()
+				local editor = vim.api.nvim_get_current_win()
+				sidepanel.open()
+				local side_win = config.state.sidepanel.win
+				local width = vim.api.nvim_win_get_width(side_win)
+				assert.are.equal(config.opts.sidepanel.width, width)
+				vim.api.nvim_win_close(editor, true)
+				assert.is_true(helpers.wait_for(function()
+					return #vim.api.nvim_tabpage_list_wins(0) == 2
+				end))
+				assert.are.equal(width, vim.api.nvim_win_get_width(side_win))
+			end)
+		end)
+
+		it("closes the whole panel when a pane is moved to another tabpage", function()
+			local tab = vim.api.nvim_get_current_tabpage()
+			chat_panel.open()
+			set_input({ "unsent" })
+			local p = panel()
+			vim.api.nvim_set_current_win(p.input_win)
+			vim.cmd("wincmd T")
+			assert.is_true(helpers.wait_for(function()
+				return config.state.chat_panel == nil
+			end))
+			-- no window is left on a pane buffer, in any tabpage
+			assert.is_false(vim.api.nvim_buf_is_valid(p.input_buf))
+			assert.is_false(vim.api.nvim_buf_is_valid(p.log_buf))
+			assert.are.same({ tab }, vim.api.nvim_list_tabpages())
+			assert.are.same({ "unsent" }, config.state.chat_input)
+			-- and the next toggle opens a working panel with the input back
+			chat_panel.toggle()
+			assert.is_true(chat_panel.is_open())
+			assert.are.same({ "unsent" }, input_lines())
+		end)
+
+		it("closes a second window opened on a pane buffer with the panel", function()
+			chat_panel.open()
+			local p = panel()
+			vim.api.nvim_set_current_win(p.log_win)
+			vim.cmd("split")
+			local extra = vim.api.nvim_get_current_win()
+			assert.are.equal(p.log_buf, vim.api.nvim_win_get_buf(extra))
+			chat_panel.close()
+			assert.is_false(vim.api.nvim_win_is_valid(extra))
+			assert.is_false(vim.api.nvim_win_is_valid(p.log_win))
 		end)
 
 		it("opens an editor window when its panes are the only windows left", function()

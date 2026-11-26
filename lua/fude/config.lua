@@ -223,6 +223,7 @@ M.state = {
 	base_sha = nil, -- PR's base commit from GitHub (base.sha), where merge_base_sha starts from
 	merge_base_sha = nil, -- Merge-base SHA for gitsigns (avoids merge commit noise)
 	pr_url = nil,
+	repo_root = nil, -- Repository root the GitHub review was started in (the chat's working directory)
 	pr_title = nil, -- PR title from the PR lookup at review start (side panel copy)
 	changed_files = {},
 	file_views = {}, -- buffer -> last source view during this review session
@@ -289,6 +290,7 @@ function M.reset_state()
 		base_sha = nil,
 		merge_base_sha = nil,
 		pr_url = nil,
+		repo_root = nil,
 		pr_title = nil,
 		changed_files = {},
 		file_views = {},
