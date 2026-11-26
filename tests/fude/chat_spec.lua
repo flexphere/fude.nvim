@@ -712,11 +712,12 @@ describe("chat.send", function()
 		config.state.repo_root = "/repo"
 		-- Never start a real claude: record the call and let the test feed output.
 		helpers.mock(chat, "run", function(cmd, opts, on_chunk, on_exit)
-			local run = { cmd = cmd, opts = opts, chunk = on_chunk, exit = on_exit, killed = false }
+			local run = { cmd = cmd, opts = opts, chunk = on_chunk, exit = on_exit, killed = false, signals = {} }
 			table.insert(runs, run)
 			return {
-				kill = function()
+				kill = function(signal)
 					run.killed = true
+					table.insert(run.signals, signal or "sigterm")
 				end,
 			}
 		end)
@@ -903,6 +904,7 @@ describe("chat.send", function()
 		runs[1].exit(1, "")
 		local result = done_result()
 		assert.are.equal("error", result.status)
+		-- no note: the question comes back to be sent again
 		assert.are.equal("API Error: 529", result.error)
 		assert.are.equal("q", result.prompt)
 		assert.is_false(result.stored)
@@ -925,9 +927,16 @@ describe("chat.send", function()
 		assert.are.equal("half an answer", messages[2].text)
 		assert.are.equal("error", messages[2].status)
 		assert.are.equal(result.error, messages[2].error)
-		-- reopening shows the error where the live conversation showed it
+		-- the error says that the question is kept and how to go on
+		assert.are.equal("error_max_turns\n" .. data.RECORDED_NOTE, result.error)
+		-- reopening shows the error and the note where the live conversation showed them
 		local lines = data.format_chat_lines(messages)
-		assert.is_true(vim.tbl_contains(lines, "**Error:** " .. result.error))
+		assert.is_true(vim.tbl_contains(lines, "**Error:** error_max_turns"))
+		assert.is_true(vim.tbl_contains(lines, data.RECORDED_NOTE))
+		assert.are.same(
+			data.format_answer_end_lines("error", result.error, true),
+			vim.list_slice(lines, #lines - 3, #lines)
+		)
 		-- and the next question continues that session
 		chat.send("q2", handlers())
 		assert.is_not_nil(index_of(runs[2].cmd, "--resume"))
@@ -1253,19 +1262,50 @@ describe("chat.send", function()
 		assert.are.equal(1, #runs)
 	end)
 
-	it("starts the waiting question anyway when the stopped process does not exit", function()
-		local timeout = chat.DRAIN_TIMEOUT_MS
+	it("sends only SIGTERM to a process that exits in time", function()
+		local drain = chat.DRAIN_TIMEOUT_MS
+		chat.DRAIN_TIMEOUT_MS = 20
+		chat.send("q1", handlers())
+		chat.cancel()
+		runs[1].exit(143, "")
+		vim.wait(80)
+		chat.DRAIN_TIMEOUT_MS = drain
+		assert.are.same({ "sigterm" }, runs[1].signals)
+	end)
+
+	it("kills a stopped process that does not exit, and starts the waiting question when it is gone", function()
+		local drain = chat.DRAIN_TIMEOUT_MS
 		chat.DRAIN_TIMEOUT_MS = 20
 		chat.send("q1", handlers())
 		chat.cancel()
 		chat.send("q2", handlers())
+		assert.are.same({ "sigterm" }, runs[1].signals)
+		assert.is_true(helpers.wait_for(function()
+			return #runs[1].signals == 2
+		end))
+		chat.DRAIN_TIMEOUT_MS = drain
+		assert.are.same({ "sigterm", "sigkill" }, runs[1].signals)
+		-- not before the killed process reported its exit
 		assert.are.equal(1, #runs)
+		runs[1].exit(137, "")
+		assert.are.equal(2, #runs)
+		assert.are.equal("q2", runs[2].opts.stdin)
+	end)
+
+	it("starts the waiting question a short while after SIGKILL when no exit is reported", function()
+		local drain, kill = chat.DRAIN_TIMEOUT_MS, chat.KILL_TIMEOUT_MS
+		chat.DRAIN_TIMEOUT_MS = 20
+		chat.KILL_TIMEOUT_MS = 20
+		chat.send("q1", handlers())
+		chat.cancel()
+		chat.send("q2", handlers())
 		assert.is_true(helpers.wait_for(function()
 			return #runs == 2
 		end))
-		chat.DRAIN_TIMEOUT_MS = timeout
+		chat.DRAIN_TIMEOUT_MS, chat.KILL_TIMEOUT_MS = drain, kill
+		assert.are.same({ "sigterm", "sigkill" }, runs[1].signals)
 		-- its late exit starts nothing more
-		runs[1].exit(143, "")
+		runs[1].exit(137, "")
 		assert.are.equal(2, #runs)
 	end)
 
@@ -1353,6 +1393,28 @@ describe("chat.run", function()
 			return exit ~= nil
 		end))
 		assert.are_not.equal(0, exit)
+	end)
+
+	it("kill sends the signal it is given", function()
+		local exit
+		local handle = chat.run(
+			{ "sh", "-c", "trap '' TERM; while :; do sleep 1; done" },
+			{},
+			function() end,
+			function(code)
+				exit = code
+			end
+		)
+		vim.wait(200)
+		handle.kill("sigterm")
+		vim.wait(300)
+		-- SIGTERM is ignored by this process; SIGKILL cannot be
+		assert.is_nil(exit)
+		handle.kill("sigkill")
+		assert.is_true(helpers.wait_for(function()
+			return exit ~= nil
+		end))
+		assert.are.equal(128 + 9, exit)
 	end)
 
 	it("returns an error when the command does not exist", function()

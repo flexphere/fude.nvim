@@ -58,8 +58,26 @@ local running = nil
 local draining = nil
 local waiting = nil
 
---- How long a question waits for a stopped process to exit before it starts anyway.
+--- How long a process sent SIGTERM may take to exit before it is sent SIGKILL.
 M.DRAIN_TIMEOUT_MS = 3000
+
+--- How long the exit of a process sent SIGKILL is waited for before a
+--- waiting question starts anyway.
+M.KILL_TIMEOUT_MS = 1000
+
+--- The stopped process is gone (or given up on): start the question waiting for it.
+--- @param token table the token `draining` must still hold
+local function end_drain(token)
+	if draining ~= token then
+		return
+	end
+	draining = nil
+	local start = waiting
+	waiting = nil
+	if start then
+		start()
+	end
+end
 
 -- === Config helpers ===
 
@@ -192,8 +210,9 @@ function M.run(cmd, opts, on_chunk, on_exit)
 		return nil, tostring(obj)
 	end
 	return {
-		kill = function()
-			pcall(obj.kill, obj, "sigterm")
+		--- @param signal string|nil "sigterm" (default) or "sigkill"
+		kill = function(signal)
+			pcall(obj.kill, obj, signal or "sigterm")
 		end,
 	}
 end
@@ -238,6 +257,10 @@ local function finish(job, status, err)
 	job.finished = true
 	if running == job then
 		running = nil
+	end
+	if status == "error" and job.recorded then
+		-- claude has the question: say so where the error is shown and stored.
+		err = (err or "unknown error") .. "\n" .. data.RECORDED_NOTE
 	end
 	local save_err = job.save_error
 	local stored = false
@@ -434,14 +457,7 @@ start_process = function(job)
 		handle_lines(job, lines)
 	end, function(code, stderr)
 		-- A stopped process is gone now: the question waiting for that may start.
-		if draining == token then
-			draining = nil
-			local start = waiting
-			waiting = nil
-			if start then
-				start()
-			end
-		end
+		end_drain(token)
 		if job.finished or job.token ~= token then
 			return
 		end
@@ -483,7 +499,8 @@ end
 ---                    failure only when claude had taken the question);
 ---                    save_error: the chat could not be written to disk
 --- A question sent while a stopped process is still exiting is accepted but
---- starts when that process is gone (at the latest after DRAIN_TIMEOUT_MS).
+--- starts when that process is gone (it is sent SIGKILL after
+--- DRAIN_TIMEOUT_MS; at the latest KILL_TIMEOUT_MS after that).
 --- `on_done` may run before `send` returns (the command could not be started).
 --- @param prompt string
 --- @param handlers table|nil
@@ -549,23 +566,12 @@ function M.send(prompt, handlers)
 	if draining then
 		-- The process of the answer just stopped is still exiting: two claude
 		-- processes must not write the same session at once, so this question
-		-- starts when that one is gone (or stopped answering to SIGTERM).
-		local token = draining
-		local function start()
+		-- starts when that one is gone (`cancel` sees to it that it goes).
+		waiting = function()
 			if not job.finished then
 				start_process(job)
 			end
 		end
-		waiting = start
-		vim.defer_fn(function()
-			if draining == token then
-				draining = nil
-				if waiting == start then
-					waiting = nil
-					start()
-				end
-			end
-		end, M.DRAIN_TIMEOUT_MS)
 	else
 		start_process(job)
 	end
@@ -582,9 +588,21 @@ function M.cancel()
 		return false
 	end
 	if job.handle then
-		job.handle.kill()
-		-- SIGTERM was sent, the process is not gone yet (see `send`).
-		draining = job.token
+		local handle, token = job.handle, job.token
+		handle.kill()
+		-- SIGTERM was sent, the process is not gone yet (see `send`). One that
+		-- does not exit is killed, and when even that brings no exit, a
+		-- waiting question starts after a short while all the same.
+		draining = token
+		vim.defer_fn(function()
+			if draining ~= token then
+				return
+			end
+			handle.kill("sigkill")
+			vim.defer_fn(function()
+				end_drain(token)
+			end, M.KILL_TIMEOUT_MS)
+		end, M.DRAIN_TIMEOUT_MS)
 	end
 	finish(job, "cancelled")
 	return true

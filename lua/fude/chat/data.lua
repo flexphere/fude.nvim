@@ -593,6 +593,9 @@ M.ASSISTANT_HEADING = "## Claude"
 M.CANCELLED_MARK = "*(interrupted)*"
 --- Line telling that claude's session was gone and a new one was started.
 M.NEW_SESSION_NOTE = "*(The previous claude session was not found. Started a new one.)*"
+--- Line after the error of a question that failed once claude had taken it
+--- into its session (it is not handed back to the input).
+M.RECORDED_NOTE = "*(The question is part of the conversation. Send your next question to continue.)*"
 --- Name shown for a buffer without a file name.
 M.NO_NAME = "[No Name]"
 

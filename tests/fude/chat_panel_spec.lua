@@ -752,6 +752,8 @@ describe("chat panel", function()
 			assert.is_nil(config.state.chat_input)
 			local live = log_lines()
 			assert.truthy(table.concat(live, "\n"):find("**Error:**", 1, true))
+			-- and the log says why the input is empty and how to go on
+			assert.is_true(vim.tbl_contains(live, data.RECORDED_NOTE))
 			chat_panel.close()
 			chat_panel.open()
 			assert.are.same(live, log_lines())
