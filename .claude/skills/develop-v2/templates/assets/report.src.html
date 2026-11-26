@@ -1,0 +1,502 @@
+<title>開発報告</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 墨と朱の報告書。上に固定のヘッダー、広い画面では左に目次、本文は 1 カラムの節の連なり */
+:root {
+  --paper: #f3f3f0; --sheet: #ffffff; --ink: #1f1d1a; --ink-2: #57544e; --rule: #dcdad4; --wash: #ebeae5;
+  --shu: #b8222f; --shu-wash: #f7e4e5; --ok: #2d6a4f; --ok-wash: #e2efe8; --mid: #8a5a00; --mid-wash: #f6ecd9;
+  --display: "Zen Kaku Gothic New", "Hiragino Sans", sans-serif;
+  --body: "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --hdr: 64px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --paper: #121315; --sheet: #1a1b1e; --ink: #ecebe6; --ink-2: #a3a19a; --rule: #2d2e32; --wash: #222327;
+  --shu: #e0535e; --shu-wash: #3a1e21; --ok: #6cc59a; --ok-wash: #183026; --mid: #e3b25c; --mid-wash: #352a16; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --paper: #121315; --sheet: #1a1b1e; --ink: #ecebe6; --ink-2: #a3a19a; --rule: #2d2e32; --wash: #222327;
+  --shu: #e0535e; --shu-wash: #3a1e21; --ok: #6cc59a; --ok-wash: #183026; --mid: #e3b25c; --mid-wash: #352a16; color-scheme: dark }
+
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.75; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--sheet); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--shu); outline-offset: 2px; }
+
+/* ヘッダー */
+.hdr { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--sheet); border-bottom: 1px solid var(--rule); }
+.hdr-in { max-width: 1160px; margin: 0 auto; height: var(--hdr); display: flex; align-items: center; gap: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.logo { display: flex; align-items: center; flex: none; }
+.logo img { height: 30px; width: auto; display: block; }
+.logo .for-dark { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .logo .for-dark { display: block; } :root:not([data-theme="light"]) .logo .for-light { display: none; } }
+:root[data-theme="dark"] .logo .for-dark { display: block; }
+:root[data-theme="dark"] .logo .for-light { display: none; }
+.hdr-title { min-width: 0; flex: 1; font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 1px solid var(--rule); padding-left: 16px; }
+.theme { flex: none; margin-left: auto; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--rule); border-radius: 50%;
+  background: var(--sheet); color: var(--ink-2); cursor: pointer; padding: 0; }
+.theme:hover { color: var(--ink); border-color: var(--ink-2); }
+.theme svg { width: 18px; height: 18px; display: block; }
+.theme .sun { display: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .theme .sun { display: block; } :root:not([data-theme="light"]) .theme .moon { display: none; } }
+:root[data-theme="dark"] .theme .sun { display: block; }
+:root[data-theme="dark"] .theme .moon { display: none; }
+
+/* 全体の枠 */
+.frame { max-width: 1160px; margin: 0 auto; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 40px;
+  padding-block: 32px 96px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.toc { position: sticky; top: calc(var(--hdr) + env(safe-area-inset-top, 0px) + 24px); align-self: start; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.toc a { text-decoration: none; color: var(--ink-2); padding: 6px 10px; border-left: 2px solid transparent; }
+.toc a:hover { color: var(--ink); }
+.toc a.on { color: var(--ink); border-left-color: var(--shu); font-weight: 500; }
+.toc .n { font-family: var(--mono); font-size: 11px; color: var(--shu); margin-left: 6px; }
+main { min-width: 0; display: flex; flex-direction: column; gap: 56px; }
+
+@media (max-width: 900px) {
+  .frame { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 0; }
+  .toc { position: sticky; top: calc(var(--hdr) + env(safe-area-inset-top, 0px)); z-index: 10; flex-direction: row; overflow-x: auto; gap: 4px;
+    background: var(--paper); margin: 0 calc(-1 * max(16px, env(safe-area-inset-left, 0px))) 24px; padding: 10px max(16px, env(safe-area-inset-left, 0px));
+    border-bottom: 1px solid var(--rule); scrollbar-width: none; }
+  .toc a { white-space: nowrap; border: 1px solid var(--rule); border-radius: 999px; padding: 4px 12px; background: var(--sheet); }
+  .toc a.on { border-color: var(--shu); }
+  .hdr-title { display: none; }
+}
+@media (max-width: 420px) { .logo img { height: 24px; } }
+
+/* 表題 */
+.hero { display: flex; flex-direction: column; gap: 16px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; color: var(--ink-2); letter-spacing: .06em; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+h1 { font-family: var(--display); font-weight: 900; font-size: clamp(1.6rem, 4vw, 2.3rem); line-height: 1.3; margin: 0; text-wrap: balance; }
+.summary { margin: 0; max-width: 68ch; color: var(--ink-2); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+.fact { background: var(--sheet); padding: 12px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fact .k { font-size: 12px; color: var(--ink-2); }
+.fact .v { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+/* 節 */
+section { scroll-margin-top: calc(var(--hdr) + env(safe-area-inset-top, 0px) + 64px); display: flex; flex-direction: column; gap: 16px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 1.3rem; margin: 0; display: flex; align-items: baseline; gap: 10px; text-wrap: balance; }
+h2 .cnt { font-family: var(--mono); font-size: 12px; font-weight: 400; color: var(--ink-2); }
+h3 { font-family: var(--display); font-size: 1rem; margin: 0; }
+.note { margin: 0; color: var(--ink-2); font-size: 13px; }
+.sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; }
+
+/* 見てほしいこと */
+.attn { display: flex; flex-direction: column; gap: 10px; }
+.attn-item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; padding: 14px 16px; background: var(--shu-wash); border-radius: 8px; }
+.attn-item .mk { font-family: var(--display); font-weight: 900; color: var(--shu); font-size: 13px; border: 1.5px solid var(--shu); border-radius: 3px; width: 22px; height: 22px; display: grid; place-items: center; margin-top: 2px; }
+.attn-item p { margin: 0; }
+.attn-item .ref { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+
+/* バッジ */
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; padding: 1px 8px; border-radius: 4px; white-space: nowrap; line-height: 1.7; }
+.b-ok { background: var(--ok-wash); color: var(--ok); }
+.b-mid { background: var(--mid-wash); color: var(--mid); }
+.b-ng { background: var(--shu-wash); color: var(--shu); }
+.b-plain { background: var(--wash); color: var(--ink-2); }
+
+/* 表 */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--sheet); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 500; color: var(--ink-2); background: var(--wash); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.id { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
+td.mono { font-family: var(--mono); font-size: 12px; }
+
+/* 受け入れ基準: 狭い画面ではカード */
+@media (max-width: 640px) {
+  .stack table, .stack thead, .stack tbody, .stack tr, .stack td { display: block; }
+  .stack thead { display: none; }
+  .stack tr { padding: 12px 14px; border-bottom: 1px solid var(--rule); }
+  .stack tr:last-child { border-bottom: 0; }
+  .stack td { border: 0; padding: 2px 0; }
+  .stack td[data-k]::before { content: attr(data-k); display: block; font-size: 11px; color: var(--ink-2); }
+}
+
+/* PRD */
+.prd { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.prd .blk { padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
+.prd .blk.wide { grid-column: 1 / -1; }
+.prd p, .prd ul { margin: 0; }
+.prd ul { padding-left: 1.2em; }
+.lbl { font-size: 12px; color: var(--ink-2); letter-spacing: .04em; }
+@media (max-width: 640px) { .prd { grid-template-columns: minmax(0, 1fr); } }
+
+/* 判断 */
+.filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; border: 1px solid var(--rule); background: var(--sheet); color: var(--ink-2); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); background: var(--wash); }
+.chip .n { font-family: var(--mono); font-size: 11px; margin-left: 4px; }
+.decisions { display: flex; flex-direction: column; gap: 10px; }
+details.dc { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; }
+details.dc[data-sev="高"] { border-left: 3px solid var(--shu); }
+details.dc summary { list-style: none; cursor: pointer; padding: 14px 16px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; }
+details.dc summary::-webkit-details-marker { display: none; }
+details.dc summary .id { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+details.dc summary .t { font-weight: 500; }
+details.dc summary .meta { grid-column: 2 / -1; font-size: 12px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+details.dc summary .chev { color: var(--ink-2); transition: transform .15s; }
+details.dc[open] summary .chev { transform: rotate(90deg); }
+.dc-body { padding: 0 16px 16px; display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 8px 16px; font-size: 14px; border-top: 1px solid var(--rule); padding-top: 14px; margin: 0 0 0; }
+.dc-body dt { color: var(--ink-2); font-size: 12px; padding-top: 2px; }
+.dc-body dd { margin: 0; }
+.dc-body ol { margin: 0; padding-left: 1.3em; }
+.dc-body .chosen { font-weight: 700; }
+@media (max-width: 640px) { .dc-body { grid-template-columns: minmax(0, 1fr); gap: 2px; } .dc-body dd { margin-bottom: 8px; } }
+
+/* レビュー */
+.rounds { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; }
+.round { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 13px; }
+.round .rn { font-family: var(--mono); color: var(--ink-2); }
+.bar { display: flex; height: 14px; border-radius: 3px; overflow: hidden; background: var(--wash); }
+.bar span { display: block; height: 100%; }
+.bar .must { background: var(--shu); }
+.bar .should { background: var(--mid); }
+.bar .may { background: var(--ink-2); opacity: .45; }
+.round .nums { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--ink-2); }
+.round .nums b { font-weight: 500; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: var(--ink-2); padding: 0 18px 14px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.empty { padding: 16px 18px; color: var(--ink-2); font-size: 14px; margin: 0; }
+
+footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header class="hdr">
+  <div class="hdr-in">
+    <a class="logo" href="#top" aria-label="ページの先頭へ">
+      <img class="for-light" alt="fude.nvim" src="data:image/png;base64,__LOGO_LIGHT__">
+      <img class="for-dark" alt="fude.nvim" src="data:image/png;base64,__LOGO_DARK__">
+    </a>
+    <div class="hdr-title" id="hdr-title"></div>
+    <button type="button" class="theme" id="theme" aria-label="ダークにする" title="ダークにする">
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="frame" id="top">
+  <nav class="toc" id="toc" aria-label="目次"></nav>
+  <main id="main"></main>
+</div>
+
+<script type="application/json" id="report-data">{}</script>
+<script>
+(() => {
+  // ---- 表示の明るさ: 既定はシステムに合わせ、ボタンでライトとダークを切り替える ----
+  // システムと同じ側に戻したときは記録を消し、またシステムに合わせる
+  const root = document.documentElement;
+  const KEY = "dev-report-theme";
+  const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  const sys = () => (mq && mq.matches ? "dark" : "light");
+  const btn = document.getElementById("theme");
+  function current() { const t = root.getAttribute("data-theme"); return t === "dark" || t === "light" ? t : sys(); }
+  function label() { const next = current() === "dark" ? "ライトにする" : "ダークにする"; btn.setAttribute("aria-label", next); btn.title = next; }
+  function applyTheme(mode) {
+    if (mode === "light" || mode === "dark") root.setAttribute("data-theme", mode); else root.removeAttribute("data-theme");
+    label();
+  }
+  let saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) {}
+  if (saved === "light" || saved === "dark") applyTheme(saved); else label();
+  btn.addEventListener("click", () => {
+    const next = current() === "dark" ? "light" : "dark";
+    const follow = next === sys();
+    applyTheme(follow ? null : next);
+    try { if (follow) localStorage.removeItem(KEY); else localStorage.setItem(KEY, next); } catch (e) {}
+  });
+  if (mq && mq.addEventListener) mq.addEventListener("change", label);
+
+  // ---- データ ----
+  let D = {};
+  try { D = JSON.parse(document.getElementById("report-data").textContent || "{}"); } catch (e) { D = {}; }
+  const arr = v => Array.isArray(v) ? v : [];
+
+  function h(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null && text !== "") e.textContent = String(text);
+    return e;
+  }
+  function add(parent, ...kids) { kids.flat().forEach(k => k && parent.append(k)); return parent; }
+
+  const ACC = { met: ["満たした", "b-ok"], partial: ["一部", "b-mid"], unmet: ["満たしていない", "b-ng"] };
+  const TEST = { pass: ["通過", "b-ok"], fail: ["失敗", "b-ng"], skip: ["未実行", "b-plain"] };
+  const SEV = { "高": "b-ng", "中": "b-mid", "低": "b-plain", "MUST": "b-ng", "SHOULD": "b-mid", "MAY": "b-plain" };
+  const TASK = { "完了": "b-ok", "実装中": "b-mid", "テスト中": "b-mid", "待ち": "b-plain" };
+  const badge = (text, cls) => h("span", "badge " + (cls || "b-plain"), text);
+
+  const main = document.getElementById("main");
+  const toc = document.getElementById("toc");
+  const sections = [];
+  function section(id, title, count) {
+    const s = h("section"); s.id = id;
+    const t = h("h2", null, title);
+    if (count != null) t.append(h("span", "cnt", count));
+    s.append(t);
+    const a = h("a", null, title); a.href = "#" + id;
+    if (count != null) a.append(h("span", "n", count));
+    toc.append(a);
+    sections.push([id, a]);
+    main.append(s);
+    return s;
+  }
+  function table(cols, rows, stack) {
+    const wrap = h("div", "tbl-wrap" + (stack ? " stack" : ""));
+    const t = h("table"), thead = h("thead"), tr = h("tr");
+    cols.forEach(c => tr.append(h("th", null, c.label)));
+    thead.append(tr); t.append(thead);
+    const tb = h("tbody");
+    rows.forEach(r => {
+      const row = h("tr");
+      cols.forEach(c => {
+        const td = h("td", c.cls || null);
+        td.setAttribute("data-k", c.label);
+        const v = c.render ? c.render(r) : r[c.key];
+        if (v instanceof Node) td.append(v); else td.textContent = v == null ? "" : String(v);
+        row.append(td);
+      });
+      tb.append(row);
+    });
+    t.append(tb); wrap.append(t);
+    return wrap;
+  }
+  const list = items => { const ul = h("ul"); arr(items).forEach(i => ul.append(h("li", null, i))); return ul; };
+
+  // ---- 表題 ----
+  const title = D.title || "開発報告";
+  document.getElementById("hdr-title").textContent = title;
+  const hero = h("div", "hero");
+  const eb = h("div", "eyebrow");
+  const revs = arr(D.revisions);
+  const revNo = D.revision || (revs.length ? Math.max(...revs.map(r => r.revision || 1)) : 1);
+  add(eb, h("span", null, "第 " + revNo + " 版"), h("span", null, D.date ? (D.status === "完了" ? "報告日 " : "更新日 ") + D.date : null), h("span", null, D.branch ? "ブランチ " + D.branch : null), h("span", null, D.base ? "元 " + D.base : null));
+  if (D.pr && /^https:\/\/github\.com\//.test(String(D.pr.url || ""))) { const a = h("a", null, "PR #" + (D.pr.number || "?")); a.href = D.pr.url; a.target = "_blank"; a.rel = "noopener"; const s = h("span"); s.append(a); eb.append(s); }
+  const tests = arr(D.tests);
+  const failed = tests.filter(t => t.result === "fail").length;
+  const passed = tests.filter(t => t.result === "pass").length;
+  const notPassed = tests.length - passed - failed;
+  const acc = arr(D.acceptance);
+  const met = acc.filter(a => a.result === "met").length;
+  const highs = arr(D.decisions).filter(d => d.severity === "高").length;
+  const rounds = arr(D.reviews);
+  const nAgent = rounds.filter(r => r.reviewer !== "Copilot").length;
+  const facts = h("div", "facts");
+  [["状態", D.status || "—"], ["見てほしいこと", `${arr(D.attention).length} 件`, "#attention"], ["受け入れ基準", !acc.length ? "—" : acc.some(a => a.result) ? `${met} / ${acc.length} 満たした` : `${acc.length} 件・未確認`],
+   ["テスト", !tests.length ? "—" : failed ? `${failed} 件失敗` + (notPassed ? `・${notPassed} 件未実行` : "") : notPassed ? `${passed} 件通過・${notPassed} 件未実行` : `${tests.length} 件すべて通過`],
+   ["レビュー", nAgent ? `${nAgent} 周` + (rounds.some(r => r.reviewer === "Copilot") ? "＋Copilot" : "") : "—"],
+   ["重要度 高の判断", `${highs} 件`]].forEach(([k, v, href]) => { const f = h("div", "fact"); let val = h("span", "v", v); if (href) { const a = h("a", null, v); a.href = href; val = h("span", "v"); val.append(a); } add(f, h("span", "k", k), val); facts.append(f); });
+  add(hero, eb, h("h1", null, title), h("p", "summary", D.summary), facts);
+  main.append(hero);
+
+  // ---- 見てほしいこと ----
+  const attn = arr(D.attention);
+  const sA = section("attention", "見てほしいこと", attn.length);
+  if (attn.length) {
+    const KINDS = [["動作確認", "動作確認の手順", "確"], ["PRD 変更", "承認後に PRD を変えた点", "変"], [null, "そのほか", "要"]];
+    const grouped = attn.some(a => a.kind === "動作確認" || a.kind === "PRD 変更");
+    KINDS.forEach(([kind, label, mk]) => {
+      const items = attn.filter(a => kind ? a.kind === kind : !(a.kind === "動作確認" || a.kind === "PRD 変更"));
+      if (!items.length) return;
+      if (grouped) sA.append(h("h3", null, label));
+      const box = h("div", "attn");
+      items.forEach(a => { const it = h("div", "attn-item"); const body = h("div"); add(body, h("p", null, a.text), h("span", "ref", a.ref)); add(it, h("span", "mk", mk), body); box.append(it); });
+      sA.append(box);
+    });
+  } else sA.append(h("p", "note", "人に見てほしいことはありません。"));
+
+  // ---- 受け入れ基準 ----
+  const changed = new Set(arr((D.prd || {}).changes).map(c => c.field).filter(Boolean));
+  const sAc = section("acceptance", "受け入れ基準", acc.length);
+  sAc.append(table([
+    { label: "#", key: "id", cls: "id" },
+    { label: "基準", render: r => { const sp = h("span", null, r.text); if (changed.has(r.id)) add(sp, " ", badge("承認後に変更", "b-mid")); return sp; } },
+    { label: "結果", render: r => { const x = ACC[r.result] || [r.result || "—", "b-plain"]; return badge(x[0], x[1]); } },
+    { label: "確かめ方", key: "how" },
+  ], acc, true));
+
+  // ---- PRD ----
+  const P = D.prd || {};
+  const sP = section("prd", "PRD");
+  if (P.approvedAt) sP.append(h("p", "note", `承認 ${P.approvedAt}・下は承認版に、実装中の変更を反映したもの`));
+  const prd = h("div", "prd");
+  const blk = (label, content, wide) => { const b = h("div", "sheet blk" + (wide ? " wide" : "")); const lb = h("span", "lbl", label); if (changed.has(label)) add(lb, " ", badge("承認後に変更", "b-mid")); add(b, lb, content); return b; };
+  add(prd, blk("目的", h("p", null, P.purpose), true), blk("利用者", h("p", null, P.users), true),
+    blk("スコープ外", list(P.outOfScope)), blk("制約", list(P.constraints)));
+  if (arr(P.verification).length) prd.append(blk("確認方法", list(P.verification)));
+  if (arr(P.openQuestions).length) prd.append(blk("未決事項", list(P.openQuestions)));
+  sP.append(prd);
+  const ch = arr(P.changes);
+  if (ch.length) {
+    sP.append(h("h3", null, "承認後の変更"));
+    sP.append(table([{ label: "日付", key: "date", cls: "mono" }, { label: "欄", key: "field", cls: "id" }, { label: "変更", key: "change" }, { label: "理由", key: "reason" }], ch));
+  }
+
+  // ---- 判断の履歴 ----
+  const ORDER = { "高": 0, "中": 1, "低": 2 };
+  const decs = arr(D.decisions).slice().sort((a, b) => (b.prdChange === true) - (a.prdChange === true) || (ORDER[a.severity] ?? 9) - (ORDER[b.severity] ?? 9));
+  const sD = section("decisions", "判断の履歴", decs.length);
+  sD.append(h("p", "note", "PRD を変えた判断、重要度 高 の順に並べています。各判断を開くと、背景・選べた案・理由・見直すきっかけを読めます。"));
+  const filters = h("div", "filters");
+  const dWrap = h("div", "decisions");
+  let cur = "すべて";
+  ["すべて", "高", "中", "低"].forEach(lv => {
+    const n = lv === "すべて" ? decs.length : decs.filter(d => d.severity === lv).length;
+    const b = h("button", "chip", lv === "すべて" ? lv : "重要度 " + lv); b.type = "button"; b.id = "f-" + lv;
+    b.append(h("span", "n", n)); b.setAttribute("aria-pressed", String(lv === cur));
+    b.addEventListener("click", () => { cur = lv; filters.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c === b))); dWrap.querySelectorAll("details").forEach(d => { d.hidden = !(cur === "すべて" || d.dataset.sev === cur); }); });
+    filters.append(b);
+  });
+  decs.forEach(d => {
+    const det = h("details", "dc"); det.dataset.sev = d.severity || "";
+    if (d.severity === "高" || d.prdChange === true) det.open = true;
+    const sm = h("summary");
+    const meta = h("div", "meta");
+    add(meta, h("span", null, d.by ? "決めた人: " + d.by : null), h("span", null, d.phase), h("span", null, d.at));
+    add(sm, h("span", "id", d.id), h("span", "t", d.title), add(h("span"), d.prdChange === true ? badge("PRD を変更", "b-mid") : null, d.prdChange === true ? " " : null, badge("重要度 " + (d.severity || "—"), SEV[d.severity])), meta);
+    sm.querySelector(".meta").before(h("span")); // 1 列目を空ける
+    det.append(sm);
+    const dl = h("dl", "dc-body");
+    const row = (k, v) => { if (v == null || (Array.isArray(v) && !v.length) || v === "") return; const dd = h("dd"); if (v instanceof Node) dd.append(v); else dd.textContent = v; add(dl, h("dt", null, k), dd); };
+    row("重要度の理由", d.severityReason);
+    row("背景", d.background);
+    if (arr(d.options).length) { const ol = h("ol"); arr(d.options).forEach(o => ol.append(h("li", o === d.decided ? "chosen" : null, o))); row("選べた案", ol); }
+    row("決めたこと", d.decided ? add(h("span", "chosen"), d.decided) : null);
+    row("理由", d.reason);
+    row("影響", d.impact);
+    row("見直すきっかけ", d.revisit);
+    row("関連", d.refs);
+    det.append(dl);
+    dWrap.append(det);
+  });
+  if (decs.length) add(sD, filters, dWrap); else sD.append(h("p", "note", "記録した判断はありません。"));
+
+  // ---- レビューの経過 ----
+  const sR = section("reviews", "レビューの経過", rounds.length ? (nAgent ? nAgent + " 周" : "") + (rounds.length > nAgent ? (nAgent ? "＋" : "") + "Copilot" : "") : null);
+  if (rounds.length && new Set(rounds.map(r => r.revision || 1)).size > 1) sR.append(h("p", "note", "報告後の修正を含め、版ごとに周を数えています。"));
+  if (rounds.length) {
+    const box = h("div", "sheet");
+    const rs = h("div", "rounds");
+    const max = Math.max(1, ...rounds.map(r => (r.must || 0) + (r.should || 0) + (r.may || 0)));
+    const multiRev = new Set(rounds.map(r => r.revision || 1)).size > 1;
+    rounds.forEach(r => {
+      const tot = (r.must || 0) + (r.should || 0) + (r.may || 0);
+      const line = h("div", "round");
+      const bar = h("div", "bar"); bar.setAttribute("role", "img");
+      bar.setAttribute("aria-label", `第 ${r.revision || 1} 版 第 ${r.round} 周: MUST ${r.must || 0} 件、SHOULD ${r.should || 0} 件、MAY ${r.may || 0} 件`);
+      [["must", r.must], ["should", r.should], ["may", r.may]].forEach(([c, n]) => { if (n) { const s = h("span", c); s.style.width = (n / max * 100) + "%"; bar.append(s); } });
+      const nums = h("span", "nums");
+      nums.textContent = tot ? `M ${r.must || 0} · S ${r.should || 0} · m ${r.may || 0}` : "指摘なし";
+      add(line, h("span", "rn", (multiRev ? `${r.revision || 1}版 ${r.round}周` : `第 ${r.round} 周`) + (r.reviewer ? ` · ${r.reviewer}` : "")), bar, nums);
+      rs.append(line);
+    });
+    const lg = h("div", "legend");
+    [["var(--shu)", "MUST"], ["var(--mid)", "SHOULD"], ["var(--ink-2)", "MAY"]].forEach(([c, l]) => { const s = h("span", null, l); const i = h("i"); i.style.background = c; if (l === "MAY") i.style.opacity = ".45"; s.prepend(i); lg.append(s); });
+    add(box, rs, lg);
+    sR.append(box);
+  } else sR.append(h("p", "note", "レビューの記録はありません。"));
+  // ---- Copilot のレビュー（レビューの経過の中） ----
+  if (D.copilot) {
+    const cc = arr(D.copilot.comments);
+    sR.append(h("h3", null, "Copilot のレビュー" + (cc.length ? `（${cc.length} 件）` : "")));
+    sR.append(h("p", "note", D.copilot.status || (cc.length ? null : (D.status === "Copilot レビュー待ち" ? "レビューを待っています。" : "結果はまだありません。"))));
+    if (cc.length) sR.append(table([
+      { label: "#", key: "id", cls: "id" },
+      { label: "場所", key: "location", cls: "mono" },
+      { label: "指摘", key: "text" },
+      { label: "対応", key: "response" },
+      { label: "コミット", key: "commit", cls: "mono" },
+    ], cc, true));
+  }
+
+  // ---- 直さなかった指摘 ----
+  const un = arr(D.unresolved);
+  if (rounds.length || un.length) {
+    const sU = section("unresolved", "直さなかった指摘", un.length);
+    if (un.length) {
+      sU.append(h("p", "note", "レビューで挙がり、直していない指摘です。直すかどうかを決めてください。直す場合は、番号を添えて修正を頼めます。"));
+      sU.append(table([
+        { label: "#", key: "id", cls: "id" },
+        { label: "重要度", render: r => badge(r.severity, SEV[r.severity]) },
+        { label: "指摘", key: "text" },
+        { label: "直さなかった理由", key: "reason" },
+      ], un, true));
+    } else sU.append(h("p", "note", "すべての指摘に対応しました。"));
+  }
+
+  // ---- テスト ----
+  const sT = section("tests", "テスト", tests.length);
+  if (!tests.length) sT.append(h("p", "note", "まだテストを走らせていません。"));
+  else sT.append(table([
+    { label: "コマンド", key: "command", cls: "mono" },
+    { label: "結果", render: r => { const x = TEST[r.result] || [r.result || "—", "b-plain"]; return badge(x[0], x[1]); } },
+    { label: "内容", key: "detail" },
+  ], tests, true));
+
+  // ---- タスク ----
+  const tasks = arr(D.tasks);
+  const sK = section("tasks", "タスク", tasks.length);
+  if (!tasks.length) sK.append(h("p", "note", "まだタスクに分けていません。"));
+  else sK.append(table([
+    { label: "#", key: "id", cls: "id" },
+    { label: "タスク", key: "title" },
+    { label: "状態", render: r => badge(r.status, TASK[r.status] || (String(r.status || "").startsWith("止まって") ? "b-ng" : "b-plain")) },
+    { label: "担当", key: "owner", cls: "mono" },
+  ], tasks, true));
+
+  // ---- 改訂履歴 ----
+  if (revs.length > 1) {
+    const sV = section("revisions", "改訂履歴", revs.length + " 版");
+    sV.append(h("p", "note", "報告のあとに頼まれた修正の記録です。新しい版を上に並べています。"));
+    sV.append(table([
+      { label: "版", render: r => "第 " + (r.revision || "?") + " 版", cls: "id" },
+      { label: "日付", key: "date", cls: "mono" },
+      { label: "種類", render: r => badge(r.kind || "—", r.kind === "要件の変更" ? "b-mid" : "b-plain") },
+      { label: "依頼", key: "request" },
+      { label: "直したこと", key: "changes" },
+      { label: "関連", key: "refs", cls: "mono" },
+    ], revs.slice().sort((a, b) => (b.revision || 0) - (a.revision || 0)), true));
+  }
+
+  // ---- 節の並び: 約束（PRD）→ 結果（受け入れ基準）→ 読む人のすること → 決め直せるもの → 経緯 ----
+  const SECTION_ORDER = ["prd", "acceptance", "attention", "unresolved", "decisions", "reviews", "tests", "tasks", "revisions"];
+  SECTION_ORDER.forEach(id => { const e = sections.find(x => x[0] === id); if (!e) return; main.append(document.getElementById(id)); toc.append(e[1]); });
+  sections.sort((a, b) => SECTION_ORDER.indexOf(a[0]) - SECTION_ORDER.indexOf(b[0]));
+
+  const ft = h("footer", null, [D.slug && "slug " + D.slug, D.generatedBy].filter(Boolean).join(" · "));
+  main.append(ft);
+
+  // ---- 目次の現在地 ----
+  // ヘッダーの下の線を越えた最後の節を現在地にする。ページの末尾では最後の節。
+  // 目次をクリックしたときは、その節を現在地にし、自分でスクロールするまで保つ。
+  const setOn = id => sections.forEach(([sid, a]) => { a.classList.toggle("on", sid === id); if (sid === id) a.setAttribute("aria-current", "true"); else a.removeAttribute("aria-current"); });
+  const hdrEl = document.querySelector(".hdr");
+  let pinned = null, ticking = false;
+  function compute() {
+    ticking = false;
+    if (pinned) return;
+    const line = (hdrEl ? hdrEl.getBoundingClientRect().bottom : 0) + 72;
+    const doc = document.scrollingElement || document.documentElement;
+    if (window.innerHeight + window.scrollY >= doc.scrollHeight - 4) { setOn(sections[sections.length - 1][0]); return; }
+    let cur = sections[0][0];
+    for (const [id] of sections) { if (document.getElementById(id).getBoundingClientRect().top <= line) cur = id; else break; }
+    setOn(cur);
+  }
+  const onScroll = () => { if (!ticking) { ticking = true; requestAnimationFrame(compute); } };
+  const unpin = () => { if (pinned) { pinned = null; onScroll(); } };
+  sections.forEach(([id, a]) => a.addEventListener("click", () => { pinned = id; setOn(id); }));
+  // 自分で操作したら固定を外す（クリックによるスクロールでは外さない）
+  ["wheel", "touchmove"].forEach(ev => window.addEventListener(ev, unpin, { passive: true }));
+  window.addEventListener("keydown", e => { if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)) unpin(); });
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  const fromHash = sections.find(([id]) => "#" + id === location.hash);
+  if (fromHash) { pinned = fromHash[0]; setOn(pinned); } else compute();
+})();
+</script>

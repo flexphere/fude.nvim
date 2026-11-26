@@ -31,7 +31,7 @@ argument-hint: [対象PR件数（省略時は10）]
 1. 引数 `$ARGUMENTS` に PR 件数があればそれを採用、無ければ直近 10 PR を既定値とする
 2. 以下をユーザーに提示して合意を取る:
    - 対象 PR 範囲（例: `gh pr list --state merged --limit 10` の結果リスト）
-   - 分析対象ファイル: `.claude/skills/pj-checklist/SKILL.md`, `.claude/review-lessons.md`, `.claude/HARNESS.md`
+   - 分析対象ファイル: `.claude/skills/pj-checklist/SKILL.md`, `.claude/review-lessons.md`, `.claude/HARNESS.md`, `docs/dev/*/metrics.json`（`/develop-v2` の開発の指標）
    - 想定所要時間とトークン消費の目安
 3. ユーザーが範囲を変更したい場合（PR 件数増減、特定の PR 範囲指定等）はそれに従う
 
@@ -67,6 +67,12 @@ argument-hint: [対象PR件数（省略時は10）]
    対象PRごとに`gh pr view <n> --json commits --jq '.commits[].messageHeadline'`でPR内のコミット件名も集計し、
    上と同じ観点で発火を数える
 6. **HARNESS.md の現状表**: §1 (Guides) と §2 (Sensors) の表内容を §3.6 で 4-quadrant matrix 再生成のため記憶
+7. **`/develop-v2` の指標**: `docs/dev/*/metrics.json` を集計する（無ければ本項と §3.7 はスキップ）:
+   ```bash
+   python3 -I .claude/skills/develop-v2/scripts/aggregate-metrics.py --git --days 30 --last 5
+   ```
+   - `--git` は各開発の PR の squash コミットが触ったファイルを、マージ後 30 日以内に触った `fix:` / `revert:` のコミットを「マージ後の不具合の候補」として数える
+   - 対象 PR のうち `/develop-v2` で作った PR（`docs/dev/` を含む PR）は、step 2 のレビューコメントのうち人のレビューで直した指摘も数え、§3.7 の見逃しに加える
 
 ### Phase 3: 分析 [自律実行可]
 
@@ -148,6 +154,15 @@ HARNESS.md §1 (Guides) と §2 (Sensors) の現状から、12 関心領域 × 4
 ✗ のまま残っている領域を HARNESS.md §4.3「やらないこと」と照合して、
 今回の audit で取り組むべきギャップを 1〜3 件に絞り込む。
 
+#### 3.7 `/develop-v2` の指標
+
+Phase 2 step 7 の集計を読み、`/develop-v2` のどこにボトルネックがあるかを見る。
+
+- **マージ後の不具合の候補**: 1 件ずつ、本当にその開発が原因か（同じファイルを触っただけの別の修正ではないか）を確かめ、原因だったものだけを「見逃し」に数える
+- **シグナル**: 集計が出す「シグナル（目安）」が HARNESS.md §4.2 の `/develop-v2` の案（レビュー役の観点別並列化、重要度 高 の判断を判断役 2 人に、前に扱った指摘の照合、レビュー役・判断役を毎回新しく立てる）の着手のきっかけに当たるか、`/develop-v2` のレビューの周の上限（5 周）を下げてよいかを判断する。件数が 10 件未満のうちは、個々の開発の記録として読み、傾向と断定しない
+- **段階ごとの時間・回数**: 特定の段階（ヒアリングでの PRD 提示の回数、レビューの周数）が他より突出していれば、その段階の手順を改善候補にする
+- **前回 audit との差分**: 前回の audit レポートに指標の表があれば、同じ指標の推移を比べる
+
 ### Phase 4: 提案レビュー [確認必須]
 
 以下のフォーマットで結果をユーザーに提示する:
@@ -178,6 +193,9 @@ HARNESS.md §1 (Guides) と §2 (Sensors) の現状から、12 関心領域 × 4
 ### 4-Quadrant Coverage Matrix
 （Phase 3.6 で生成した完全な表 + 充足度集計 + 前回 audit との差分）
 
+### /develop-v2 の指標（N 件）
+（aggregate-metrics.py の表とシグナル、マージ後の fix 候補を確かめた結果、着手のきっかけに当たる §4.2 の案）
+
 ### review-lessons.md
 - 統合済み（削除候補）: <件数>件
 - 未統合（保持または pj-checklist へ移送候補）: <件数>件
@@ -205,7 +223,7 @@ HARNESS.md §1 (Guides) と §2 (Sensors) の現状から、12 関心領域 × 4
    # 同月内に複数回 formal audit する場合は audit-YYYY-MM-DD.md (日付付与) を採用
    ```
    保存内容は Phase 4 で提示した完全なレポート（pj-checklist 発火、取りこぼし、
-   sensor 発火率、4-quadrant matrix、review-lessons 健全性、HARNESS.md 整合性、
+   sensor 発火率、4-quadrant matrix、`/develop-v2` の指標、review-lessons 健全性、HARNESS.md 整合性、
    次アクション）。これにより四半期間隔の傾向分析・前回 audit との差分比較が
    可能になる。
 

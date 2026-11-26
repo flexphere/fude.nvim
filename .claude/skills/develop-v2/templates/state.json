@@ -1,0 +1,31 @@
+{
+  "slug": "example-slug",
+  "title": "作るものの名前",
+  "branch": "feat/example-slug",
+  "worktree": "/abs/path/fude.nvim-dev-example-slug",
+  "phase": "hearing",
+  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done（scripts/set-phase.py で進める）",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-01-01T10:00:00+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 0,
+    "prd_drafts": 0
+  },
+  "agents": {
+    "reviewer": null,
+    "judge": null,
+    "_note": "SendMessage で続けて頼むための ID（セッションをまたぐと使えない）"
+  },
+  "review_outcomes": [],
+  "_review_outcomes_note": "レビューが終わるたびに {\"revision\": 1, \"ended\": \"must0\" | \"capped\", \"rounds\": 3} を足す（Copilot 対応のあとのレビューには \"after\": \"copilot\" も付ける）",
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "revision": 1,
+  "report_url": null
+}

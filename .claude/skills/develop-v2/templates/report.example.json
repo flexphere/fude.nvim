@@ -1,0 +1,321 @@
+{
+  "title": "CSV 出力の絞り込み（例）",
+  "slug": "csv-export-filter",
+  "date": "2026-11-25",
+  "branch": "feat/csv-export-filter",
+  "base": "origin/main",
+  "status": "完了",
+  "commits": 7,
+  "summary": "これはテンプレートの見た目を確かめるための架空の例です。管理画面の CSV 出力に、期間と状態での絞り込みを足しました。既存の出力（絞り込みなし）の列と並び順は変えていません。",
+  "generatedBy": "/develop-v2",
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト（成功 412 件）・check-state-deps・check-purity・check-docs すべて通過"
+    },
+    {
+      "command": "CSV の手動確認（会社 3）",
+      "result": "pass",
+      "detail": "期間・状態の組み合わせ 6 通りで件数が画面と一致"
+    }
+  ],
+  "attention": [
+    {
+      "text": "状態の絞り込みで「下書き」を選べるようにしました。今までの CSV には下書きが含まれていなかったため、運用で使われるかを確かめてください。",
+      "ref": "D-004 · 重要度 高",
+      "kind": "動作確認"
+    },
+    {
+      "text": "1 万件を超える出力は、ストリームで返すように変えました。本番の件数での速度は、staging で確かめる必要があります。",
+      "ref": "D-006 · 重要度 高",
+      "kind": "PRD 変更"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "期間を指定したとき、作成日がその期間に入る行だけが出力される",
+      "result": "met",
+      "how": "Unit テスト ExportFilterTest・手動確認"
+    },
+    {
+      "id": "AC2",
+      "text": "状態を指定したとき、その状態の行だけが出力される",
+      "result": "met",
+      "how": "Unit テスト ExportFilterTest"
+    },
+    {
+      "id": "AC3",
+      "text": "絞り込みを指定しないとき、出力は今と 1 バイトも変わらない",
+      "result": "met",
+      "how": "テスト（export 系 38 件）"
+    },
+    {
+      "id": "AC4",
+      "text": "1 万件の出力が 10 秒以内に終わる",
+      "result": "partial",
+      "how": "手元の DB で 6.2 秒。本番の件数では未確認"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-24",
+    "purpose": "会社の担当者が、必要な期間・状態の物件だけを CSV で取り出せるようにする。今は全件を出して表計算ソフトで絞っており、件数の多い会社では出力に時間がかかっている。",
+    "users": "会社向け管理画面の担当者。月末の集計と、ポータルへの掲載確認で使う。",
+    "outOfScope": [
+      "列の選択・並び替え",
+      "保存した絞り込み条件の再利用",
+      "管理者画面の CSV"
+    ],
+    "constraints": [
+      "絞り込みなしの出力は変えない",
+      "スキーマを変えない",
+      "依存ライブラリを足さない"
+    ],
+    "changes": [
+      {
+        "date": "2026-11-25",
+        "change": "AC4 を追加（1 万件の出力時間）",
+        "reason": "D-006。ストリーム化に伴い基準を明示",
+        "field": "AC4"
+      }
+    ],
+    "verification": [
+      "固定のテスト: make all",
+      "手動: 期間・状態の組み合わせ 6 通りで件数を確かめる"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "絞り込み条件はクエリ文字列で渡す",
+      "at": "2026-11-24 10:20",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "後から変えやすい",
+      "by": "ユーザー",
+      "background": "画面から条件を渡す方法を決める必要があった。",
+      "options": [
+        "クエリ文字列",
+        "POST の本文"
+      ],
+      "decided": "クエリ文字列",
+      "reason": "出力の URL を共有できる方が便利、という利用者の要望。",
+      "impact": "ExportController の引数",
+      "revisit": "条件が増えて URL が長くなったとき",
+      "refs": "AC1, AC2"
+    },
+    {
+      "id": "D-004",
+      "title": "状態の選択肢に「下書き」を含める",
+      "at": "2026-11-24 15:05",
+      "phase": "実装",
+      "severity": "高",
+      "severityReason": "今までの CSV に無かった行が出るようになり、利用者の集計に影響しうる",
+      "by": "判断役",
+      "background": "状態の一覧を画面と揃えると「下書き」が入る。今までの全件出力には下書きが含まれていなかった。",
+      "options": [
+        "画面と同じく下書きを含める",
+        "下書きは選べないようにする"
+      ],
+      "decided": "画面と同じく下書きを含める",
+      "reason": "絞り込みは明示的に選んだときだけ効き、絞り込みなしの出力は変わらない（AC3）。画面と食い違う方が混乱を招く。",
+      "impact": "状態の選択肢、ExportQuery",
+      "revisit": "下書きが CSV に出て困るという声が出たとき",
+      "refs": "R1-2, AC2"
+    },
+    {
+      "id": "D-006",
+      "title": "1 万件を超える出力はストリームで返す",
+      "at": "2026-11-25 09:40",
+      "phase": "レビュー",
+      "severity": "高",
+      "severityReason": "本番の負荷とメモリの使い方が変わる。手元では本番の件数を再現できない",
+      "by": "判断役",
+      "background": "レビューで、全件をメモリに載せてから返すとメモリ上限を超えうると MUST の指摘があった。",
+      "options": [
+        "ストリームで返す",
+        "件数に上限を設ける",
+        "今のまま"
+      ],
+      "decided": "ストリームで返す",
+      "reason": "上限を設けると利用者の作業が変わる。ストリームなら出力は同じまま、メモリの使い方だけが変わる。",
+      "impact": "ExportController の応答の作り方。テストは通過",
+      "revisit": "staging で 10 秒を超えたとき",
+      "refs": "R1-1, AC4",
+      "prdChange": true
+    },
+    {
+      "id": "D-007",
+      "title": "日付の入力欄はブラウザ標準の date を使う",
+      "at": "2026-11-25 11:10",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "見た目が既存の入力欄と少し違う",
+      "by": "作業する側",
+      "background": "SHOULD の指摘で、既存の日付選択の部品に揃えるよう提案された。",
+      "options": [
+        "既存の部品に揃える",
+        "標準の date のまま"
+      ],
+      "decided": "標準の date のまま",
+      "reason": "既存の部品は jQuery に依存しており、新しい画面では使わない方針（CLAUDE.md）。",
+      "impact": "見た目のみ",
+      "revisit": "画面の部品を作り直すとき",
+      "refs": "R2-1"
+    },
+    {
+      "id": "D-008",
+      "title": "期間の終わりの日を含める",
+      "at": "2026-11-26 10:00",
+      "phase": "報告後の修正 第 2 版",
+      "severity": "中",
+      "severityReason": "出力の件数が変わる。ただし AC1 の意図どおり",
+      "by": "ユーザー",
+      "background": "報告後、期間の終わりの日の行が出ないと指摘があった。",
+      "options": [
+        "終わりの日を含める",
+        "今のまま（終わりの日の前日まで）"
+      ],
+      "decided": "終わりの日を含める",
+      "reason": "画面の一覧の絞り込みと同じ動きにする。",
+      "impact": "ExportQuery の条件、テスト",
+      "revisit": "時刻まで指定できるようにするとき",
+      "refs": "AC1"
+    }
+  ],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-25",
+      "tests": "pass",
+      "must": 2,
+      "should": 3,
+      "may": 4,
+      "revision": 1,
+      "reviewer": "レビュー役"
+    },
+    {
+      "round": 2,
+      "date": "2026-11-25",
+      "tests": "pass",
+      "must": 0,
+      "should": 1,
+      "may": 2,
+      "revision": 1,
+      "reviewer": "レビュー役"
+    },
+    {
+      "round": 1,
+      "revision": 2,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 0,
+      "may": 1,
+      "reviewer": "レビュー役"
+    },
+    {
+      "round": 1,
+      "date": "2026-11-25",
+      "tests": "pass",
+      "must": 0,
+      "should": 1,
+      "may": 1,
+      "revision": 2,
+      "reviewer": "Copilot"
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R2-1",
+      "severity": "SHOULD",
+      "text": "日付の入力欄を既存の部品に揃える",
+      "reason": "D-007。既存の部品は使わない方針"
+    },
+    {
+      "id": "R2-2",
+      "severity": "MAY",
+      "text": "ExportQuery の変数名 $f を $filter にする",
+      "reason": "見送り"
+    },
+    {
+      "id": "R2-3",
+      "severity": "MAY",
+      "text": "テストのデータを共通のファクトリにまとめる",
+      "reason": "見送り。ほかのテストと合わせて別の作業で行う"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "ExportQuery に期間・状態の条件を足す",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "画面に絞り込みの入力欄を足す",
+      "status": "完了",
+      "owner": "impl-2"
+    },
+    {
+      "id": "T3",
+      "title": "1 万件超をストリームで返す",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T4",
+      "title": "Unit テストを足す",
+      "status": "完了",
+      "owner": "impl-3"
+    }
+  ],
+  "revision": 2,
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-25",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": "期間・状態の絞り込みを足した",
+      "refs": ""
+    },
+    {
+      "revision": 2,
+      "date": "2026-11-26",
+      "kind": "手直し",
+      "request": "期間の終わりの日が含まれていない",
+      "changes": "終わりの日を含むよう条件を「<」から「<=」に直し、境界のテストを足した",
+      "refs": "D-008 · AC1"
+    }
+  ],
+  "pr": {
+    "number": 123,
+    "url": "https://github.com/flexphere/fude.nvim/pull/123"
+  },
+  "copilot": {
+    "status": "Copilot のレビュー 2 件に対応しました。",
+    "comments": [
+      {
+        "id": "C1-1",
+        "location": "lua/fude/foo.lua:42",
+        "text": "nil のときにエラーになる",
+        "response": "直した",
+        "commit": "abc1234",
+        "outcome": "fixed"
+      },
+      {
+        "id": "C1-2",
+        "location": "README.md:10",
+        "text": "表記の揺れ",
+        "response": "返信のみ（既存の表記に合わせている）",
+        "commit": "",
+        "outcome": "reply"
+      }
+    ],
+    "timed_out": false
+  }
+}
