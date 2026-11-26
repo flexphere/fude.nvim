@@ -6,7 +6,7 @@
   "base": "origin/main",
   "status": "レビュー対応中",
   "commits": 7,
-  "summary": "実装とドキュメントが済み、draft の PR #331 を作りました。経緯を知らないレビュー役が全体を見ています。MUST が無くなり CI が通ったら ready for review にします。",
+  "summary": "レビューの規則が変わったため、新しいレビュー役で 1 周目からやり直しています。MUST 0 件の周で終え、CI を確かめてから ready for review にします。",
   "generatedBy": "/develop-v2",
   "tests": [
     {
@@ -15,7 +15,12 @@
       "detail": "lint（警告 0）・format-check・テスト（40 ファイル、失敗 0）・check-state-deps・check-purity・check-docs すべて通過"
     }
   ],
-  "attention": [],
+  "attention": [
+    {
+      "text": "レビューのやり方が変わった（1 周目を high でモジュールごとに出し切り、2 周目からは MUST だけ直す）ため、4 周目の修正に入る前に止め、新しいレビュー役で 1 周目からやり直しました。それまでの 4 周の記録は reviews_before_restart にあります（4 周目の指摘は使っていません）。",
+      "ref": "レビューのやり直し"
+    }
+  ],
   "acceptance": [
     {
       "id": "AC1",
@@ -627,7 +632,40 @@
       "refs": "AC5, R3-M3"
     }
   ],
-  "reviews": [
+  "reviews": [],
+  "unresolved": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "チャットの中核（引数の組み立て・stream-json のパース・保存と復元・claude の実行）とテスト",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "チャットパネル・コマンド・設定・レビュー停止時の後始末とテスト",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T3",
+      "title": "README.md・doc/fude.txt・CLAUDE.md の更新",
+      "status": "完了",
+      "owner": "impl-1"
+    }
+  ],
+  "revision": 1,
+  "revisions": [],
+  "pr": {
+    "number": 331,
+    "url": "https://github.com/flexphere/fude.nvim/pull/331"
+  },
+  "copilot": {
+    "status": "",
+    "comments": [],
+    "timed_out": false
+  },
+  "reviews_before_restart": [
     {
       "round": 1,
       "revision": 1,
@@ -807,38 +845,78 @@
           "response": "そのまま（R2-S6 と同じ不具合を揃えて直したもの）"
         }
       ]
-    }
-  ],
-  "unresolved": [],
-  "tasks": [
-    {
-      "id": "T1",
-      "title": "チャットの中核（引数の組み立て・stream-json のパース・保存と復元・claude の実行）とテスト",
-      "status": "完了",
-      "owner": "impl-1"
     },
     {
-      "id": "T2",
-      "title": "チャットパネル・コマンド・設定・レビュー停止時の後始末とテスト",
-      "status": "完了",
-      "owner": "impl-1"
-    },
-    {
-      "id": "T3",
-      "title": "README.md・doc/fude.txt・CLAUDE.md の更新",
-      "status": "完了",
-      "owner": "impl-1"
+      "round": 4,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 3,
+      "may": 6,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R4-M4",
+          "severity": "MUST",
+          "text": "diff プレビューを開いたままチャットを開くと、プレビューが幅固定のためソースのウィンドウが潰れる（1 周目からあった問題）",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-S11",
+          "severity": "SHOULD",
+          "text": "編集ウィンドウからの :only が E445 で止まり、ウィンドウが残る",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-S12",
+          "severity": "SHOULD",
+          "text": "書きかけの入力に戻ると、挿入位置がずれる",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-S13",
+          "severity": "SHOULD",
+          "text": "（R3-S8 の修正が入れた）別のタブのチャットにいるとき、フォーカスがタブをまたいで移る",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y2",
+          "severity": "MAY",
+          "text": "（継続）GitHub の commit scope を claude に伝えていない",
+          "response": "見送り"
+        },
+        {
+          "id": "R4-Y8",
+          "severity": "MAY",
+          "text": "restore_input の doc コメントの位置がずれている",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y9",
+          "severity": "MAY",
+          "text": "編集ウィンドウを開き直すとき、手で変えた side panel の幅が設定値に戻る",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y10",
+          "severity": "MAY",
+          "text": "filetype の設定が後なので、利用者の markdown 用の setlocal がペインのオプションに勝つ",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y11",
+          "severity": "MAY",
+          "text": ":quit が拒否されたとき、チャットは先に閉じられたまま戻らない",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y12",
+          "severity": "MAY",
+          "text": "挿入モードの入力ペインから next/prev file を呼ぶと、挿入モードのままファイルに移る",
+          "response": "修正中"
+        }
+      ]
     }
-  ],
-  "revision": 1,
-  "revisions": [],
-  "pr": {
-    "number": 331,
-    "url": "https://github.com/flexphere/fude.nvim/pull/331"
-  },
-  "copilot": {
-    "status": "",
-    "comments": [],
-    "timed_out": false
-  }
+  ]
 }
