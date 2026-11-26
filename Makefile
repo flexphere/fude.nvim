@@ -1,4 +1,4 @@
-.PHONY: lint format format-check test check-state-deps check-purity check-docs coverage all setup
+.PHONY: lint format format-check test check-state-deps check-purity check-docs check-doc-lang coverage all setup
 
 lint:
 	luacheck lua/ plugin/ tests/ scripts/
@@ -21,6 +21,10 @@ check-purity:
 check-docs:
 	nvim --headless -l scripts/check_docs.lua
 
+# Optional ROOT=<dir> checks another directory (default: the repository root).
+check-doc-lang:
+	nvim --headless -l scripts/check_doc_lang.lua $(if $(ROOT),"$(ROOT)")
+
 # Test coverage via luacov. Requires `luarocks install --local luacov`.
 # `eval $(luarocks path)` exports LUA_PATH so nvim can require("luacov.runner").
 # Stats and report files are gitignored. Not part of `make all` (report-only).
@@ -34,7 +38,7 @@ coverage:
 	@echo ""
 	@echo "==> Full report: luacov.report.out"
 
-all: lint format-check test check-state-deps check-purity check-docs
+all: lint format-check test check-state-deps check-purity check-docs check-doc-lang
 
 setup:
 	git config core.hooksPath .githooks
