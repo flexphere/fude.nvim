@@ -5,10 +5,21 @@
   "branch": "feat/pr-guide-comments",
   "base": "origin/main",
   "status": "レビュー対応中",
-  "commits": 5,
-  "summary": "実装を終え、draftのPR #335を作りました。経緯を知らないレビュー役がPRDとコードを見ています。",
+  "commits": 8,
+  "summary": "レビューは2周目でMUST 0件になり、CIも通りました。PRをready for reviewにし、Copilotのレビューを待っています。",
   "generatedBy": "/develop-v2",
-  "tests": [],
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト（fude_guide_script_spec.lua 34件を含む）・check-state-deps・check-purity・check-docs すべて通過"
+    },
+    {
+      "command": "GitHub Actions（PR #335）",
+      "result": "pass",
+      "detail": "Luacheck・StyLua・Purity・State Dependencies・Test Coverage・Tests（stable / v0.10.4 / v0.11.7）すべて通過"
+    }
+  ],
   "attention": [
     {
       "text": "承認後にAC7を変えました。人の返信が付いたガイドthreadは、再実行しても消さずに残し、skillがそのidと内容を伝えます（返信ごと消すと、返信が画面から見えなくなるため）。元に戻すには、AC7の追記とSKILL.mdの該当の1文を消し、スクリプトのclearで返信付きthreadも消すようにします。",
@@ -303,9 +314,94 @@
           "response": "直した"
         }
       ]
+    },
+    {
+      "round": 2,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 4,
+      "may": 2,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R2-1",
+          "severity": "SHOULD",
+          "text": "commitスコープの判定がfude本体より広い（original_branchの有無を見ていない）",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-2",
+          "severity": "SHOULD",
+          "text": "「一覧の先頭からガイド1, 2の順」は、ガイドに返信や人のコメントが付くと成り立たない",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-3",
+          "severity": "SHOULD",
+          "text": "CLAUDE.mdのArchitecture節を更新していない",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-4",
+          "severity": "SHOULD",
+          "text": "読めないファイルのテストがrootで実行すると落ちる",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-5",
+          "severity": "MAY",
+          "text": "桁の大きい行番号がbashの算術でオーバーフローする",
+          "response": "直さない"
+        },
+        {
+          "id": "R2-6",
+          "severity": "MAY",
+          "text": "doc/fude.txtの折り返しが崩れている",
+          "response": "直さない"
+        }
+      ]
     }
   ],
-  "unresolved": [],
+  "unresolved": [
+    {
+      "id": "R2-1",
+      "severity": "SHOULD",
+      "text": "detached HEADで自分の__detached__セッションをレビュー中、current.jsonに同じSHAのcommitスコープの古いエントリ（original_branch無し）が残っていると、add/clearが拒否される（fude-guide-comment.sh:102-106）",
+      "reason": "2周目のSHOULDは直さない決まり。安全側（何も書かない）に倒れる端の場面"
+    },
+    {
+      "id": "R2-2",
+      "severity": "SHOULD",
+      "text": "ガイドに返信や人のコメントが付くと、一覧の先頭がガイド1でなくなる。README・doc・SKILLは「先頭からガイド1, 2の順」と言い切っている",
+      "reason": "2周目のSHOULDは直さない決まり。直すなら「作った直後の一覧では」と条件を足す"
+    },
+    {
+      "id": "R2-3",
+      "severity": "SHOULD",
+      "text": "CLAUDE.mdのArchitecture節にfude-guideを載せていない",
+      "reason": "Architecture節はlua/fude/のコードが対象で、前例のfude-watchも載っていない"
+    },
+    {
+      "id": "R2-4",
+      "severity": "SHOULD",
+      "text": "読めないファイルのテストは、rootで実行すると落ちる（tests/fude/fude_guide_script_spec.lua:378-384）",
+      "reason": "通常のCIはrootで動かない"
+    },
+    {
+      "id": "R2-5",
+      "severity": "MAY",
+      "text": "桁の大きい行番号がbashの算術でオーバーフローし、1行目扱いになる",
+      "reason": "見送り"
+    },
+    {
+      "id": "R2-6",
+      "severity": "MAY",
+      "text": "doc/fude.txt:2205-2207の折り返しが崩れている",
+      "reason": "見送り"
+    }
+  ],
   "tasks": [
     {
       "id": "T1",
