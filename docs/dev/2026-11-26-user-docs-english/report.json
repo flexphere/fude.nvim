@@ -4,11 +4,17 @@
   "date": "2026-11-26",
   "branch": "docs/user-docs-english",
   "base": "origin/main",
-  "status": "実装中",
+  "status": "レビュー対応中",
   "commits": 0,
-  "summary": "PRD が承認されました。チェックスクリプトの実装と文書の更新を進めています。",
+  "summary": "draft の PR #334 を作りました。経緯を知らないレビュー役のレビューを進めています。",
   "generatedBy": "/develop-v2",
-  "tests": [],
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト・check-state-deps・check-purity・check-docs・check-doc-lang すべて通過"
+    }
+  ],
   "attention": [],
   "acceptance": [
     {
@@ -289,16 +295,48 @@
       "impact": "検出範囲",
       "revisit": "正当な CJK 文字が必要になったとき",
       "refs": "AC1, AC2"
+    },
+    {
+      "id": "D-007",
+      "title": "HARNESS.md §4.1 の完了済 Sensor の表には PR 番号が決まってから行を足す",
+      "at": "2026-11-26 17:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "記録の表の 1 行",
+      "by": "作業する側",
+      "background": "表に「実装 PR」の列があり、実装時点では PR 番号が無かった",
+      "options": [
+        "PR 番号が決まってから足す",
+        "「(本 PR)」と書いて今足す"
+      ],
+      "decided": "PR 番号が決まってから足す",
+      "reason": "既存の行と同じ形（PR 番号）にそろえるため",
+      "impact": ".claude/HARNESS.md",
+      "revisit": "",
+      "refs": "T2"
     }
   ],
   "reviews": [],
   "unresolved": [],
-  "tasks": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "チェックスクリプトとテスト、Makefile・pre-commit・CI への組み込み",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "文書の更新（README 英語化、CLAUDE.md ルール、CONTRIBUTING・HARNESS）",
+      "status": "完了",
+      "owner": "impl-2"
+    }
+  ],
   "revision": 1,
   "revisions": [],
   "pr": {
-    "number": null,
-    "url": null
+    "number": 334,
+    "url": "https://github.com/flexphere/fude.nvim/pull/334"
   },
   "copilot": {
     "status": "",
