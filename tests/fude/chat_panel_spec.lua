@@ -6,6 +6,8 @@ local sidepanel = require("fude.ui.sidepanel")
 local config = require("fude.config")
 
 local ID = "0b0e6f1c-7a52-4c1e-9d3a-5f6a7b8c9d01"
+-- vim.cmd before any test replaces it (the panel tests count :startinsert!).
+local real_vim_cmd = vim.cmd
 local KEY = "o/r:#7:chat"
 
 local function text_line(text)
@@ -277,7 +279,7 @@ describe("chat panel", function()
 		insert_starts = 0
 		local real_cmd = vim.cmd
 		helpers.mock(vim, "cmd", function(command)
-			if command == "startinsert" then
+			if command == "startinsert!" then
 				insert_starts = insert_starts + 1
 				return
 			end
@@ -728,8 +730,31 @@ describe("chat panel", function()
 			assert.is_true(vim.tbl_contains(log_lines(), data.NEW_SESSION_NOTE))
 			runs[2].chunk(text_line("fresh") .. success_line("fresh"))
 			runs[2].exit(0, "")
-			assert.are.same({ "## You", "", "q", "", "## Claude", "", data.NEW_SESSION_NOTE, "", "fresh", "" }, log_lines())
+			local live = log_lines()
+			assert.are.same({ "## You", "", "q", "", "## Claude", "", data.NEW_SESSION_NOTE, "", "fresh", "" }, live)
 			assert.are.same({ "" }, input_lines())
+			-- the stored conversation says so too: reopening shows the same lines
+			chat_panel.close()
+			chat_panel.open()
+			assert.are.same(live, log_lines())
+		end)
+
+		it("keeps a question claude had taken out of the input and shows its failure again after reopening", function()
+			chat_panel.open()
+			set_input({ "long task" })
+			chat_panel.submit()
+			local init = vim.json.encode({ type = "system", subtype = "init", session_id = ID }) .. "\n"
+			local failed = vim.json.encode({ type = "result", subtype = "error_max_turns", is_error = true }) .. "\n"
+			runs[1].chunk(init .. text_line("half") .. failed)
+			runs[1].exit(1, "")
+			-- not handed back: a resend would put it into claude's session twice
+			assert.are.same({ "" }, input_lines())
+			assert.is_nil(config.state.chat_input)
+			local live = log_lines()
+			assert.truthy(table.concat(live, "\n"):find("**Error:**", 1, true))
+			chat_panel.close()
+			chat_panel.open()
+			assert.are.same(live, log_lines())
 		end)
 	end)
 
@@ -867,8 +892,19 @@ describe("chat panel", function()
 			assert.is_true(notified(vim.log.levels.WARN, "not a file"))
 		end)
 
+		it("refuses a special buffer without a name, such as a comment input or the overview", function()
+			local scratch = helpers.create_buf({ "secret draft" })
+			assert.are.equal("", vim.api.nvim_buf_get_name(scratch))
+			assert.are_not.equal("", vim.bo[scratch].buftype)
+			vim.api.nvim_set_current_buf(scratch)
+			chat_panel.add_selection(1, 1)
+			assert.is_nil(panel())
+			assert.is_true(notified(vim.log.levels.WARN, "not a file"))
+		end)
+
 		it("names a buffer without a file and a file outside the repository", function()
 			local scratch = helpers.create_buf({ "x" })
+			vim.bo[scratch].buftype = ""
 			vim.api.nvim_set_current_buf(scratch)
 			chat_panel.add_selection(1, 1)
 			assert.are.equal("[No Name]:L1", input_lines()[1])
@@ -1169,6 +1205,100 @@ describe("chat panel", function()
 			assert.are.equal(vim.go.signcolumn, vim.wo[win].signcolumn)
 			assert.are.equal("", vim.bo[vim.api.nvim_win_get_buf(win)].buftype)
 			assert.are.same({ "unsent" }, config.state.chat_input)
+		end)
+
+		it("puts the cursor at the end of restored input so typing continues it", function()
+			chat_panel.open()
+			set_input({ "first line", "hello" })
+			chat_panel.close()
+			insert_starts = 0
+			chat_panel.open()
+			-- `startinsert!` (counted by the mock) appends at the end of the cursor line
+			assert.are.equal(1, insert_starts)
+			local cursor = vim.api.nvim_win_get_cursor(panel().input_win)
+			assert.are.equal(2, cursor[1])
+			assert.are.equal(#"hello" - 1, cursor[2])
+		end)
+
+		it("goes back to the end of the input when the command focuses an open panel", function()
+			local editor = vim.api.nvim_get_current_win()
+			chat_panel.open()
+			set_input({ "hello" })
+			vim.api.nvim_win_set_cursor(panel().input_win, { 1, 0 })
+			vim.api.nvim_set_current_win(editor)
+			insert_starts = 0
+			chat_panel.toggle()
+			assert.are.equal(1, insert_starts)
+			assert.are.same({ 1, #"hello" - 1 }, vim.api.nvim_win_get_cursor(panel().input_win))
+		end)
+
+		it("really appends: typing after a refocus continues the text", function()
+			-- the real :startinsert! this time
+			helpers.mock(vim, "cmd", real_vim_cmd)
+			local editor = vim.api.nvim_get_current_win()
+			chat_panel.open()
+			vim.cmd("stopinsert")
+			set_input({ "hello" })
+			vim.api.nvim_win_set_cursor(panel().input_win, { 1, 0 })
+			vim.api.nvim_set_current_win(editor)
+			chat_panel.toggle()
+			local keys = vim.api.nvim_replace_termcodes(" world<Esc>", true, false, true)
+			vim.api.nvim_feedkeys(keys, "xt", false)
+			-- typed after the existing text, not in front of it or inside it
+			-- (the first fed key is consumed while insert mode starts)
+			assert.are.equal(1, #input_lines())
+			assert.truthy(input_lines()[1]:match("^hello ?world$"))
+		end)
+
+		it("reopens the editor window in the panel's tabpage, not in the current one", function()
+			local tab = vim.api.nvim_get_current_tabpage()
+			local editor = vim.api.nvim_get_current_win()
+			chat_panel.open()
+			local p = panel()
+			vim.cmd("tabnew")
+			local other_tab = vim.api.nvim_get_current_tabpage()
+			local other_wins = #vim.api.nvim_tabpage_list_wins(other_tab)
+			vim.api.nvim_win_close(editor, true)
+			assert.is_true(helpers.wait_for(function()
+				return #vim.api.nvim_tabpage_list_wins(tab) == 3
+			end))
+			assert.are.equal(other_wins, #vim.api.nvim_tabpage_list_wins(other_tab))
+			assert.are.equal(other_tab, vim.api.nvim_get_current_tabpage())
+			assert.are.equal(tab, vim.api.nvim_win_get_tabpage(p.prev_win))
+			assert.is_true(chat_panel.is_open())
+		end)
+
+		it("stays in the chat's tabpage when the side panel reopens its editor window elsewhere", function()
+			local tab_a = vim.api.nvim_get_current_tabpage()
+			local editor = vim.api.nvim_get_current_win()
+			sidepanel.open()
+			vim.cmd("tabnew")
+			local tab_b = vim.api.nvim_get_current_tabpage()
+			chat_panel.open()
+			local input_win = panel().input_win
+			vim.api.nvim_win_close(editor, true)
+			assert.is_true(helpers.wait_for(function()
+				return #vim.api.nvim_tabpage_list_wins(tab_a) == 2
+			end))
+			assert.are.equal(tab_b, vim.api.nvim_get_current_tabpage())
+			assert.are.equal(input_win, vim.api.nvim_get_current_win())
+		end)
+
+		it("keeps the tabpage when :only is run in a pane and other tabpages exist", function()
+			vim.cmd("tabnew")
+			local tab = vim.api.nvim_get_current_tabpage()
+			chat_panel.open()
+			local p = panel()
+			vim.api.nvim_set_current_win(p.input_win)
+			vim.cmd("only")
+			assert.is_true(helpers.wait_for(function()
+				return config.state.chat_panel == nil
+			end))
+			assert.is_true(vim.api.nvim_tabpage_is_valid(tab))
+			local wins = vim.api.nvim_tabpage_list_wins(tab)
+			assert.are.equal(1, #wins)
+			assert.are.equal("", vim.bo[vim.api.nvim_win_get_buf(wins[1])].buftype)
+			assert.is_false(vim.wo[wins[1]].winfixwidth)
 		end)
 
 		it("opens an editor window in its own tabpage while the side panel is in another one", function()

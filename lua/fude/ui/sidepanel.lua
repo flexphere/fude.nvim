@@ -994,7 +994,12 @@ function M.ensure_editor_window(panel)
 	-- A chat pane is no place to stay either: the user closed an editor window.
 	local chat_panel = require("fude.ui.chat_panel")
 	local current = vim.api.nvim_get_current_win()
-	local enter = current == panel.win or chat_panel.is_panel_window(current)
+	-- (only when that pane is in this tabpage: focus never moves across tabpages)
+	local enter = current == panel.win
+		or (
+			chat_panel.is_panel_window(current)
+			and vim.api.nvim_win_get_tabpage(current) == vim.api.nvim_win_get_tabpage(panel.win)
+		)
 	panel.prev_win = M.open_editor_window({ split = OPPOSITE_SPLIT[panel.split] or "right", win = panel.win }, enter)
 	-- The split halves the panel, which had grown since the editor window
 	-- closed: give it its configured size back (winfix* only protects a size

@@ -187,16 +187,20 @@ describe("commands availability", function()
 	it("passes the command's line range to the chat input", function()
 		local chat_panel = require("fude.ui.chat_panel")
 		local original = chat_panel.add_selection
-		local got
+		local got, ranged
 		chat_panel.add_selection = function(line1, line2)
 			got = { line1, line2 }
 		end
-		local entry = commands.find("FudeReviewChatAdd")
-		entry.run({ range = 2, line1 = 3, line2 = 7 })
-		local ranged = got
-		-- without a range both are the cursor line
-		entry.run({ range = 0, line1 = 5, line2 = 5 })
+		-- restored even when a call below throws
+		local ok, err = pcall(function()
+			local entry = commands.find("FudeReviewChatAdd")
+			entry.run({ range = 2, line1 = 3, line2 = 7 })
+			ranged = got
+			-- without a range both are the cursor line
+			entry.run({ range = 0, line1 = 5, line2 = 5 })
+		end)
 		chat_panel.add_selection = original
+		assert.is_true(ok, tostring(err))
 		assert.are.same({ 3, 7 }, ranged)
 		assert.are.same({ 5, 5 }, got)
 	end)

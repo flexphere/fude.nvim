@@ -88,6 +88,14 @@ describe("init integration", function()
 			helpers.mock(require("fude.diff"), "get_repo_root", function()
 				return root
 			end)
+			-- the root is taken before the PR lookup: a :cd while gh is asked
+			-- must not move the review either
+			local gh = require("fude.gh")
+			local get_pr_info = gh.get_pr_info
+			helpers.mock(gh, "get_pr_info", function(...)
+				root = "/moved/during/lookup"
+				return get_pr_info(...)
+			end)
 			init.start()
 			helpers.wait_for(function()
 				return config.state.active

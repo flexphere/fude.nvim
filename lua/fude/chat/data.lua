@@ -178,10 +178,10 @@ end
 --- system prompt on a conversation's first request and reuses that record on
 --- every `--resume`, so it goes with each question instead
 --- (`build_prompt_context`).
---- @param st table|nil config.state-shaped table
+--- @param state table|nil config.state-shaped table
 --- @return string|nil text, nil when there is no review target
-function M.build_system_prompt(st)
-	if type(st) ~= "table" then
+function M.build_system_prompt(state)
+	if type(state) ~= "table" then
 		return nil
 	end
 	local lines = {
@@ -194,8 +194,8 @@ function M.build_system_prompt(st)
 			table.insert(lines, label .. ": " .. tostring(value))
 		end
 	end
-	if st.review_mode == "local" then
-		local session = st.local_session
+	if state.review_mode == "local" then
+		local session = state.local_session
 		if type(session) ~= "table" then
 			return nil
 		end
@@ -204,13 +204,17 @@ function M.build_system_prompt(st)
 		table.insert(lines, "Each question starts with the base branch and the scope under review at that moment.")
 		return table.concat(lines, "\n")
 	end
-	if type(st.pr_number) ~= "number" and type(st.pr_number) ~= "string" then
+	if type(state.pr_number) ~= "number" and type(state.pr_number) ~= "string" then
 		return nil
 	end
-	table.insert(lines, "Review target: GitHub pull request #" .. tostring(st.pr_number))
-	add("URL", st.pr_url)
-	add("Base branch", st.base_ref)
-	add("Head branch", st.head_ref)
+	table.insert(lines, "Review target: GitHub pull request #" .. tostring(state.pr_number))
+	add("URL", state.pr_url)
+	add("Base branch", state.base_ref)
+	add("Head branch", state.head_ref)
+	table.insert(
+		lines,
+		"While a single commit of the pull request is under review, the question starts with that commit."
+	)
 	return table.concat(lines, "\n")
 end
 
@@ -221,17 +225,31 @@ local LOCAL_SCOPE_TEXT = {
 	uncommitted = "uncommitted (staged and unstaged changes against HEAD)",
 }
 
+--- @param sha string
+--- @return string the commit scope, as written in a question's context line
+local function commit_scope_text(sha)
+	return "scope: commit " .. sha .. " (that single commit against its parent; it is checked out)"
+end
+
 --- Lines put in front of a question: the parts of the review target that can
---- change during a conversation — in local review the base branch and the
---- current scope (the commit's SHA in the commit scope). A GitHub review has
---- none.
---- @param st table|nil config.state-shaped table
+--- change during a conversation. Local review: the base branch and the
+--- current scope (the commit's SHA in the commit scope). GitHub review: the
+--- commit that is checked out while the commit scope is active; nothing in
+--- the full PR scope.
+--- @param state table|nil config.state-shaped table
 --- @return string[] lines (empty when there is nothing to add)
-function M.build_prompt_context(st)
-	if type(st) ~= "table" or st.review_mode ~= "local" then
+function M.build_prompt_context(state)
+	if type(state) ~= "table" then
 		return {}
 	end
-	local session = st.local_session
+	if state.review_mode ~= "local" then
+		if state.scope ~= "commit" then
+			return {}
+		end
+		local sha = type(state.scope_commit_sha) == "string" and state.scope_commit_sha or "?"
+		return { "[Review context — " .. commit_scope_text(sha) .. "]" }
+	end
+	local session = state.local_session
 	if type(session) ~= "table" then
 		return {}
 	end
@@ -241,7 +259,7 @@ function M.build_prompt_context(st)
 	end
 	if session.scope == "commit" then
 		local sha = type(session.scope_commit_sha) == "string" and session.scope_commit_sha or "?"
-		table.insert(parts, "scope: commit " .. sha .. " (that single commit against its parent; it is checked out)")
+		table.insert(parts, commit_scope_text(sha))
 	elseif type(session.scope) == "string" and session.scope ~= "" then
 		table.insert(parts, "scope: " .. (LOCAL_SCOPE_TEXT[session.scope] or session.scope))
 	end
@@ -491,7 +509,7 @@ end
 M.STORE_VERSION = 1
 
 --- Statuses an assistant message can be stored with.
-local MESSAGE_STATUSES = { done = true, cancelled = true }
+local MESSAGE_STATUSES = { done = true, cancelled = true, error = true }
 
 --- A chat with no session and no messages.
 --- @return { session_id: string|nil, started: boolean, messages: table[] }
@@ -502,11 +520,13 @@ end
 --- Build one stored message.
 --- @param role "user"|"assistant"
 --- @param text string
---- @param status "done"|"cancelled"|nil assistant messages only: cancelled = stopped midway
+--- @param status "done"|"cancelled"|"error"|nil assistant messages only: cancelled = stopped
+---   midway, error = failed after claude had taken the question into its session
 --- @param at string|nil UTC ISO-8601 timestamp
---- @return { role: string, text: string, status: string|nil, at: string|nil }
-function M.build_message(role, text, status, at)
-	return { role = role, text = text, status = status, at = at }
+--- @param err string|nil the error message of an "error" answer
+--- @return { role: string, text: string, status: string|nil, at: string|nil, error: string|nil }
+function M.build_message(role, text, status, at, err)
+	return { role = role, text = text, status = status, at = at, error = err }
 end
 
 --- Serialize a chat to the JSON stored on disk.
@@ -517,7 +537,7 @@ function M.serialize_chat(chat, key)
 	chat = type(chat) == "table" and chat or M.build_empty_chat()
 	local messages = {}
 	for _, m in ipairs(type(chat.messages) == "table" and chat.messages or {}) do
-		table.insert(messages, { role = m.role, text = m.text, status = m.status, at = m.at })
+		table.insert(messages, { role = m.role, text = m.text, status = m.status, at = m.at, error = m.error })
 	end
 	return vim.json.encode({
 		version = M.STORE_VERSION,
@@ -555,6 +575,7 @@ function M.deserialize_chat(text)
 					role = m.role,
 					text = m.text,
 					status = (m.role == "assistant" and MESSAGE_STATUSES[m.status]) and m.status or nil,
+					error = (m.role == "assistant" and m.status == "error" and type(m.error) == "string") and m.error or nil,
 					at = type(m.at) == "string" and m.at or nil,
 				})
 			end
@@ -638,7 +659,7 @@ function M.format_chat_lines(messages)
 			end
 			local body = text_lines(m.text)
 			vim.list_extend(lines, body)
-			vim.list_extend(lines, M.format_answer_end_lines(m.status or "done", nil, body[#body] ~= ""))
+			vim.list_extend(lines, M.format_answer_end_lines(m.status or "done", m.error, body[#body] ~= ""))
 		end
 	end
 	return lines

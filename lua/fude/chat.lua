@@ -53,6 +53,14 @@ M.ERR_NO_ROOT = "no_root"
 --   result, handle, retried, finished, abandoned }
 local running = nil
 
+-- Token of a process that was sent SIGTERM and has not exited yet, and the
+-- function starting the question that waits for it.
+local draining = nil
+local waiting = nil
+
+--- How long a question waits for a stopped process to exit before it starts anyway.
+M.DRAIN_TIMEOUT_MS = 3000
+
 -- === Config helpers ===
 
 --- @return table the `chat` options (empty table before setup)
@@ -211,10 +219,15 @@ local function now_iso()
 end
 
 --- End a job: store the exchange and report the outcome. A finished answer
---- and one stopped midway are stored (question, then answer); a failed one is
---- not, since the caller gets the question back to send again. Storing does
---- not depend on the session still being active — the key names the target —
---- but nothing is stored for an abandoned job (its chat was discarded).
+--- and one stopped midway are stored (question, then answer). A failed one is
+--- stored — with its error — only when claude had taken the question into
+--- its session (`job.recorded`): sending it again would then put it into
+--- that session twice, so it belongs to the conversation and the caller does
+--- not get it back. A failure before that (not logged in, command missing)
+--- stores nothing and the caller gets the question back to send again
+--- (`result.stored` tells which). Storing does not depend on the session
+--- still being active — the key names the target — but nothing is stored
+--- for an abandoned job (its chat was discarded).
 --- @param job table
 --- @param status "done"|"cancelled"|"error"
 --- @param err string|nil
@@ -226,22 +239,44 @@ local function finish(job, status, err)
 	if running == job then
 		running = nil
 	end
-	local save_err
-	if not job.abandoned and status ~= "error" then
+	local save_err = job.save_error
+	local stored = false
+	if not job.abandoned and (status ~= "error" or job.recorded) then
 		local chat = M.load(job.key)
 		local at = now_iso()
 		table.insert(chat.messages, data.build_message("user", job.prompt, nil, at))
-		table.insert(chat.messages, data.build_message("assistant", job.text, status, at))
-		local _
-		_, save_err = M.save(job.key, chat)
+		table.insert(chat.messages, data.build_message("assistant", job.text, status, at, status == "error" and err or nil))
+		local ok, e = M.save(job.key, chat)
+		stored = ok
+		save_err = e or save_err
 	end
 	emit(job, "on_done", {
 		status = status,
 		text = job.text,
 		error = err,
 		prompt = job.prompt,
+		stored = stored,
 		save_error = save_err,
 	})
+end
+
+--- Save a job's chat, remembering a failure for the job's result: the
+--- caller should hear that the conversation is not being kept.
+--- @param job table
+--- @param chat table
+local function save_for(job, chat)
+	local ok, err = M.save(job.key, chat)
+	if not ok then
+		job.save_error = err
+	end
+end
+
+--- Add text to the job's answer and pass it on.
+--- @param job table
+--- @param text string
+local function add_text(job, text)
+	job.text = job.text .. text
+	emit(job, "on_text", text)
 end
 
 local start_process
@@ -251,12 +286,15 @@ local start_process
 --- @param event table see data.parse_stream_line
 local function handle_event(job, event)
 	if event.kind == "init" then
+		-- claude opened the session and takes the question into it.
+		job.recorded = true
 		-- The session now exists on claude's side: later questions resume it.
 		if not job.resume then
 			local chat = M.load(job.key)
-			if chat.session_id == job.session_id and not chat.started then
+			if chat.session_id ~= job.session_id or not chat.started then
+				chat.session_id = job.session_id
 				chat.started = true
-				M.save(job.key, chat)
+				save_for(job, chat)
 			end
 		end
 	elseif event.kind == "message_start" then
@@ -270,8 +308,8 @@ local function handle_event(job, event)
 				text = (job.text:sub(-1) == "\n" and "\n" or "\n\n") .. text
 			end
 		end
-		job.text = job.text .. text
-		emit(job, "on_text", text)
+		job.streamed = true
+		add_text(job, text)
 	elseif event.kind == "tool" then
 		emit(job, "on_tool", data.format_tool_use(event.name, event.input, job.root))
 	elseif event.kind == "result" then
@@ -304,8 +342,9 @@ local function handle_exit(job, code, stderr)
 
 	local result = job.result
 	if result and result.ok then
-		if job.text == "" then
-			job.text = result.text or ""
+		-- The answer came without partial text (only the final result).
+		if not job.streamed and (result.text or "") ~= "" then
+			add_text(job, result.text)
 		end
 		finish(job, "done")
 		return
@@ -317,7 +356,7 @@ local function handle_exit(job, code, stderr)
 	else
 		-- A clean exit with answer text is an answer, whatever was written to
 		-- stderr on the way (warnings, deprecation notices).
-		if code == 0 and job.text ~= "" then
+		if code == 0 and job.streamed then
 			finish(job, "done")
 			return
 		end
@@ -331,19 +370,30 @@ local function handle_exit(job, code, stderr)
 	-- A stopped session gets no second process: nobody is waiting for it.
 	if retry and config.state == job.state then
 		job.retried = true
-		local chat = M.load(job.key)
+		-- The id comes from the job, not from the file: a chat that could not
+		-- be saved or read back must not leave the command line without one.
 		if retry == "new" then
-			chat.session_id = store.generate_uuid()
-			chat.started = false
+			job.session_id = store.generate_uuid()
+			job.resume = false
 		else
-			chat.started = true
+			job.resume = true
 		end
-		M.save(job.key, chat)
-		job.session_id = chat.session_id
-		job.resume = chat.started
+		local chat = M.load(job.key)
+		chat.session_id = job.session_id
+		chat.started = job.resume
+		save_for(job, chat)
 		job.result = nil
-		job.text = ""
+		job.recorded = false
+		job.streamed = false
 		job.break_pending = false
+		if retry == "new" then
+			-- Part of the answer from here on: what the first attempt showed stays,
+			-- and the stored conversation says that claude started over, as the
+			-- live one does.
+			local sep = job.text == "" and ""
+				or (job.text:sub(-2) == "\n\n" and "" or (job.text:sub(-1) == "\n" and "\n" or "\n\n"))
+			add_text(job, sep .. data.NEW_SESSION_NOTE .. "\n\n")
+		end
 		emit(job, "on_retry", retry)
 		-- A handler may have cancelled or discarded the chat.
 		if not job.finished then
@@ -363,10 +413,10 @@ start_process = function(job)
 		session_id = job.session_id,
 		resume = job.resume,
 		allowed_tools = opts.allowed_tools,
-		system_prompt = data.build_system_prompt(job.state),
+		system_prompt = data.build_system_prompt(job.target),
 		extra_args = opts.args,
 		-- A GitHub review's checkout is the pull request's: its settings are not the user's.
-		user_settings_only = job.state.review_mode ~= "local",
+		user_settings_only = job.target.review_mode ~= "local",
 	})
 	job.pending = ""
 	-- Each process gets its own token, so output of the one a retry replaced
@@ -374,7 +424,7 @@ start_process = function(job)
 	local token = {}
 	job.token = token
 	-- The context lines go to claude only: job.prompt stays the user's own text.
-	local input = data.build_prompt_input(data.build_prompt_context(job.state), job.prompt)
+	local input = data.build_prompt_input(data.build_prompt_context(job.target), job.prompt)
 	local handle, err = M.run(args, { cwd = job.root, stdin = input }, function(chunk)
 		if job.finished or job.token ~= token then
 			return
@@ -383,6 +433,15 @@ start_process = function(job)
 		lines, job.pending = data.split_stream_chunk(job.pending, chunk)
 		handle_lines(job, lines)
 	end, function(code, stderr)
+		-- A stopped process is gone now: the question waiting for that may start.
+		if draining == token then
+			draining = nil
+			local start = waiting
+			waiting = nil
+			if start then
+				start()
+			end
+		end
 		if job.finished or job.token ~= token then
 			return
 		end
@@ -419,7 +478,12 @@ end
 ---   on_tool(label)   a tool call, e.g. "Read lua/fude/foo.lua"
 ---   on_retry(kind)   "new": started over under a new session id;
 ---                    "resume": the session existed already and was resumed
----   on_done(result)  { status = "done"|"cancelled"|"error", text, error, prompt, save_error }
+---   on_done(result)  { status = "done"|"cancelled"|"error", text, error, prompt, stored, save_error }
+---                    stored: the exchange is in the stored conversation (a
+---                    failure only when claude had taken the question);
+---                    save_error: the chat could not be written to disk
+--- A question sent while a stopped process is still exiting is accepted but
+--- starts when that process is gone (at the latest after DRAIN_TIMEOUT_MS).
 --- `on_done` may run before `send` returns (the command could not be started).
 --- @param prompt string
 --- @param handlers table|nil
@@ -445,14 +509,30 @@ function M.send(prompt, handlers)
 	end
 
 	local chat = M.load(key)
+	local save_error
 	if not chat.session_id then
 		chat.session_id = store.generate_uuid()
 		chat.started = false
 		-- Stored before the run, so the id survives a Neovim exit mid-answer.
-		M.save(key, chat)
+		local _
+		_, save_error = M.save(key, chat)
 	end
 
 	local job = {
+		save_error = save_error,
+		-- What claude is told about the review. The GitHub fields are as they
+		-- are when the question is asked (the scope may change while the
+		-- answer runs); `local_session` is the session table itself.
+		target = {
+			review_mode = state.review_mode,
+			local_session = state.local_session,
+			pr_number = state.pr_number,
+			pr_url = state.pr_url,
+			base_ref = state.base_ref,
+			head_ref = state.head_ref,
+			scope = state.scope,
+			scope_commit_sha = state.scope_commit_sha,
+		},
 		state = state,
 		key = key,
 		root = root,
@@ -466,7 +546,29 @@ function M.send(prompt, handlers)
 		finished = false,
 	}
 	running = job
-	start_process(job)
+	if draining then
+		-- The process of the answer just stopped is still exiting: two claude
+		-- processes must not write the same session at once, so this question
+		-- starts when that one is gone (or stopped answering to SIGTERM).
+		local token = draining
+		local function start()
+			if not job.finished then
+				start_process(job)
+			end
+		end
+		waiting = start
+		vim.defer_fn(function()
+			if draining == token then
+				draining = nil
+				if waiting == start then
+					waiting = nil
+					start()
+				end
+			end
+		end, M.DRAIN_TIMEOUT_MS)
+	else
+		start_process(job)
+	end
 	return true, nil
 end
 
@@ -481,6 +583,8 @@ function M.cancel()
 	end
 	if job.handle then
 		job.handle.kill()
+		-- SIGTERM was sent, the process is not gone yet (see `send`).
+		draining = job.token
 	end
 	finish(job, "cancelled")
 	return true
@@ -510,6 +614,8 @@ end
 --- Test helper: forget the running job without touching its process or store.
 function M._reset()
 	running = nil
+	draining = nil
+	waiting = nil
 end
 
 return M

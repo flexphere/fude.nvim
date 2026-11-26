@@ -257,9 +257,6 @@ local function is_blank(lines)
 	return vim.trim(table.concat(lines, "\n")) == ""
 end
 
---- Put a question back in front of the unsent input (in the panel, or in the
---- lines kept for the next open), so a failed question is not lost.
---- @param prompt string
 --- Copy the input pane's text to `state.chat_input`. The state is kept
 --- current while the user types (autocmds in `open`) and after every change
 --- the module makes, so the unsent question survives however the pane goes
@@ -274,6 +271,9 @@ local function sync_input(panel)
 	config.state.chat_input = (not is_blank(lines)) and lines or nil
 end
 
+--- Put a question back in front of the unsent input (in the panel, or in the
+--- lines kept for the next open), so a failed question is not lost.
+--- @param prompt string
 local function restore_input(prompt)
 	local state = config.state
 	local panel = get_panel()
@@ -303,7 +303,6 @@ function handlers.on_text(text)
 		return
 	end
 	live.text = live.text .. text
-	live.streamed = true
 	live.activity = nil
 	local panel = get_panel()
 	if panel then
@@ -325,15 +324,17 @@ function handlers.on_tool(label)
 	end
 end
 
-function handlers.on_retry(kind)
-	-- "resume" continues the same conversation: nothing to tell.
-	if kind ~= "new" then
+function handlers.on_retry()
+	-- The note about a new session arrives as answer text (and is stored with
+	-- it); only the activity of the process that was replaced goes.
+	local live = config.state.chat_live
+	if not live then
 		return
 	end
-	local live = config.state.chat_live
-	if live then
-		handlers.on_text(data.NEW_SESSION_NOTE .. "\n\n")
-		live.streamed = false
+	live.activity = nil
+	local panel = get_panel()
+	if panel then
+		draw_progress(panel)
 	end
 end
 
@@ -345,10 +346,6 @@ function handlers.on_done(result)
 	if panel then
 		stop_progress(panel)
 		update_log(panel, function()
-			-- The answer came without partial text (only the final result).
-			if result.status == "done" and not (live and live.streamed) and (result.text or "") ~= "" then
-				append_text(panel, result.text)
-			end
 			local has_text = last_log_line(panel) ~= ""
 			append_lines(panel, data.format_answer_end_lines(result.status, result.error, has_text))
 		end)
@@ -356,7 +353,11 @@ function handlers.on_done(result)
 	-- A panel in another tabpage shows nothing to the user right now.
 	local visible = panel ~= nil and vim.api.nvim_win_get_tabpage(panel.log_win) == vim.api.nvim_get_current_tabpage()
 	if result.status == "error" then
-		restore_input(result.prompt or (live and live.prompt) or "")
+		-- A failure stored with the conversation is in claude's session too:
+		-- handing the question back would send it there a second time.
+		if not result.stored then
+			restore_input(result.prompt or (live and live.prompt) or "")
+		end
 		if not visible then
 			vim.notify("fude.nvim: Chat failed: " .. tostring(result.error), vim.log.levels.ERROR)
 		end
@@ -400,7 +401,12 @@ end
 --- @param panel table
 local function focus_input(panel)
 	vim.api.nvim_set_current_win(panel.input_win)
-	vim.cmd("startinsert")
+	-- Continue at the end of what is there: an unsent question restored into
+	-- the pane, or one left with <Esc>, is appended to, not written into.
+	local last = vim.api.nvim_buf_line_count(panel.input_buf)
+	local line = vim.api.nvim_buf_get_lines(panel.input_buf, last - 1, last, false)[1] or ""
+	pcall(vim.api.nvim_win_set_cursor, panel.input_win, { last, #line })
+	vim.cmd("startinsert!")
 end
 
 --- Path to write for a selection in `buf`.
@@ -413,13 +419,13 @@ local function resolve_selection_path(buf)
 	if buf == config.state.preview_buf then
 		return data.format_base_path(name:match("%[base%] (.+)$")), false
 	end
-	if name == "" then
-		return nil, false
-	end
-	-- A named special buffer (side panel, comment browser, terminal, …): its
-	-- name is no path claude could read.
+	-- A special buffer, named or not (side panel, comment browser, comment
+	-- input, overview, terminal, …): nothing claude could read by a path.
 	if vim.bo[buf].buftype ~= "" then
 		return nil, true
+	end
+	if name == "" then
+		return nil, false
 	end
 	-- Relative to the directory claude runs in (not to Neovim's cwd, which may
 	-- be another worktree or repository after a :cd); outside it, the full
@@ -455,7 +461,7 @@ function M.submit()
 		return
 	end
 
-	state.chat_live = { key = key, prompt = prompt, text = "", streamed = false, activity = nil }
+	state.chat_live = { key = key, prompt = prompt, text = "", activity = nil }
 	append_lines(panel, data.format_question_lines(prompt))
 	vim.api.nvim_buf_set_lines(panel.input_buf, 0, -1, false, { "" })
 	sync_input(panel)
@@ -517,6 +523,18 @@ local function is_alone(panel)
 	return true
 end
 
+--- Whether a window is the only non-floating window of its tabpage.
+--- @param win number
+--- @return boolean
+local function is_last_in_tabpage(win)
+	for _, w in ipairs(vim.api.nvim_tabpage_list_wins(vim.api.nvim_win_get_tabpage(win))) do
+		if w ~= win and vim.api.nvim_win_get_config(w).relative == "" then
+			return false
+		end
+	end
+	return true
+end
+
 --- Whether the side panel is open in the chat panel's tabpage.
 --- @param panel table
 --- @return boolean
@@ -537,8 +555,15 @@ local function ensure_editor_window(panel)
 		return
 	end
 	local enter = M.is_panel_window(vim.api.nvim_get_current_win())
-	panel.prev_win =
-		require("fude.ui.sidepanel").open_editor_window({ split = OPPOSITE_SPLIT[panel.split], win = -1 }, enter)
+	-- `win = -1` means the current tabpage, which need not be the panel's by
+	-- the time this scheduled work runs: open the window from inside a pane.
+	vim.api.nvim_win_call(panel.log_win, function()
+		panel.prev_win =
+			require("fude.ui.sidepanel").open_editor_window({ split = OPPOSITE_SPLIT[panel.split], win = -1 }, false)
+	end)
+	if enter then
+		vim.api.nvim_set_current_win(panel.prev_win)
+	end
 	-- The new window takes half of the tabpage the panes had grown into.
 	M.restore_width()
 end
@@ -566,7 +591,10 @@ local function quit_if_alone(panel)
 	if not ok then
 		vim.notify("fude.nvim: " .. tostring(err), vim.log.levels.ERROR)
 		if vim.api.nvim_win_is_valid(input_win) then
-			require("fude.ui.sidepanel").open_editor_window({ split = OPPOSITE_SPLIT[panel.split], win = -1 }, true)
+			-- From inside the pane: `win = -1` is the current tabpage's edge.
+			vim.api.nvim_win_call(input_win, function()
+				require("fude.ui.sidepanel").open_editor_window({ split = OPPOSITE_SPLIT[panel.split], win = -1 }, false)
+			end)
 			pcall(vim.cmd, "noautocmd call nvim_win_close(" .. input_win .. ", v:true)")
 		end
 	end
@@ -659,9 +687,13 @@ function M.open()
 				-- `<C-w>T` in a pane closes it after opening a new window on its
 				-- buffer in a new tabpage, which is the current window by now.
 				if current == other or current_buf == log_buf or current_buf == input_buf then
+					-- The remaining pane as the current window is `:only` from a
+					-- pane: the user asked to keep that window, so it must not
+					-- take its tabpage with it.
+					local keep = current == other
 					vim.schedule(function()
 						if config.state.chat_panel == panel then
-							M.close()
+							M.close({ keep_last_window = keep })
 						end
 					end)
 				else
@@ -712,7 +744,10 @@ end
 --- when it ends; unsent input is kept for the next open. When a pane is the
 --- current window, focus returns to the window the panel was opened or
 --- focused from.
-function M.close()
+--- @param opts { keep_last_window: boolean|nil }|nil keep_last_window: a pane that is
+---   the only window of its tabpage stays as an ordinary empty window instead
+---   of closing the tabpage with it
+function M.close(opts)
 	local state = config.state
 	local panel = state.chat_panel
 	if not panel then
@@ -738,8 +773,12 @@ function M.close()
 	for _, buf in ipairs({ panel.log_buf, panel.input_buf }) do
 		for _, win in ipairs(vim.api.nvim_buf_is_valid(buf) and vim.fn.win_findbuf(buf) or {}) do
 			seen[win] = true
-			local ok, err = pcall(vim.cmd, "noautocmd call nvim_win_close(" .. win .. ", v:true)")
-			if not ok and type(err) == "string" and err:find("Cannot close last window") then
+			local keep = opts and opts.keep_last_window and is_last_in_tabpage(win)
+			local ok, err = true, nil
+			if not keep then
+				ok, err = pcall(vim.cmd, "noautocmd call nvim_win_close(" .. win .. ", v:true)")
+			end
+			if keep or (not ok and type(err) == "string" and err:find("Cannot close last window")) then
 				-- The pane stays as the editor's last window (e.g. `:only` from a
 				-- pane): it must not keep the pane's options, size and buffer pins.
 				require("fude.ui.sidepanel").reset_window_options(win)

@@ -271,7 +271,32 @@ describe("chat.build_system_prompt", function()
 end)
 
 describe("chat.build_prompt_context", function()
-	it("adds nothing in a GitHub review", function()
+	it("names the checked-out commit in a GitHub review's commit scope", function()
+		local lines = data.build_prompt_context({
+			review_mode = "github",
+			pr_number = 1,
+			scope = "commit",
+			scope_commit_sha = "abc1234def",
+		})
+		assert.are.equal(1, #lines)
+		assert.truthy(lines[1]:find("scope: commit abc1234def", 1, true))
+		assert.truthy(lines[1]:find("checked out", 1, true))
+		-- the same wording as a local review's commit scope
+		local localc = data.build_prompt_context({
+			review_mode = "local",
+			local_session = { scope = "commit", scope_commit_sha = "abc1234def" },
+		})
+		assert.are.equal(lines[1], localc[1])
+		assert.truthy(
+			data.build_prompt_context({ review_mode = "github", scope = "commit" })[1]:find("scope: commit ?", 1, true)
+		)
+	end)
+
+	it("adds nothing in a GitHub review of the whole pull request", function()
+		assert.are.same(
+			{},
+			data.build_prompt_context({ review_mode = "github", pr_number = 1, scope = "full_pr", scope_commit_sha = "abc" })
+		)
 		assert.are.same({}, data.build_prompt_context({ review_mode = "github", pr_number = 1, base_ref = "main" }))
 		assert.are.same({}, data.build_prompt_context(nil))
 		assert.are.same({}, data.build_prompt_context({ review_mode = "local" }))
@@ -871,17 +896,41 @@ describe("chat.send", function()
 		assert.are.equal(0, #runs)
 	end)
 
-	it("reports a failed result and stores nothing of the exchange", function()
+	it("stores nothing of a question that failed before claude opened the session", function()
 		chat.send("q", handlers())
 		local line = vim.json.encode({ type = "result", subtype = "success", is_error = true, result = "API Error: 529" })
-		runs[1].chunk(init_line() .. "\n" .. line .. "\n")
+		runs[1].chunk(line .. "\n")
 		runs[1].exit(1, "")
 		local result = done_result()
 		assert.are.equal("error", result.status)
 		assert.are.equal("API Error: 529", result.error)
 		assert.are.equal("q", result.prompt)
+		assert.is_false(result.stored)
 		assert.are.same({}, chat.load(KEY).messages)
 		assert.is_false(chat.is_running())
+	end)
+
+	it("stores a failure after claude took the question, with the partial answer and the error", function()
+		chat.send("q", handlers())
+		local line = vim.json.encode({ type = "result", subtype = "error_max_turns", is_error = true })
+		runs[1].chunk(init_line() .. "\n" .. text_line("half an answer") .. "\n" .. line .. "\n")
+		runs[1].exit(1, "")
+		local result = done_result()
+		assert.are.equal("error", result.status)
+		-- the question is in claude's session: it is not handed back for a resend
+		assert.is_true(result.stored)
+		local messages = chat.load(KEY).messages
+		assert.are.equal(2, #messages)
+		assert.are.equal("q", messages[1].text)
+		assert.are.equal("half an answer", messages[2].text)
+		assert.are.equal("error", messages[2].status)
+		assert.are.equal(result.error, messages[2].error)
+		-- reopening shows the error where the live conversation showed it
+		local lines = data.format_chat_lines(messages)
+		assert.is_true(vim.tbl_contains(lines, "**Error:** " .. result.error))
+		-- and the next question continues that session
+		chat.send("q2", handlers())
+		assert.is_not_nil(index_of(runs[2].cmd, "--resume"))
 	end)
 
 	it("reports stderr for a non-zero exit without a result", function()
@@ -913,6 +962,29 @@ describe("chat.send", function()
 		runs[1].exit(1, "connection lost\n")
 		assert.are.equal("error", done_result().status)
 		assert.are.equal("connection lost", done_result().error)
+	end)
+
+	it("puts the checked-out commit in front of a question in a GitHub review's commit scope", function()
+		config.state.scope = "commit"
+		config.state.scope_commit_sha = "abc1234def"
+		chat.send("why?", handlers())
+		local stdin = runs[1].opts.stdin
+		assert.truthy(stdin:find("scope: commit abc1234def", 1, true))
+		assert.are.equal("why?", stdin:sub(-4))
+		runs[1].chunk(init_line() .. "\n" .. success_line("a") .. "\n")
+		runs[1].exit(0, "")
+		assert.are.equal("why?", chat.load(KEY).messages[1].text)
+		-- back in the whole pull request: nothing is added
+		config.state.scope = "full_pr"
+		config.state.scope_commit_sha = nil
+		chat.send("and now?", handlers())
+		assert.are.equal("and now?", runs[2].opts.stdin)
+	end)
+
+	it("tells claude in a GitHub review that a question may start with the commit under review", function()
+		chat.send("q", handlers())
+		local prompt = runs[1].cmd[index_of(runs[1].cmd, "--append-system-prompt") + 1]
+		assert.truthy(prompt:find("the question starts with that commit", 1, true))
 	end)
 
 	describe("settings sources", function()
@@ -987,6 +1059,7 @@ describe("chat.send", function()
 			chat.send("q2", handlers())
 			assert.are.equal("/other-worktree", runs[2].opts.cwd)
 			assert.are.equal(first_id, runs[2].cmd[index_of(runs[2].cmd, "--resume") + 1])
+			events = {}
 			-- claude keeps sessions per directory: the resume finds nothing there
 			runs[2].chunk(not_found_line(first_id) .. "\n")
 			runs[2].exit(1, "")
@@ -994,7 +1067,7 @@ describe("chat.send", function()
 			assert.are.equal("/other-worktree", runs[3].opts.cwd)
 			local new_id = runs[3].cmd[index_of(runs[3].cmd, "--session-id") + 1]
 			assert.are_not.equal(first_id, new_id)
-			assert.are.same({ "retry", "new" }, events[1])
+			assert.are.same({ "retry", "new" }, events[2])
 			runs[3].chunk(init_line() .. "\n" .. success_line("a2") .. "\n")
 			runs[3].exit(0, "")
 			assert.are.equal("done", done_result().status)
@@ -1035,7 +1108,8 @@ describe("chat.send", function()
 		runs[1].chunk(not_found_line(ID) .. "\n")
 		runs[1].exit(1, "No conversation found with session ID: " .. ID)
 		assert.are.equal(2, #runs)
-		assert.are.same({ { "retry", "new" } }, events)
+		-- the note is answer text, so it is shown and stored like the rest
+		assert.are.same({ { "text", data.NEW_SESSION_NOTE .. "\n\n" }, { "retry", "new" } }, events)
 		local new_id = runs[2].cmd[index_of(runs[2].cmd, "--session-id") + 1]
 		assert.is_true(data.is_uuid(new_id))
 		assert.are_not.equal(ID, new_id)
@@ -1050,6 +1124,49 @@ describe("chat.send", function()
 		assert.is_true(stored.started)
 		-- the conversation log is kept; only claude's session is new
 		assert.are.equal(3, #stored.messages)
+		-- what is stored renders as the live conversation did: note, then answer
+		assert.are.equal(data.NEW_SESSION_NOTE .. "\n\nfresh", stored.messages[3].text)
+		assert.are.equal(stored.messages[3].text, done_result().text)
+	end)
+
+	it("keeps what the first attempt had shown in front of the note", function()
+		chat.save(KEY, { session_id = ID, started = true, messages = {} })
+		chat.send("q", handlers())
+		runs[1].chunk(text_line("stray words") .. "\n" .. not_found_line(ID) .. "\n")
+		runs[1].exit(1, "")
+		runs[2].chunk(init_line() .. "\n" .. text_line("fresh") .. "\n" .. success_line("fresh") .. "\n")
+		runs[2].exit(0, "")
+		local shown = ""
+		for _, e in ipairs(events) do
+			if e[1] == "text" then
+				shown = shown .. e[2]
+			end
+		end
+		assert.are.equal("stray words\n\n" .. data.NEW_SESSION_NOTE .. "\n\nfresh", shown)
+		assert.are.equal(shown, chat.load(KEY).messages[2].text)
+	end)
+
+	it("retries with the id it used when the stored chat cannot be read back", function()
+		chat.send("q", handlers())
+		local id = runs[1].cmd[index_of(runs[1].cmd, "--session-id") + 1]
+		-- the file is gone or unreadable by the time the retry is decided
+		vim.fn.delete(tmp_dir, "rf")
+		runs[1].exit(1, "Error: Session ID " .. id .. " is already in use.")
+		assert.are.equal(2, #runs)
+		assert.are.equal(id, runs[2].cmd[index_of(runs[2].cmd, "--resume") + 1])
+		for i = 1, #runs[2].cmd do
+			assert.is_not_nil(runs[2].cmd[i])
+		end
+	end)
+
+	it("reports that the chat could not be saved, also when the question fails", function()
+		helpers.mock(chat, "save", function()
+			return false, "EACCES: state directory"
+		end)
+		chat.send("q", handlers())
+		runs[1].exit(1, "Not logged in")
+		assert.are.equal("error", done_result().status)
+		assert.are.equal("EACCES: state directory", done_result().save_error)
 	end)
 
 	it("does not start over a second time", function()
@@ -1112,10 +1229,43 @@ describe("chat.send", function()
 		assert.is_false(chat.cancel())
 	end)
 
-	it("accepts a new question right after a cancel", function()
+	it("accepts a new question right after a cancel, and starts it once the stopped process is gone", function()
 		chat.send("q1", handlers())
+		runs[1].chunk(init_line() .. "\n")
 		chat.cancel()
 		assert.is_true(chat.send("q2", handlers()))
+		assert.is_true(chat.is_running())
+		-- two processes must not write the same session at once
+		assert.are.equal(1, #runs)
+		runs[1].exit(143, "")
+		assert.are.equal(2, #runs)
+		assert.are.equal("q2", runs[2].opts.stdin)
+		assert.is_not_nil(index_of(runs[2].cmd, "--resume"))
+	end)
+
+	it("does not start a waiting question that was cancelled meanwhile", function()
+		chat.send("q1", handlers())
+		chat.cancel()
+		chat.send("q2", handlers())
+		chat.cancel()
+		assert.is_false(chat.is_running())
+		runs[1].exit(143, "")
+		assert.are.equal(1, #runs)
+	end)
+
+	it("starts the waiting question anyway when the stopped process does not exit", function()
+		local timeout = chat.DRAIN_TIMEOUT_MS
+		chat.DRAIN_TIMEOUT_MS = 20
+		chat.send("q1", handlers())
+		chat.cancel()
+		chat.send("q2", handlers())
+		assert.are.equal(1, #runs)
+		assert.is_true(helpers.wait_for(function()
+			return #runs == 2
+		end))
+		chat.DRAIN_TIMEOUT_MS = timeout
+		-- its late exit starts nothing more
+		runs[1].exit(143, "")
 		assert.are.equal(2, #runs)
 	end)
 
@@ -1127,8 +1277,9 @@ describe("chat.send", function()
 		assert.is_false(chat.is_running())
 		assert.are.equal("cancelled", done_result().status)
 		assert.are.same(data.build_empty_chat(), chat.load(KEY))
-		-- the next question starts a new session
+		-- the next question starts a new session (once the stopped process is gone)
 		chat.send("q2", handlers())
+		runs[1].exit(143, "")
 		assert.is_not_nil(index_of(runs[2].cmd, "--session-id"))
 	end)
 
