@@ -50,7 +50,7 @@
       "ref": "AC3"
     },
     {
-      "text": "Copilot はこの PR をレビューできませんでした（レビューできないという返事のみ）。レビューはレビュー役の 1 周（MUST 0）だけです。",
+      "text": "Copilot はレビュー枠（quota）不足でこの PR をレビューできませんでした。レビューはレビュー役の 1 周（MUST 0）だけです。必要なら、枠が戻ってから Copilot にレビューを依頼し直してください。",
       "ref": "Copilot"
     }
   ],
@@ -348,7 +348,7 @@
     "url": "https://github.com/flexphere/fude.nvim/pull/332"
   },
   "copilot": {
-    "status": "unable: Copilot はこの PR をレビューできなかった（レビューできないという返事が届いた）。指摘への対応はなし。",
+    "status": "unable: Copilot のレビュー枠（quota）が足りず、レビューされなかった。指摘への対応はなし。",
     "comments": [],
     "timed_out": false
   }
