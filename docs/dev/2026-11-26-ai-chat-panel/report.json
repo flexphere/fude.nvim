@@ -27,23 +27,33 @@
     },
     {
       "text": "実際の claude で動かしてください（テストは実行関数を差し替えています）。レビュー中（GitHub かローカル）に :FudeReviewChat → 質問を打って normal の <CR> → 応答が逐次出て、ツール実行中は「Read …」などの行が出ること。Neovim を再起動してレビューを再開し :FudeReviewChat を開くと前の会話が出て、続けて質問すると前の文脈を覚えていること。",
-      "ref": "AC2, AC4"
+      "ref": "AC2, AC4",
+      "kind": "動作確認"
     },
     {
       "text": "diff プレビュー（:FudeReviewDiff）と side panel を開いた状態で :FudeReviewChat を開き、ソースのウィンドウが使える幅に残るかを見てください。旧レビューの 4 周目で「プレビューが幅固定のためソースが極端に狭くなる」と MUST が出ていましたが、やり直し後のレビューでは指摘されず、直していません。",
-      "ref": "旧レビュー R4-M4"
+      "ref": "旧レビュー R4-M4",
+      "kind": "動作確認"
     },
     {
       "text": "ファイルの行を選択して :'<,'>FudeReviewChatAdd → 入力欄の末尾に「path:L10-L20」とコードフェンスが入り、insert モードで続きを書けること。",
-      "ref": "AC6"
+      "ref": "AC6",
+      "kind": "動作確認"
     },
     {
       "text": "GitHub レビューでは --setting-sources user を既定で渡すので、そのリポジトリの .claude/settings.json（hook・allow）と .mcp.json は読まれません。自分のリポジトリでプロジェクトの設定に頼っている場合は chat.args = { \"--setting-sources\", \"user,project,local\" } で戻せます。",
-      "ref": "D-023, D-025 · 重要度 高"
+      "ref": "D-023, D-025 · 重要度 高",
+      "kind": "PRD 変更"
     },
     {
       "text": "既定で許可している git の diff / log / show / blame は --output でファイルを書けます（ご指示どおり拒否ルールは足していません）。塞ぐ設定例は README の Tools and permissions にあります。",
-      "ref": "D-019 · 重要度 高"
+      "ref": "D-019 · 重要度 高",
+      "kind": "PRD 変更"
+    },
+    {
+      "text": "承認後に PRD の AC9 と AC11 を変えました。AC9: 会話の途中で変わる scope（ローカルの scope・base、GitHub の commit scope）はシステムプロンプトでなく毎回の質問の先頭に添えます（claude がシステムプロンプトを会話の最初に記録するため）。AC11: claude 側でセッションが始まった後の失敗は、質問を入力欄に戻さず会話に保存します（再送で二重になるため）。",
+      "ref": "D-012, D-026, D-028",
+      "kind": "PRD 変更"
     },
     {
       "text": "claude は利用者の MCP・スキルを読み込んで起動するため、この環境では 1 回の呼び出しで約 17 万トークンのキャッシュ作成が起きました。chat.args = { \"--safe-mode\" } などで軽くできます（README に例）。",
@@ -167,42 +177,50 @@
       {
         "date": "2026-11-26",
         "change": "AC9: 変わりうる情報（ローカルの scope・base）は毎回の質問に添える",
-        "reason": "D-012"
+        "reason": "D-012",
+        "field": "AC9"
       },
       {
         "date": "2026-11-26",
         "change": "AC8: 利用者自身の claude の設定（allow ルール・MCP）は効く、という例外を明記",
-        "reason": "D-008"
+        "reason": "D-008",
+        "field": "AC8"
       },
       {
         "date": "2026-11-26",
         "change": "AC11: 「セッション ID は使用中」のときの --resume でのやり直しを追記",
-        "reason": "D-010"
+        "reason": "D-010",
+        "field": "AC11"
       },
       {
         "date": "2026-11-26",
         "change": "AC8: 既定で許可する git の diff / log / show / blame が --output でファイルを書ける点は許容し、文書に書く",
-        "reason": "D-019"
+        "reason": "D-019",
+        "field": "AC8"
       },
       {
         "date": "2026-11-26",
         "change": "AC8: GitHub レビューでは PR が持ち込むプロジェクトの設定を既定で読まない（--setting-sources user）",
-        "reason": "D-023"
+        "reason": "D-023",
+        "field": "AC8"
       },
       {
         "date": "2026-11-26",
         "change": "AC8: PR の .mcp.json の MCP サーバーも起動しないことを確かめた旨を追記",
-        "reason": "D-025"
+        "reason": "D-025",
+        "field": "AC8"
       },
       {
         "date": "2026-11-26",
         "change": "AC9: GitHub レビューの commit scope も質問の先頭に添える",
-        "reason": "D-026"
+        "reason": "D-026",
+        "field": "AC9"
       },
       {
         "date": "2026-11-26",
         "change": "AC11: セッションが始まった後の失敗は保存し入力欄に戻さない",
-        "reason": "D-028"
+        "reason": "D-028",
+        "field": "AC11"
       }
     ],
     "verification": [
@@ -369,7 +387,8 @@
       "impact": "AC8 の文言、README・doc",
       "revisit": "「編集しないはずが書き換わった」という報告が出たとき。認証を落とさずに allow だけを無効にする手段が claude にできたとき",
       "refs": "AC8",
-      "escalated": true
+      "escalated": true,
+      "prdChange": true
     },
     {
       "id": "D-009",
@@ -407,7 +426,8 @@
       "reason": "無いと :FudeReviewChatNew で会話を捨てるしか抜け道がない。",
       "impact": "find_session_retry、AC11",
       "revisit": "claude のエラー文が変わったとき",
-      "refs": "AC11"
+      "refs": "AC11",
+      "prdChange": true
     },
     {
       "id": "D-011",
@@ -448,7 +468,8 @@
       "impact": "build_system_prompt、stdin に入れる文、AC9",
       "revisit": "claude の snapshot の既定や意味が変わったとき。添えた行に claude が毎回言及してうるさいとき",
       "refs": "AC9",
-      "escalated": true
+      "escalated": true,
+      "prdChange": true
     },
     {
       "id": "D-013",
@@ -585,7 +606,8 @@
       "reason": "利用者の決定。",
       "impact": "README・doc の Tools and permissions、AC8 の文言",
       "revisit": "「レビュー中にファイルが書き換わった」という報告が出たとき。信頼できない PR を扱う利用者が増えたとき（既定で拒否ルールを足す・git を外す）",
-      "refs": "R1-M1, AC8"
+      "refs": "R1-M1, AC8",
+      "prdChange": true
     },
     {
       "id": "D-020",
@@ -662,7 +684,8 @@
       "reason": "hook はモデルの判断を通らず起動しただけで実行されるので、D-019（モデルが指示文に従って初めて起きる経路）とは性質が違う。利用者が尊重すると決めたのは利用者自身の設定で、PR が持ち込んだ設定は当たらない。ローカルは自分のブランチなので最小の変更にとどめた。実機で --setting-sources user のとき hook が動かないことを確認（旗なしの対照は未確認）。",
       "impact": "build_claude_args、README・doc、AC8",
       "revisit": "自分のリポジトリの PR しか読まない利用者から不便という声が出たとき。.mcp.json やプロジェクトの skills 経由で同じ種類の実行が起きると分かったとき",
-      "refs": "R2-N1, AC8"
+      "refs": "R2-N1, AC8",
+      "prdChange": true
     },
     {
       "id": "D-024",
@@ -701,7 +724,8 @@
       "reason": "claude 2.1.332 で、.mcp.json に無害な stdio サーバーを書き enableAllProjectMcpServers を有効にした条件で、旗あり = 起動しない / 旗なし = 起動する を確かめた。--strict-mcp-config は利用者の MCP も止め AC8 とぶつかる。",
       "impact": "README・doc、AC8",
       "revisit": "claude の版が上がったとき。user の settings.json に enableAllProjectMcpServers を書いた環境で起動したという報告が出たとき（--strict-mcp-config に切り替える）",
-      "refs": "R1-1, AC8"
+      "refs": "R1-1, AC8",
+      "prdChange": true
     },
     {
       "id": "D-026",
@@ -720,7 +744,8 @@
       "reason": "D-012 でローカルの scope を添えると決めた理由と同じ。",
       "impact": "build_prompt_context、AC9",
       "revisit": "claude が添えた行を無視して最新として答える例が出たとき",
-      "refs": "R1-2, AC9"
+      "refs": "R1-2, AC9",
+      "prdChange": true
     },
     {
       "id": "D-027",
@@ -758,7 +783,8 @@
       "reason": "D-009 の根拠（再送で二重になる）が init 後は逆向きに働く。",
       "impact": "chat.finish、保存形式、AC11",
       "revisit": "init 後でも claude 側に質問が記録されない失敗があると分かったとき",
-      "refs": "R1-8, AC11, D-009"
+      "refs": "R1-8, AC11, D-009",
+      "prdChange": true
     },
     {
       "id": "D-029",
