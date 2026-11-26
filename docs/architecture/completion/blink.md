@@ -1,0 +1,3 @@
+# lua/fude/completion/blink.lua
+
+blink.cmp source adapter for `completion/init.lua`. `source.new()` builds the source; `enabled()` delegates to `require("fude.completion").is_enabled()`, and the trigger characters are `@`, `#` and `_`. `get_completions(ctx, callback)` passes the line text before the cursor to `get_context` and, for `mention` / `issue` / `commit`, calls `fetch_mentions` / `fetch_issues` / `fetch_commits` with `ctx.bufnr` as the request buffer, answering `{ items = items }` (empty items for any other context). Commit items get a descending `score_offset` (`1000 - idx`) so blink.cmp keeps the order `fetch_commits` returned. Registered by the user as the blink.cmp provider module `fude.completion.blink` (see README).
