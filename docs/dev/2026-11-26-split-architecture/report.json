@@ -162,6 +162,25 @@
       "impact": "docs/architecture/",
       "revisit": "整理の PR を始めるとき",
       "refs": "AC3"
+    },
+    {
+      "id": "D-005",
+      "title": "check-claude-md は pre-commit に足さない（make all と CI のみ）",
+      "at": "2026-11-26",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "make all と CI で検出されるので main には入らない。失うのは commit 時の早期検出だけ",
+      "by": "判断役",
+      "background": "既存の check-* は .githooks/pre-commit でも走るが、PRD は pre-commit に触れていない。",
+      "options": [
+        "pre-commit にも足し HARNESS.md を直す",
+        "足さない"
+      ],
+      "decided": "足さない",
+      "reason": "PRD の目的と AC6 は make all と CI で満たされる。承認された範囲を広げず、hook を入れた開発者の commit 時の挙動も変えない。",
+      "impact": ".githooks/pre-commit（変更なし）、HARNESS.md の Sensors 表は「開発中・CI」",
+      "revisit": "pre-commit でも揃えたいとき、CI で初めて見つかることが続いたとき",
+      "refs": "AC6"
     }
   ],
   "reviews": [],
@@ -170,19 +189,19 @@
     {
       "id": "T1",
       "title": "モジュール詳細を docs/architecture へ移し、CLAUDE.md に索引を作る",
-      "status": "進行中",
+      "status": "完了",
       "owner": "impl-docs"
     },
     {
       "id": "T2",
       "title": "CLAUDE.md の文字数と文書の対応を検査するチェックとテスト",
-      "status": "進行中",
+      "status": "完了",
       "owner": "impl-check"
     },
     {
       "id": "T3",
       "title": "HARNESS.md・skill・スクリプトのコメントの参照先を更新",
-      "status": "未着手",
+      "status": "完了",
       "owner": "impl-docs"
     }
   ],
