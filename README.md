@@ -26,6 +26,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - **Viewed files** - Mark/unmark files as viewed (synced with GitHub), and jump between the ones still unviewed with `]F` / `[F`
 - **Create PR** - Create draft PRs from templates with a two-pane float (title + body), picking the base branch from a fuzzy finder (default branch preselected)
 - **Open in browser** - Open the PR in your browser, or press `o` on a comment (comment viewer, comment browser, PR overview) to open it, on the PR overview body to open the PR, or on a side panel commit row to open the commit in the PR
+- **AI chat panel** - `:FudeReviewChat` opens a chat with [Claude Code](https://claude.com/claude-code) (`claude`) in a split at the editor edge: the conversation on top, your input below. Each review target (PR, or local branch) keeps its own conversation across review stops and Neovim restarts, `:FudeReviewChatAdd` pastes the selected lines with their path and line range into the input, and claude can read the repository with a small set of tools by default (`Read`, `Grep`, `Glob`, a few `git` / `gh` commands; see [AI chat panel](#ai-chat-panel))
 - **Gitsigns integration** - Automatically switches gitsigns diff base to the review base (PR base branch, or the local scope's base)
 
 ## Requirements
@@ -35,6 +36,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
 - Optional: [telescope.nvim](https://github.com/nvim-telescope/telescope.nvim) for picker UI (changed files and review scope)
 - Optional: [snacks.nvim](https://github.com/folke/snacks.nvim) for picker UI (alternative to telescope, used when `file_list_mode = "snacks"` for changed files, review scope, and the PR stack picker)
 - Optional: snacks.nvim's image module (kitty graphics protocol: kitty, ghostty, wezterm; tmux with passthrough) plus `curl` for the avatars in the PR overview and comment windows (`images`), and [ImageMagick](https://imagemagick.org/) (`magick` or `convert`) to cut them into circles
+- Optional: [Claude Code](https://claude.com/claude-code) CLI (`claude`), installed and logged in, for the AI chat panel (`:FudeReviewChat`). Without it only the chat is unavailable
 - Optional: [gitsigns.nvim](https://github.com/lewis6991/gitsigns.nvim) for diff base switching
 - Optional: [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) and a Nerd Font for side panel file and folder icons
 - Optional: [blink.cmp](https://github.com/saghen/blink.cmp) or [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) for `@user` / `#issue` / `_commit` completion
@@ -58,6 +60,7 @@ PR code review inside Neovim. Review GitHub pull requests without leaving your e
     "FudeReviewScope", "FudeReviewScopeNext", "FudeReviewScopePrev", "FudeReviewStackSwitch",
     "FudeReviewOverview", "FudeReviewSubmit", "FudeOpenPRURL", "FudeCopyPRURL",
     "FudeReviewViewed", "FudeReviewUnviewed", "FudeReviewReload", "FudeReviewPanel",
+    "FudeReviewChat", "FudeReviewChatAdd", "FudeReviewChatNew",
     "FudeReviewToggleFileTree", "FudeReviewToggleCommentStyle", "FudeReviewToggleResolved",
     "FudeReviewToggleGitsigns", "FudeCreatePR", "FudeEditPR", "FudeEditReviewers", "FudeEditLabels",
     "FudeChangePRState",
@@ -150,6 +153,9 @@ Not sure which command you need? `:FudeCommandPalette` opens a command palette l
 | `:FudeReviewToggleGitsigns` | Toggle gitsigns between the review base and HEAD |
 | `:FudeReviewPanel` | Toggle review side panel (focus it when open, close it when focused) |
 | `:FudeReviewToggleFileTree` | Toggle side panel files between flat list and tree |
+| `:FudeReviewChat` | Toggle the AI chat panel (focus its input when open, close it when focused). Needs the `claude` command |
+| `:FudeReviewChatAdd` | Append the current line / selection to the chat input as `<path>:L<start>-L<end>` plus a code fence (opens the panel when closed) |
+| `:FudeReviewChatNew` | Discard this review target's claude session and conversation; the next question starts a new session (an answer in progress is stopped first) |
 | `:FudeCreatePR` | Create draft PR from template. Picks the base branch first (default branch preselected, `<CR>` accepts it; gh-stack parent and `git log` ancestor branches listed right after it; picking a non-default base asks whether to create a stacked PR via `gh stack link`, which joins the base PR's stack or starts a new one; failed preflight checks abort creation, and a later link failure shows an error float with the PR URL and `q close | c copy | o open PR` without closing the PR; body `file://` images/videos are uploaded via `gh --attach`; a branch whose HEAD is not on the remote yet is pushed with `git push --set-upstream` first when `pr.push_before_create = true`, and a failed push shows the error in a float and keeps the input as a draft) |
 | `:FudeEditPR` | Edit the current PR's title and body (supports `file://` attachments as well) |
 | `:FudeEditReviewers` | Request or remove reviewers of the current PR in the same `<Tab>`-toggle picker as the overview's `C` → Reviewer (`<C-e>` re-requests) |
@@ -332,6 +338,25 @@ require("fude").setup({
   pr = {
     push_before_create = false, -- Push an unpushed branch before :FudeCreatePR creates the PR
   },
+  -- AI chat panel (:FudeReviewChat). Needs the claude CLI
+  chat = {
+    cmd = "claude",     -- Name or path of the claude command
+    width = 60,         -- Panel width in columns (at most half the editor)
+    position = "right", -- "right" or "left"
+    -- Tools claude may use (claude's --allowedTools form). A list given here replaces this one
+    allowed_tools = {
+      "Read", "Grep", "Glob",
+      "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)",
+      "Bash(git status:*)", "Bash(git blame:*)",
+      "Bash(gh pr view:*)", "Bash(gh pr diff:*)",
+    },
+    args = {},          -- Extra arguments appended to the claude command line
+    keymaps = {         -- Normal mode, in the panel; set one to false to leave it unmapped
+      submit = "<CR>",  -- Send the input (input pane)
+      cancel = "<C-c>", -- Stop the answer in progress (both panes)
+      close = "q",      -- Close the panel (both panes)
+    },
+  },
 })
 ```
 
@@ -390,6 +415,174 @@ Review Scope and Files shows the commit's full message, wrapped to the panel
 width. Messages longer than `sidepanel.commit_message.max_lines` rows (default 8)
 are folded into a `… N more lines` hint; press `m` to expand or collapse them.
 `j` / `k` also stop on the message rows.
+
+## AI chat panel
+
+`:FudeReviewChat` opens a chat with Claude Code next to your review: a vertical
+split at the editor edge (`chat.position`, `chat.width`) with the conversation
+on top (read-only, markdown) and an input pane below. It works in both GitHub
+and local review mode and needs the `claude` command (`chat.cmd`); without it
+the three chat commands only show a warning and are not listed in
+`:FudeCommandPalette`. The command toggles like `:FudeReviewPanel`: it opens the
+panel, focuses its input when the panel is open but another window is focused,
+and closes it when you are in one of its panes. The side panel and the chat
+panel can be open together.
+
+The chat commands put you in the input pane in insert mode (like the comment
+inputs). Write your question, leave insert mode and press `<CR>`. The
+question moves to the conversation, and the answer is appended as it streams
+in; a spinner at the end of the conversation shows what claude is doing (for
+example `Read lua/fude/foo.lua`). The conversation scrolls along while its
+cursor is on the last line and stays where it is while you read earlier
+output. Only one question is answered at a time.
+
+| Key (normal mode) | Pane | Action |
+|-------------------|------|--------|
+| `<CR>` (`chat.keymaps.submit`) | input | Send the input |
+| `<C-c>` (`chat.keymaps.cancel`) | both | Stop the answer in progress; what arrived stays, marked `*(interrupted)*` |
+| `q` (`chat.keymaps.close`) | both | Close the panel |
+
+- **Selections** - `:'<,'>FudeReviewChatAdd` (the current line without a range)
+  appends `<path>:L<start>-L<end>` (`:L<line>` for one line) and
+  the lines in a code fence tagged with the filetype to the input, opening the
+  panel when needed. Existing input is kept. The path is relative to the root
+  claude runs in (the review's root, not Neovim's current directory); a file
+  outside it is written with its full path. Lines taken from the diff
+  preview's base pane are written as `<path> (base version):L…`, an unnamed
+  ordinary buffer as `[No Name]`, and other special buffers, named or not
+  (side panel, comment browser, comment input, overview, terminal, …), are
+  refused. Use `:FudeReviewChatAdd<CR>` (not `<cmd>`) in a visual-mode
+  mapping so the range is passed.
+- **One conversation per review target** - GitHub: repository + PR number;
+  local review: worktree + branch (the unit [comment drafts](#comment-drafts)
+  use; on a detached HEAD the unit is the review session itself, so that
+  conversation is not continued after `:FudeReviewStop` and its file stays
+  on disk). The first question starts a claude session (`--session-id`), later ones
+  continue it (`--resume`), also after `:FudeReviewStop` or a Neovim restart.
+  The conversation shown in the panel is stored by fude under
+  `stdpath("state")/fude/chat/` and is never pruned; `:FudeReviewChatNew`
+  discards the target's session and conversation. claude runs in the
+  root of the review in progress — the repository root the GitHub review was
+  started in, or the local review's worktree — whatever Neovim's current
+  directory is. claude keeps its sessions per directory, so when you review
+  the same target from another worktree or clone, the stored conversation is
+  still shown but claude starts a new session there (the conversation says so).
+- **What claude knows** - the PR number, URL and base/head branches (GitHub),
+  or the branch (local review), are appended to its system prompt. What can
+  change during a conversation is sent in front of every question instead:
+  the base branch and the current scope in local review, and in a GitHub
+  review the commit that is checked out while a commit scope is active
+  (nothing for the whole PR). That line is not shown in the conversation. Diffs and files are not attached:
+  claude reads them itself, or you paste lines with `:FudeReviewChatAdd`.
+- **Closing and stopping** - closing the panel does not stop an answer (the
+  cancel key does): it keeps running, is stored when it ends — a message tells
+  you when it is ready — and is shown when you open the panel again. Unsent
+  input is also kept while the panel is closed, however it was closed (the
+  close key, `:q` in a pane, `:only`, …). An answer is
+  stopped by `<C-c>`, when the review stops (`:FudeReviewStop`, a stack
+  switch) — the panel closes then — and when Neovim exits; what had arrived
+  is stored as an interrupted answer. `:FudeReviewChatNew` stops it too, but
+  stores nothing of it. A question sent right after a stop starts once the
+  stopped claude process has exited (one that has not after 3 seconds is
+  killed).
+- **Failures** - when claude fails, the error is shown after whatever text had
+  arrived. A failure before claude opened the session (not logged in, command
+  not found, …) stores nothing and puts your question back in the input pane.
+  A failure after that (e.g. the turn limit) is stored with the question and
+  the error, and the question is not put back: claude's session already holds
+  it, so sending it again would ask twice. The error is followed by a line
+  saying so — send your next question to continue. When the stored session no longer
+  exists on claude's side, the question is sent once more in a new session
+  and the conversation says so (the note is stored with the answer). Warnings
+  claude prints while it answers successfully are not errors. When the
+  conversation cannot be written to disk, a warning says so with every answer.
+- **Windows** - the two panes keep their buffers (`'winfixbuf'`): you cannot
+  open a file from a chat pane (`:edit` or another plugin's picker fails with
+  E1513) — move to an editor window first. Files opened by fude from a pane
+  (file pickers, the comment browser, next/previous file) open in an editor
+  window. Moving a pane to another tabpage (`<C-w>T`) closes the panel. When the panes are the only windows left in their tabpage, an
+  editor window opens beside them, as for the side panel.
+
+### Tools and permissions
+
+claude runs non-interactively (`claude -p`) in the repository root with
+`--permission-mode dontAsk`, `--tools` limited to the built-in tools named in
+`chat.allowed_tools`, `--allowedTools` set to that list, and — in a GitHub
+review — `--setting-sources user` (see below). With the default
+list that means `Read`, `Grep`, `Glob` and `Bash` restricted to
+`git diff/log/show/status/blame` and `gh pr view/diff`: there is no `Edit` or
+`Write` tool in the session.
+
+The default is not strictly read-only, though. `git diff`, `git log`,
+`git show` and `git blame` write their output to a file when given
+`--output=<path>`, and the default list allows those commands with any
+arguments. If claude follows an instruction hidden in a PR description or in
+the diff it reads, a file on your machine can be overwritten. Such an
+instruction can come from anywhere in what is under review — the PR
+description, the diff, a `CLAUDE.md` of the checkout — so for a PR you do not
+trust, use the setup without git (2). Two ways to close this:
+
+```lua
+-- 1. Refuse git commands containing --output. Checked with claude 2.1.332:
+--    eight ways of writing --output= (plain, quoted, split by quotes or
+--    escapes, built from a variable or a command substitution, …) were all
+--    refused. The guarantee depends on claude's permission check.
+chat = { args = { "--disallowedTools", "Bash(git *--output*)" } }
+
+-- 2. Give claude no git at all (the most robust)
+chat = {
+  allowed_tools = { "Read", "Grep", "Glob", "Bash(gh pr view:*)", "Bash(gh pr diff:*)" },
+}
+```
+
+**Settings files.** In a GitHub review the checkout is the pull request's, so
+its `.claude/settings.json` is not yours: a PR could add hooks or
+`permissions.allow` rules there that would take effect on your first question
+(`claude -p` skips the workspace trust dialog). fude therefore passes
+`--setting-sources user` in a GitHub review: the project's and the local
+settings files (their hooks and allow rules) are not read. (Checked with
+claude 2.1.332: `SessionStart` and `UserPromptSubmit` hooks of a project
+`.claude/settings.json` did not run with that flag, and an MCP server
+declared in the checkout's `.mcp.json` was not started with it — so the MCP
+servers a PR brings along do not start in a GitHub review — while without
+the flag it was. How the flag treats the project's `CLAUDE.md` was not
+checked.) To read them again —
+for repositories you trust — set the option yourself; fude then leaves it to
+you:
+
+```lua
+chat = { args = { "--setting-sources", "user,project,local" } }
+```
+
+In a local review the code is your own, and the project's settings are read
+as in any `claude` session there.
+
+This is not a sandbox either. fude does not override your own Claude Code
+configuration, so anything you allowed in your user `settings.json` (and, in a
+local review, in the project's) — `permissions.allow` rules, MCP servers and
+the MCP tools you allowed — still works in the chat. To close that too, pass
+claude's own flags through `chat.args` (see `claude --help` for their exact
+meaning in your version):
+
+```lua
+chat = {
+  -- Ignore user/project/local settings files (and so their allow rules),
+  -- and load no MCP server
+  args = { "--restricted", "--strict-mcp-config" },
+}
+```
+
+`--strict-mcp-config` alone only skips the MCP servers. A `--setting-sources`
+given in `chat.args` replaces fude's own in every review mode, e.g.
+`--setting-sources project,local` skips your user `settings.json` while
+keeping the project's.
+
+claude starts with your usual configuration (MCP servers, skills, plugins,
+hooks, `CLAUDE.md`), so depending on your setup every question can be slow and
+use many tokens before claude reads a single file. The flags above make it
+lighter as a side effect; `args = { "--safe-mode" }` starts claude with those
+customizations disabled while permissions keep working as usual, and
+`args = { "--model", "sonnet" }` picks a faster model.
 
 ## Comment drafts
 

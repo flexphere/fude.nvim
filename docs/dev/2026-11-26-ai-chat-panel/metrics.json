@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "slug": "ai-chat-panel",
+  "title": "レビューモードの AI チャットパネル",
+  "date": "2026-11-26",
+  "branch": "feat/ai-chat-panel",
+  "pr": {
+    "number": 331,
+    "url": "https://github.com/flexphere/fude.nvim/pull/331"
+  },
+  "revision": 1,
+  "hearing": {
+    "questions_asked": 5,
+    "prd_drafts": 1,
+    "prd_changes_after_approval": 8
+  },
+  "implementation": {
+    "tasks": 3,
+    "commits": 23,
+    "review_rounds": 2,
+    "must_by_round": [
+      1,
+      0
+    ],
+    "must_total": 1,
+    "rounds_after_copilot": 0,
+    "review_end": {
+      "capped_revisions": 0,
+      "capped_after_copilot": 0,
+      "long_after_copilot": 0,
+      "max_rounds": 2,
+      "late_must_rounds": 0
+    },
+    "acceptance": {
+      "total": 13,
+      "met": 13,
+      "partial": 0,
+      "unmet": 0
+    },
+    "tests_failed": 0
+  },
+  "decisions": {
+    "total": 29,
+    "by_judge": 19,
+    "high": 6,
+    "escalated_to_user": 3
+  },
+  "copilot": {
+    "comments": 0,
+    "fixed": 0,
+    "reply_only": 0,
+    "declined": 0,
+    "timed_out": false
+  },
+  "revisions": {
+    "count": 0,
+    "rework": 0,
+    "requirement_change": 0
+  },
+  "phase_hours": {
+    "hearing": 0.21,
+    "prd_approval": 0.11,
+    "implementing": 0.5,
+    "reviewing": 2.63,
+    "pr": 0.01,
+    "reporting": 0.0
+  },
+  "unresolved": 9
+}

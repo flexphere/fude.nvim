@@ -1,0 +1,60 @@
+{
+  "slug": "ai-chat-panel",
+  "title": "レビューモードの AI チャットパネル",
+  "branch": "feat/ai-chat-panel",
+  "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-ai-chat-panel",
+  "phase": "done",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-26T08:05:00+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-26T08:17:35+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-26T08:24:04+09:00"
+    },
+    {
+      "phase": "reviewing",
+      "at": "2026-11-26T08:54:10+09:00"
+    },
+    {
+      "phase": "pr",
+      "at": "2026-11-26T11:31:51+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-26T11:32:40+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-26T11:32:40+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 5,
+    "prd_drafts": 1
+  },
+  "agents": {
+    "reviewer": "aa29257b0f95dd3a1",
+    "judge": "a6de5e78b77ecd3f7",
+    "implementer": "a301180494c2d3e2c",
+    "reviewer_before_restart": "a474d3af582a59558"
+  },
+  "review_outcomes": [
+    {
+      "revision": 1,
+      "ended": "must0",
+      "rounds": 2
+    }
+  ],
+  "pr": {
+    "number": 331,
+    "url": "https://github.com/flexphere/fude.nvim/pull/331"
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/Tg8Xc4dTxipfh2AChG7N43"
+}

@@ -1,0 +1,1336 @@
+{
+  "title": "レビューモードの AI チャットパネル",
+  "slug": "ai-chat-panel",
+  "date": "2026-11-26",
+  "branch": "feat/ai-chat-panel",
+  "base": "origin/main",
+  "status": "完了",
+  "commits": 23,
+  "summary": "レビューモードで claude と対話できるチャットパネルを作り、PR #331 を ready for review にしました。経緯を知らないレビュー役が MUST 0 件を返し（やり直し後 2 周）、make all と CI はすべて通っています。実際の claude での動作確認をお願いします（「見てほしいこと」）。",
+  "generatedBy": "/develop-v2",
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint（警告 0）・format-check・テスト（40 ファイル、失敗 0）・check-state-deps・check-purity・check-docs すべて通過"
+    },
+    {
+      "command": "CI（PR #331）",
+      "result": "pass",
+      "detail": "StyLua・Luacheck・Tests（Neovim stable / v0.10.4 / v0.11.7）・Test Coverage・各チェックすべて通過"
+    }
+  ],
+  "attention": [
+    {
+      "text": "レビューのやり方が変わった（1 周目を high でモジュールごとに出し切り、2 周目からは MUST だけ直す）ため、4 周目の修正に入る前に止め、新しいレビュー役で 1 周目からやり直しました。それまでの 4 周の記録は reviews_before_restart にあります（4 周目の指摘は使っていません）。",
+      "ref": "レビューのやり直し"
+    },
+    {
+      "text": "実際の claude で動かしてください（テストは実行関数を差し替えています）。レビュー中（GitHub かローカル）に :FudeReviewChat → 質問を打って normal の <CR> → 応答が逐次出て、ツール実行中は「Read …」などの行が出ること。Neovim を再起動してレビューを再開し :FudeReviewChat を開くと前の会話が出て、続けて質問すると前の文脈を覚えていること。",
+      "ref": "AC2, AC4",
+      "kind": "動作確認"
+    },
+    {
+      "text": "diff プレビュー（:FudeReviewDiff）と side panel を開いた状態で :FudeReviewChat を開き、ソースのウィンドウが使える幅に残るかを見てください。旧レビューの 4 周目で「プレビューが幅固定のためソースが極端に狭くなる」と MUST が出ていましたが、やり直し後のレビューでは指摘されず、直していません。",
+      "ref": "旧レビュー R4-M4",
+      "kind": "動作確認"
+    },
+    {
+      "text": "ファイルの行を選択して :'<,'>FudeReviewChatAdd → 入力欄の末尾に「path:L10-L20」とコードフェンスが入り、insert モードで続きを書けること。",
+      "ref": "AC6",
+      "kind": "動作確認"
+    },
+    {
+      "text": "GitHub レビューでは --setting-sources user を既定で渡すので、そのリポジトリの .claude/settings.json（hook・allow）と .mcp.json は読まれません。自分のリポジトリでプロジェクトの設定に頼っている場合は chat.args = { \"--setting-sources\", \"user,project,local\" } で戻せます。",
+      "ref": "D-023, D-025 · 重要度 高",
+      "kind": "PRD 変更"
+    },
+    {
+      "text": "既定で許可している git の diff / log / show / blame は --output でファイルを書けます（ご指示どおり拒否ルールは足していません）。塞ぐ設定例は README の Tools and permissions にあります。",
+      "ref": "D-019 · 重要度 高",
+      "kind": "PRD 変更"
+    },
+    {
+      "text": "承認後に PRD の AC9 と AC11 を変えました。AC9: 会話の途中で変わる scope（ローカルの scope・base、GitHub の commit scope）はシステムプロンプトでなく毎回の質問の先頭に添えます（claude がシステムプロンプトを会話の最初に記録するため）。AC11: claude 側でセッションが始まった後の失敗は、質問を入力欄に戻さず会話に保存します（再送で二重になるため）。",
+      "ref": "D-012, D-026, D-028",
+      "kind": "PRD 変更"
+    },
+    {
+      "text": "claude は利用者の MCP・スキルを読み込んで起動するため、この環境では 1 回の呼び出しで約 17 万トークンのキャッシュ作成が起きました。chat.args = { \"--safe-mode\" } などで軽くできます（README に例）。",
+      "ref": "D-008"
+    },
+    {
+      "text": "直さずに残した指摘が 9 件あります（2 周目の SHOULD 4 件・MAY 3 件など）。中でも「scope 切り替えの最中の質問に古い scope が添わる」「レビュー停止時に claude を止める前に HEAD を戻す」は、直すか決めてください。",
+      "ref": "unresolved"
+    },
+    {
+      "text": "Copilot のレビューは、依頼した利用者の残り枠不足で受けられませんでした（unable）。必要なら枠が戻ってから依頼し直してください。",
+      "ref": "Copilot"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": ":FudeReviewChat で右端の縦 split にチャットパネル（上: 会話ログ、下: 入力欄）が開く。:FudeReviewPanel と同じ toggle。幅と位置は設定で変えられる",
+      "result": "met",
+      "how": "結合テスト（chat_panel_spec: 開閉・toggle・左右・幅の上限）"
+    },
+    {
+      "id": "AC2",
+      "text": "入力欄の送信キー（既定: normal モードの <CR>）で claude -p がリポジトリのルートで起動し、応答が会話ログに逐次追記される",
+      "result": "met",
+      "how": "Unit（stream-json のパース）・結合テスト。実際の claude での手動確認は未実施"
+    },
+    {
+      "id": "AC3",
+      "text": "レビュー対象ごとに、最初の送信は --session-id、2 回目以降は同じ ID の --resume。別の対象の ID は混ざらない",
+      "result": "met",
+      "how": "Unit（build_claude_args）・chat.send のテスト"
+    },
+    {
+      "id": "AC4",
+      "text": "セッション ID と会話ログが stdpath(\"state\")/fude/ 以下に保存され、再起動後も過去の会話が表示されて同じセッションが続く",
+      "result": "met",
+      "how": "保存・復元の Unit テスト。再起動の手動確認は未実施"
+    },
+    {
+      "id": "AC5",
+      "text": ":FudeReviewChatNew でその対象のセッション ID と会話ログを破棄し、次の送信が新しいセッションで始まる",
+      "result": "met",
+      "how": "結合テスト"
+    },
+    {
+      "id": "AC6",
+      "text": ":'<,'>FudeReviewChatAdd で「相対パス:L開始-L終了」とコードフェンス付きの選択行が入力欄の末尾に追記される。パネルが閉じていれば開く",
+      "result": "met",
+      "how": "Unit（build_selection_text）・結合テスト。1 行は path:L5（D-017）"
+    },
+    {
+      "id": "AC7",
+      "text": "claude コマンドが実行可能でないとき、3 つのコマンドは WARN を出して何もせず、コマンドパレットにも出ない",
+      "result": "met",
+      "how": "commands_spec・chat_panel_spec"
+    },
+    {
+      "id": "AC8",
+      "text": "claude のツールは既定で Read / Grep / Glob と git・gh の参照系 Bash だけ。編集用のツールは渡さない。git の --output でファイルを書ける点と、利用者自身の claude の設定・MCP が効く点は許容し、文書に書く。設定で変えられる。GitHub レビューでは PR が持ち込むプロジェクトの claude 設定を既定で読まない",
+      "result": "met",
+      "how": "Unit（引数）。PR の .mcp.json と hook は判断役が claude 2.1.332 で確認。編集を頼む手動確認は未実施"
+    },
+    {
+      "id": "AC9",
+      "text": "変わらない情報（PR 番号・URL・ブランチ）は --append-system-prompt で、変わりうる情報（ローカルの scope・base）は毎回の質問の先頭に添えて渡る",
+      "result": "met",
+      "how": "Unit（build_system_prompt・build_prompt_context）・chat.send のテスト"
+    },
+    {
+      "id": "AC10",
+      "text": "応答中はスピナーとツール実行の内容が出る。応答中の送信は拒否。キャンセルキー（既定 <C-c>）で止まり、そこまでの応答は残る",
+      "result": "met",
+      "how": "結合テスト（スピナーは changedtick が変わらない、中断、SIGKILL）"
+    },
+    {
+      "id": "AC11",
+      "text": "claude が失敗したとき、エラーが会話ログに出て入力は失われない（セッション開始前の失敗は入力欄に戻り、開始後の失敗は質問・応答・エラーを保存）。--resume のセッションが見つからないときは新しい ID で、「使用中」のときは同じ ID の --resume で 1 回やり直す",
+      "result": "met",
+      "how": "結合テスト（init 前後の失敗、new / resume のやり直し）"
+    },
+    {
+      "id": "AC12",
+      "text": "レビューを止めたとき、実行中の claude は止まりパネルは閉じる。遅れて届いた出力は新しいセッションに触れない",
+      "result": "met",
+      "how": "結合テスト（GitHub / ローカルの stop、遅れた出力）"
+    },
+    {
+      "id": "AC13",
+      "text": "会話ログは編集不可・filetype markdown。末尾を見ていれば追従スクロールし、途中を読んでいれば動かさない",
+      "result": "met",
+      "how": "結合テスト（追従スクロール）"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-26",
+    "purpose": "レビュー中に、コードや diff について AI（claude）に質問できる場所を Neovim の中に持つ。今は別のターミナルで claude を開き、対象のファイルや行を手で伝え直す必要がある。レビュー対象ごとに会話が続き、選択した範囲をそのまま質問に添えられる状態を目指す。",
+    "users": "fude.nvim でレビューする人（GitHub レビュー・ローカルレビューの両方）。diff を読みながら変更の意図や呼び出し元を尋ねる場面、選択したコードについて質問する場面で使う。",
+    "outOfScope": [
+      "claude 以外のエージェント",
+      "ファイルを編集させること（既定では許可しない）",
+      "diff や開いているファイルの自動添付",
+      "1 つのレビュー対象に複数のセッションを持つこと・過去のセッションの選び直し",
+      "AI の応答をレビューコメントとして投稿すること",
+      "レビューモードの外でのチャット",
+      "claude 自身のセッションログ（~/.claude/projects/）を読むこと"
+    ],
+    "constraints": [
+      "コマンドは commands.lua のレジストリに足す",
+      "純粋関数を副作用のあるコードと分け、命名規則に従う",
+      "状態は config.state に置き、State Dependencies 表を更新する",
+      "外部プロセスは vim.system() で非同期に起動し、コールバックは起動時の config.state と一致するかを確かめる",
+      "スピナーはバッファを書き換えずに描く",
+      "side panel と共存し、チャットのウィンドウを通常のウィンドウと見なさない",
+      "下書きの形式と既存コマンドの挙動は変えない",
+      "依存は増やさない（Neovim >= 0.10 と claude CLI だけ）",
+      "テストは実際の claude を呼ばない",
+      "README.md・doc/fude.txt・CLAUDE.md を更新する"
+    ],
+    "changes": [
+      {
+        "date": "2026-11-26",
+        "change": "AC9: 変わりうる情報（ローカルの scope・base）は毎回の質問に添える",
+        "reason": "D-012",
+        "field": "AC9"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: 利用者自身の claude の設定（allow ルール・MCP）は効く、という例外を明記",
+        "reason": "D-008",
+        "field": "AC8"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC11: 「セッション ID は使用中」のときの --resume でのやり直しを追記",
+        "reason": "D-010",
+        "field": "AC11"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: 既定で許可する git の diff / log / show / blame が --output でファイルを書ける点は許容し、文書に書く",
+        "reason": "D-019",
+        "field": "AC8"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: GitHub レビューでは PR が持ち込むプロジェクトの設定を既定で読まない（--setting-sources user）",
+        "reason": "D-023",
+        "field": "AC8"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: PR の .mcp.json の MCP サーバーも起動しないことを確かめた旨を追記",
+        "reason": "D-025",
+        "field": "AC8"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC9: GitHub レビューの commit scope も質問の先頭に添える",
+        "reason": "D-026",
+        "field": "AC9"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC11: セッションが始まった後の失敗は保存し入力欄に戻さない",
+        "reason": "D-028",
+        "field": "AC11"
+      }
+    ],
+    "verification": [
+      "固定のテスト: make all",
+      "Unit: 引数の組み立て、stream-json のパース、貼り付けテキスト、プロンプト、保存と復元",
+      "結合: パネルの開閉、送信から逐次表示、キャンセル、失敗、レビュー停止時の後始末",
+      "手動: 実際の claude で 質問 → 応答 → 再起動 → 継続、選択範囲の貼り付け、編集を頼んでも書き換わらないこと"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "パネルは右端の縦 split（上: 会話ログ、下: 入力欄）",
+      "at": "2026-11-26 08:08",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "見た目と操作の基本形。位置と幅は設定で変えられる",
+      "by": "ユーザー",
+      "background": "チャットをどこに開くかを決める必要があった。",
+      "options": [
+        "右端の split",
+        "中央の float",
+        "下端の split"
+      ],
+      "decided": "右端の split",
+      "reason": "コードと diff を見ながら対話でき、選択範囲の貼り付けと相性が良い。",
+      "impact": "新しいパネルのモジュール、side panel との共存",
+      "revisit": "diff preview と並べて狭いという声が出たとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-002",
+      "title": "claude のツールは既定で読み取り専用",
+      "at": "2026-11-26 08:08",
+      "phase": "ヒアリング",
+      "severity": "高",
+      "severityReason": "レビュー中の worktree を確認なしで書き換えうるかどうかを決める",
+      "by": "ユーザー",
+      "background": "claude -p は実行中に権限確認を出せないため、許可するツールを先に決める必要があった。",
+      "options": [
+        "読み取り専用",
+        "編集も許可",
+        "ツールなし"
+      ],
+      "decided": "読み取り専用（Read / Grep / Glob と git・gh の参照系 Bash）。設定で上書きできる",
+      "reason": "レビューの用途では読むだけで足り、確認なしの書き換えを避けられる。",
+      "impact": "claude の引数、chat 設定",
+      "revisit": "チャットから修正を頼みたいという要望が出たとき",
+      "refs": "AC8"
+    },
+    {
+      "id": "D-003",
+      "title": "応答はストリーミングで表示する",
+      "at": "2026-11-26 08:08",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "実装の複雑さ（stream-json のパース、途中キャンセル）が増える",
+      "by": "ユーザー",
+      "background": "応答を逐次出すか、終わってからまとめて出すかを決める必要があった。",
+      "options": [
+        "ストリーミング",
+        "完了後に一括"
+      ],
+      "decided": "ストリーミング（--output-format stream-json）",
+      "reason": "長い応答やツール実行の待ち時間が見える。",
+      "impact": "出力のパーサ、会話ログの更新",
+      "revisit": "stream-json の形式が変わって壊れたとき",
+      "refs": "AC2, AC10"
+    },
+    {
+      "id": "D-004",
+      "title": "会話ログは fude 側で個別に保存する",
+      "at": "2026-11-26 08:14",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "保存形式を持つことになるが、後から読み方を変えられる",
+      "by": "ユーザー",
+      "background": "ユーザーから「claude のセッションログは使えるか」と問われ、実際に確かめた。~/.claude/projects/<cwd を変換した名前>/<session-id>.jsonl に発言はあるが、非公開の内部形式で、46 行のうち発言は 5 行、置き場所は cwd の変換規則に依存していた。",
+      "options": [
+        "fude 側で個別に保存",
+        "claude のログを読む",
+        "復元しない"
+      ],
+      "decided": "fude 側で個別に保存（stdpath(\"state\")/fude/ 以下、対象ごと）",
+      "reason": "claude のバージョンアップで形式や置き場所が変わっても壊れない。",
+      "impact": "保存と復元のコード",
+      "revisit": "claude が公開のログ取得手段を用意したとき",
+      "refs": "AC4"
+    },
+    {
+      "id": "D-005",
+      "title": "セッションの継続は 初回 --session-id、以後 --resume",
+      "at": "2026-11-26 08:12",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "claude の仕様に従うだけ",
+      "by": "作業する側",
+      "background": "claude 2.1.332 で確かめたところ、同じ --session-id を 2 回目に渡すと「Session ID … is already in use」で失敗し、--resume <id> なら文脈が続いた。",
+      "options": [
+        "初回 --session-id・以後 --resume",
+        "毎回 --session-id"
+      ],
+      "decided": "初回 --session-id・以後 --resume。--resume が「見つからない」で失敗したら新しい ID で 1 回やり直す",
+      "reason": "毎回 --session-id は動かない。セッションは cwd ごとに保存されるため、見つからない場合の逃げ道が要る。",
+      "impact": "引数の組み立て、失敗時の処理",
+      "revisit": "claude の仕様が変わったとき",
+      "refs": "AC3, AC11"
+    },
+    {
+      "id": "D-006",
+      "title": "レビュー対象の単位は下書きと同じにする",
+      "at": "2026-11-26 08:15",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "既存の単位の流用",
+      "by": "作業する側",
+      "background": "「レビュー対象ごと」の単位を決める必要があった。",
+      "options": [
+        "下書きと同じ（GitHub: リポジトリ + PR、ローカル: worktree + ブランチ）",
+        "scope（コミット）ごとに分ける"
+      ],
+      "decided": "下書きと同じ",
+      "reason": "drafts.build_draft_scope が既にこの単位を定めており、レビューを止めても続く。コミットごとに分けると会話が細切れになる。",
+      "impact": "保存のキー",
+      "revisit": "コミットごとに会話を分けたいという要望が出たとき",
+      "refs": "AC3"
+    },
+    {
+      "id": "D-007",
+      "title": "質問は引数でなく stdin で claude に渡す",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "内部の呼び出し方",
+      "by": "判断役",
+      "background": "実装役が、可変長の --allowedTools に飲み込まれる・「-」で始まる質問がオプションと読まれる・貼り付けで引数長が伸びる、として stdin を選んだ。",
+      "options": [
+        "stdin",
+        "-p の引数"
+      ],
+      "decided": "stdin",
+      "reason": "コードを貼る機能なので長い入力や「-」で始まる行は普通に起きる。stdin で動くことは実機で確認済み。",
+      "impact": "build_claude_args、実行関数",
+      "revisit": "claude が -p の stdin 入力をやめたとき",
+      "refs": "AC2"
+    },
+    {
+      "id": "D-008",
+      "title": "ツールの制限は --tools・--allowedTools・dontAsk。利用者の claude の設定は尊重する",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "高",
+      "severityReason": "利用者の環境で実際に走るコマンドの範囲を決める。広い allow ルールや書き込み系 MCP を持つ利用者では、読み取り専用は文字どおりには成り立たない",
+      "by": "ユーザー",
+      "background": "--permission-mode dontAsk で「許可に無いものは拒否」にしたが、利用者自身の settings.json の allow ルールと MCP の許可はそのまま効く。判断役は「今のまま」を選びつつ、AC8 に例外を明記する必要があるため人が決めるべきとした。",
+      "options": [
+        "利用者の設定を尊重（穴は文書に書く）",
+        "--setting-sources / --strict-mcp-config を既定で付けて厳密に閉じる",
+        "dontAsk を付けない"
+      ],
+      "decided": "利用者の設定を尊重し、AC8 に例外を明記。閉じ方の例を文書に書く",
+      "reason": "user 設定を外すと env・apiKeyHelper・モデル指定・hooks も消え、認証が壊れる利用者が出うる。残る穴は利用者が自分で許可した操作で、fude が新しく開ける穴ではない。",
+      "impact": "AC8 の文言、README・doc",
+      "revisit": "「編集しないはずが書き換わった」という報告が出たとき。認証を落とさずに allow だけを無効にする手段が claude にできたとき",
+      "refs": "AC8",
+      "escalated": true,
+      "prdChange": true
+    },
+    {
+      "id": "D-009",
+      "title": "失敗したやり取りは会話ログに保存しない",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "あとから保存する側に変えても互換を壊さない",
+      "by": "判断役",
+      "background": "失敗時は入力が入力欄に戻る（AC11）。保存すると再送で質問が二重になる。",
+      "options": [
+        "保存しない",
+        "保存する"
+      ],
+      "decided": "保存しない。パネルは失敗時に届いていた文字を消さず、エラーと一緒に見せる",
+      "reason": "AC11 が求めるのは表示と入力の保持で、永続化ではない。",
+      "impact": "保存の対象",
+      "revisit": "「エラーが消えて何が起きたか分からない」という声が出たとき",
+      "refs": "AC4, AC11"
+    },
+    {
+      "id": "D-010",
+      "title": "「セッション ID は使用中」のときは同じ ID の --resume で 1 回やり直す",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "中",
+      "severityReason": "無いと会話が詰まるが、起きる条件は狭い",
+      "by": "判断役",
+      "background": "init の前に中断や終了が起きると「fude は未開始、claude は作成済み」になり、以後の送信がすべて失敗する。PRD が求めていたのは not found のやり直しだけ。",
+      "options": [
+        "やり直す",
+        "PRD に無いので消す"
+      ],
+      "decided": "やり直す（not found と共通で 1 回まで）。AC11 に追記",
+      "reason": "無いと :FudeReviewChatNew で会話を捨てるしか抜け道がない。",
+      "impact": "find_session_retry、AC11",
+      "revisit": "claude のエラー文が変わったとき",
+      "refs": "AC11",
+      "prdChange": true
+    },
+    {
+      "id": "D-011",
+      "title": "パネルの幅の既定は 60 桁",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "設定 1 行で変えられる",
+      "by": "判断役",
+      "background": "PRD に数値が無かった。side panel は 40 桁。",
+      "options": [
+        "60",
+        "別の値"
+      ],
+      "decided": "60。実際の幅はエディタの桁数の半分まで",
+      "reason": "文章とコードフェンスには 40 桁では狭く、80 桁では diff が狭くなる。",
+      "impact": "chat.width",
+      "revisit": "並べたときに diff が読めないとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-012",
+      "title": "会話の途中で変わる情報（ローカルの scope・base）は質問の先頭に添える",
+      "at": "2026-11-26 08:40",
+      "phase": "実装",
+      "severity": "高",
+      "severityReason": "今のままだと scope を切り替えた利用者に誤った前提の答えが黙って返る。AC9 の文言も変わる",
+      "by": "ユーザー",
+      "background": "claude は --append-system-prompt を含むシステムプロンプトを会話の最初に記録し、--resume では別の文を渡しても使い回す（claude --help）。判断役は案を選びつつ、AC9 が手段まで書いているため人が決めるべきとした。",
+      "options": [
+        "変わる情報は質問に添える",
+        "--system-prompt-snapshot off",
+        "今のまま（文書に書く）",
+        "変わる情報を渡さない"
+      ],
+      "decided": "変わらない情報はシステムプロンプト、変わる情報は毎回の質問の先頭に添える（表示と保存には混ぜない）",
+      "reason": "snapshot off はキャッシュが外れやすく費用が見合わない。commit scope で古い前提の答えは誤答になる。",
+      "impact": "build_system_prompt、stdin に入れる文、AC9",
+      "revisit": "claude の snapshot の既定や意味が変わったとき。添えた行に claude が毎回言及してうるさいとき",
+      "refs": "AC9",
+      "escalated": true,
+      "prdChange": true
+    },
+    {
+      "id": "D-013",
+      "title": "パネルを閉じても応答中の claude は止めない",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "中",
+      "severityReason": "閉じても裏で動くことは利用者の費用に関わる。あとから変えられる",
+      "by": "判断役",
+      "background": "PRD に定めが無かった。",
+      "options": [
+        "止めない",
+        "閉じたら止める"
+      ],
+      "decided": "止めない。閉じているあいだに成功で終わったら INFO を 1 回出す",
+      "reason": "応答を待つあいだ閉じて diff を読むのは自然な使い方。止める手段（キャンセルキー、:FudeReviewChatNew、レビュー停止、終了）は別にある。",
+      "impact": "chat_panel の close",
+      "revisit": "「閉じたのに動いていて費用がかかった」という声が出たとき",
+      "refs": "AC10, AC12"
+    },
+    {
+      "id": "D-014",
+      "title": "追従スクロールは「ログのカーソルが最終行にあるか」で判定する",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "表示だけ",
+      "by": "判断役",
+      "background": "AC13 の「末尾を見ていれば」の判定方法。",
+      "options": [
+        "カーソルが最終行",
+        "最終行が画面内に見えている"
+      ],
+      "decided": "カーソルが最終行",
+      "reason": "画面の下端だけで判定すると、再描画の前に次の断片が届いたとき追従が切れうる。",
+      "impact": "chat_panel のスクロール",
+      "revisit": "下端に戻しても追従しない、などが気になったとき（OR 条件にする）",
+      "refs": "AC13"
+    },
+    {
+      "id": "D-015",
+      "title": "入力欄はコマンドでフォーカスしたとき insert モードで始める",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "好みの面が大きく、あとから変えても何も壊さない",
+      "by": "判断役",
+      "background": "実装役は normal モードで開いていた。",
+      "options": [
+        "normal",
+        "insert"
+      ],
+      "decided": "insert（開く・toggle でのフォーカス・:FudeReviewChatAdd。ウィンドウ移動では変えない）。パネルを閉じるときは stopinsert",
+      "reason": "既存の入力欄（コメント入力、PR 作成）が startinsert で始まり normal の <CR> で送るのと揃える。",
+      "impact": "chat_panel の focus_input",
+      "revisit": "ログを読もうと開いただけで入力に入るのが煩わしいとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-016",
+      "title": "未送信の入力はパネルを閉じても残す（メモリ上。レビュー停止で消える）",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "保存形式に触れない",
+      "by": "判断役",
+      "background": "PRD に定めが無かった。",
+      "options": [
+        "残す",
+        "閉じたら捨てる",
+        "ディスクにも残す"
+      ],
+      "decided": "残す（config.state.chat_input）",
+      "reason": "閉じて diff を読む使い方と噛み合う。ディスクへの保存は範囲外。",
+      "impact": "state.chat_input",
+      "revisit": "長い書きかけを失ったという声が出たとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-017",
+      "title": ":FudeReviewChatAdd の表記（1 行は path:L12、base ペインは (base version)、特殊バッファは拒否）",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "貼る文の形だけで、送る前に見て直せる",
+      "by": "判断役",
+      "background": "AC6 は範囲の形だけを定めていた。判断役は今の表記を認めたうえで、ファイルでないバッファの扱いを確かめるよう求めた。",
+      "options": [
+        "今のまま",
+        "変える"
+      ],
+      "decided": "1 行は path:L12、無名バッファは [No Name]、リポジトリ外は ~ 始まりのフルパス、フェンスは選択内のバッククォートの最長の連続 + 1。diff の base ペインは「<path> (base version):L…」、side panel などの名前付き特殊バッファ（buftype が空でない）は WARN で拒否",
+      "reason": "base ペインの行番号は base 版の行なので、ただのパスに見えると誤解を生む。",
+      "impact": "build_selection_text、resolve_selection_path",
+      "revisit": "claude が貼った範囲を別の版の行と取り違えたとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-018",
+      "title": "ローカルレビューで質問に添える行は角括弧の 1 行",
+      "at": "2026-11-26 09:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "次の質問から変えられる",
+      "by": "判断役",
+      "background": "D-012 の実装の形。",
+      "options": [
+        "今のまま",
+        "変える"
+      ],
+      "decided": "「[Review context — base branch: …; scope: …]」の 1 行 + 空行 + 質問",
+      "reason": "1 行で質問と区別でき、システムプロンプトにも先頭に付くと書いてある。",
+      "impact": "build_prompt_context",
+      "revisit": "claude が毎回この行に言及するとき。「/」で始まる質問の扱いがモードで変わると分かったとき",
+      "refs": "AC9"
+    },
+    {
+      "id": "D-019",
+      "title": "git の --output でファイルを書ける点は既定のまま許容し、文書に書く",
+      "at": "2026-11-26 09:35",
+      "phase": "レビュー",
+      "severity": "高",
+      "severityReason": "利用者の手元のファイルが書き換わるかどうかを決める。拒否リストは claude の将来の版で崩れうる",
+      "by": "ユーザー",
+      "escalated": true,
+      "background": "レビュー 1 周目の MUST（R1-M1）。既定で許可した git diff / log / show（と blame）は --output=<path> でファイルを書け、PR に混ぜた指示文を通じて手元のファイルを書き換える経路になる。判断役は拒否ルールを実機で試し、すり抜け 8 通りがすべて拒否されることを確かめたうえで、拒否ルールを既定で足す案を選び、人が決めるべきとした。利用者の最初の回答「許可します」をメインは「git は残して拒否ルールを足す」と受け取って進めたが、利用者から「拒否ルールも足さず今のままの意味」と訂正があった。",
+      "options": [
+        "拒否ルールで塞ぐ（git は許可のまま）",
+        "既定から git を外す",
+        "git を外し、diff は fude が渡す",
+        "文書だけ直す"
+      ],
+      "decided": "既定は今のまま（git を許可、拒否ルールなし、設定項目も足さない）。文書の「書き換えるツールは渡さない」という言い切りをやめ、--output で書けることと、塞ぐ設定例（chat.args に --disallowedTools、または git を外した allowed_tools）を書く",
+      "reason": "利用者の決定。",
+      "impact": "README・doc の Tools and permissions、AC8 の文言",
+      "revisit": "「レビュー中にファイルが書き換わった」という報告が出たとき。信頼できない PR を扱う利用者が増えたとき（既定で拒否ルールを足す・git を外す）",
+      "refs": "R1-M1, AC8",
+      "prdChange": true
+    },
+    {
+      "id": "D-020",
+      "title": "claude の cwd は「今のレビューの開始時のリポジトリのルート」にする",
+      "at": "2026-11-26 10:30",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "誤ったディレクトリで答える経路を塞ぐ。設定には出ない",
+      "by": "判断役",
+      "background": "R1-S4 の修正で「最初の質問のときのルート」を会話に保存して固定したが、同じ PR を別の worktree でレビューすると古いディレクトリで動く（R2-S5 でも指摘）。",
+      "options": [
+        "最初の質問のときのルート",
+        "レビュー開始時のルートを state に持たせる"
+      ],
+      "decided": "レビュー開始時のルートを config.state に持たせて使う。保存済みの root は cwd の決定に使わない。ローカルは worktree_root",
+      "reason": "開始時のルートなら :cd の影響を受けず、別の worktree で再開したときは新しいセッションで始め直してその旨がログに出る（AC11）。",
+      "impact": "chat.send、init.start、State Dependencies",
+      "revisit": "別の worktree で再開したとき文脈を引き継ぎたいという声が出たとき",
+      "refs": "R1-S4, R2-S5, AC2"
+    },
+    {
+      "id": "D-021",
+      "title": "チャットのペインは winfixbuf で別のバッファを拒否する",
+      "at": "2026-11-26 10:30",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "新しいパネルだけの挙動",
+      "by": "判断役",
+      "background": "R1-M2 の修正。副作用として、ペインにいる状態で他プラグインのピッカーからファイルを開くと E1513 で拒否される。",
+      "options": [
+        "winfixbuf で拒否",
+        "編集ウィンドウへ移す方式に作り直す"
+      ],
+      "decided": "winfixbuf のまま。文書に 1 行書く",
+      "reason": "守るべき未送信の入力は守れている。fude 自身の経路は編集ウィンドウへ移る。",
+      "impact": "chat_panel",
+      "revisit": "E1513 が煩わしいという声が出たとき",
+      "refs": "R1-M2"
+    },
+    {
+      "id": "D-022",
+      "title": "side panel には winfixbuf を付けない",
+      "at": "2026-11-26 10:30",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "何も変えない",
+      "by": "判断役",
+      "background": "side panel で :edit するとパネルが置き換わる既存の挙動が残る。",
+      "options": [
+        "今のまま",
+        "side panel にも付ける"
+      ],
+      "decided": "今のまま",
+      "reason": "範囲外。既存の利用者に新しいエラーが出る。side panel は再描画できる一覧で失うものが無い。",
+      "impact": "なし",
+      "revisit": "side panel が置き換わることへの不満が出たとき",
+      "refs": "R1-M2"
+    },
+    {
+      "id": "D-023",
+      "title": "GitHub レビューでは PR が持ち込むプロジェクトの claude 設定を既定で読まない",
+      "at": "2026-11-26 10:35",
+      "phase": "レビュー",
+      "severity": "高",
+      "severityReason": "利用者の手元でコマンドが実行されるかどうかを決める。GitHub レビューではプロジェクトの allow ルールや hook が効かなくなる",
+      "by": "判断役",
+      "background": "レビュー 2 周目の MUST（R2-N1）。fude は PR のブランチを cwd として claude -p を起動するので、PR が持ち込んだ .claude/settings.json の hook や許可が読まれる。-p は workspace trust の確認を飛ばす（claude --help）。",
+      "options": [
+        "両モードで --setting-sources user",
+        "GitHub レビューのときだけ --setting-sources user",
+        "既定は変えず文書に書く"
+      ],
+      "decided": "GitHub レビューのときだけ既定で --setting-sources user を渡す。chat.args に --setting-sources があれば fude は出さない（戻せる）。ローカルレビューは今のまま",
+      "reason": "hook はモデルの判断を通らず起動しただけで実行されるので、D-019（モデルが指示文に従って初めて起きる経路）とは性質が違う。利用者が尊重すると決めたのは利用者自身の設定で、PR が持ち込んだ設定は当たらない。ローカルは自分のブランチなので最小の変更にとどめた。実機で --setting-sources user のとき hook が動かないことを確認（旗なしの対照は未確認）。",
+      "impact": "build_claude_args、README・doc、AC8",
+      "revisit": "自分のリポジトリの PR しか読まない利用者から不便という声が出たとき。.mcp.json やプロジェクトの skills 経由で同じ種類の実行が起きると分かったとき",
+      "refs": "R2-N1, AC8",
+      "prdChange": true
+    },
+    {
+      "id": "D-024",
+      "title": ":FudeReviewChatNew は未送信の入力を消さない",
+      "at": "2026-11-26 11:55",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "1 行で変えられる",
+      "by": "作業する側",
+      "background": "R3-M3 の修正で、未送信の入力を「常に最新の写し」として持つ形にした。実装役から、:FudeReviewChatNew では以前から入力を消していないと報告があった（メインの依頼文が「消える」と誤っていた）。",
+      "options": [
+        "残す",
+        "消す"
+      ],
+      "decided": "残す（捨てるのは会話だけ）",
+      "reason": "書きかけの質問を新しい会話で送りたい場面のほうが自然。AC5 が破棄を求めているのはセッション ID と会話ログ。",
+      "impact": "new_chat",
+      "revisit": "新しい会話で前の入力が残るのが紛らわしいという声が出たとき",
+      "refs": "AC5, R3-M3"
+    },
+    {
+      "id": "D-025",
+      "title": "PR の .mcp.json は --setting-sources user で既に塞がっているので、追加の対策はしない",
+      "at": "2026-11-26 13:00",
+      "phase": "レビュー",
+      "severity": "高",
+      "severityReason": "任意コード実行に関わる既定。claude の版に依存する",
+      "by": "判断役",
+      "background": "やり直し 1 周目の MUST（R1-1）。--setting-sources user だけでは PR の .mcp.json の MCP サーバーが起動するおそれがある、という指摘（実機未確認）。",
+      "options": [
+        "--strict-mcp-config を既定で付ける",
+        "--strict-mcp-config + 利用者の MCP を --mcp-config で渡し直す",
+        "実機で確かめ、塞がっていれば文書を直す"
+      ],
+      "decided": "追加の対策はしない。文書の「確かめていない」を直し、AC8 に確認結果を書く",
+      "reason": "claude 2.1.332 で、.mcp.json に無害な stdio サーバーを書き enableAllProjectMcpServers を有効にした条件で、旗あり = 起動しない / 旗なし = 起動する を確かめた。--strict-mcp-config は利用者の MCP も止め AC8 とぶつかる。",
+      "impact": "README・doc、AC8",
+      "revisit": "claude の版が上がったとき。user の settings.json に enableAllProjectMcpServers を書いた環境で起動したという報告が出たとき（--strict-mcp-config に切り替える）",
+      "refs": "R1-1, AC8",
+      "prdChange": true
+    },
+    {
+      "id": "D-026",
+      "title": "GitHub レビューの commit scope も質問の先頭に添える",
+      "at": "2026-11-26 13:00",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "答えの正しさに関わるが、手元の挙動",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-2）。GitHub の commit scope ではファイルが過去の時点になっているのに claude に伝えていなかった。AC9 の書き漏れ。",
+      "options": [
+        "直す",
+        "直さない"
+      ],
+      "decided": "直す（checkout 中のコミットを添える。full PR scope では何も添えない）",
+      "reason": "D-012 でローカルの scope を添えると決めた理由と同じ。",
+      "impact": "build_prompt_context、AC9",
+      "revisit": "claude が添えた行を無視して最新として答える例が出たとき",
+      "refs": "R1-2, AC9",
+      "prdChange": true
+    },
+    {
+      "id": "D-027",
+      "title": "PR の CLAUDE.md と git --output の組み合わせは直さない",
+      "at": "2026-11-26 13:00",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "利用者が承知して決めた範囲の中",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-3）。AC8 の決定（git --output を既定のまま許容）への異論として、PR の CLAUDE.md からも指示できると指摘された。",
+      "options": [
+        "直さない",
+        "直す"
+      ],
+      "decided": "直さない。文書に「指示文はレビュー対象のどこからでも来うる」と 1 行足す",
+      "reason": "AC8 で利用者本人が決めた範囲内。経路が 1 つ増えるだけで危険の種類は同じ。",
+      "impact": "README・doc",
+      "revisit": "利用者が AC8 の --output の決定を見直すとき",
+      "refs": "R1-3, AC8, D-019"
+    },
+    {
+      "id": "D-028",
+      "title": "claude 側でセッションが始まった後の失敗は保存し、入力欄に戻さない（D-009 の見直し）",
+      "at": "2026-11-26 13:30",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "保存形式に欄が増える。公開前で古いファイルも読める",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-8）。途中で失敗すると claude 側には質問が記録済みなのに、fude は保存せず入力欄に戻すので、再送で質問が二重になる。D-009 の見直しのきっかけに当たる。",
+      "options": [
+        "init 後の失敗は保存・init 前は戻す",
+        "D-009 のまま保存しない"
+      ],
+      "decided": "init 後の失敗は質問・応答・エラーを保存し入力欄に戻さない（ログに「記録済み。次の質問で続ける」と出す）。init 前の失敗は保存せず戻す。AC11 を書き換え",
+      "reason": "D-009 の根拠（再送で二重になる）が init 後は逆向きに働く。",
+      "impact": "chat.finish、保存形式、AC11",
+      "revisit": "init 後でも claude 側に質問が記録されない失敗があると分かったとき",
+      "refs": "R1-8, AC11, D-009",
+      "prdChange": true
+    },
+    {
+      "id": "D-029",
+      "title": "中断後の送信は前のプロセスの終了を待ち、3 秒で終わらなければ SIGKILL してから始める",
+      "at": "2026-11-26 13:30",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "まれな場合の後始末",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-7）の修正で、実装役は 3 秒で終わらなければそのまま次を始める形にしていた。それでは同じセッションで 2 つ並ぶ指摘が再現する。",
+      "options": [
+        "3 秒で次を始める",
+        "3 秒で SIGKILL してから始める",
+        "終わるまで待ち続ける"
+      ],
+      "decided": "3 秒で SIGKILL し、その終了を受けてから始める",
+      "reason": "終わるまで待つと止まらないプロセス 1 つで送信が永久に始まらない。",
+      "impact": "chat の cancel / send",
+      "revisit": "claude の通常の終了が 3 秒を超えることが多いと分かったとき",
+      "refs": "R1-7, AC10"
+    }
+  ],
+  "reviews": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 12,
+      "may": 5,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "GitHub レビューで、PR の .mcp.json にある MCP サーバーが起動するおそれ（実機未確認）",
+          "response": "文書を直す（D-025。実機で塞がっていると確認）"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "GitHub レビューの commit scope が claude に伝わらない",
+          "response": "修正中（D-026）"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "（AC8 への異論）PR の CLAUDE.md の指示で git --output を使わせられる",
+          "response": "直さない（D-027）。文書に 1 行"
+        },
+        {
+          "id": "R1-4",
+          "severity": "SHOULD",
+          "text": "README が :FudeReviewChatNew で止めた応答も保存されると誤って書いている",
+          "response": "直した"
+        },
+        {
+          "id": "R1-5",
+          "severity": "SHOULD",
+          "text": "名前のない特殊バッファから :FudeReviewChatAdd が通る",
+          "response": "直した"
+        },
+        {
+          "id": "R1-6",
+          "severity": "SHOULD",
+          "text": "新しいセッションでやり直したとき、表示されたログと保存内容が食い違う",
+          "response": "直した"
+        },
+        {
+          "id": "R1-7",
+          "severity": "SHOULD",
+          "text": "中断の直後に送信すると、同じセッションで claude が 2 つ並んで動く",
+          "response": "直した"
+        },
+        {
+          "id": "R1-8",
+          "severity": "SHOULD",
+          "text": "途中で失敗した回を保存しないため、claude 側の記録と質問が二重になる",
+          "response": "直した"
+        },
+        {
+          "id": "R1-9",
+          "severity": "SHOULD",
+          "text": "resume でやり直すときセッション ID をディスクから読み直し、保存失敗に気づけない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-10",
+          "severity": "SHOULD",
+          "text": "別のタブに移ったときの後始末が別のタブで起きる",
+          "response": "直した"
+        },
+        {
+          "id": "R1-11",
+          "severity": "SHOULD",
+          "text": "開き直したときカーソルが入力の先頭に入る",
+          "response": "直した"
+        },
+        {
+          "id": "R1-12",
+          "severity": "SHOULD",
+          "text": "State Dependencies 表の R 列に chat が足りない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-13",
+          "severity": "SHOULD",
+          "text": "文書のこまかな不正確さ（失敗の判定、chat.args、:only、detached HEAD のキー）",
+          "response": "直した"
+        },
+        {
+          "id": "R1-14",
+          "severity": "MAY",
+          "text": "1 行の選択が path:L5 になる（AC6 の字面は L5-L5）",
+          "response": "見送り（D-017）"
+        },
+        {
+          "id": "R1-15",
+          "severity": "MAY",
+          "text": "restore_input の docstring の位置ずれ",
+          "response": "直した"
+        },
+        {
+          "id": "R1-16",
+          "severity": "MAY",
+          "text": "commands_spec のスタブが例外時に戻らない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-17",
+          "severity": "MAY",
+          "text": "init_integration_spec が repo_root を取る順序を確かめていない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-18",
+          "severity": "MAY",
+          "text": "（既存）leave_panel_window が quickfix ウィンドウを選びうる",
+          "response": "見送り（既存の問題）"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 4,
+      "may": 3,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R2-1",
+          "severity": "SHOULD",
+          "text": "GitHub レビューで scope 切り替えの最中（checkout 後、gh の応答待ち）に送った質問に、古い scope が添わる",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-2",
+          "severity": "SHOULD",
+          "text": "終了待ちの質問を中断すると、claude に届いていない質問が「中断」として保存される",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-3",
+          "severity": "SHOULD",
+          "text": "セッション開始後の失敗が保存できなかったとき、「記録済み」の注記が出るのに質問が入力欄に戻る（再送で claude 側が二重になる）",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-4",
+          "severity": "SHOULD",
+          "text": "レビュー停止時、claude を止める前に HEAD を戻すので、index.lock とぶつかると停止が中断される（セッションは残る）",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-5",
+          "severity": "MAY",
+          "text": "resume のやり直しで、1 回目の途中の本文とやり直しの result が区切りなしでつながる",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-6",
+          "severity": "MAY",
+          "text": ":only で残すウィンドウが、ほかのタブにあるペインの分身まで含む",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        },
+        {
+          "id": "R2-7",
+          "severity": "MAY",
+          "text": "config.lua のコメントが古い（chat_live.streamed、chat_panel の width）",
+          "response": "直さない（2 周目以降の SHOULD・MAY。unresolved に記録）"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R2-1",
+      "severity": "SHOULD",
+      "text": "GitHub レビューで scope 切り替えの最中（checkout 後、gh の応答待ち）に送った質問に、古い scope が添わる",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-2",
+      "severity": "SHOULD",
+      "text": "終了待ちの質問を中断すると、claude に届いていない質問が「中断」として保存される",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-3",
+      "severity": "SHOULD",
+      "text": "セッション開始後の失敗が保存できなかったとき、「記録済み」の注記が出るのに質問が入力欄に戻る（再送で claude 側が二重になる）",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-4",
+      "severity": "SHOULD",
+      "text": "レビュー停止時、claude を止める前に HEAD を戻すので、index.lock とぶつかると停止が中断される（セッションは残る）",
+      "reason": "2 周目以降の SHOULD は直さない規則。直すかは報告を見て決める"
+    },
+    {
+      "id": "R2-5",
+      "severity": "MAY",
+      "text": "resume のやり直しで、1 回目の途中の本文とやり直しの result が区切りなしでつながる",
+      "reason": "見送り"
+    },
+    {
+      "id": "R2-6",
+      "severity": "MAY",
+      "text": ":only で残すウィンドウが、ほかのタブにあるペインの分身まで含む",
+      "reason": "見送り"
+    },
+    {
+      "id": "R2-7",
+      "severity": "MAY",
+      "text": "config.lua のコメントが古い（chat_live.streamed、chat_panel の width）",
+      "reason": "見送り"
+    },
+    {
+      "id": "R1-14",
+      "severity": "MAY",
+      "text": "1 行の選択が path:L5 になる（AC6 の字面は L5-L5）",
+      "reason": "D-017。以前の判断どおり"
+    },
+    {
+      "id": "R1-18",
+      "severity": "MAY",
+      "text": "（既存）leave_panel_window が quickfix ウィンドウを選びうる",
+      "reason": "既存の問題で範囲外"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "チャットの中核（引数の組み立て・stream-json のパース・保存と復元・claude の実行）とテスト",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "チャットパネル・コマンド・設定・レビュー停止時の後始末とテスト",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T3",
+      "title": "README.md・doc/fude.txt・CLAUDE.md の更新",
+      "status": "完了",
+      "owner": "impl-1"
+    }
+  ],
+  "revision": 1,
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": ":FudeReviewChat / :FudeReviewChatAdd / :FudeReviewChatNew と chat 設定を追加",
+      "refs": ""
+    }
+  ],
+  "pr": {
+    "number": 331,
+    "url": "https://github.com/flexphere/fude.nvim/pull/331"
+  },
+  "copilot": {
+    "status": "Copilot はレビューできませんでした（unable: レビューを依頼した利用者の残り枠が足りない、という返事）。Copilot の指摘への対応はありません。",
+    "comments": [],
+    "timed_out": false
+  },
+  "reviews_before_restart": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 2,
+      "should": 4,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-M1",
+          "severity": "MUST",
+          "text": "既定で許可した git diff / log / show が --output=<path> でファイルを書ける（AC8、実機で確認）",
+          "response": "文書を直した。既定は変えない（D-019。利用者の決定）"
+        },
+        {
+          "id": "R1-M2",
+          "severity": "MUST",
+          "text": "チャットのペインからピッカーやコメントブラウザでファイルを開くと、ペインがファイルに置き換わり未送信の入力を失う",
+          "response": "直した（leave_panel_window と winfixbuf）"
+        },
+        {
+          "id": "R1-S1",
+          "severity": "SHOULD",
+          "text": "side panel が別のタブページにあると、チャットの「最後のウィンドウ」処理が働かない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-S2",
+          "severity": "SHOULD",
+          "text": "GitHub の stop が HEAD の復元に失敗してもチャットは片付いてしまう",
+          "response": "直した"
+        },
+        {
+          "id": "R1-S3",
+          "severity": "SHOULD",
+          "text": "終了コード 0 で本文があっても stderr に出力があると失敗扱いになる",
+          "response": "直した"
+        },
+        {
+          "id": "R1-S4",
+          "severity": "SHOULD",
+          "text": "GitHub モードで claude の cwd が Neovim の cwd に依存する",
+          "response": "直した（R2-S5 で起点を見直し）"
+        },
+        {
+          "id": "R1-Y1",
+          "severity": "MAY",
+          "text": "チャットのペインから :only すると、ペイン用のオプションを持った空のウィンドウが残る",
+          "response": "直した"
+        },
+        {
+          "id": "R1-Y2",
+          "severity": "MAY",
+          "text": "GitHub の commit scope を claude に伝えていない（AC9 の要件の外）",
+          "response": "見送り（AC9 の要件の外）"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 2,
+      "should": 3,
+      "may": 3,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R2-M1",
+          "severity": "MUST",
+          "text": "（継続）既定の設定で、PR の中身に誘導された claude が git --output でファイルを上書きできる。文書は直った",
+          "response": "対応しない（D-019。利用者が既定のままと決定）"
+        },
+        {
+          "id": "R2-N1",
+          "severity": "MUST",
+          "text": "信頼できない PR のチェックアウトで claude -p を動かすと、PR が持ち込んだ .claude/settings.json（hook・許可）が読まれる",
+          "response": "直した（D-023）"
+        },
+        {
+          "id": "R2-S5",
+          "severity": "SHOULD",
+          "text": "会話が、最初に質問したときのディレクトリに固定される",
+          "response": "直した（D-020）"
+        },
+        {
+          "id": "R2-S6",
+          "severity": "SHOULD",
+          "text": "最後の編集ウィンドウを閉じたあと、パネルの幅が画面の半分になる",
+          "response": "直した（side panel も揃えた）"
+        },
+        {
+          "id": "R2-S7",
+          "severity": "SHOULD",
+          "text": "<C-w>T でペインを別のタブに移すと、追跡されないウィンドウが残る",
+          "response": "直した（退行は R3-M3）"
+        },
+        {
+          "id": "R2-Y2",
+          "severity": "MAY",
+          "text": "（継続）GitHub の commit scope を claude に伝えていない",
+          "response": "見送り"
+        },
+        {
+          "id": "R2-Y3",
+          "severity": "MAY",
+          "text": "close() がペインを閉じる順序が決まらない（結果は同じ）",
+          "response": "直った"
+        },
+        {
+          "id": "R2-Y4",
+          "severity": "MAY",
+          "text": "build_empty_chat の注釈に root が無い",
+          "response": "解消（root を廃止）"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 3,
+      "may": 4,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R3-M3",
+          "severity": "MUST",
+          "text": "（R2-S7 の修正による退行）入力ペインを :q / :close で閉じると未送信の入力が消える",
+          "response": "直した"
+        },
+        {
+          "id": "R3-S8",
+          "severity": "SHOULD",
+          "text": "side panel とチャットが同じタブにあるとき、最後の編集ウィンドウを閉じるとレイアウトが崩れる",
+          "response": "直した"
+        },
+        {
+          "id": "R3-S9",
+          "severity": "SHOULD",
+          "text": ":cd のあとの :FudeReviewChatAdd が、claude の読むファイルと違うパスを書く",
+          "response": "直した"
+        },
+        {
+          "id": "R3-S10",
+          "severity": "SHOULD",
+          "text": "両方のパネルを開いた場合のテストが意図した配置を作っていない",
+          "response": "直した"
+        },
+        {
+          "id": "R3-Y2",
+          "severity": "MAY",
+          "text": "（継続）GitHub の commit scope を claude に伝えていない",
+          "response": "見送り"
+        },
+        {
+          "id": "R3-Y5",
+          "severity": "MAY",
+          "text": "パネルが別のタブで開いていると、応答の完了や失敗の通知が出ない",
+          "response": "直した"
+        },
+        {
+          "id": "R3-Y6",
+          "severity": "MAY",
+          "text": "get_panel の doc コメントの位置がずれている",
+          "response": "直した"
+        },
+        {
+          "id": "R3-Y7",
+          "severity": "MAY",
+          "text": "side panel の幅を戻す処理は範囲の外の変更",
+          "response": "そのまま（R2-S6 と同じ不具合を揃えて直したもの）"
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 3,
+      "may": 6,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R4-M4",
+          "severity": "MUST",
+          "text": "diff プレビューを開いたままチャットを開くと、プレビューが幅固定のためソースのウィンドウが潰れる（1 周目からあった問題）",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-S11",
+          "severity": "SHOULD",
+          "text": "編集ウィンドウからの :only が E445 で止まり、ウィンドウが残る",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-S12",
+          "severity": "SHOULD",
+          "text": "書きかけの入力に戻ると、挿入位置がずれる",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-S13",
+          "severity": "SHOULD",
+          "text": "（R3-S8 の修正が入れた）別のタブのチャットにいるとき、フォーカスがタブをまたいで移る",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y2",
+          "severity": "MAY",
+          "text": "（継続）GitHub の commit scope を claude に伝えていない",
+          "response": "見送り"
+        },
+        {
+          "id": "R4-Y8",
+          "severity": "MAY",
+          "text": "restore_input の doc コメントの位置がずれている",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y9",
+          "severity": "MAY",
+          "text": "編集ウィンドウを開き直すとき、手で変えた side panel の幅が設定値に戻る",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y10",
+          "severity": "MAY",
+          "text": "filetype の設定が後なので、利用者の markdown 用の setlocal がペインのオプションに勝つ",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y11",
+          "severity": "MAY",
+          "text": ":quit が拒否されたとき、チャットは先に閉じられたまま戻らない",
+          "response": "修正中"
+        },
+        {
+          "id": "R4-Y12",
+          "severity": "MAY",
+          "text": "挿入モードの入力ペインから next/prev file を呼ぶと、挿入モードのままファイルに移る",
+          "response": "修正中"
+        }
+      ]
+    }
+  ]
+}

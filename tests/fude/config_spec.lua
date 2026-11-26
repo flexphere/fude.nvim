@@ -36,6 +36,37 @@ describe("config", function()
 		it("includes followwrap in the default diffopt so :diffthis keeps the user's wrap", function()
 			assert.is_true(vim.tbl_contains(config.opts.diffopt, "followwrap"))
 		end)
+
+		it("defaults the chat to the claude command in a right-hand panel", function()
+			local chat = config.opts.chat
+			assert.are.equal("claude", chat.cmd)
+			assert.are.equal("right", chat.position)
+			assert.is_number(chat.width)
+			assert.are.same({}, chat.args)
+			assert.are.same({ submit = "<CR>", cancel = "<C-c>", close = "q" }, chat.keymaps)
+		end)
+
+		it("allows only read-only chat tools by default", function()
+			assert.are.same({
+				"Read",
+				"Grep",
+				"Glob",
+				"Bash(git diff:*)",
+				"Bash(git log:*)",
+				"Bash(git show:*)",
+				"Bash(git status:*)",
+				"Bash(git blame:*)",
+				"Bash(gh pr view:*)",
+				"Bash(gh pr diff:*)",
+			}, config.opts.chat.allowed_tools)
+		end)
+
+		it("replaces the chat tool list with the user's instead of merging it", function()
+			config.setup({ chat = { allowed_tools = { "Read" }, keymaps = { close = "<Esc>" } } })
+			assert.are.same({ "Read" }, config.opts.chat.allowed_tools)
+			assert.are.equal("<Esc>", config.opts.chat.keymaps.close)
+			assert.are.equal("<CR>", config.opts.chat.keymaps.submit)
+		end)
 	end)
 
 	describe("reset_state", function()

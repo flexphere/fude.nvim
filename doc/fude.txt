@@ -16,6 +16,7 @@ CONTENTS                                                   *fude-contents*
   8. Completion ................ |fude-completion|
   9. Drafts .................... |fude-drafts|
   10. Local Review ............. |fude-local-review|
+  11. AI Chat .................. |fude-chat|
 
 ==============================================================================
 1. INTRODUCTION                                        *fude-introduction*
@@ -35,6 +36,8 @@ in the editor. It provides:
 - Mark files as viewed/unviewed (synced with GitHub)
 - Toggleable side panel showing review scope and changed files
 - Gitsigns integration for diff base switching
+- AI chat panel: ask Claude Code about the code under review, one
+  conversation per review target (|fude-chat|)
 - `:FudeCommandPalette`: every command usable right now, with your own
   key mappings shown; fuzzy search by description with Telescope,
   snacks, or a picker-backed `vim.ui.select` provider
@@ -54,6 +57,8 @@ Optional:
   `convert`) for the avatars in the overview and comment windows
   (`images`)
 - gitsigns.nvim for automatic diff base switching
+- Claude Code CLI (`claude`), installed and logged in, for the AI chat
+  panel (|fude-chat|). Without it only the chat is unavailable
 - blink.cmp or nvim-cmp for @user / #issue / _commit completion
 
 ==============================================================================
@@ -1182,6 +1187,59 @@ File opening position                                 *fude-file-position*
     default is controlled by `sidepanel.file_tree`.
     Requires the side panel to be open.
 
+:FudeReviewChat                                    *:FudeReviewChat*
+    Toggle the AI chat panel (|fude-chat|): opens it when closed and
+    focuses its input pane, focuses the input pane when the panel is
+    open but another window is focused, and closes it when one of its
+    two panes is the current window. Focusing the input pane starts
+    insert mode. The panel is a vertical split at
+    the editor edge (`chat.position`, `chat.width`), regardless of
+    which window is focused, and can be open together with the side
+    panel. Closing the focused panel (with this command or `q`) returns
+    focus to the window it was opened or focused from. When the panel
+    lives in another tabpage, this command reopens it in the current
+    tabpage instead of jumping tabs. Closing the panel does not stop an
+    answer in progress, and unsent input is kept for the next open.
+    Requires an active review session (GitHub or local) and the claude
+    command (`chat.cmd`): when it is not executable, this command,
+    |:FudeReviewChatAdd| and |:FudeReviewChatNew| show a warning and do
+    nothing, and |:FudeCommandPalette| does not list them.
+
+:[range]FudeReviewChatAdd                       *:FudeReviewChatAdd*
+    Append the lines of [range] (the current line without a range) of
+    the current buffer to the end of the chat input: >
+        lua/fude/foo.lua:L10-L12
+        ```lua
+        <the selected lines>
+        ```
+<    The first line is `<path>:L<start>-L<end>`, or `<path>:L<line>` for
+    a single line. `<path>` is relative to the directory claude runs in
+    (the root of the review, see |fude-chat|), whatever Neovim's current
+    directory is; a file outside it — another repository or worktree —
+    is written with its full path (`~` for the home directory) and an
+    ordinary buffer without a name as `[No Name]`. Lines
+    of the diff preview's base pane are written as
+    `<path> (base version):L…`, since they and their numbers belong to
+    the base version; any other special buffer, named or not (side
+    panel, comment browser, comment input, overview, terminal, …) is
+    refused with a warning. The
+    fence is tagged with the buffer's filetype and is made longer than
+    any run of backticks in the selection. Input already in the pane is
+    kept; an empty line for your question follows the block and the
+    cursor is placed there. Opens the chat panel when it is closed and
+    focuses the input pane in insert mode. Refused inside the chat
+    panel itself.
+    In a visual-mode mapping use `:FudeReviewChatAdd<CR>` (not `<cmd>`)
+    so the range is passed.
+
+:FudeReviewChatNew                              *:FudeReviewChatNew*
+    Discard the claude session ID and the stored conversation of the
+    current review target, so the next question starts a new session.
+    An answer in progress is stopped first and nothing of it is stored.
+    An open chat panel is emptied; the command also works while the
+    panel is closed. This is the only way stored conversations are
+    removed (they are not pruned).
+
 :FudeReviewToggleGitsigns              *:FudeReviewToggleGitsigns*
     Toggle gitsigns base between the review base and HEAD.
     By default during review mode, gitsigns uses the review base — the
@@ -1226,6 +1284,8 @@ command). Suggested mappings:
   `<leader>e]`  Next review scope
   `<leader>e[`  Previous review scope
   `<leader>ep`  Toggle review side panel
+  `<leader>ea`  Toggle AI chat panel (|:FudeReviewChat|)
+  `<leader>eA`  Add line/selection to the chat input (normal/visual)  *
   `<leader>el`  List all review comments
   `<leader>eR`  Reload review data
   `<leader>em`  Mark current file as viewed
@@ -1252,12 +1312,16 @@ command). Suggested mappings:
                 Switch between left/right panes (in |:FudeReviewOverview|)
   `<C-e>`       Re-request review (in the overview's reviewer picker)
   `S`           Hide/show the right pane (in |:FudeReviewOverview|)
+  `<CR>`        Send the input (chat panel input pane, `chat.keymaps`)
+  `<C-c>`       Stop the answer in progress (chat panel, `chat.keymaps`)
+  `q`           Close the chat panel (chat panel, `chat.keymaps`)
   `'d`/`'c`    Jump to description/comments (overview left pane)
   `za`/`zc`/`zo` Toggle/close/open fold (overview sections and comments)
   `zM`/`zR`     Close/open all folds (in |:FudeReviewOverview|)
 
   * Visual mode mappings must use `:FudeReviewComment<CR>` (not `<cmd>`)
-    to preserve the range. Using `<C-u>` will clear the range and
+    to preserve the range (the same goes for `:FudeReviewChatAdd<CR>`).
+    Using `<C-u>` will clear the range and
     result in single-line comments.
 
 ==============================================================================
@@ -1844,6 +1908,50 @@ Options:
                   branch is not pushed, `gh pr create` fails and a float
                   shows its error and points to this option.
 
+`chat.cmd`          Name (on `$PATH`) or path of the claude command the AI
+                  chat runs (default: "claude"). When it is not
+                  executable the chat commands only warn. This is for
+                  pointing at a claude binary, not for running another
+                  agent. See |fude-chat|.
+
+`chat.width`        Width of the chat panel in columns (default: 60). At
+                  least 20, and never more than half the editor's
+                  columns.
+
+`chat.position`     Edge of the tabpage the chat panel opens at: "right"
+                  or "left" (default: "right").
+
+`chat.allowed_tools`
+                  Tools claude may use, in the form of claude's
+                  `--allowedTools` (default: `Read`, `Grep`, `Glob`,
+                  `Bash(git diff:*)`, `Bash(git log:*)`,
+                  `Bash(git show:*)`, `Bash(git status:*)`,
+                  `Bash(git blame:*)`, `Bash(gh pr view:*)`,
+                  `Bash(gh pr diff:*)`). The built-in tools named here
+                  are also the only ones passed to `--tools`, so with
+                  the default list there is no `Edit` or `Write` tool.
+                  The default is not strictly read-only, though: the
+                  allowed git commands can write a file, see
+                  |fude-chat-tools|. A list given here replaces the
+                  default one; an empty list offers no built-in tool.
+                  Your own Claude Code settings still apply.
+
+`chat.args`         Extra arguments appended to the claude command line
+                  (default: {}). They come after the arguments fude
+                  passes. An option that takes one value is thereby
+                  overridden; one that collects values (such as
+                  `--allowedTools` or `--disallowedTools`) may be
+                  added to fude's instead, so change the tool list
+                  with `chat.allowed_tools`. Examples in
+                  |fude-chat-tools|.
+
+`chat.keymaps`      Normal-mode keys inside the chat panel. Set an entry
+                  to `false` to leave that key unmapped.
+                  `submit` (default: "<CR>")  send the input (input pane)
+                  `cancel` (default: "<C-c>") stop the answer in progress
+                                              (both panes)
+                  `close`  (default: "q")     close the panel (both panes)
+
 
 ==============================================================================
 7. STATUSLINE                                        *fude-statusline*
@@ -2083,6 +2191,255 @@ replies with `author_type: "agent"` (shown with an `[agent]` badge). Enable
 automatically. Agents must append whole lines only — never rewrite existing
 lines. A skill scaffold for a resident Claude Code session is provided at
 `contrib/skills/fude-watch/` in the repository.
+
+==============================================================================
+11. AI CHAT                                                    *fude-chat*
+
+|:FudeReviewChat| opens a chat with Claude Code (the `claude` command,
+`chat.cmd`) next to the code under review, in GitHub and local review
+mode. The panel is a vertical split at the editor edge with two panes:
+the conversation on top (read-only, filetype `markdown`) and the input
+below.
+
+Asking~
+
+|:FudeReviewChat| and |:FudeReviewChatAdd| put you in the input pane in
+insert mode, like the comment inputs (moving there with window commands
+does not change the mode). Write the question, leave insert mode and
+press `<CR>` (`chat.keymaps.submit`). An empty input is not sent. The
+question moves to the conversation under `## You`, the input pane is
+emptied, and the
+answer is appended under `## Claude` as it streams in. While claude is
+answering, a spinner at the end of the conversation shows what it is
+doing: `Thinking…`, or the tool it runs (e.g. `Read lua/fude/foo.lua`).
+Only one question is answered at a time; sending another one meanwhile
+is refused with a message and the input is kept.
+
+The conversation follows new output while the cursor of its window is on
+the last line, and stays where it is while you read earlier output.
+
+`<C-c>` (`chat.keymaps.cancel`, both panes) stops the answer. What had
+arrived stays in the conversation, followed by `*(interrupted)*`.
+
+|:FudeReviewChatAdd| pastes the current line or selection, with its path
+and line range, into the input.
+
+Sessions and storage~
+
+Every review target has one conversation: repository + PR number in a
+GitHub review, worktree + branch in a local review (the unit
+|fude-drafts| use), so conversations of different targets never mix.
+A local review on a detached HEAD has no branch: its unit is the review
+session itself, so that conversation is not continued after
+|:FudeReviewStop|, and its file stays on disk.
+The first question of a target starts a claude session under a new ID
+(`--session-id`); later questions continue it (`--resume`), also after
+|:FudeReviewStop| or a Neovim restart.
+
+claude runs in the root of the review in progress: the repository root
+the GitHub review was started in, or the worktree of the local review,
+whatever Neovim's current directory is. claude keeps its own session
+data per working directory, so when the same target is reviewed from
+another worktree or clone, the stored conversation is still shown but
+claude does not find the session there and a new one starts (see
+Failures below).
+
+The session ID and the conversation shown in the panel (questions and
+answers, not the tool activity) are stored by fude under
+`stdpath("state")/fude/chat/`, one file per target, and shown again when
+the panel is opened. They are never pruned; |:FudeReviewChatNew| removes
+the current target's.
+
+What claude is told~
+
+The parts of the review target that do not change are appended to
+claude's system prompt: PR number, URL, base and head branch in a GitHub
+review; the branch in a local review. What can change during a
+conversation is sent in front of every question instead: in a local
+review the base branch and the current scope (the commit's SHA in the
+commit scope); in a GitHub review the commit that is checked out while a
+commit scope is active, and nothing while the whole pull request is
+under review. That line goes to claude only: it is not shown in the
+conversation and not stored. Diffs and file contents are not attached;
+claude reads what it needs with its tools.
+
+Closing and stopping~
+
+Closing the panel (`q`, |:FudeReviewChat|) does not stop an answer in
+progress; the cancel key does. The answer keeps running and is stored
+when it ends, a message says that it is ready, and opening the panel
+again shows it, still streaming if it has not ended (the message also
+appears when the panel is open in another tabpage). Unsent input is
+kept while the panel is closed, however it was closed — the close key,
+`:q` or `:close` in a pane, `:bwipeout`, `:only`, `:tabclose` — until it
+is sent or the review stops.
+
+An answer is stopped by `<C-c>`, by |:FudeReviewChatNew| (which stores
+nothing of it), when the review stops (|:FudeReviewStop|,
+|:FudeReviewStackSwitch|), and when Neovim exits. Except for
+|:FudeReviewChatNew|, what had arrived is stored as an interrupted
+answer. Stopping the review also closes the panel. A question sent
+right after a stop is accepted at once but starts only when the stopped
+claude process has exited, so two processes never write the same
+session. A process that has not exited 3 seconds after it was stopped
+(SIGTERM) is killed (SIGKILL); should even that bring no exit, the
+waiting question starts a second later.
+
+Failures~
+
+An answer succeeded when claude reported a successful result, or ended
+with exit code 0 after sending answer text; anything else is a failure:
+an error result (whatever the exit code), a non-zero exit without a
+successful result, or an exit without any answer. What claude writes to
+stderr is the error message of a failed run only: warnings printed on
+the way to an answer are not errors.
+
+On a failure the conversation shows `**Error:** <message>` after
+whatever text had arrived. What happens to the question depends on
+whether claude had opened its session for it:
+
+- Before that (command not found, not logged in, …): nothing is stored,
+  so the exchange is gone once the panel is reopened, and the question
+  is put back in the input pane, in front of anything typed meanwhile.
+- After that (the turn limit, an API error midway, …): the question, the
+  text that arrived and the error are stored and shown again when the
+  panel is reopened. The question is not put back, because claude's
+  session already holds it; sending it again would ask it twice. A
+  line after the error says that the question is part of the
+  conversation: send the next question to continue.
+
+When the stored session no longer exists on claude's side, the question
+is sent once more in a new session and the conversation says so; the
+note is part of the stored answer, the stored conversation is kept, but
+claude starts without it. When a first question finds its new session ID
+already in use (the session exists only on claude's side), it is resumed
+instead, once.
+
+When the conversation cannot be written to disk (e.g. the state
+directory is not writable), a warning says so with every answer; the
+next question then starts a new claude session, since the session ID
+was not kept.
+
+Windows~
+
+The two panes are not editor windows, and each keeps its buffer
+('winfixbuf'): a file cannot be opened from a chat pane. `:edit` in a
+pane, or a picker of another plugin opened from it, fails with E1513
+instead of replacing the pane and losing the unsent question; move to an
+editor window first. Files fude opens while a pane is focused — the
+changed files pickers (|:FudeReviewFiles|), the comment browser's jump,
+file navigation (|:FudeReviewNextFile| etc.) — open in an editor window,
+as they do from the side panel, and the side panel never opens a file in
+a pane. A pane whose buffer was replaced by force (`:buffer!`) is an
+ordinary window from then on; the next |:FudeReviewChat| leaves it open
+and opens a new panel.
+
+Closing one pane closes the other, and so does moving a pane to another
+tabpage (`<C-w>T`): the panel is closed as a whole, with the unsent
+input kept for the next |:FudeReviewChat|. `:only` from a pane closes
+the panel too, and the pane it was run in stays as an ordinary empty
+editor window, also when other tabpages exist.
+
+When the panes are the only windows left in their tabpage (e.g. after
+`:bdelete`), an editor window showing the most recently used listed
+buffer opens at the opposite edge, as for the side panel, and the panel
+keeps its configured width; when the last
+editor window is closed with `:quit`, the chat panel is closed too so
+the quit takes effect. With both panels in one tabpage the side panel
+does this for both; a side panel in another tabpage has no part in it,
+and its own `:quit` handling leaves a chat panel in another tabpage
+open.
+
+Tools and permissions~                                  *fude-chat-tools*
+
+claude is run non-interactively: >
+    claude -p --output-format stream-json --verbose
+      --include-partial-messages
+      --session-id <uuid> | --resume <uuid>
+      --permission-mode dontAsk
+      --setting-sources user          (GitHub review only)
+      --tools <built-in tools named in chat.allowed_tools>
+      --allowedTools <chat.allowed_tools...>
+      --append-system-prompt <review target>
+      <chat.args...>
+<with the question on stdin. `--tools` makes only the named built-in
+tools exist, `--allowedTools` allows them in the listed forms only, and
+`dontAsk` denies whatever is not allowed instead of asking. With the
+default `chat.allowed_tools` that is `Read`, `Grep`, `Glob`, and `Bash`
+for `git diff/log/show/status/blame` and `gh pr view/diff`: there is no
+`Edit` or `Write` tool in the session.
+
+The default is not strictly read-only, though. `git diff`, `git log`,
+`git show` and `git blame` write their output to a file when given
+`--output=<path>`, and the default list allows those commands with any
+arguments. If claude follows an instruction hidden in a PR description
+or in the diff it reads, a file on your machine can be overwritten.
+Such an instruction can come from anywhere in what is under review: the
+PR description, the diff, a `CLAUDE.md` of the checkout. For a pull
+request you do not trust, use the setup without git (2 below).
+(`git status` has no such option, and `gh pr view` / `gh pr diff` have
+no option that writes a file.) Two ways to close this:
+
+1. Refuse git commands containing `--output` with a deny rule: >lua
+    chat = { args = { "--disallowedTools", "Bash(git *--output*)" } }
+<   Checked with claude 2.1.332: `git diff HEAD` still runs, and eight
+   ways of writing the option (plain, quoted, split by quotes or
+   escapes, built from a variable or a command substitution, a `>`
+   redirection) were all refused. The guarantee depends on claude's
+   permission check, so other versions may differ.
+
+2. Give claude no git at all, which is the most robust: >lua
+    chat = {
+      allowed_tools = {
+        "Read", "Grep", "Glob",
+        "Bash(gh pr view:*)", "Bash(gh pr diff:*)",
+      },
+    }
+<
+Settings files: in a GitHub review the checkout is the pull request's,
+so its `.claude/settings.json` is not yours. A PR could add hooks or
+`permissions.allow` rules there that would take effect on your first
+question (`claude -p` skips the workspace trust dialog). fude therefore
+passes `--setting-sources user` in a GitHub review: the project's and
+the local settings files, with their hooks and allow rules, are not
+read. Checked with claude 2.1.332: `SessionStart` and `UserPromptSubmit`
+hooks of a project `.claude/settings.json` did not run with that flag,
+and an MCP server declared in the checkout's `.mcp.json` was not started
+with it, while it was without it: the MCP servers a pull request brings
+along do not start in a GitHub review. How the flag treats the
+project's `CLAUDE.md` was not checked. To read the project's settings again, for repositories you
+trust, set the option yourself; fude then passes only yours: >lua
+    chat = { args = { "--setting-sources", "user,project,local" } }
+<In a local review the code is your own, and the project's settings are
+read as in any `claude` session there.
+
+This is not a sandbox either. fude does not override your own Claude
+Code configuration, so what you allowed in your user `settings.json`
+(and, in a local review, in the project's) still works in the chat:
+`permissions.allow` rules, and MCP servers with the MCP tools you
+allowed. To close that as well, pass claude's own flags through
+`chat.args` (check `claude --help` for their meaning in your version): >lua
+    chat = {
+      -- ignore user/project/local settings files (and their allow
+      -- rules), and load no MCP server
+      args = { "--restricted", "--strict-mcp-config" },
+    }
+<`--strict-mcp-config` alone only skips the MCP servers. A
+`--setting-sources` given in `chat.args` replaces fude's own in every
+review mode; `--setting-sources project,local`, for example, skips your
+user `settings.json` while keeping the project's.
+
+claude starts with your usual configuration (MCP servers, skills,
+plugins, hooks, `CLAUDE.md`), so depending on your setup each question
+can be slow and use many tokens before claude reads a single file. The
+flags above make it lighter as a side effect. `--safe-mode` starts
+claude with those customizations disabled while permissions keep working
+as usual, and `--model` picks a faster model: >lua
+    chat = { args = { "--safe-mode" } }
+    chat = { args = { "--model", "sonnet" } }
+<
+Allowing a tool that writes (e.g. adding `Edit` to `chat.allowed_tools`)
+is possible but not supported: the chat is meant for questions.
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:

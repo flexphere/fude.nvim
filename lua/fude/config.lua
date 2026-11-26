@@ -180,6 +180,35 @@ M.defaults = {
 		-- branch fails in `gh pr create` with a float pointing to this option.
 		push_before_create = false,
 	},
+	-- AI chat panel for review mode (:FudeReviewChat). Needs the claude CLI.
+	chat = {
+		cmd = "claude", -- Path or name of the claude command
+		width = 60, -- Panel width in columns
+		position = "right", -- "right" or "left"
+		-- Tools claude may use: a tool that is not named here does not exist for
+		-- the session, and Bash runs only in the listed forms. Not strictly
+		-- read-only: the git commands write a file with --output=<path> (see
+		-- "Tools and permissions" in the README / :help fude-chat-tools).
+		allowed_tools = {
+			"Read",
+			"Grep",
+			"Glob",
+			"Bash(git diff:*)",
+			"Bash(git log:*)",
+			"Bash(git show:*)",
+			"Bash(git status:*)",
+			"Bash(git blame:*)",
+			"Bash(gh pr view:*)",
+			"Bash(gh pr diff:*)",
+		},
+		-- Extra arguments appended to the claude command line (e.g. { "--model", "sonnet" })
+		args = {},
+		keymaps = {
+			submit = "<CR>", -- Send the input (normal mode, input pane)
+			cancel = "<C-c>", -- Stop the answer in progress
+			close = "q", -- Close the panel
+		},
+	},
 }
 
 M.state = {
@@ -194,6 +223,7 @@ M.state = {
 	base_sha = nil, -- PR's base commit from GitHub (base.sha), where merge_base_sha starts from
 	merge_base_sha = nil, -- Merge-base SHA for gitsigns (avoids merge commit noise)
 	pr_url = nil,
+	repo_root = nil, -- Repository root the GitHub review was started in (the chat's working directory)
 	pr_title = nil, -- PR title from the PR lookup at review start (side panel copy)
 	changed_files = {},
 	file_views = {}, -- buffer -> last source view during this review session
@@ -230,6 +260,9 @@ M.state = {
 	overview_cache = nil, -- Overview data prefetched at review start / reload: { pr_info, pr_comments } (overview.lua)
 	gitsigns_reset = false, -- true: HEAD表示(一時的に元のワークツリー状態)、false: PRベース表示
 	sidepanel = nil, -- { win, buf, scope_entries, file_entries, section_map, augroup }
+	chat_panel = nil, -- { log_win, log_buf, input_win, input_buf, augroup, prev_win, split } (ui/chat_panel.lua)
+	chat_live = nil, -- Chat exchange being answered: { key, prompt, text, streamed, activity }
+	chat_input = nil, -- Unsent chat input lines kept while the chat panel is closed
 }
 
 M.opts = {}
@@ -257,6 +290,7 @@ function M.reset_state()
 		base_sha = nil,
 		merge_base_sha = nil,
 		pr_url = nil,
+		repo_root = nil,
 		pr_title = nil,
 		changed_files = {},
 		file_views = {},
@@ -294,6 +328,9 @@ function M.reset_state()
 		overview_cache = nil,
 		gitsigns_reset = false,
 		sidepanel = nil,
+		chat_panel = nil,
+		chat_live = nil,
+		chat_input = nil,
 	}
 end
 

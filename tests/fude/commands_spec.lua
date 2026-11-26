@@ -38,6 +38,9 @@ local ALWAYS = {
 -- Commands usable in both review modes.
 local ANY_REVIEW = {
 	"FudeReviewAllDiffs",
+	"FudeReviewChat",
+	"FudeReviewChatAdd",
+	"FudeReviewChatNew",
 	"FudeReviewComment",
 	"FudeReviewDiff",
 	"FudeReviewFiles",
@@ -103,6 +106,7 @@ describe("commands.list", function()
 		assert.is_true(by_name.FudeReviewComment.range)
 		assert.is_true(by_name.FudeReviewSuggest.range)
 		assert.is_true(by_name.FudeCommandRepeat.range)
+		assert.is_true(by_name.FudeReviewChatAdd.range)
 		assert.are.equal("?", by_name.FudeReviewLocal.nargs)
 		assert.are.equal("?", by_name.FudeReviewLocalToggle.nargs)
 		assert.are.equal("?", by_name.FudeReviewLocalScope.nargs)
@@ -135,7 +139,7 @@ describe("commands.list", function()
 				nargs_count = nargs_count + 1
 			end
 		end
-		assert.are.equal(3, range_count)
+		assert.are.equal(4, range_count)
 		assert.are.equal(4, nargs_count)
 	end)
 
@@ -151,6 +155,56 @@ describe("commands.list", function()
 end)
 
 describe("commands availability", function()
+	-- The chat commands also need the claude command; pretend it is installed
+	-- so the lists below do not depend on the machine running the tests.
+	local chat = require("fude.chat")
+	local original_is_available
+
+	before_each(function()
+		original_is_available = chat.is_available
+		chat.is_available = function()
+			return true
+		end
+	end)
+
+	after_each(function()
+		chat.is_available = original_is_available
+	end)
+
+	it("hides the chat commands when the claude command is not executable", function()
+		chat.is_available = function()
+			return false
+		end
+		for _, state in ipairs({ GITHUB, LOCAL }) do
+			local names = names_where(state)
+			assert.is_false(vim.tbl_contains(names, "FudeReviewChat"))
+			assert.is_false(vim.tbl_contains(names, "FudeReviewChatAdd"))
+			assert.is_false(vim.tbl_contains(names, "FudeReviewChatNew"))
+			assert.is_true(vim.tbl_contains(names, "FudeReviewPanel"))
+		end
+	end)
+
+	it("passes the command's line range to the chat input", function()
+		local chat_panel = require("fude.ui.chat_panel")
+		local original = chat_panel.add_selection
+		local got, ranged
+		chat_panel.add_selection = function(line1, line2)
+			got = { line1, line2 }
+		end
+		-- restored even when a call below throws
+		local ok, err = pcall(function()
+			local entry = commands.find("FudeReviewChatAdd")
+			entry.run({ range = 2, line1 = 3, line2 = 7 })
+			ranged = got
+			-- without a range both are the cursor line
+			entry.run({ range = 0, line1 = 5, line2 = 5 })
+		end)
+		chat_panel.add_selection = original
+		assert.is_true(ok, tostring(err))
+		assert.are.same({ 3, 7 }, ranged)
+		assert.are.same({ 5, 5 }, got)
+	end)
+
 	it("lists only session starters and PR helpers when inactive", function()
 		assert.are.same(sorted(concat(ALWAYS, { "FudeReviewLocal", "FudeReviewStart" })), names_where(INACTIVE))
 	end)

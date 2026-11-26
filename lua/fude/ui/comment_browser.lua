@@ -769,6 +769,10 @@ local function create_browser(entries, issue_comments)
 		local entry = current_entry()
 		if entry and (entry.type == "review" or entry.type == "draft") and entry.filename then
 			close_browser()
+			-- Focus may come back to the side panel or a chat pane.
+			if not require("fude.files").leave_panel_window() then
+				return
+			end
 			vim.cmd("edit " .. vim.fn.fnameescape(entry.filename))
 			local lnum = math.max(1, entry.lnum or 1)
 			pcall(vim.api.nvim_win_set_cursor, 0, { lnum, 0 })

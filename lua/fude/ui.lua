@@ -596,6 +596,9 @@ local function start_spinner(on_frame)
 	end
 end
 
+-- Shared with the chat panel's progress line.
+M.start_spinner = start_spinner
+
 --- Namespace of the spinner frames drawn over loading rows.
 local spinner_ns = vim.api.nvim_create_namespace("fude_spinner")
 

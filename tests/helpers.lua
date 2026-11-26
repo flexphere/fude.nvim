@@ -141,6 +141,14 @@ function M.cleanup()
 		require("fude.ui.sidepanel").close()
 	end)
 
+	-- Same for the chat panel (a top-level split with two panes, a progress
+	-- timer and augroups); also forget a chat answer a test left running.
+	pcall(function()
+		require("fude.ui.chat_panel").close()
+		require("fude.chat")._reset()
+		pcall(vim.api.nvim_del_augroup_by_name, "fude_chat_exit")
+	end)
+
 	-- Close any extra windows (keep only one)
 	local wins = vim.api.nvim_list_wins()
 	for i = 2, #wins do
