@@ -9,7 +9,13 @@
   "summary": "実装が終わり、draft PR #332 を作りました。経緯を知らないレビュー役が差分を見ています。",
   "generatedBy": "/develop-v2",
   "tests": [],
-  "attention": [],
+  "attention": [
+    {
+      "text": "承認後に PRD の AC4 を変えました。「Development Tools は変わらない」に「ただし make all の一覧には check-claude-md を足す」という例外を足し、CLAUDE.md:22 を直しました。新しいチェックが make all に入ったのに一覧が古いままだったためです。戻すには、CLAUDE.md:22 の「 + check-claude-md」と AC4 の括弧書きを消してください。",
+      "ref": "D-006 · 重要度 低",
+      "kind": "PRD 変更"
+    }
+  ],
   "acceptance": [
     {
       "id": "AC1",
@@ -31,7 +37,7 @@
     },
     {
       "id": "AC4",
-      "text": "CLAUDE.md に索引・読む指示・Key Patterns・State Dependencies 表が残り、他の節は変わらない",
+      "text": "CLAUDE.md に索引・読む指示・Key Patterns・State Dependencies 表が残り、他の節は変わらない（Development Tools の make all の一覧に check-claude-md を足すのは例外）",
       "result": "",
       "how": "CLAUDE.md を読む"
     },
@@ -76,7 +82,14 @@
       "State Dependencies 表は CLAUDE.md に残し check_state_deps.lua は変えない",
       "新設チェックは既存の scripts/check_*.lua と同じ形にし HARNESS.md に載せる"
     ],
-    "changes": [],
+    "changes": [
+      {
+        "date": "2026-11-26",
+        "change": "AC4 に「Development Tools の make all の一覧には check-claude-md を足す」の例外を追加",
+        "reason": "D-006。新設チェックが make all に入ったのに一覧が古いままになるため",
+        "field": "AC4"
+      }
+    ],
     "verification": [
       "固定のテスト: make all",
       "新設チェックの Unit テスト",
@@ -181,10 +194,86 @@
       "impact": ".githooks/pre-commit（変更なし）、HARNESS.md の Sensors 表は「開発中・CI」",
       "revisit": "pre-commit でも揃えたいとき、CI で初めて見つかることが続いたとき",
       "refs": "AC6"
+    },
+    {
+      "id": "D-006",
+      "title": "CLAUDE.md の make all の一覧に check-claude-md を足す（AC4 に例外を追加）",
+      "at": "2026-11-26",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "1 行の記述の正確さ。チェックの動きには関係しない",
+      "by": "判断役",
+      "background": "レビュー 1 周目の SHOULD で、Development Tools の make all の説明が古いままと指摘された。AC4 は Development Tools を変えないとしていた。",
+      "options": [
+        "CLAUDE.md:22 を直し AC4 に例外を足す",
+        "直さず理由を記録する"
+      ],
+      "decided": "CLAUDE.md:22 を直し AC4 に例外を足す",
+      "reason": "AC4 の狙いは Architecture 以外を移さないことで、利用者が最初に読む CLAUDE.md が実際と食い違うのは目的に反する。Quality Rules 5 にも合う。",
+      "impact": "CLAUDE.md:22、PRD の AC4",
+      "revisit": "AC4 が一字も変えない意図だったとき（CLAUDE.md:22 の ' + check-claude-md' と AC4 の括弧書きを消せば戻る）",
+      "refs": "R1-1, AC4",
+      "prdChange": true
     }
   ],
-  "reviews": [],
-  "unresolved": [],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 1,
+      "may": 3,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "SHOULD",
+          "text": "make all の説明とチェック一覧（CLAUDE.md:22、CONTRIBUTING.md）に check-claude-md が無く、CONTRIBUTING は pre-commit でも走ると読める",
+          "response": "直した（D-006。harness-audit の発火率集計にも同じ抜けがあり一緒に直した）"
+        },
+        {
+          "id": "R1-2",
+          "severity": "MAY",
+          "text": "pre-commit に check-claude-md が入っていない",
+          "response": "見送り（D-005）"
+        },
+        {
+          "id": "R1-3",
+          "severity": "MAY",
+          "text": "CLAUDE.md の索引に行が無くてもチェックが通る",
+          "response": "見送り（PRD は存在と対応だけを見る）"
+        },
+        {
+          "id": "R1-4",
+          "severity": "MAY",
+          "text": "文字数はコードポイントで数えている（Claude Code は UTF-16 単位の可能性）／移した段落の見出しとラベルの重なりの不揃い",
+          "response": "見送り（14.7k 対 40k で実害なし。文言は変えない方針）"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R1-2",
+      "severity": "MAY",
+      "text": "pre-commit に check-claude-md が入っていない",
+      "reason": "D-005。make all と CI で検出される"
+    },
+    {
+      "id": "R1-3",
+      "severity": "MAY",
+      "text": "CLAUDE.md の索引の行の書き忘れはチェックで検出しない",
+      "reason": "PRD のスコープは存在と対応だけ。Quality Rules 5 で索引の追加を求めている"
+    },
+    {
+      "id": "R1-4",
+      "severity": "MAY",
+      "text": "文字数をコードポイントで数えている／移した段落の見出しとラベルが重なる箇所がある",
+      "reason": "上限との差が大きく実害なし。文言は変えずに移す方針（D-004）"
+    }
+  ],
   "tasks": [
     {
       "id": "T1",

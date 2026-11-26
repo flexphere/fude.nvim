@@ -20,7 +20,7 @@ fude.nvim を開発する AI エージェント（Claude Code、各 skill のサ
 | AC1 | 分割後、CLAUDE.md の文字数（UTF-8 の文字数）が 40,000 以下になる | `make check-claude-md`（新設）と `wc -m CLAUDE.md` | |
 | AC2 | `lua/fude/` 配下の各 `.lua` ファイルに、同じ相対パスの `docs/architecture/<path>.md` が 1 つずつある（例: `lua/fude/local/session.lua` → `docs/architecture/local/session.md`）。対応する `.lua` の無い `.md` は無い | 新設のチェック（下記 AC6） | |
 | AC3 | 元の `### Module Responsibilities` の各モジュールの説明文が、文言を変えずに対応する `docs/architecture/*.md` に入っている。入れ子の項目（`ui/format.lua` など）もそれぞれのファイルになる。どのモジュールにも属さない段落（Sidepanel commit review marks → `ui/sidepanel.md`、Overview metadata contract → `overview.md`、Comment browser thread identity → `ui/comment_browser.md`、Sidepanel quick help → `ui/sidepanel.md`）は関係するモジュールの文書に移る。元に説明の無かった `completion/blink.lua`・`completion/cmp.lua` には、コードから読み取れる短い説明を新たに書く | 元の CLAUDE.md の該当節と移動先を突き合わせるスクリプトか目視（文言の一致） | |
-| AC4 | CLAUDE.md の Architecture 節に、全モジュールの 1 行の索引（責務の要約と `docs/architecture/...` へのリンク）、「モジュールを変更・調査するときは対応する `docs/architecture/<path>.md` を読み、変更したら更新する」という指示、Key Patterns、State Dependencies 表（高リスクフィールドの注記を含む）が残る。Project Overview・Development Tools・Quality Rules・PR/Commit Conventions は変わらない | CLAUDE.md を読む | |
+| AC4 | CLAUDE.md の Architecture 節に、全モジュールの 1 行の索引（責務の要約と `docs/architecture/...` へのリンク）、「モジュールを変更・調査するときは対応する `docs/architecture/<path>.md` を読み、変更したら更新する」という指示、Key Patterns、State Dependencies 表（高リスクフィールドの注記を含む）が残る。Project Overview・Development Tools・Quality Rules・PR/Commit Conventions は変わらない（ただし Development Tools の `make all` の一覧には、AC6 で新設したチェック `check-claude-md` を足す） | CLAUDE.md を読む | |
 | AC5 | `make check-state-deps` が変更なしのスクリプトで通る | `make all` | |
 | AC6 | 新設のチェックが `make all` に入り、次のとき失敗する: CLAUDE.md が 40,000 文字を超える／`lua/fude/` のモジュールに対応する文書が無い／対応するモジュールの無い文書がある。失敗時は何が足りない・余っているかをファイル名で示す | 新設チェックの Unit テスト（正常・超過・欠落・余剰）と `make all` | |
 | AC7 | 「CLAUDE.md のモジュール責務・関数リスト」を参照している記述（`.claude/HARNESS.md`、`.claude/skills/` の各 SKILL.md とテンプレート、`scripts/check_purity.lua` のコメント、`CONTRIBUTING.md` など）が、新しい置き場所（`docs/architecture/`）を指す。Quality Rules のドキュメント更新規則も `docs/architecture/` を含む | `grep -rn "CLAUDE.md" .claude scripts CONTRIBUTING.md` を読む | |
@@ -51,3 +51,4 @@ fude.nvim を開発する AI エージェント（Claude Code、各 skill のサ
 
 | 日付 | 変更 | 理由 |
 |---|---|---|
+| 2026-11-26 | AC4 に「Development Tools の `make all` の一覧には `check-claude-md` を足す」の例外を追加 | D-006。新設チェックが `make all` に入ったのに一覧が古いままになるため（レビュー R1-1） |
