@@ -3,7 +3,7 @@
   "title": "PR本文から読む順番つきのガイドコメントを作るskill（fude-guide）",
   "branch": "feat/pr-guide-comments",
   "worktree": "/Users/kyu08/code/fude.nvim/worktree-ignored-feat-pr-guide-comments",
-  "phase": "pr",
+  "phase": "done",
   "phase_history": [
     {
       "phase": "hearing",
@@ -24,6 +24,14 @@
     {
       "phase": "pr",
       "at": "2026-11-26T18:43:50+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-26T18:44:38+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-26T18:44:38+09:00"
     }
   ],
   "hearing": {
