@@ -67,6 +67,15 @@ function M.is_available()
 	return type(cmd) == "string" and cmd ~= "" and vim.fn.executable(cmd) == 1
 end
 
+--- The directory claude runs in for a review: its root, never Neovim's cwd
+--- (`find_chat_root`). Also what paths pasted into a question are relative to.
+--- @param st table|nil config.state-shaped table (default: config.state)
+--- @return string|nil
+function M.current_root(st)
+	local state = st or config.state
+	return data.find_chat_root(state.review_mode, state.repo_root, state.local_session)
+end
+
 --- Storage key of the active review target: the unit drafts use (GitHub: repo
 --- + PR number; local review: worktree + branch), so a chat follows its
 --- target across review stops and restarts and never mixes with another.
@@ -430,7 +439,7 @@ function M.send(prompt, handlers)
 	-- The root of the review in progress, never Neovim's cwd (which may sit in
 	-- another repository) and never a directory remembered from an earlier
 	-- review of the same target (which may be another worktree or clone).
-	local root = data.find_chat_root(state.review_mode, state.repo_root, state.local_session)
+	local root = M.current_root(state)
 	if not root then
 		return false, M.ERR_NO_ROOT
 	end

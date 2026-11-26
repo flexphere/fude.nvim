@@ -810,6 +810,31 @@ describe("chat panel", function()
 			assert.are.equal(2, insert_starts)
 		end)
 
+		it("writes the full path of a file outside the root claude runs in, wherever Neovim's cwd is", function()
+			-- the cwd moved into another worktree: its files are relative to that one
+			local other = helpers.create_buf({ "x" }, "/other-worktree/README.md")
+			vim.bo[other].buftype = ""
+			vim.api.nvim_set_current_buf(other)
+			helpers.mock_diff({ ["/other-worktree/README.md"] = "README.md", ["/repo/lua/x.lua"] = nil })
+			chat_panel.add_selection(1, 1)
+			assert.are.equal("/other-worktree/README.md:L1", input_lines()[1])
+			-- while a file of the review's root stays relative to it
+			vim.api.nvim_set_current_win(panel().prev_win)
+			vim.api.nvim_set_current_buf(buf)
+			chat_panel.add_selection(1, 1)
+			assert.is_true(vim.tbl_contains(input_lines(), "lua/x.lua:L1"))
+		end)
+
+		it("writes paths relative to the worktree of a local review", function()
+			config.reset_state()
+			config.state.active = true
+			config.state.review_mode = "local"
+			config.state.local_session =
+				{ id = "s1", worktree_root = "/repo/lua", branch = "feat", base_ref = "main", scope = "base" }
+			chat_panel.add_selection(1, 1)
+			assert.are.equal("x.lua:L1", input_lines()[1])
+		end)
+
 		it("appends after existing input in an open panel", function()
 			local editor = vim.api.nvim_get_current_win()
 			chat_panel.open()
@@ -928,6 +953,27 @@ describe("chat panel", function()
 			assert.are.equal(p, panel())
 			assert.is_true(chat_panel.is_open())
 			assert.is_true(chat.is_running(KEY))
+		end)
+
+		it("tells that an answer is ready when the panel is open in another tabpage", function()
+			chat_panel.open()
+			set_input({ "q" })
+			chat_panel.submit()
+			vim.cmd("tabnew")
+			runs[1].chunk(success_line("answer"))
+			runs[1].exit(0, "")
+			assert.is_true(notified(vim.log.levels.INFO, "answer is ready"))
+		end)
+
+		it("reports a failure when the panel is open in another tabpage", function()
+			chat_panel.open()
+			set_input({ "q" })
+			chat_panel.submit()
+			vim.cmd("tabnew")
+			runs[1].exit(1, "boom")
+			assert.is_true(notified(vim.log.levels.ERROR, "Chat failed: boom"))
+			-- the question is back in the input of that panel
+			assert.are.same({ "q" }, input_lines())
 		end)
 
 		it("stopping a local review tears the chat down", function()
@@ -1267,31 +1313,155 @@ describe("chat panel", function()
 		end)
 
 		it("lets the side panel reopen the editor window when both panels are open", function()
+			local columns = vim.o.columns
+			vim.o.columns = 200
 			local editor = vim.api.nvim_get_current_win()
 			sidepanel.open()
+			local side_win = config.state.sidepanel.win
+			vim.api.nvim_set_current_win(editor)
 			chat_panel.open()
-			vim.cmd("vsplit")
-			local other = vim.api.nvim_get_current_win()
-			vim.api.nvim_win_close(other, true)
-			vim.api.nvim_win_close(editor, true)
+			local p = panel()
+			-- side panel | editor | chat
+			assert.are.same({ side_win, editor }, {
+				vim.api.nvim_tabpage_list_wins(0)[1],
+				vim.api.nvim_tabpage_list_wins(0)[2],
+			})
+			assert.are.equal("", vim.bo[vim.api.nvim_win_get_buf(editor)].buftype)
+			local side_width = vim.api.nvim_win_get_width(side_win)
+			assert.are.equal(60, vim.api.nvim_win_get_width(p.log_win))
 			local function editor_windows()
-				local count = 0
+				local wins = {}
 				for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-					if not chat_panel.is_panel_window(w) and w ~= config.state.sidepanel.win then
-						count = count + 1
+					if not chat_panel.is_panel_window(w) and w ~= side_win then
+						table.insert(wins, w)
 					end
 				end
-				return count
+				return wins
 			end
+			-- closed from the editor window itself: focus falls into a panel
+			vim.api.nvim_set_current_win(editor)
+			vim.api.nvim_win_close(editor, true)
 			assert.is_true(helpers.wait_for(function()
-				return editor_windows() == 1
+				return #editor_windows() == 1
 			end))
 			-- and it stays one: the chat panel does not open a second one
 			vim.wait(50, function()
-				return editor_windows() ~= 1
+				return #editor_windows() ~= 1
 			end)
-			assert.are.equal(1, editor_windows())
-			assert.is_not_nil(panel())
+			assert.are.equal(1, #editor_windows())
+			local new_win = editor_windows()[1]
+			-- both panels keep their widths, the editor window gets the rest and the focus
+			assert.are.equal(side_width, vim.api.nvim_win_get_width(side_win))
+			assert.are.equal(60, vim.api.nvim_win_get_width(p.log_win))
+			assert.are.equal(60, vim.api.nvim_win_get_width(p.input_win))
+			assert.is_true(vim.api.nvim_win_get_width(new_win) > 90)
+			assert.are.equal(new_win, vim.api.nvim_get_current_win())
+			assert.are.equal(p, panel())
+			vim.o.columns = columns
+		end)
+
+		describe("unsent input", function()
+			local function type_question()
+				chat_panel.open()
+				set_input({ "unsent", "question" })
+				return panel()
+			end
+
+			local function assert_kept(p)
+				assert.is_true(helpers.wait_for(function()
+					return config.state.chat_panel == nil
+				end))
+				assert.is_false(vim.api.nvim_buf_is_valid(p.input_buf))
+				assert.are.same({ "unsent", "question" }, config.state.chat_input)
+				chat_panel.open()
+				assert.are.same({ "unsent", "question" }, input_lines())
+			end
+
+			for name, close in pairs({
+				[":q in the input pane"] = function(p)
+					vim.api.nvim_set_current_win(p.input_win)
+					vim.cmd("quit")
+				end,
+				[":close in the input pane"] = function(p)
+					vim.api.nvim_set_current_win(p.input_win)
+					vim.cmd("close")
+				end,
+				[":q in the log pane"] = function(p)
+					vim.api.nvim_set_current_win(p.log_win)
+					vim.cmd("quit")
+				end,
+				[":bdelete of the input buffer"] = function(p)
+					vim.cmd("bdelete! " .. p.input_buf)
+				end,
+				[":bwipeout of the input buffer"] = function(p)
+					vim.cmd("bwipeout! " .. p.input_buf)
+				end,
+				[":only from the log pane"] = function(p)
+					vim.api.nvim_set_current_win(p.log_win)
+					vim.cmd("only")
+				end,
+				[":only from an editor window"] = function(p)
+					vim.api.nvim_set_current_win(p.prev_win)
+					vim.cmd("only")
+				end,
+				["<C-w>T in the input pane"] = function(p)
+					vim.api.nvim_set_current_win(p.input_win)
+					vim.cmd("wincmd T")
+				end,
+				["the close key"] = function()
+					chat_panel.close()
+				end,
+				["the toggle command from a pane"] = function()
+					chat_panel.toggle()
+				end,
+			}) do
+				it("survives " .. name, function()
+					local p = type_question()
+					close(p)
+					assert_kept(p)
+				end)
+			end
+
+			it("survives :tabclose of the panel's tabpage", function()
+				vim.cmd("tabnew")
+				local p = type_question()
+				vim.cmd("tabclose")
+				assert_kept(p)
+			end)
+
+			it("follows what is typed, without waiting for the panel to close", function()
+				chat_panel.open()
+				set_input({ "typed" })
+				vim.api.nvim_exec_autocmds("TextChangedI", { buffer = panel().input_buf })
+				assert.are.same({ "typed" }, config.state.chat_input)
+				set_input({ "" })
+				vim.api.nvim_exec_autocmds("TextChanged", { buffer = panel().input_buf })
+				assert.is_nil(config.state.chat_input)
+			end)
+
+			it("is gone after it was sent", function()
+				local p = type_question()
+				chat_panel.submit()
+				assert.is_nil(config.state.chat_input)
+				vim.api.nvim_set_current_win(p.input_win)
+				vim.cmd("quit")
+				assert.is_true(helpers.wait_for(function()
+					return config.state.chat_panel == nil
+				end))
+				assert.is_nil(config.state.chat_input)
+			end)
+
+			it("is gone after the review stopped", function()
+				type_question()
+				chat_panel.teardown()
+				assert.is_nil(config.state.chat_input)
+			end)
+
+			it("is kept by :FudeReviewChatNew, which only discards the conversation", function()
+				type_question()
+				chat_panel.new_chat()
+				assert.are.same({ "unsent", "question" }, input_lines())
+			end)
 		end)
 
 		it("follows a :quit of the last editor window instead of keeping the tabpage open", function()

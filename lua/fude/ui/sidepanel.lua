@@ -991,16 +991,24 @@ function M.ensure_editor_window(panel)
 	if not (panel.win and vim.api.nvim_win_is_valid(panel.win)) or not M.is_last_normal_window(panel.win) then
 		return
 	end
-	local enter = vim.api.nvim_get_current_win() == panel.win
+	-- A chat pane is no place to stay either: the user closed an editor window.
+	local chat_panel = require("fude.ui.chat_panel")
+	local current = vim.api.nvim_get_current_win()
+	local enter = current == panel.win or chat_panel.is_panel_window(current)
 	panel.prev_win = M.open_editor_window({ split = OPPOSITE_SPLIT[panel.split] or "right", win = panel.win }, enter)
-	-- The split halves the panel, which had grown to the whole tabpage: give
-	-- it its configured size back (winfix* only protects a size from later changes).
+	-- The split halves the panel, which had grown since the editor window
+	-- closed: give it its configured size back (winfix* only protects a size
+	-- from later changes). A chat panel in the tabpage grew too; with both
+	-- back at their widths the editor window gets the rest.
 	local size = panel.size or {}
 	if size.width then
 		pcall(vim.api.nvim_win_set_width, panel.win, size.width)
 	end
 	if size.height then
 		pcall(vim.api.nvim_win_set_height, panel.win, size.height)
+	end
+	if chat_panel.tabpage() == vim.api.nvim_win_get_tabpage(panel.win) then
+		chat_panel.restore_width()
 	end
 end
 

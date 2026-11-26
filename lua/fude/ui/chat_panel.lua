@@ -45,8 +45,6 @@ local SEND_ERRORS = {
 
 -- === Panel lookup ===
 
---- The open panel, or nil when it is closed or one of its parts is gone.
---- @return table|nil
 --- Whether a window is still open on the pane buffer it was created for.
 --- 'winfixbuf' keeps the buffers in place, but a forced command (`:buffer!`)
 --- can still replace one: such a window is the user's then, not a pane.
@@ -57,6 +55,8 @@ local function shows(win, buf)
 	return vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(buf) and vim.api.nvim_win_get_buf(win) == buf
 end
 
+--- The open panel, or nil when it is closed or one of its parts is gone.
+--- @return table|nil
 local function get_panel()
 	local panel = config.state.chat_panel
 	if panel and shows(panel.log_win, panel.log_buf) and shows(panel.input_win, panel.input_buf) then
@@ -84,6 +84,16 @@ end
 function M.tabpage()
 	local panel = get_panel()
 	return panel and vim.api.nvim_win_get_tabpage(panel.log_win) or nil
+end
+
+--- Give the open panel the width it was opened with (the two panes share
+--- one column). Used after an editor window was opened beside panes that had
+--- grown: `winfixwidth` only protects a size from later changes.
+function M.restore_width()
+	local panel = get_panel()
+	if panel then
+		pcall(vim.api.nvim_win_set_width, panel.log_win, panel.width)
+	end
 end
 
 --- Whether the panel is open.
@@ -250,6 +260,20 @@ end
 --- Put a question back in front of the unsent input (in the panel, or in the
 --- lines kept for the next open), so a failed question is not lost.
 --- @param prompt string
+--- Copy the input pane's text to `state.chat_input`. The state is kept
+--- current while the user types (autocmds in `open`) and after every change
+--- the module makes, so the unsent question survives however the pane goes
+--- away — `:q`, `:bwipeout`, `:only`, `:tabclose` — without relying on a
+--- hand-over at close time, when the buffer may be wiped already.
+--- @param panel table
+local function sync_input(panel)
+	if config.state.chat_panel ~= panel or not vim.api.nvim_buf_is_valid(panel.input_buf) then
+		return
+	end
+	local lines = vim.api.nvim_buf_get_lines(panel.input_buf, 0, -1, false)
+	config.state.chat_input = (not is_blank(lines)) and lines or nil
+end
+
 local function restore_input(prompt)
 	local state = config.state
 	local panel = get_panel()
@@ -261,6 +285,7 @@ local function restore_input(prompt)
 	end
 	if panel then
 		vim.api.nvim_buf_set_lines(panel.input_buf, 0, -1, false, lines)
+		sync_input(panel)
 	else
 		state.chat_input = lines
 	end
@@ -328,12 +353,14 @@ function handlers.on_done(result)
 			append_lines(panel, data.format_answer_end_lines(result.status, result.error, has_text))
 		end)
 	end
+	-- A panel in another tabpage shows nothing to the user right now.
+	local visible = panel ~= nil and vim.api.nvim_win_get_tabpage(panel.log_win) == vim.api.nvim_get_current_tabpage()
 	if result.status == "error" then
 		restore_input(result.prompt or (live and live.prompt) or "")
-		if not panel then
+		if not visible then
 			vim.notify("fude.nvim: Chat failed: " .. tostring(result.error), vim.log.levels.ERROR)
 		end
-	elseif result.status == "done" and not panel then
+	elseif result.status == "done" and not visible then
 		-- The panel was closed meanwhile: say when it is worth opening again.
 		vim.notify("fude.nvim: The chat answer is ready (:FudeReviewChat)", vim.log.levels.INFO)
 	end
@@ -394,8 +421,17 @@ local function resolve_selection_path(buf)
 	if vim.bo[buf].buftype ~= "" then
 		return nil, true
 	end
-	-- Outside the repository: the path as the user would type it.
-	return require("fude.local.session").relative_path(name) or vim.fn.fnamemodify(name, ":~"), false
+	-- Relative to the directory claude runs in (not to Neovim's cwd, which may
+	-- be another worktree or repository after a :cd); outside it, the full
+	-- path as the user would type it. Both sides resolved: buffer names have
+	-- symlinks resolved while the root may not.
+	local root = chat.current_root()
+	local full = vim.fn.resolve(vim.fn.fnamemodify(name, ":p"))
+	local rel = root and require("fude.diff").make_relative(full, vim.fn.resolve(root)) or nil
+	if rel and rel ~= "" then
+		return rel, false
+	end
+	return vim.fn.fnamemodify(name, ":~"), false
 end
 
 --- Send the input pane's text as a question.
@@ -422,6 +458,7 @@ function M.submit()
 	state.chat_live = { key = key, prompt = prompt, text = "", streamed = false, activity = nil }
 	append_lines(panel, data.format_question_lines(prompt))
 	vim.api.nvim_buf_set_lines(panel.input_buf, 0, -1, false, { "" })
+	sync_input(panel)
 	scroll_to_end(panel)
 	start_progress(panel)
 
@@ -502,9 +539,8 @@ local function ensure_editor_window(panel)
 	local enter = M.is_panel_window(vim.api.nvim_get_current_win())
 	panel.prev_win =
 		require("fude.ui.sidepanel").open_editor_window({ split = OPPOSITE_SPLIT[panel.split], win = -1 }, enter)
-	-- The new window takes half of the tabpage the panes had grown into: give
-	-- the panel its configured width back (the two panes share one column).
-	pcall(vim.api.nvim_win_set_width, panel.log_win, panel.width)
+	-- The new window takes half of the tabpage the panes had grown into.
+	M.restore_width()
 end
 
 --- A :quit closed the last editor window: let it reach Neovim (or close the
@@ -517,12 +553,11 @@ local function quit_if_alone(panel)
 	end
 	-- Leave one pane to quit from. The panel is gone either way: when the
 	-- quit only closes the tabpage, nothing may keep pointing at its windows.
-	local input_lines = vim.api.nvim_buf_get_lines(panel.input_buf, 0, -1, false)
+	sync_input(panel)
 	stop_progress(panel)
 	pcall(vim.api.nvim_del_augroup_by_id, panel.augroup)
 	pcall(vim.cmd, "noautocmd call nvim_win_close(" .. panel.log_win .. ", v:true)")
 	config.state.chat_panel = nil
-	config.state.chat_input = (not is_blank(input_lines)) and input_lines or nil
 	local input_win = panel.input_win
 	local ok, err = pcall(function()
 		vim.api.nvim_set_current_win(input_win)
@@ -594,13 +629,22 @@ function M.open()
 	}
 	state.chat_panel = panel
 
+	-- state.chat_input stays the copy of the unsent input while the panel is open.
 	if state.chat_input and not is_blank(state.chat_input) then
 		vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, state.chat_input)
 	end
-	state.chat_input = nil
 
 	local augroup = vim.api.nvim_create_augroup("fude_chat_panel_" .. log_win, { clear = true })
 	panel.augroup = augroup
+	-- Keep state.chat_input current (see sync_input). BufUnload covers text
+	-- changed without a TextChanged event yet when the buffer goes away.
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "TextChangedP", "InsertLeave", "BufUnload" }, {
+		group = augroup,
+		buffer = input_buf,
+		callback = function()
+			sync_input(panel)
+		end,
+	})
 	vim.api.nvim_create_autocmd("WinClosed", {
 		group = augroup,
 		callback = function(ev)
@@ -678,10 +722,9 @@ function M.close()
 		pcall(vim.api.nvim_del_augroup_by_id, panel.augroup)
 	end
 	stop_progress(panel)
-	if vim.api.nvim_buf_is_valid(panel.input_buf) then
-		local lines = vim.api.nvim_buf_get_lines(panel.input_buf, 0, -1, false)
-		state.chat_input = (not is_blank(lines)) and lines or nil
-	end
+	-- A last look while the buffer is there; when it is wiped already (the
+	-- pane was closed with :q), state.chat_input holds what the autocmds saw.
+	sync_input(panel)
 
 	local was_focused = M.is_panel_window(vim.api.nvim_get_current_win())
 	if was_focused then
@@ -818,6 +861,7 @@ function M.add_selection(line1, line2)
 	-- A line to type the question on.
 	table.insert(new_lines, "")
 	vim.api.nvim_buf_set_lines(panel.input_buf, 0, -1, false, new_lines)
+	sync_input(panel)
 	focus_input(panel)
 	pcall(vim.api.nvim_win_set_cursor, panel.input_win, { #new_lines, 0 })
 end
