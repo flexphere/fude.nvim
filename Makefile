@@ -21,9 +21,14 @@ check-purity:
 check-docs:
 	nvim --headless -l scripts/check_docs.lua
 
-# Optional ROOT=<dir> checks another directory (default: the repository root).
+# Optional ROOT=<dir> on the make command line checks another directory
+# (default: the repository root). ROOT from the environment is ignored, since
+# make imports environment variables and an exported ROOT would otherwise
+# redirect `make all` to another directory.
+DOC_LANG_ROOT := $(if $(filter command line,$(origin ROOT)),$(ROOT))
+
 check-doc-lang:
-	nvim --headless -l scripts/check_doc_lang.lua $(if $(ROOT),"$(ROOT)")
+	nvim --headless -l scripts/check_doc_lang.lua $(if $(DOC_LANG_ROOT),"$(DOC_LANG_ROOT)")
 
 # Test coverage via luacov. Requires `luarocks install --local luacov`.
 # `eval $(luarocks path)` exports LUA_PATH so nvim can require("luacov.runner").

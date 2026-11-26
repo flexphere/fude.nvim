@@ -132,7 +132,7 @@ end
 --- @param path string  root-relative path
 --- @return boolean
 local function is_contrib_skill(path)
-	return path:match("^contrib/") ~= nil and (path == "contrib/SKILL.md" or path:match("/SKILL%.md$") ~= nil)
+	return path:match("^contrib/") ~= nil and path:match("/SKILL%.md$") ~= nil
 end
 
 ----------------------------------------------------------------
@@ -147,34 +147,33 @@ end
 function M.find_violations(path, text)
 	local violations = {}
 	local is_contributing = path == "CONTRIBUTING.md"
-	local is_skill = is_contrib_skill(path)
-	-- frontmatter state: nil = no frontmatter, true = inside, false = closed
-	local in_frontmatter = nil
-	local lnum = 0
+	local lines = {}
+	-- `text .. "\n"` yields a trailing empty line for a file ending in a
+	-- newline; it never contains Japanese, so it is never reported.
 	for line in (text .. "\n"):gmatch("(.-)\n") do
-		lnum = lnum + 1
-		line = line:gsub("\r$", "")
+		table.insert(lines, (line:gsub("\r$", "")))
+	end
+	-- Last frontmatter line of a contrib SKILL.md (0 = none). A frontmatter
+	-- opens with `---` on line 1 and counts only once a closing `---` follows,
+	-- so an unclosed one does not exempt `description:` lines of the body.
+	local frontmatter_end = 0
+	if is_contrib_skill(path) and lines[1] == "---" then
+		for i = 2, #lines do
+			if lines[i] == "---" then
+				frontmatter_end = i - 1
+				break
+			end
+		end
+	end
+	for lnum, line in ipairs(lines) do
 		if is_contributing and (line:gsub("%s+$", "")) == M.COLLABORATOR_GUIDE_HEADING then
 			break
 		end
-		local allowed = false
-		if is_skill then
-			if lnum == 1 and line == "---" then
-				in_frontmatter = true
-			elseif in_frontmatter then
-				if line == "---" then
-					in_frontmatter = false
-				elseif line:match("^description:") then
-					allowed = true
-				end
-			end
-		end
+		local allowed = lnum >= 2 and lnum <= frontmatter_end and line:match("^description:") ~= nil
 		if not allowed and M.has_japanese(line) then
 			table.insert(violations, { path = path, line = lnum, content = line })
 		end
 	end
-	-- `text .. "\n"` yields a trailing empty line for a file ending in a
-	-- newline; it never contains Japanese, so it is never reported.
 	return violations
 end
 
@@ -202,11 +201,37 @@ local function read_file(path)
 	return text, nil
 end
 
---- Root-relative paths of every file under `<root>/contrib` (recursive).
+--- Normalize the root argument: nil or "" → ".", trailing slashes removed
+--- ("/" stays "/").
+--- @param root string|nil
+--- @return string
+function M.normalize_root(root)
+	if root == nil or root == "" then
+		return "."
+	end
+	local stripped = root:gsub("/+$", "")
+	if stripped == "" then
+		return "/"
+	end
+	return stripped
+end
+
+--- Join a normalized root and a root-relative path.
 --- @param root string
+--- @param path string
+--- @return string
+function M.join_path(root, path)
+	if root == "/" then
+		return "/" .. path
+	end
+	return root .. "/" .. path
+end
+
+--- Root-relative paths of every file under `<root>/contrib` (recursive).
+--- @param root string  normalized root
 --- @return string[]
-local function list_contrib_files(root)
-	local dir = root .. "/contrib"
+function M.list_contrib_files(root)
+	local dir = M.join_path(root, "contrib")
 	if vim.fn.isdirectory(dir) ~= 1 then
 		return {}
 	end
@@ -220,38 +245,51 @@ local function list_contrib_files(root)
 end
 
 --- @param root string|nil  repository root (defaults to ".")
+--- @param streams { stdout: file*, stderr: file* }|nil  output (defaults to io.stdout / io.stderr)
 --- @return number  exit code
-function M.main(root)
-	root = (root and root ~= "") and root:gsub("/+$", "") or "."
-	if root == "" then
-		root = "/"
-	end
+function M.main(root, streams)
+	local stdout = streams and streams.stdout or io.stdout
+	local stderr = streams and streams.stderr or io.stderr
+	root = M.normalize_root(root)
 	if vim.fn.isdirectory(root) ~= 1 then
-		io.stderr:write("Error: root is not a directory: " .. root .. "\n")
+		stderr:write("Error: root is not a directory: " .. root .. "\n")
+		return 2
+	end
+	-- A single missing target is skipped, but a root holding none of the fixed
+	-- targets is the wrong directory: reading nothing must not pass as OK.
+	local has_fixed = false
+	for _, path in ipairs(M.FIXED_TARGETS) do
+		if vim.fn.filereadable(M.join_path(root, path)) == 1 then
+			has_fixed = true
+			break
+		end
+	end
+	if not has_fixed then
+		stderr:write("Error: none of " .. table.concat(M.FIXED_TARGETS, ", ") .. " found under " .. root .. "\n")
 		return 2
 	end
 
 	local violations = {}
-	for _, path in ipairs(M.build_target_files(list_contrib_files(root))) do
-		local full = root .. "/" .. path
+	for _, path in ipairs(M.build_target_files(M.list_contrib_files(root))) do
+		local full = M.join_path(root, path)
 		if vim.fn.filereadable(full) == 1 then
 			local text, err = read_file(full)
 			if not text then
-				io.stderr:write("Error: cannot read " .. path .. ": " .. (err or "") .. "\n")
+				stderr:write("Error: cannot read " .. path .. ": " .. (err or "") .. "\n")
 				return 2
 			end
 			vim.list_extend(violations, M.find_violations(path, text))
 		end
 	end
 
-	-- io.stdout:write rather than print: under `nvim -l`, print does not end
+	-- write rather than print: under `nvim -l`, print does not end
 	-- the output with a newline.
 	if #violations == 0 then
-		io.stdout:write("OK: no Japanese characters in user-facing documents.\n")
+		stdout:write("OK: no Japanese characters in user-facing documents.\n")
 		return 0
 	end
-	io.stdout:write(M.format_violations(violations) .. "\n\n")
-	io.stdout:write(
+	stdout:write(M.format_violations(violations) .. "\n\n")
+	stdout:write(
 		string.format(
 			"FAIL: %d line(s) with Japanese characters. User-facing documents must be written in English.\n",
 			#violations
