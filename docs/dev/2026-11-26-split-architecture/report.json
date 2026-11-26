@@ -4,9 +4,9 @@
   "date": "2026-11-26",
   "branch": "docs/split-architecture",
   "base": "origin/main",
-  "status": "実装中",
-  "commits": 0,
-  "summary": "PRD が承認されました。モジュール詳細の移動と新しいチェックの追加を並行して進めています。",
+  "status": "レビュー対応中",
+  "commits": 5,
+  "summary": "実装が終わり、draft PR #332 を作りました。経緯を知らないレビュー役が差分を見ています。",
   "generatedBy": "/develop-v2",
   "tests": [],
   "attention": [],
@@ -208,8 +208,8 @@
   "revision": 1,
   "revisions": [],
   "pr": {
-    "number": null,
-    "url": null
+    "number": 332,
+    "url": "https://github.com/flexphere/fude.nvim/pull/332"
   },
   "copilot": {}
 }

@@ -107,7 +107,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 | `check_purity` | #136 | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
 | `check_docs` | #137, #140, #206 | (1) `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 (PR #137。PR #206 から `lua/fude/commands.lua` のレジストリも抽出元に追加)、(2) `config.lua` の `M.defaults` top-level キーが doc に backtick 形式で文書化されているか forward 検証 (PR #140) | config option は **forward のみ** (doc backtick は関数名等を含むため reverse 不適)。nested key (`signs.comment` 等) と default value の整合性は未対応。keymap 検証は §4.2 #3 で別 PR 化 |
 | `luacov` (`make coverage`) | #138 | `lua/fude/` のテストカバレッジ計測（line-hit 率）。報告のみ、閾値強制なし。CI artifact から取得 | 初期は 45-50% 程度の見込み。閾値強制は段階 3（将来 PR）で検討。`/harness-audit` の sensor 発火率指標とは別の独立メトリクス |
-| `check_claude_md` | ブランチ `docs/split-architecture`（PR 番号は PR 作成後に記入） | CLAUDE.md の文字数（40,000 以下）と、`lua/fude/<path>.lua` ↔ `docs/architecture/<path>.md` の 1 対 1 対応（欠落・余剰をファイル名で報告） | 存在と対応だけを見て、文書の中身（コードとの一致）は検査しない |
+| `check_claude_md` | #332 | CLAUDE.md の文字数（40,000 以下）と、`lua/fude/<path>.lua` ↔ `docs/architecture/<path>.md` の 1 対 1 対応（欠落・余剰をファイル名で報告） | 存在と対応だけを見て、文書の中身（コードとの一致）は検査しない |
 
 ### 4.2 次に着手する PR 候補
 
