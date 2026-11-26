@@ -316,8 +316,100 @@
       "refs": "T2"
     }
   ],
-  "reviews": [],
-  "unresolved": [],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 1,
+      "may": 6,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "M.main と list_contrib_files にテストが無い（Quality Rule 2）",
+          "response": "直す"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "環境変数 ROOT が export されていると別ディレクトリを調べて OK になる",
+          "response": "直す"
+        },
+        {
+          "id": "R1-3",
+          "severity": "MAY",
+          "text": "閉じていない frontmatter で本文の description: 行も例外になる",
+          "response": "直す"
+        },
+        {
+          "id": "R1-4",
+          "severity": "MAY",
+          "text": "複数行の description（ブロック記法）の続きの行は例外にならない",
+          "response": "直さない（PRD どおり）"
+        },
+        {
+          "id": "R1-5",
+          "severity": "MAY",
+          "text": "BOM や --- 末尾空白の frontmatter を認識しない",
+          "response": "直さない"
+        },
+        {
+          "id": "R1-6",
+          "severity": "MAY",
+          "text": "コードブロック内の # Collaborator guide でも区切る",
+          "response": "直さない"
+        },
+        {
+          "id": "R1-7",
+          "severity": "MAY",
+          "text": "contrib/ 以下のシンボリックリンクを調べない",
+          "response": "直さない"
+        },
+        {
+          "id": "R1-8",
+          "severity": "MAY",
+          "text": "PRD の範囲外の日本語の文字を検出しない（記録の正確さ）",
+          "response": "HARNESS.md の既知の限界に追記"
+        },
+        {
+          "id": "R1-9",
+          "severity": "MAY",
+          "text": "is_contrib_skill の条件の重複",
+          "response": "直す"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R1-4",
+      "severity": "MAY",
+      "text": "複数行の description（ブロック記法）の続きの行は例外にならない",
+      "reason": "PRD が「description: 行」と決めている。今の SKILL.md は 1 行"
+    },
+    {
+      "id": "R1-5",
+      "severity": "MAY",
+      "text": "BOM や末尾空白付きの --- を frontmatter と認識しない",
+      "reason": "今のファイルでは起きない。安全側（違反として出る）に倒れる"
+    },
+    {
+      "id": "R1-6",
+      "severity": "MAY",
+      "text": "CONTRIBUTING.md 公開部分のコードブロック内の # Collaborator guide でも区切る",
+      "reason": "今のファイルでは起きない"
+    },
+    {
+      "id": "R1-7",
+      "severity": "MAY",
+      "text": "contrib/ 以下のシンボリックリンクを調べない",
+      "reason": "今の contrib にリンクは無い"
+    }
+  ],
   "tasks": [
     {
       "id": "T1",
