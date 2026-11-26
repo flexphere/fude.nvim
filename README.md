@@ -457,10 +457,11 @@ output. Only one question is answered at a time.
   The conversation shown in the panel is stored by fude under
   `stdpath("state")/fude/chat/` and is never pruned; `:FudeReviewChatNew`
   discards the target's session and conversation. claude runs in the
-  repository root the conversation's first question was asked in, whatever
-  Neovim's current directory is later (claude finds a session by its
-  directory); when that directory no longer exists, the current repository
-  root takes its place and a new session starts.
+  root of the review in progress — the repository root the GitHub review was
+  started in, or the local review's worktree — whatever Neovim's current
+  directory is. claude keeps its sessions per directory, so when you review
+  the same target from another worktree or clone, the stored conversation is
+  still shown but claude starts a new session there (the conversation says so).
 - **What claude knows** - the PR number, URL and base/head branches (GitHub),
   or the branch (local review), are appended to its system prompt. In local
   review the base branch and the current scope can change during a
@@ -479,17 +480,19 @@ output. Only one question is answered at a time.
   is not stored. When the stored session no longer exists on claude's side,
   the question is sent once more in a new session and the conversation says
   so. Warnings claude prints while it answers successfully are not errors.
-- **Windows** - the two panes keep their buffers (`'winfixbuf'`): `:edit` in a
-  pane is refused instead of replacing it, and files opened by fude from a
-  pane (file pickers, the comment browser, next/previous file) open in an
-  editor window. When the panes are the only windows left in their tabpage, an
+- **Windows** - the two panes keep their buffers (`'winfixbuf'`): you cannot
+  open a file from a chat pane (`:edit` or another plugin's picker fails with
+  E1513) — move to an editor window first. Files opened by fude from a pane
+  (file pickers, the comment browser, next/previous file) open in an editor
+  window. Moving a pane to another tabpage (`<C-w>T`) closes the panel. When the panes are the only windows left in their tabpage, an
   editor window opens beside them, as for the side panel.
 
 ### Tools and permissions
 
 claude runs non-interactively (`claude -p`) in the repository root with
 `--permission-mode dontAsk`, `--tools` limited to the built-in tools named in
-`chat.allowed_tools`, and `--allowedTools` set to that list. With the default
+`chat.allowed_tools`, `--allowedTools` set to that list, and — in a GitHub
+review — `--setting-sources user` (see below). With the default
 list that means `Read`, `Grep`, `Glob` and `Bash` restricted to
 `git diff/log/show/status/blame` and `gh pr view/diff`: there is no `Edit` or
 `Write` tool in the session.
@@ -514,12 +517,31 @@ chat = {
 }
 ```
 
-This is not a sandbox either. fude does not
-override your own Claude Code configuration, so anything you allowed there —
-`permissions.allow` rules in your user or project `settings.json`, MCP servers
-and the MCP tools you allowed — still works in the chat. To close that too,
-pass claude's own flags through `chat.args` (see `claude --help` for their
-exact meaning in your version):
+**Settings files.** In a GitHub review the checkout is the pull request's, so
+its `.claude/settings.json` is not yours: a PR could add hooks or
+`permissions.allow` rules there that would take effect on your first question
+(`claude -p` skips the workspace trust dialog). fude therefore passes
+`--setting-sources user` in a GitHub review: the project's and the local
+settings files (their hooks and allow rules) are not read. (Checked with
+claude 2.1.332: `SessionStart` and `UserPromptSubmit` hooks of a project
+`.claude/settings.json` did not run with that flag. How the flag treats the
+project's `CLAUDE.md` and `.mcp.json` was not checked.) To read them again —
+for repositories you trust — set the option yourself; fude then leaves it to
+you:
+
+```lua
+chat = { args = { "--setting-sources", "user,project,local" } }
+```
+
+In a local review the code is your own, and the project's settings are read
+as in any `claude` session there.
+
+This is not a sandbox either. fude does not override your own Claude Code
+configuration, so anything you allowed in your user `settings.json` (and, in a
+local review, in the project's) — `permissions.allow` rules, MCP servers and
+the MCP tools you allowed — still works in the chat. To close that too, pass
+claude's own flags through `chat.args` (see `claude --help` for their exact
+meaning in your version):
 
 ```lua
 chat = {
@@ -529,7 +551,8 @@ chat = {
 }
 ```
 
-`--strict-mcp-config` alone only skips the MCP servers;
+`--strict-mcp-config` alone only skips the MCP servers. A `--setting-sources`
+given in `chat.args` replaces fude's own in every review mode, e.g.
 `--setting-sources project,local` skips your user `settings.json` while
 keeping the project's.
 
