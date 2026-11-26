@@ -61,7 +61,7 @@
     },
     {
       "id": "AC8",
-      "text": "claude のツールは既定で読み取り専用（Read / Grep / Glob と git・gh の参照系 Bash）。利用者が自分の claude の設定で許した操作と MCP は効く。設定で変えられる",
+      "text": "claude のツールは既定で Read / Grep / Glob と git・gh の参照系 Bash だけ。編集用のツールは渡さない。git の --output でファイルを書ける点と、利用者自身の claude の設定・MCP が効く点は許容し、文書に書く。設定で変えられる",
       "result": "",
       "how": "Unit テスト、手動確認"
     },
@@ -136,6 +136,11 @@
         "date": "2026-11-26",
         "change": "AC11: 「セッション ID は使用中」のときの --resume でのやり直しを追記",
         "reason": "D-010"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: 既定で許可する git の diff / log / show / blame が --output でファイルを書ける点は許容し、文書に書く",
+        "reason": "D-019"
       }
     ],
     "verification": [
@@ -497,9 +502,92 @@
       "impact": "build_prompt_context",
       "revisit": "claude が毎回この行に言及するとき。「/」で始まる質問の扱いがモードで変わると分かったとき",
       "refs": "AC9"
+    },
+    {
+      "id": "D-019",
+      "title": "git の --output でファイルを書ける点は既定のまま許容し、文書に書く",
+      "at": "2026-11-26 09:35",
+      "phase": "レビュー",
+      "severity": "高",
+      "severityReason": "利用者の手元のファイルが書き換わるかどうかを決める。拒否リストは claude の将来の版で崩れうる",
+      "by": "ユーザー",
+      "escalated": true,
+      "background": "レビュー 1 周目の MUST（R1-M1）。既定で許可した git diff / log / show（と blame）は --output=<path> でファイルを書け、PR に混ぜた指示文を通じて手元のファイルを書き換える経路になる。判断役は拒否ルールを実機で試し、すり抜け 8 通りがすべて拒否されることを確かめたうえで、拒否ルールを既定で足す案を選び、人が決めるべきとした。利用者の最初の回答「許可します」をメインは「git は残して拒否ルールを足す」と受け取って進めたが、利用者から「拒否ルールも足さず今のままの意味」と訂正があった。",
+      "options": [
+        "拒否ルールで塞ぐ（git は許可のまま）",
+        "既定から git を外す",
+        "git を外し、diff は fude が渡す",
+        "文書だけ直す"
+      ],
+      "decided": "既定は今のまま（git を許可、拒否ルールなし、設定項目も足さない）。文書の「書き換えるツールは渡さない」という言い切りをやめ、--output で書けることと、塞ぐ設定例（chat.args に --disallowedTools、または git を外した allowed_tools）を書く",
+      "reason": "利用者の決定。",
+      "impact": "README・doc の Tools and permissions、AC8 の文言",
+      "revisit": "「レビュー中にファイルが書き換わった」という報告が出たとき。信頼できない PR を扱う利用者が増えたとき（既定で拒否ルールを足す・git を外す）",
+      "refs": "R1-M1, AC8"
     }
   ],
-  "reviews": [],
+  "reviews": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 2,
+      "should": 4,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-M1",
+          "severity": "MUST",
+          "text": "既定で許可した git diff / log / show が --output=<path> でファイルを書ける（AC8、実機で確認）",
+          "response": "既定は変えず、文書を直す（D-019。利用者の決定）"
+        },
+        {
+          "id": "R1-M2",
+          "severity": "MUST",
+          "text": "チャットのペインからピッカーやコメントブラウザでファイルを開くと、ペインがファイルに置き換わり未送信の入力を失う",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-S1",
+          "severity": "SHOULD",
+          "text": "side panel が別のタブページにあると、チャットの「最後のウィンドウ」処理が働かない",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-S2",
+          "severity": "SHOULD",
+          "text": "GitHub の stop が HEAD の復元に失敗してもチャットは片付いてしまう",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-S3",
+          "severity": "SHOULD",
+          "text": "終了コード 0 で本文があっても stderr に出力があると失敗扱いになる",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-S4",
+          "severity": "SHOULD",
+          "text": "GitHub モードで claude の cwd が Neovim の cwd に依存する",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-Y1",
+          "severity": "MAY",
+          "text": "チャットのペインから :only すると、ペイン用のオプションを持った空のウィンドウが残る",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-Y2",
+          "severity": "MAY",
+          "text": "GitHub の commit scope を claude に伝えていない（AC9 の要件の外）",
+          "response": "見送り"
+        }
+      ]
+    }
+  ],
   "unresolved": [],
   "tasks": [
     {
