@@ -65,16 +65,17 @@ make lint              # luacheck
 make format            # stylua（自動修正）
 make format-check      # stylua --check
 make test              # plenary-busted テスト
-make all               # lint + format-check + test + check-state-deps + check-purity + check-docs
+make all               # lint + format-check + test + check-state-deps + check-purity + check-docs + check-claude-md
 make check-state-deps  # CLAUDE.md の State Dependencies 表と実コードの整合性検証
 make check-purity      # `*/data.lua` `*/format.lua` の純粋性 (vim API / state 不参照) 検証
 make check-docs        # lua/fude/commands.lua / plugin/fude.lua のコマンド登録と doc/fude.txt のタグの双方向整合性検証
+make check-claude-md   # CLAUDE.md の文字数上限 (40,000) と lua/fude/ ↔ docs/architecture/ の 1 対 1 対応の検証
 make coverage          # luacov でテストカバレッジ計測 (要 `luarocks install --local luacov`)
 ```
 
 push 前に `make all` が通ることを必ず確認してください。`make setup` で `.githooks/pre-commit` が有効化され、コミット時に自動実行されます。
 
-`make check-*` 系は CLAUDE.md / 純粋性宣言 / `doc/fude.txt` の各「文書化された建前」が実コードと乖離していないかを機械検証します。`make all` / pre-commit / CI で自動実行されるため、手動で個別に走らせる必要はほとんどありませんが、ピンポイントで確認したい場合に利用してください。
+`make check-*` 系は CLAUDE.md / 純粋性宣言 / `doc/fude.txt` / `docs/architecture/` の各「文書化された建前」が実コードと乖離していないかを機械検証します。`make all` / pre-commit / CI で自動実行されるため（`make check-claude-md` だけは pre-commit では走らず、`make all` と CI のみ）、手動で個別に走らせる必要はほとんどありませんが、ピンポイントで確認したい場合に利用してください。
 
 `make coverage` は `make all` には含まれません（報告のみ・閾値強制なし）。CI では別 job として実行され、レポートは GitHub Actions の artifact `coverage-report` から取得できます。ローカルで実行する場合は `luarocks install --local luacov` を先に実行してください。
 
