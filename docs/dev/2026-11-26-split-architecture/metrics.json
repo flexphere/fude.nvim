@@ -1,0 +1,68 @@
+{
+  "schema": 1,
+  "slug": "split-architecture",
+  "title": "CLAUDE.md のモジュール詳細を docs/architecture へ分割",
+  "date": "2026-11-26",
+  "branch": "docs/split-architecture",
+  "pr": {
+    "number": 332,
+    "url": "https://github.com/flexphere/fude.nvim/pull/332"
+  },
+  "revision": 1,
+  "hearing": {
+    "questions_asked": 4,
+    "prd_drafts": 1,
+    "prd_changes_after_approval": 1
+  },
+  "implementation": {
+    "tasks": 3,
+    "commits": 11,
+    "review_rounds": 1,
+    "must_by_round": [
+      0
+    ],
+    "must_total": 0,
+    "rounds_after_copilot": 0,
+    "review_end": {
+      "capped_revisions": 0,
+      "capped_after_copilot": 0,
+      "long_after_copilot": 0,
+      "max_rounds": 1,
+      "late_must_rounds": 0
+    },
+    "acceptance": {
+      "total": 8,
+      "met": 8,
+      "partial": 0,
+      "unmet": 0
+    },
+    "tests_failed": 0
+  },
+  "decisions": {
+    "total": 6,
+    "by_judge": 2,
+    "high": 0,
+    "escalated_to_user": 0
+  },
+  "copilot": {
+    "comments": 0,
+    "fixed": 0,
+    "reply_only": 0,
+    "declined": 0,
+    "timed_out": false
+  },
+  "revisions": {
+    "count": 0,
+    "rework": 0,
+    "requirement_change": 0
+  },
+  "phase_hours": {
+    "hearing": 0.07,
+    "prd_approval": 0.03,
+    "implementing": 0.11,
+    "reviewing": 0.17,
+    "pr": 0.01,
+    "reporting": 0.0
+  },
+  "unresolved": 3
+}

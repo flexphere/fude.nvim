@@ -3,7 +3,7 @@
   "title": "CLAUDE.md のモジュール詳細を docs/architecture へ分割",
   "branch": "docs/split-architecture",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-split-architecture",
-  "phase": "pr",
+  "phase": "done",
   "phase_history": [
     {
       "phase": "hearing",
@@ -24,6 +24,14 @@
     {
       "phase": "pr",
       "at": "2026-11-26T14:06:17+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-26T14:06:54+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-26T14:06:54+09:00"
     }
   ],
   "hearing": {

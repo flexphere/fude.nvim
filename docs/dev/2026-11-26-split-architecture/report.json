@@ -4,66 +4,104 @@
   "date": "2026-11-26",
   "branch": "docs/split-architecture",
   "base": "origin/main",
-  "status": "レビュー対応中",
-  "commits": 5,
-  "summary": "実装が終わり、draft PR #332 を作りました。経緯を知らないレビュー役が差分を見ています。",
+  "status": "完了",
+  "commits": 11,
+  "summary": "完了しました。CLAUDE.md は 180,336 文字から 14,669 文字になり、各モジュールの説明は docs/architecture/ に移りました。新設の check-claude-md が make all と CI で再発を防ぎます。PR #332 は ready for review です。",
   "generatedBy": "/develop-v2",
-  "tests": [],
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト（41 ファイル、失敗 0）・check-state-deps・check-purity・check-docs・check-claude-md すべて通過"
+    },
+    {
+      "command": "CI（PR #332）",
+      "result": "pass",
+      "detail": "新設の CLAUDE.md Size / Architecture Docs Check を含む 10 ジョブ通過"
+    },
+    {
+      "command": "移した文言の突き合わせ",
+      "result": "pass",
+      "detail": "元の Module Responsibilities と Comment browser thread identity の 41 の本文が、移動先に文言そのままで入っている（不一致 0）"
+    }
+  ],
   "attention": [
+    {
+      "text": "Claude Code を新しいセッションで起動し（このリポジトリでも、PR のブランチでも構いません）、「CLAUDE.md is over the 150.0k-char limit」の警告が出ないことを確かめてください。警告はマージ後に main でも消えるはずです。",
+      "ref": "AC1",
+      "kind": "動作確認"
+    },
+    {
+      "text": "エージェントが文書をたどれるかを確かめてください。新しいセッションで「lua/fude/local/session.lua の commit scope の扱いを説明して」のように頼むと、CLAUDE.md の索引から docs/architecture/local/session.md を読んで答えるはずです。",
+      "ref": "AC4",
+      "kind": "動作確認"
+    },
     {
       "text": "承認後に PRD の AC4 を変えました。「Development Tools は変わらない」に「ただし make all の一覧には check-claude-md を足す」という例外を足し、CLAUDE.md:22 を直しました。新しいチェックが make all に入ったのに一覧が古いままだったためです。戻すには、CLAUDE.md:22 の「 + check-claude-md」と AC4 の括弧書きを消してください。",
       "ref": "D-006 · 重要度 低",
       "kind": "PRD 変更"
+    },
+    {
+      "text": "check-claude-md は .githooks/pre-commit には入れていません（make all と CI のみ）。commit 時にも止めたい場合は、pre-commit に 2 行を足し、HARNESS.md の 2 か所を直します。",
+      "ref": "D-005 · 重要度 低"
+    },
+    {
+      "text": "completion/blink.md と completion/cmp.md は元の CLAUDE.md に説明が無かったため、コードから新たに書きました。この 2 つだけは移したものではなく、新しく書いた文です。",
+      "ref": "AC3"
+    },
+    {
+      "text": "Copilot はこの PR をレビューできませんでした（レビューできないという返事のみ）。レビューはレビュー役の 1 周（MUST 0）だけです。",
+      "ref": "Copilot"
     }
   ],
   "acceptance": [
     {
       "id": "AC1",
       "text": "分割後、CLAUDE.md が 40,000 文字以下になる",
-      "result": "",
-      "how": "make check-claude-md・wc -m"
+      "result": "met",
+      "how": "make check-claude-md: 14,669 / 40,000 文字（元は 180,336）"
     },
     {
       "id": "AC2",
       "text": "lua/fude/ の各 .lua に、同じ相対パスの docs/architecture/<path>.md が 1 つずつあり、余計な .md が無い",
-      "result": "",
-      "how": "新設チェック"
+      "result": "met",
+      "how": "check-claude-md: lua/fude/ の 39 モジュールと docs/architecture/ の 39 文書が 1 対 1"
     },
     {
       "id": "AC3",
       "text": "各モジュールの説明文が文言を変えずに移っている（どのモジュールにも属さない段落は関係する文書へ移り、completion/blink・cmp には説明を新たに書く）",
-      "result": "",
-      "how": "元の節との突き合わせ"
+      "result": "met",
+      "how": "実装役とレビュー役がそれぞれ比較スクリプトで突き合わせ、41 の本文で不一致 0。completion/blink・cmp はレビュー役がコードと照合"
     },
     {
       "id": "AC4",
       "text": "CLAUDE.md に索引・読む指示・Key Patterns・State Dependencies 表が残り、他の節は変わらない（Development Tools の make all の一覧に check-claude-md を足すのは例外）",
-      "result": "",
-      "how": "CLAUDE.md を読む"
+      "result": "met",
+      "how": "索引 39 行・読む指示・Key Patterns・State Dependencies 表が残り、他の節の変更は Quality Rules 5（AC7）と make all の一覧（AC4 の例外）だけ"
     },
     {
       "id": "AC5",
       "text": "check-state-deps が変更なしのスクリプトで通る",
-      "result": "",
-      "how": "make all"
+      "result": "met",
+      "how": "check_state_deps.lua は変更なしで通過"
     },
     {
       "id": "AC6",
       "text": "新設チェックが make all に入り、超過・欠落・余剰で失敗してファイル名を示す",
-      "result": "",
-      "how": "Unit テスト・make all"
+      "result": "met",
+      "how": "Unit テスト 24 件。複製で超過・欠落・余剰を起こし FAIL とファイル名の表示を確認"
     },
     {
       "id": "AC7",
       "text": "CLAUDE.md のモジュール責務を参照する記述が docs/architecture を指す",
-      "result": "",
-      "how": "grep"
+      "result": "met",
+      "how": "HARNESS.md・各 skill・CONTRIBUTING.md・check_purity.lua のコメント・Quality Rules 5 を更新"
     },
     {
       "id": "AC8",
       "text": "make all が通る",
-      "result": "",
-      "how": "make all・CI"
+      "result": "met",
+      "how": "make all 通過、CI 10 ジョブ通過"
     }
   ],
   "prd": {
@@ -295,10 +333,23 @@
     }
   ],
   "revision": 1,
-  "revisions": [],
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": "モジュール詳細を docs/architecture へ移し、check-claude-md を追加",
+      "refs": ""
+    }
+  ],
   "pr": {
     "number": 332,
     "url": "https://github.com/flexphere/fude.nvim/pull/332"
   },
-  "copilot": {}
+  "copilot": {
+    "status": "unable: Copilot はこの PR をレビューできなかった（レビューできないという返事が届いた）。指摘への対応はなし。",
+    "comments": [],
+    "timed_out": false
+  }
 }
