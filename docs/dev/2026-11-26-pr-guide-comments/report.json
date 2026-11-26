@@ -4,9 +4,9 @@
   "date": "2026-11-26",
   "branch": "feat/pr-guide-comments",
   "base": "origin/main",
-  "status": "実装中",
-  "commits": 3,
-  "summary": "PRDが承認されました。実装役がcontrib/skills/fude-guideを実装しています。",
+  "status": "レビュー対応中",
+  "commits": 5,
+  "summary": "実装を終え、draftのPR #335を作りました。経緯を知らないレビュー役がPRDとコードを見ています。",
   "generatedBy": "/develop-v2",
   "tests": [],
   "attention": [
@@ -185,9 +185,126 @@
       "revisit": "残ったthreadの重複が多いという報告が来たとき",
       "refs": "AC7",
       "prdChange": true
+    },
+    {
+      "id": "D-008",
+      "title": "人が編集・resolveしたガイドは、返信が無ければclearで消す（直さない）",
+      "at": "2026-11-26",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "JSONLには行が残り、PRDの決めたとおりの挙動",
+      "by": "作業する側",
+      "background": "R1-7。人が[guide を残して編集・resolveしたガイドも、返信が無ければ再実行で消える。",
+      "options": [
+        "直さず、ドキュメントに書く",
+        "編集・resolveされたものも残す"
+      ],
+      "decided": "直さず、ドキュメントに書く",
+      "reason": "AC7は消す対象を決めており、例外は返信だけ。ガイドに意見を残したいときは返信すれば残る。",
+      "impact": "README・SKILL.mdの説明",
+      "revisit": "編集したガイドが消えて困るという声が出たとき",
+      "refs": "R1-7, AC7"
+    },
+    {
+      "id": "D-009",
+      "title": "ガイドはNから1の降順に追記し、一覧でガイド1を一番上にする",
+      "at": "2026-11-26",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "手順の向きと案内の文面だけ。データと既存の挙動に影響しない",
+      "by": "判断役",
+      "background": "R1-6の修正でcreated_atがミリ秒になり追記順に増えるようになったが、コメント一覧は新しい順に並ぶため、昇順に追記するとガイドNが一番上に来る。",
+      "options": [
+        "昇順のまま、番号で辿るよう案内する",
+        "降順に追記し、一覧でガイド1を一番上にする"
+      ],
+      "decided": "降順に追記し、一覧でガイド1を一番上にする",
+      "reason": "番号順に辿る専用コマンドはスコープ外なので、ガイドを見渡す場所はコメント一覧になる。上から読めば番号順になる方が目的に合う。",
+      "impact": "SKILL.md/SKILL.ja.mdの手順5・6、README、doc/fude.txt",
+      "revisit": "コメント一覧の並べ替えが変わったとき",
+      "refs": "R1-6, AC6"
     }
   ],
-  "reviews": [],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 8,
+      "may": 2,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "SKILL.ja.mdで太字を使っている",
+          "response": "直した"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "addがパスを正規化せず、./付きのパスでガイドが出ない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "未追跡ファイルをgit status --porcelainで見ているので、新しいディレクトリの中が見えない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-4",
+          "severity": "SHOULD",
+          "text": "commitスコープ中（detached HEAD）にセッションを取り違える",
+          "response": "直した"
+        },
+        {
+          "id": "R1-5",
+          "severity": "SHOULD",
+          "text": "bodyが文字列でない行が1つあるとclearが全体ごと失敗し、終了コードも契約と違う",
+          "response": "直した"
+        },
+        {
+          "id": "R1-6",
+          "severity": "SHOULD",
+          "text": "created_atが秒単位なので、コメント一覧でガイドの順番が崩れる",
+          "response": "直した（ミリ秒の時刻にし、addを降順にした。D-009）"
+        },
+        {
+          "id": "R1-7",
+          "severity": "SHOULD",
+          "text": "人が編集またはresolveしたガイドをclearが消す",
+          "response": "直さない（D-008）"
+        },
+        {
+          "id": "R1-8",
+          "severity": "SHOULD",
+          "text": "addが[guide で始まらない本文を受け付ける",
+          "response": "直した"
+        },
+        {
+          "id": "R1-9",
+          "severity": "SHOULD",
+          "text": "detached HEADでgh pr viewを番号なしで呼んでいる",
+          "response": "直した"
+        },
+        {
+          "id": "R1-10",
+          "severity": "MAY",
+          "text": "git diffがユーザーのdiff設定に影響される",
+          "response": "直した"
+        },
+        {
+          "id": "R1-11",
+          "severity": "MAY",
+          "text": "current.jsonのidを検証せずにパスに使っている",
+          "response": "直した"
+        }
+      ]
+    }
+  ],
   "unresolved": [],
   "tasks": [
     {
@@ -199,21 +316,21 @@
     {
       "id": "T2",
       "title": "SKILL.md / SKILL.ja.md",
-      "status": "実行中",
+      "status": "完了",
       "owner": "impl-1"
     },
     {
       "id": "T3",
       "title": "README・doc/fude.txt",
-      "status": "待ち",
+      "status": "完了",
       "owner": "impl-1"
     }
   ],
   "revision": 1,
   "revisions": [],
   "pr": {
-    "number": null,
-    "url": null
+    "number": 335,
+    "url": "https://github.com/flexphere/fude.nvim/pull/335"
   },
   "copilot": {
     "status": "",

@@ -112,7 +112,9 @@ not delete those threads yourself. The new guide is still written.
 
 ### 5. Write the comments
 
-For each comment, in ascending order of `n`:
+For each comment, in descending order of `n` (`N` first, `1` last). The
+comment list of `:FudeReviewListComments` shows the newest comment first, so
+writing `1` last puts guide 1 at the top, followed by 2, 3, and so on.
 
 1. Write the body to a temporary file in the scratchpad. Start it with
    `[guide <n>/<N>] ` (the script refuses any other body, since `clear`
@@ -130,9 +132,11 @@ For each comment, in ascending order of `n`:
    `<path>` is relative to the repository root. On success the script prints
    the appended JSON line. On a nonzero exit nothing was written; the reason
    is on stderr (an invalid range or path, a missing file, a body without
-   the prefix, no session, or the commit scope). Fix the
-   arguments and retry that comment. If you cannot, run `clear` so a partial
-   guide does not stay, and report the problem to the user.
+   the prefix, no session, or the commit scope). If an `add` fails partway,
+   run `clear` so a partial guide does not stay, fix the cause, and start
+   this step again from `N`: adding only the failed comment later would put
+   it out of order in the list. If you cannot fix the cause, stop after
+   `clear` and report the problem to the user.
 
 Never edit the JSONL file directly: it is append-only, and the script is the
 only writer this skill uses.
@@ -142,9 +146,7 @@ only writer this skill uses.
 Show the user the list of comments written: number, `path:start-end`, and
 one line about each. Tell them to run `:FudeReviewReload` in Neovim (or wait
 for `auto_reload`) to see the comments, and that `:FudeReviewListComments`
-lists them. That list shows the newest comment first, so guide `N` is at
-the top: tell them to follow the numbers in the bodies rather than the list
-order. Include any thread `clear` kept (step 4).
+lists them from the top in the order guide 1, 2, and so on. Include any thread `clear` kept (step 4).
 
 ## Notes
 

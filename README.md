@@ -796,8 +796,7 @@ cp "$fude_skill_dir/fude-guide-comment.sh" .claude/skills/fude-guide/
    "fude-guideで読む順番を付けて".
 3. In Neovim, run `:FudeReviewReload` (or wait for `auto_reload`). The guide
    comments appear with an `[agent]` badge; `:FudeReviewListComments` lists
-   them. That list shows the newest comment first, so follow the numbers in
-   the comment bodies rather than the list order.
+   them from the top in the order guide 1, 2, and so on.
 
 Running the skill again first deletes the guide comments it wrote before,
 so the guide is replaced. Comments and replies written by people stay. A

@@ -2201,8 +2201,9 @@ starting with `[guide 1/N]` on the changed lines through its bundled script
 |:FudeReviewReload|. Running it again deletes the guide comments it wrote
 before; comments and replies written by people stay, and a guide comment
 someone replied to is kept, while one without such a reply is deleted even
-if it was edited or resolved. The comment list shows the newest comment
-first, so follow the numbers in the bodies. The skill refuses in the
+if it was edited or resolved. |:FudeReviewListComments| lists the guide
+comments from the top in the order guide 1, 2, and so on. The skill
+refuses in the
 `commit` scope, where comments are not shown. See the README for the setup
 steps.
 

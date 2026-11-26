@@ -3,7 +3,7 @@
   "title": "PR本文から読む順番つきのガイドコメントを作るskill（fude-guide）",
   "branch": "feat/pr-guide-comments",
   "worktree": "/Users/kyu08/code/fude.nvim/worktree-ignored-feat-pr-guide-comments",
-  "phase": "implementing",
+  "phase": "reviewing",
   "phase_history": [
     {
       "phase": "hearing",
@@ -16,6 +16,10 @@
     {
       "phase": "implementing",
       "at": "2026-11-26T18:21:32+09:00"
+    },
+    {
+      "phase": "reviewing",
+      "at": "2026-11-26T18:30:03+09:00"
     }
   ],
   "hearing": {
@@ -28,8 +32,8 @@
   },
   "review_outcomes": [],
   "pr": {
-    "number": null,
-    "url": null
+    "number": 335,
+    "url": "https://github.com/flexphere/fude.nvim/pull/335"
   },
   "revision": 1,
   "report_url": "https://claude.ai/artifact/4RSKTegrfwhtVxZpxjSGGr"
