@@ -4,9 +4,9 @@
   "date": "2026-11-26",
   "branch": "docs/user-docs-english",
   "base": "origin/main",
-  "status": "レビュー対応中",
-  "commits": 0,
-  "summary": "レビューは 2 周で MUST 0 件になり、CI もすべて通りました。PR を ready for review にし、Copilot のレビューを待っています。",
+  "status": "完了",
+  "commits": 9,
+  "summary": "完了しました。レビューは 2 周で MUST 0 件、受け入れ基準 17 件はすべて自動で満たし、CI も通っています。PR #334 は ready for review です。",
   "generatedBy": "/develop-v2",
   "tests": [
     {
@@ -15,7 +15,28 @@
       "detail": "lint・format-check・テスト・check-state-deps・check-purity・check-docs・check-doc-lang すべて通過"
     }
   ],
-  "attention": [],
+  "attention": [
+    {
+      "text": "README の fude-watch の手順（2.）は、日本語の例文を外して英語の例文 \"Use fude-watch to watch my local review comments\" だけにしました。文のつながりが自然か見てください。",
+      "ref": "AC12",
+      "kind": "動作確認"
+    },
+    {
+      "text": "CLAUDE.md の Quality Rules 6 番（利用者向け文書は英語）の文面が意図どおりか見てください。AGENTS.md はシンボリックリンクなので同じ内容になります。",
+      "ref": "AC17",
+      "kind": "動作確認"
+    },
+    {
+      "text": "Copilot のレビューは受けられませんでした（unable）。",
+      "ref": "Copilot",
+      "kind": "その他"
+    },
+    {
+      "text": "直さなかった MAY が 6 件あります（「直さなかった指摘」を参照）。どれも今のファイルでは起きない端の場面です。",
+      "ref": "R1-4〜R2-2",
+      "kind": "その他"
+    }
+  ],
   "acceptance": [
     {
       "id": "AC1",
@@ -461,13 +482,22 @@
     }
   ],
   "revision": 1,
-  "revisions": [],
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": "check-doc-lang の追加、README の英語化、CLAUDE.md のルール追加",
+      "refs": ""
+    }
+  ],
   "pr": {
     "number": 334,
     "url": "https://github.com/flexphere/fude.nvim/pull/334"
   },
   "copilot": {
-    "status": "",
+    "status": "Copilot のレビューは受けられませんでした（copilot-wait.sh が unable を返した）。",
     "comments": [],
     "timed_out": false
   }
