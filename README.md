@@ -483,13 +483,15 @@ output. Only one question is answered at a time.
   switch) — the panel closes then — and when Neovim exits; what had arrived
   is stored as an interrupted answer. `:FudeReviewChatNew` stops it too, but
   stores nothing of it. A question sent right after a stop starts once the
-  stopped claude process has exited.
+  stopped claude process has exited (one that has not after 3 seconds is
+  killed).
 - **Failures** - when claude fails, the error is shown after whatever text had
   arrived. A failure before claude opened the session (not logged in, command
   not found, …) stores nothing and puts your question back in the input pane.
   A failure after that (e.g. the turn limit) is stored with the question and
   the error, and the question is not put back: claude's session already holds
-  it, so sending it again would ask twice. When the stored session no longer
+  it, so sending it again would ask twice. The error is followed by a line
+  saying so — send your next question to continue. When the stored session no longer
   exists on claude's side, the question is sent once more in a new session
   and the conversation says so (the note is stored with the answer). Warnings
   claude prints while it answers successfully are not errors. When the

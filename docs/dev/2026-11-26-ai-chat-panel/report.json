@@ -84,7 +84,7 @@
     },
     {
       "id": "AC11",
-      "text": "claude が失敗したとき、エラーが会話ログに出て入力は入力欄に戻る。--resume のセッションが見つからないときは新しい ID で 1 回だけやり直す。「使用中」のときは同じ ID の --resume で 1 回やり直す",
+      "text": "claude が失敗したとき、エラーが会話ログに出て入力は失われない（セッション開始前の失敗は入力欄に戻り、開始後の失敗は質問・応答・エラーを保存）。--resume のセッションが見つからないときは新しい ID で、「使用中」のときは同じ ID の --resume で 1 回やり直す",
       "result": "",
       "how": "結合テスト"
     },
@@ -161,6 +161,11 @@
         "date": "2026-11-26",
         "change": "AC9: GitHub レビューの commit scope も質問の先頭に添える",
         "reason": "D-026"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC11: セッションが始まった後の失敗は保存し入力欄に戻さない",
+        "reason": "D-028"
       }
     ],
     "verification": [
@@ -698,6 +703,45 @@
       "impact": "README・doc",
       "revisit": "利用者が AC8 の --output の決定を見直すとき",
       "refs": "R1-3, AC8, D-019"
+    },
+    {
+      "id": "D-028",
+      "title": "claude 側でセッションが始まった後の失敗は保存し、入力欄に戻さない（D-009 の見直し）",
+      "at": "2026-11-26 13:30",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "保存形式に欄が増える。公開前で古いファイルも読める",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-8）。途中で失敗すると claude 側には質問が記録済みなのに、fude は保存せず入力欄に戻すので、再送で質問が二重になる。D-009 の見直しのきっかけに当たる。",
+      "options": [
+        "init 後の失敗は保存・init 前は戻す",
+        "D-009 のまま保存しない"
+      ],
+      "decided": "init 後の失敗は質問・応答・エラーを保存し入力欄に戻さない（ログに「記録済み。次の質問で続ける」と出す）。init 前の失敗は保存せず戻す。AC11 を書き換え",
+      "reason": "D-009 の根拠（再送で二重になる）が init 後は逆向きに働く。",
+      "impact": "chat.finish、保存形式、AC11",
+      "revisit": "init 後でも claude 側に質問が記録されない失敗があると分かったとき",
+      "refs": "R1-8, AC11, D-009"
+    },
+    {
+      "id": "D-029",
+      "title": "中断後の送信は前のプロセスの終了を待ち、3 秒で終わらなければ SIGKILL してから始める",
+      "at": "2026-11-26 13:30",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "まれな場合の後始末",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-7）の修正で、実装役は 3 秒で終わらなければそのまま次を始める形にしていた。それでは同じセッションで 2 つ並ぶ指摘が再現する。",
+      "options": [
+        "3 秒で次を始める",
+        "3 秒で SIGKILL してから始める",
+        "終わるまで待ち続ける"
+      ],
+      "decided": "3 秒で SIGKILL し、その終了を受けてから始める",
+      "reason": "終わるまで待つと止まらないプロセス 1 つで送信が永久に始まらない。",
+      "impact": "chat の cancel / send",
+      "revisit": "claude の通常の終了が 3 秒を超えることが多いと分かったとき",
+      "refs": "R1-7, AC10"
     }
   ],
   "reviews": [
@@ -733,61 +777,61 @@
           "id": "R1-4",
           "severity": "SHOULD",
           "text": "README が :FudeReviewChatNew で止めた応答も保存されると誤って書いている",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-5",
           "severity": "SHOULD",
           "text": "名前のない特殊バッファから :FudeReviewChatAdd が通る",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-6",
           "severity": "SHOULD",
           "text": "新しいセッションでやり直したとき、表示されたログと保存内容が食い違う",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-7",
           "severity": "SHOULD",
           "text": "中断の直後に送信すると、同じセッションで claude が 2 つ並んで動く",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-8",
           "severity": "SHOULD",
           "text": "途中で失敗した回を保存しないため、claude 側の記録と質問が二重になる",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-9",
           "severity": "SHOULD",
           "text": "resume でやり直すときセッション ID をディスクから読み直し、保存失敗に気づけない",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-10",
           "severity": "SHOULD",
           "text": "別のタブに移ったときの後始末が別のタブで起きる",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-11",
           "severity": "SHOULD",
           "text": "開き直したときカーソルが入力の先頭に入る",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-12",
           "severity": "SHOULD",
           "text": "State Dependencies 表の R 列に chat が足りない",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-13",
           "severity": "SHOULD",
           "text": "文書のこまかな不正確さ（失敗の判定、chat.args、:only、detached HEAD のキー）",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-14",
@@ -799,19 +843,19 @@
           "id": "R1-15",
           "severity": "MAY",
           "text": "restore_input の docstring の位置ずれ",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-16",
           "severity": "MAY",
           "text": "commands_spec のスタブが例外時に戻らない",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-17",
           "severity": "MAY",
           "text": "init_integration_spec が repo_root を取る順序を確かめていない",
-          "response": "修正中"
+          "response": "直した"
         },
         {
           "id": "R1-18",

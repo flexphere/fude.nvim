@@ -2280,8 +2280,10 @@ nothing of it), when the review stops (|:FudeReviewStop|,
 |:FudeReviewChatNew|, what had arrived is stored as an interrupted
 answer. Stopping the review also closes the panel. A question sent
 right after a stop is accepted at once but starts only when the stopped
-claude process has exited (or after a few seconds if it does not), so
-two processes never write the same session.
+claude process has exited, so two processes never write the same
+session. A process that has not exited 3 seconds after it was stopped
+(SIGTERM) is killed (SIGKILL); should even that bring no exit, the
+waiting question starts a second later.
 
 Failures~
 
@@ -2302,7 +2304,9 @@ whether claude had opened its session for it:
 - After that (the turn limit, an API error midway, …): the question, the
   text that arrived and the error are stored and shown again when the
   panel is reopened. The question is not put back, because claude's
-  session already holds it; sending it again would ask it twice.
+  session already holds it; sending it again would ask it twice. A
+  line after the error says that the question is part of the
+  conversation: send the next question to continue.
 
 When the stored session no longer exists on claude's side, the question
 is sent once more in a new session and the conversation says so; the
