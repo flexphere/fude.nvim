@@ -6,7 +6,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 **Guides（フィードフォワード制御）** と **Sensors（フィードバック制御）** に分類し、それらを継続的に
 改善する **Steering Loop** の運用ルールを明示する。
 
-詳細な実装規約は `CLAUDE.md` と各 skill に委ね、本ドキュメントは **俯瞰と運用** に絞る。
+詳細な実装規約は `CLAUDE.md`（モジュールごとの詳細は `docs/architecture/`）と各 skill に委ね、本ドキュメントは **俯瞰と運用** に絞る。
 
 ## 用語の最低限のおさらい
 
@@ -21,7 +21,8 @@ Martin Fowler "Harness Engineering for Coding Agents"
 
 | 種別 | 実体 | 役割 | 場所 |
 |------|------|------|------|
-| 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
+| 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール索引、状態依存テーブル、品質ルール | repo root |
+| 推論的 | `docs/architecture/<path>.md` | モジュールごとの責務・関数・設計制約（`lua/fude/<path>.lua` と 1 対 1、CLAUDE.md の索引から辿る） | `docs/architecture/` |
 | 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR→Copilot レビュー対応の一貫ワークフロー（計画合意後は自律実行） | `.claude/skills/develop/` |
 | 推論的 | `/develop-v2` skill | エージェント主導の開発。ユーザーが判断するのはヒアリング・PRD の承認・完成後の動作確認だけ。メインは進行と記録を受け持ち、実装役・レビュー役・判断役はサブエージェント（レビュー役・判断役は開発中に使い回し、レビュー役は `/code-review` を呼ぶ）。ヒアリング→PRD 承認→実装→経緯を知らないレビュー役（MUST 0 の周まで、上限 5 周）→PR（Copilot のレビューは届けば対応）→報告のページ→報告後の修正 | `.claude/skills/develop-v2/` |
 | 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
@@ -34,7 +35,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `.stylua.toml` | フォーマット規約 | repo root |
 | 計算的 | `.luacheckrc` | Lint 規約 | repo root |
 
-**設計原則**: skill は **再利用可能な軽量プロセス記述** を保ち、プロジェクト固有の知識は `CLAUDE.md` と
+**設計原則**: skill は **再利用可能な軽量プロセス記述** を保ち、プロジェクト固有の知識は `CLAUDE.md`（と `docs/architecture/`）と
 `pj-checklist` に集中させる。新たに skill を増やすときは「既存 skill の一部に書けないか」をまず疑う。
 
 ## 2. 現状の Sensors（フィードバック）
@@ -47,9 +48,10 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
 | 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
 | 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `lua/fude/commands.lua` のレジストリ + `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性、および `lua/fude/config.lua` `M.defaults` の top-level 設定キーが `doc/fude.txt` に backtick 形式で文書化されているかの forward 検証 |
+| 計算的 | `make check-claude-md` (`scripts/check_claude_md.lua`) | 開発中・CI | CLAUDE.md が 40,000 文字（UTF-8 の文字数）を超える／`lua/fude/` のモジュールに対応する `docs/architecture/<path>.md` が無い／対応するモジュールの無い文書がある、のいずれか。足りない・余っているファイル名を示す |
 | 計算的 | `make coverage` (luacov) | 開発中（手動）・CI | `lua/fude/` のテストカバレッジ計測。`make all` には未組み込み（報告のみ・閾値強制なし）。CI artifact `coverage-report` に保管 |
-| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 6 つを順次実行する **ローカルゲート** |
-| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
+| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage と check-claude-md を除く 6 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 8 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 計算的 | `/develop-v2` の指標 (`docs/dev/*/metrics.json`、`aggregate-metrics.py`) | `/develop-v2` の報告時に生成・`/harness-audit` で集計 | 開発ごとのヒアリングの手戻り、レビューの周数と MUST、判断役・人への差し戻し、Copilot で直した数（レビュー役の見逃しの目安）、レビューの打ち切り・4 周目以降の MUST（周の上限の見直し）、報告後の修正、マージ後の fix 候補 |
@@ -105,6 +107,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 | `check_purity` | #136 | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
 | `check_docs` | #137, #140, #206 | (1) `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 (PR #137。PR #206 から `lua/fude/commands.lua` のレジストリも抽出元に追加)、(2) `config.lua` の `M.defaults` top-level キーが doc に backtick 形式で文書化されているか forward 検証 (PR #140) | config option は **forward のみ** (doc backtick は関数名等を含むため reverse 不適)。nested key (`signs.comment` 等) と default value の整合性は未対応。keymap 検証は §4.2 #3 で別 PR 化 |
 | `luacov` (`make coverage`) | #138 | `lua/fude/` のテストカバレッジ計測（line-hit 率）。報告のみ、閾値強制なし。CI artifact から取得 | 初期は 45-50% 程度の見込み。閾値強制は段階 3（将来 PR）で検討。`/harness-audit` の sensor 発火率指標とは別の独立メトリクス |
+| `check_claude_md` | ブランチ `docs/split-architecture`（PR 番号は PR 作成後に記入） | CLAUDE.md の文字数（40,000 以下）と、`lua/fude/<path>.lua` ↔ `docs/architecture/<path>.md` の 1 対 1 対応（欠落・余剰をファイル名で報告） | 存在と対応だけを見て、文書の中身（コードとの一致）は検査しない |
 
 ### 4.2 次に着手する PR 候補
 

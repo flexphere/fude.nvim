@@ -149,7 +149,7 @@ All plugin code lives under `lua/fude/`. The plugin entry point is `plugin/fude.
    - `helpers.cleanup()` — Restore all mocks, delete test buffers, reset state (call in `after_each`)
 3. **Test coverage check**: After writing code, review whether the changed/added functions have test coverage. If not, write tests before committing.
 4. **Formatting**: Run `stylua lua/ plugin/ tests/` after editing any Lua file to ensure consistent formatting.
-5. **Documentation**: When adding or changing features, commands, keymaps, or configuration options, update the corresponding documentation (`README.md`, `doc/fude.txt`, `CLAUDE.md` Architecture section) before committing.
+5. **Documentation**: When adding or changing features, commands, keymaps, or configuration options, update the corresponding documentation (`README.md`, `doc/fude.txt`, `CLAUDE.md` Architecture section, and the module's `docs/architecture/<path>.md`) before committing. When adding a module, also add its `docs/architecture/<path>.md` and its index line in `CLAUDE.md`.
 
 ## PR/Commit Conventions
 

@@ -96,7 +96,7 @@ push 前に `make all` が通ることを必ず確認してください。`make 
 
 - `README.md`（Features / Commands / Configuration）
 - `doc/fude.txt`
-- モジュールの責務が変わる場合は `CLAUDE.md` の Architecture セクション
+- モジュールの責務が変わる場合は `docs/architecture/<path>.md`（モジュールを足したときは文書と `CLAUDE.md` の索引の行も）
 
 `doc/fude.txt` 編集後は help タグを再生成:
 
@@ -132,4 +132,4 @@ Claude Code を使わない場合も、上記と同等のチェック（`make al
 
 ## アーキテクチャ
 
-モジュール別の責務、主要パターン（非同期フロー、state 管理、純粋関数の抽出）、`config.state` の読み書きマトリクスは [`CLAUDE.md`](./CLAUDE.md) の Architecture セクションを参照してください。
+モジュール別の責務は [`docs/architecture/`](./docs/architecture/)（`lua/fude/` と同じ構成、索引は [`CLAUDE.md`](./CLAUDE.md) の Architecture セクション）、主要パターン（非同期フロー、state 管理、純粋関数の抽出）と `config.state` の読み書きマトリクスは [`CLAUDE.md`](./CLAUDE.md) の Architecture セクションを参照してください。

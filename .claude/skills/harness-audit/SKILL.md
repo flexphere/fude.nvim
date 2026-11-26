@@ -54,8 +54,8 @@ argument-hint: [対象PR件数（省略時は10）]
    # 対象 N PR の最古マージ日時を取得
    SINCE=$(gh pr list --state merged --limit N --json mergedAt --jq 'map(.mergedAt) | min')
 
-   # check_state_deps 発火 = CLAUDE.md State Dependencies / 関連モジュール責務の docs commit
-   git log --oneline --since="$SINCE" -- CLAUDE.md | grep -E "State Dependencies|ドリフト|R に|W に"
+   # check_state_deps 発火 = CLAUDE.md State Dependencies / 関連モジュール責務（docs/architecture/）の docs commit
+   git log --oneline --since="$SINCE" -- CLAUDE.md docs/architecture/ | grep -E "State Dependencies|ドリフト|R に|W に"
    # check_purity 発火 = 純粋性違反の refactor / ui/format.lua → inline 等
    git log --oneline --since="$SINCE" | grep -E "純粋性|impure|inline"
    # check_docs 発火 = doc/fude.txt と lua/fude/commands.lua / plugin/fude.lua の整合修正
