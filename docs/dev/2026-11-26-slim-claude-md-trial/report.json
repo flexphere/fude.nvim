@@ -10,15 +10,18 @@
   "attention": [
     {
       "text": "動作確認 1: PR #330 のブランチで Claude Code を起動し、「CLAUDE.md is over the 150.0k-char limit」の警告が出ないことを見る（CLAUDE.md は 16,241 文字）",
-      "ref": "AC1"
+      "ref": "AC1",
+      "kind": "動作確認"
     },
     {
       "text": "動作確認 2: CLAUDE.md の「Module Responsibilities」を開き、要約と docs/architecture/ のファイル名から、知りたいモジュールの詳細にたどり着けるかを見る",
-      "ref": "AC3"
+      "ref": "AC3",
+      "kind": "動作確認"
     },
     {
       "text": "動作確認 3: `make check-claude-md` が OK を出すこと",
-      "ref": "AC4"
+      "ref": "AC4",
+      "kind": "動作確認"
     },
     {
       "text": "同じ課題の PR #329 があります。どちらを採るかを決めてください（この PR は /develop-v2 の試行として独立に作りました）",
