@@ -54,12 +54,14 @@ argument-hint: [対象PR件数（省略時は10）]
    # 対象 N PR の最古マージ日時を取得
    SINCE=$(gh pr list --state merged --limit N --json mergedAt --jq 'map(.mergedAt) | min')
 
-   # check_state_deps 発火 = CLAUDE.md State Dependencies / 関連モジュール責務の docs commit
-   git log --oneline --since="$SINCE" -- CLAUDE.md | grep -E "State Dependencies|ドリフト|R に|W に"
+   # check_state_deps 発火 = CLAUDE.md State Dependencies / 関連モジュール責務（docs/architecture/）の docs commit
+   git log --oneline --since="$SINCE" -- CLAUDE.md docs/architecture/ | grep -E "State Dependencies|ドリフト|R に|W に"
    # check_purity 発火 = 純粋性違反の refactor / ui/format.lua → inline 等
    git log --oneline --since="$SINCE" | grep -E "純粋性|impure|inline"
    # check_docs 発火 = doc/fude.txt と lua/fude/commands.lua / plugin/fude.lua の整合修正
    git log --oneline --since="$SINCE" -- doc/fude.txt lua/fude/commands.lua plugin/fude.lua
+   # check_claude_md 発火 = docs/architecture/ の文書の追加・削除・リネーム（モジュールとの対応の修正）
+   git log --oneline --since="$SINCE" --diff-filter=ADR -- docs/architecture/
    # luacov 発火 = coverage 関連 (将来段階 3 の閾値違反含む)
    git log --oneline --since="$SINCE" | grep -E "coverage|カバレッジ"
    ```
@@ -119,6 +121,7 @@ Phase 2 step 5 で収集した git 履歴を集計し、各計算的 sensor の�
 | check_state_deps | <件数> | <PR# リスト> |
 | check_purity | <件数> | <PR# リスト> |
 | check_docs | <件数> | <PR# リスト> |
+| check_claude_md | <件数> | <PR# リスト> |
 | luacov | <件数> | <PR# リスト> |
 
 判断軸 (Fowler "if sensors never fire..." への応答):
@@ -188,6 +191,7 @@ Phase 2 step 7 の集計を読み、`/develop-v2` のどこにボトルネック
 | check_state_deps | ... | ... | ... |
 | check_purity | ... | ... | ... |
 | check_docs | ... | ... | ... |
+| check_claude_md | ... | ... | ... |
 | luacov | ... | ... | ... |
 
 ### 4-Quadrant Coverage Matrix

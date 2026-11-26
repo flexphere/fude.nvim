@@ -67,10 +67,10 @@ diff を以下の観点で確認する。過去のPRレビュー56件の分析�
 - [ ] doc/fude.txt のキーマップ記載と実装が双方向で一致しているか（Grep で相互確認）
 - [ ] UIテキスト（フッター、desc、通知メッセージ）が実際の動作と一致しているか
 - [ ] ドキュメントの表示フォーマット記載が実装の出力と一致しているか
-- [ ] CLAUDE.md の関数リストに追加・削除・リネームが反映されているか
+- [ ] `docs/architecture/<path>.md` の関数リストに追加・削除・リネームが反映されているか
 - [ ] PR の変更内容説明（コミットメッセージ含む）が実際の変更と一致しているか
 - [ ] docstring / 型注釈（`@param`/`@return` 等）と実装シグネチャが一致しているか（引数追加・型変更・削除が LuaDoc にも反映されているか）
-- [ ] 追加・変更・削除した識別子（コマンド名・config キー・公開関数名）を `doc/fude.txt`, `README.md`, `CLAUDE.md`, `CONTRIBUTING.md` の 4 ファイルに対し grep し、説明の追従・削除漏れがないか確認したか
+- [ ] 追加・変更・削除した識別子（コマンド名・config キー・公開関数名）を `doc/fude.txt`, `README.md`, `CLAUDE.md`, `CONTRIBUTING.md` の 4 ファイルと `docs/architecture/` に対し grep し、説明の追従・削除漏れがないか確認したか
 - [ ] skill ドキュメント内の自己参照（Phase 番号、用語の件数定義 = 行数 vs エントリ数 等）が一貫しているか確認したか
 - [ ] 「全 X で同じ挙動」と謳う UI 動作（キーマップ、確認ダイアログ、通知等）は、類似する**全 variant**（`open_comment_input` / `open_edit_window` / `open_reply_window` / `comment_browser` 等）を Grep で列挙して各実装に存在するか確認したか。並行する複数実装はドリフトしやすい
 - [ ] 実装経路（picker種別、provider有無、review mode等）で振る舞いが変わる機能を、無条件の機能説明で書いていないか。fallback経路でもその文が真かを確認し、違うなら経路ごとに書く。パーサの分岐を根拠に挙動を書くときは、入力元のコマンドやAPIがその形式を実際に出力するか（gitのフラグ、APIのstatus値）まで遡って確認する

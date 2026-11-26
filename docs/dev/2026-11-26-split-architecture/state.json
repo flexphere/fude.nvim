@@ -1,0 +1,58 @@
+{
+  "slug": "split-architecture",
+  "title": "CLAUDE.md のモジュール詳細を docs/architecture へ分割",
+  "branch": "docs/split-architecture",
+  "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-split-architecture",
+  "phase": "done",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-26T13:43:51+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-26T13:47:45+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-26T13:49:27+09:00"
+    },
+    {
+      "phase": "reviewing",
+      "at": "2026-11-26T13:55:50+09:00"
+    },
+    {
+      "phase": "pr",
+      "at": "2026-11-26T14:06:17+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-26T14:06:54+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-26T14:06:54+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 4,
+    "prd_drafts": 1
+  },
+  "agents": {
+    "reviewer": "reviewer-1",
+    "judge": "judge-1"
+  },
+  "review_outcomes": [
+    {
+      "revision": 1,
+      "ended": "must0",
+      "rounds": 1
+    }
+  ],
+  "pr": {
+    "number": 332,
+    "url": "https://github.com/flexphere/fude.nvim/pull/332"
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/7tTkoHAwoFcstxf3yUprJv"
+}

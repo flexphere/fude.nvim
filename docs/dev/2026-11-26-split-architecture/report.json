@@ -1,0 +1,355 @@
+{
+  "title": "CLAUDE.md のモジュール詳細を docs/architecture へ分割",
+  "slug": "split-architecture",
+  "date": "2026-11-26",
+  "branch": "docs/split-architecture",
+  "base": "origin/main",
+  "status": "完了",
+  "commits": 11,
+  "summary": "完了しました。CLAUDE.md は 180,336 文字から 14,669 文字になり、各モジュールの説明は docs/architecture/ に移りました。新設の check-claude-md が make all と CI で再発を防ぎます。PR #332 は ready for review です。",
+  "generatedBy": "/develop-v2",
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト（41 ファイル、失敗 0）・check-state-deps・check-purity・check-docs・check-claude-md すべて通過"
+    },
+    {
+      "command": "CI（PR #332）",
+      "result": "pass",
+      "detail": "新設の CLAUDE.md Size / Architecture Docs Check を含む 10 ジョブ通過"
+    },
+    {
+      "command": "移した文言の突き合わせ",
+      "result": "pass",
+      "detail": "元の Module Responsibilities と Comment browser thread identity の 41 の本文が、移動先に文言そのままで入っている（不一致 0）"
+    }
+  ],
+  "attention": [
+    {
+      "text": "Claude Code を新しいセッションで起動し（このリポジトリでも、PR のブランチでも構いません）、「CLAUDE.md is over the 150.0k-char limit」の警告が出ないことを確かめてください。警告はマージ後に main でも消えるはずです。",
+      "ref": "AC1",
+      "kind": "動作確認"
+    },
+    {
+      "text": "エージェントが文書をたどれるかを確かめてください。新しいセッションで「lua/fude/local/session.lua の commit scope の扱いを説明して」のように頼むと、CLAUDE.md の索引から docs/architecture/local/session.md を読んで答えるはずです。",
+      "ref": "AC4",
+      "kind": "動作確認"
+    },
+    {
+      "text": "承認後に PRD の AC4 を変えました。「Development Tools は変わらない」に「ただし make all の一覧には check-claude-md を足す」という例外を足し、CLAUDE.md:22 を直しました。新しいチェックが make all に入ったのに一覧が古いままだったためです。戻すには、CLAUDE.md:22 の「 + check-claude-md」と AC4 の括弧書きを消してください。",
+      "ref": "D-006 · 重要度 低",
+      "kind": "PRD 変更"
+    },
+    {
+      "text": "check-claude-md は .githooks/pre-commit には入れていません（make all と CI のみ）。commit 時にも止めたい場合は、pre-commit に 2 行を足し、HARNESS.md の 2 か所を直します。",
+      "ref": "D-005 · 重要度 低"
+    },
+    {
+      "text": "completion/blink.md と completion/cmp.md は元の CLAUDE.md に説明が無かったため、コードから新たに書きました。この 2 つだけは移したものではなく、新しく書いた文です。",
+      "ref": "AC3"
+    },
+    {
+      "text": "Copilot はレビュー枠（quota）不足でこの PR をレビューできませんでした。レビューはレビュー役の 1 周（MUST 0）だけです。必要なら、枠が戻ってから Copilot にレビューを依頼し直してください。",
+      "ref": "Copilot"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "分割後、CLAUDE.md が 40,000 文字以下になる",
+      "result": "met",
+      "how": "make check-claude-md: 14,669 / 40,000 文字（元は 180,336）"
+    },
+    {
+      "id": "AC2",
+      "text": "lua/fude/ の各 .lua に、同じ相対パスの docs/architecture/<path>.md が 1 つずつあり、余計な .md が無い",
+      "result": "met",
+      "how": "check-claude-md: lua/fude/ の 39 モジュールと docs/architecture/ の 39 文書が 1 対 1"
+    },
+    {
+      "id": "AC3",
+      "text": "各モジュールの説明文が文言を変えずに移っている（どのモジュールにも属さない段落は関係する文書へ移り、completion/blink・cmp には説明を新たに書く）",
+      "result": "met",
+      "how": "実装役とレビュー役がそれぞれ比較スクリプトで突き合わせ、41 の本文で不一致 0。completion/blink・cmp はレビュー役がコードと照合"
+    },
+    {
+      "id": "AC4",
+      "text": "CLAUDE.md に索引・読む指示・Key Patterns・State Dependencies 表が残り、他の節は変わらない（Development Tools の make all の一覧に check-claude-md を足すのは例外）",
+      "result": "met",
+      "how": "索引 39 行・読む指示・Key Patterns・State Dependencies 表が残り、他の節の変更は Quality Rules 5（AC7）と make all の一覧（AC4 の例外）だけ"
+    },
+    {
+      "id": "AC5",
+      "text": "check-state-deps が変更なしのスクリプトで通る",
+      "result": "met",
+      "how": "check_state_deps.lua は変更なしで通過"
+    },
+    {
+      "id": "AC6",
+      "text": "新設チェックが make all に入り、超過・欠落・余剰で失敗してファイル名を示す",
+      "result": "met",
+      "how": "Unit テスト 24 件。複製で超過・欠落・余剰を起こし FAIL とファイル名の表示を確認"
+    },
+    {
+      "id": "AC7",
+      "text": "CLAUDE.md のモジュール責務を参照する記述が docs/architecture を指す",
+      "result": "met",
+      "how": "HARNESS.md・各 skill・CONTRIBUTING.md・check_purity.lua のコメント・Quality Rules 5 を更新"
+    },
+    {
+      "id": "AC8",
+      "text": "make all が通る",
+      "result": "met",
+      "how": "make all 通過、CI 10 ジョブ通過"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-26",
+    "purpose": "Claude Code の CLAUDE.md 文字数上限（150k）超過の警告を解消する。98% を占めるモジュール詳細を docs/architecture/ に移し、再発を make all で防ぐ。",
+    "users": "fude.nvim を開発する AI エージェントとメンテナ。モジュール変更前に責務と設計制約を調べる場面。",
+    "outOfScope": [
+      "移した文章の書き直し・整理",
+      "lua/fude/ のコード変更",
+      "README.md・doc/fude.txt の変更",
+      "文書の中身とコードの一致の検査"
+    ],
+    "constraints": [
+      "文言は変えずに移す",
+      "@ import は使わない",
+      "State Dependencies 表は CLAUDE.md に残し check_state_deps.lua は変えない",
+      "新設チェックは既存の scripts/check_*.lua と同じ形にし HARNESS.md に載せる"
+    ],
+    "changes": [
+      {
+        "date": "2026-11-26",
+        "change": "AC4 に「Development Tools の make all の一覧には check-claude-md を足す」の例外を追加",
+        "reason": "D-006。新設チェックが make all に入ったのに一覧が古いままになるため",
+        "field": "AC4"
+      }
+    ],
+    "verification": [
+      "固定のテスト: make all",
+      "新設チェックの Unit テスト",
+      "新しいセッションで警告が出ないことを手で確かめる"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "モジュールごとに 1 ファイル（lua/fude/ と同じ構成）",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "文書の探し方が決まる",
+      "by": "ユーザー",
+      "background": "分割の単位を決める必要があった。",
+      "options": [
+        "モジュールごと",
+        "領域ごと",
+        "1 ファイル"
+      ],
+      "decided": "モジュールごと",
+      "reason": "触るファイルから読む文書が機械的に決まり、読む量も最小。",
+      "impact": "docs/architecture/ の構成",
+      "revisit": "ファイルが細かすぎて横断の説明が書きにくくなったとき",
+      "refs": "AC2"
+    },
+    {
+      "id": "D-002",
+      "title": "CLAUDE.md に索引・Key Patterns・State Dependencies 表を残す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "後から移せる",
+      "by": "ユーザー",
+      "background": "check_state_deps.lua が表を CLAUDE.md から読む。",
+      "options": [
+        "索引+表+Key Patterns",
+        "索引と Key Patterns だけ"
+      ],
+      "decided": "索引+表+Key Patterns",
+      "reason": "スクリプトを変えずに済む。",
+      "impact": "CLAUDE.md",
+      "revisit": "CLAUDE.md が再び上限に近づいたとき",
+      "refs": "AC4, AC5"
+    },
+    {
+      "id": "D-003",
+      "title": "文字数上限と文書の対応を make all で検査する",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "開発のたびに効く",
+      "by": "ユーザー",
+      "background": "同じ超過と文書の付け忘れを防ぎたい。",
+      "options": [
+        "上限と対応の両方",
+        "上限だけ",
+        "足さない"
+      ],
+      "decided": "上限と対応の両方",
+      "reason": "再発防止。",
+      "impact": "scripts/・Makefile・tests/",
+      "revisit": "検査が誤検出で邪魔になったとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-004",
+      "title": "文言は変えずに移す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "整理は別の PR でできる",
+      "by": "ユーザー",
+      "background": "移しながら整理するかを決める必要があった。",
+      "options": [
+        "そのまま移す",
+        "移しながら整理"
+      ],
+      "decided": "そのまま移す",
+      "reason": "差分を確かめやすく、情報が抜けない。",
+      "impact": "docs/architecture/",
+      "revisit": "整理の PR を始めるとき",
+      "refs": "AC3"
+    },
+    {
+      "id": "D-005",
+      "title": "check-claude-md は pre-commit に足さない（make all と CI のみ）",
+      "at": "2026-11-26",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "make all と CI で検出されるので main には入らない。失うのは commit 時の早期検出だけ",
+      "by": "判断役",
+      "background": "既存の check-* は .githooks/pre-commit でも走るが、PRD は pre-commit に触れていない。",
+      "options": [
+        "pre-commit にも足し HARNESS.md を直す",
+        "足さない"
+      ],
+      "decided": "足さない",
+      "reason": "PRD の目的と AC6 は make all と CI で満たされる。承認された範囲を広げず、hook を入れた開発者の commit 時の挙動も変えない。",
+      "impact": ".githooks/pre-commit（変更なし）、HARNESS.md の Sensors 表は「開発中・CI」",
+      "revisit": "pre-commit でも揃えたいとき、CI で初めて見つかることが続いたとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-006",
+      "title": "CLAUDE.md の make all の一覧に check-claude-md を足す（AC4 に例外を追加）",
+      "at": "2026-11-26",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "1 行の記述の正確さ。チェックの動きには関係しない",
+      "by": "判断役",
+      "background": "レビュー 1 周目の SHOULD で、Development Tools の make all の説明が古いままと指摘された。AC4 は Development Tools を変えないとしていた。",
+      "options": [
+        "CLAUDE.md:22 を直し AC4 に例外を足す",
+        "直さず理由を記録する"
+      ],
+      "decided": "CLAUDE.md:22 を直し AC4 に例外を足す",
+      "reason": "AC4 の狙いは Architecture 以外を移さないことで、利用者が最初に読む CLAUDE.md が実際と食い違うのは目的に反する。Quality Rules 5 にも合う。",
+      "impact": "CLAUDE.md:22、PRD の AC4",
+      "revisit": "AC4 が一字も変えない意図だったとき（CLAUDE.md:22 の ' + check-claude-md' と AC4 の括弧書きを消せば戻る）",
+      "refs": "R1-1, AC4",
+      "prdChange": true
+    }
+  ],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 1,
+      "may": 3,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "SHOULD",
+          "text": "make all の説明とチェック一覧（CLAUDE.md:22、CONTRIBUTING.md）に check-claude-md が無く、CONTRIBUTING は pre-commit でも走ると読める",
+          "response": "直した（D-006。harness-audit の発火率集計にも同じ抜けがあり一緒に直した）"
+        },
+        {
+          "id": "R1-2",
+          "severity": "MAY",
+          "text": "pre-commit に check-claude-md が入っていない",
+          "response": "見送り（D-005）"
+        },
+        {
+          "id": "R1-3",
+          "severity": "MAY",
+          "text": "CLAUDE.md の索引に行が無くてもチェックが通る",
+          "response": "見送り（PRD は存在と対応だけを見る）"
+        },
+        {
+          "id": "R1-4",
+          "severity": "MAY",
+          "text": "文字数はコードポイントで数えている（Claude Code は UTF-16 単位の可能性）／移した段落の見出しとラベルの重なりの不揃い",
+          "response": "見送り（14.7k 対 40k で実害なし。文言は変えない方針）"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R1-2",
+      "severity": "MAY",
+      "text": "pre-commit に check-claude-md が入っていない",
+      "reason": "D-005。make all と CI で検出される"
+    },
+    {
+      "id": "R1-3",
+      "severity": "MAY",
+      "text": "CLAUDE.md の索引の行の書き忘れはチェックで検出しない",
+      "reason": "PRD のスコープは存在と対応だけ。Quality Rules 5 で索引の追加を求めている"
+    },
+    {
+      "id": "R1-4",
+      "severity": "MAY",
+      "text": "文字数をコードポイントで数えている／移した段落の見出しとラベルが重なる箇所がある",
+      "reason": "上限との差が大きく実害なし。文言は変えずに移す方針（D-004）"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "モジュール詳細を docs/architecture へ移し、CLAUDE.md に索引を作る",
+      "status": "完了",
+      "owner": "impl-docs"
+    },
+    {
+      "id": "T2",
+      "title": "CLAUDE.md の文字数と文書の対応を検査するチェックとテスト",
+      "status": "完了",
+      "owner": "impl-check"
+    },
+    {
+      "id": "T3",
+      "title": "HARNESS.md・skill・スクリプトのコメントの参照先を更新",
+      "status": "完了",
+      "owner": "impl-docs"
+    }
+  ],
+  "revision": 1,
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": "モジュール詳細を docs/architecture へ移し、check-claude-md を追加",
+      "refs": ""
+    }
+  ],
+  "pr": {
+    "number": 332,
+    "url": "https://github.com/flexphere/fude.nvim/pull/332"
+  },
+  "copilot": {
+    "status": "unable: Copilot のレビュー枠（quota）が足りず、レビューされなかった。指摘への対応はなし。",
+    "comments": [],
+    "timed_out": false
+  }
+}

@@ -11,7 +11,7 @@
 - worktree: `<worktree の場所>`（作業はすべてここで行う。Bash の命令は毎回 `cd "<worktree の場所>" && ...` で始める（作業ディレクトリの外への `cd` は次の呼び出しに残らないため））
 
 ## 守ること
-- `<worktree>/CLAUDE.md` の Architecture（関係するモジュール）、Key Patterns、Quality Rules に従う。
+- `<worktree>/CLAUDE.md` の Architecture（Key Patterns、State Dependencies）と Quality Rules、関係するモジュールの `<worktree>/docs/architecture/<path>.md` に従う。
 - `<worktree>/.claude/skills/pj-checklist/SKILL.md`（無ければ元のリポジトリの同じパス）の実装チェックリストを当てる。
 - 新しいロジックを書く前に、同じ処理が既にないか Grep する。あれば使い回す。
 - `silent` / `force` のようなフラグを足したら、呼び出す先が同じこと（通知、確認）をしていないか確かめ、責任を 1 か所にする。
