@@ -3,7 +3,7 @@
   "title": "レビューモードの AI チャットパネル",
   "branch": "feat/ai-chat-panel",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-ai-chat-panel",
-  "phase": "pr",
+  "phase": "done",
   "phase_history": [
     {
       "phase": "hearing",
@@ -24,6 +24,14 @@
     {
       "phase": "pr",
       "at": "2026-11-26T11:31:51+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-26T11:32:40+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-26T11:32:40+09:00"
     }
   ],
   "hearing": {

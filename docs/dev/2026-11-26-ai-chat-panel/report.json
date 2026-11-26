@@ -4,9 +4,9 @@
   "date": "2026-11-26",
   "branch": "feat/ai-chat-panel",
   "base": "origin/main",
-  "status": "レビュー対応中",
-  "commits": 7,
-  "summary": "レビューを MUST 0 件（やり直し後 2 周）で終え、CI も通りました。PR を ready for review にし、Copilot のレビューを最大 10 分待っています。",
+  "status": "完了",
+  "commits": 23,
+  "summary": "レビューモードで claude と対話できるチャットパネルを作り、PR #331 を ready for review にしました。経緯を知らないレビュー役が MUST 0 件を返し（やり直し後 2 周）、make all と CI はすべて通っています。実際の claude での動作確認をお願いします（「見てほしいこと」）。",
   "generatedBy": "/develop-v2",
   "tests": [
     {
@@ -24,86 +24,118 @@
     {
       "text": "レビューのやり方が変わった（1 周目を high でモジュールごとに出し切り、2 周目からは MUST だけ直す）ため、4 周目の修正に入る前に止め、新しいレビュー役で 1 周目からやり直しました。それまでの 4 周の記録は reviews_before_restart にあります（4 周目の指摘は使っていません）。",
       "ref": "レビューのやり直し"
+    },
+    {
+      "text": "実際の claude で動かしてください（テストは実行関数を差し替えています）。レビュー中（GitHub かローカル）に :FudeReviewChat → 質問を打って normal の <CR> → 応答が逐次出て、ツール実行中は「Read …」などの行が出ること。Neovim を再起動してレビューを再開し :FudeReviewChat を開くと前の会話が出て、続けて質問すると前の文脈を覚えていること。",
+      "ref": "AC2, AC4"
+    },
+    {
+      "text": "diff プレビュー（:FudeReviewDiff）と side panel を開いた状態で :FudeReviewChat を開き、ソースのウィンドウが使える幅に残るかを見てください。旧レビューの 4 周目で「プレビューが幅固定のためソースが極端に狭くなる」と MUST が出ていましたが、やり直し後のレビューでは指摘されず、直していません。",
+      "ref": "旧レビュー R4-M4"
+    },
+    {
+      "text": "ファイルの行を選択して :'<,'>FudeReviewChatAdd → 入力欄の末尾に「path:L10-L20」とコードフェンスが入り、insert モードで続きを書けること。",
+      "ref": "AC6"
+    },
+    {
+      "text": "GitHub レビューでは --setting-sources user を既定で渡すので、そのリポジトリの .claude/settings.json（hook・allow）と .mcp.json は読まれません。自分のリポジトリでプロジェクトの設定に頼っている場合は chat.args = { \"--setting-sources\", \"user,project,local\" } で戻せます。",
+      "ref": "D-023, D-025 · 重要度 高"
+    },
+    {
+      "text": "既定で許可している git の diff / log / show / blame は --output でファイルを書けます（ご指示どおり拒否ルールは足していません）。塞ぐ設定例は README の Tools and permissions にあります。",
+      "ref": "D-019 · 重要度 高"
+    },
+    {
+      "text": "claude は利用者の MCP・スキルを読み込んで起動するため、この環境では 1 回の呼び出しで約 17 万トークンのキャッシュ作成が起きました。chat.args = { \"--safe-mode\" } などで軽くできます（README に例）。",
+      "ref": "D-008"
+    },
+    {
+      "text": "直さずに残した指摘が 9 件あります（2 周目の SHOULD 4 件・MAY 3 件など）。中でも「scope 切り替えの最中の質問に古い scope が添わる」「レビュー停止時に claude を止める前に HEAD を戻す」は、直すか決めてください。",
+      "ref": "unresolved"
+    },
+    {
+      "text": "Copilot のレビューは、依頼した利用者の残り枠不足で受けられませんでした（unable）。必要なら枠が戻ってから依頼し直してください。",
+      "ref": "Copilot"
     }
   ],
   "acceptance": [
     {
       "id": "AC1",
       "text": ":FudeReviewChat で右端の縦 split にチャットパネル（上: 会話ログ、下: 入力欄）が開く。:FudeReviewPanel と同じ toggle。幅と位置は設定で変えられる",
-      "result": "",
-      "how": "結合テスト、手動確認"
+      "result": "met",
+      "how": "結合テスト（chat_panel_spec: 開閉・toggle・左右・幅の上限）"
     },
     {
       "id": "AC2",
       "text": "入力欄の送信キー（既定: normal モードの <CR>）で claude -p がリポジトリのルートで起動し、応答が会話ログに逐次追記される",
-      "result": "",
-      "how": "Unit テスト（stream-json のパース）、結合テスト、手動確認"
+      "result": "met",
+      "how": "Unit（stream-json のパース）・結合テスト。実際の claude での手動確認は未実施"
     },
     {
       "id": "AC3",
       "text": "レビュー対象ごとに、最初の送信は --session-id、2 回目以降は同じ ID の --resume。別の対象の ID は混ざらない",
-      "result": "",
-      "how": "Unit テスト"
+      "result": "met",
+      "how": "Unit（build_claude_args）・chat.send のテスト"
     },
     {
       "id": "AC4",
       "text": "セッション ID と会話ログが stdpath(\"state\")/fude/ 以下に保存され、再起動後も過去の会話が表示されて同じセッションが続く",
-      "result": "",
-      "how": "Unit テスト、手動確認"
+      "result": "met",
+      "how": "保存・復元の Unit テスト。再起動の手動確認は未実施"
     },
     {
       "id": "AC5",
       "text": ":FudeReviewChatNew でその対象のセッション ID と会話ログを破棄し、次の送信が新しいセッションで始まる",
-      "result": "",
+      "result": "met",
       "how": "結合テスト"
     },
     {
       "id": "AC6",
       "text": ":'<,'>FudeReviewChatAdd で「相対パス:L開始-L終了」とコードフェンス付きの選択行が入力欄の末尾に追記される。パネルが閉じていれば開く",
-      "result": "",
-      "how": "Unit テスト、結合テスト"
+      "result": "met",
+      "how": "Unit（build_selection_text）・結合テスト。1 行は path:L5（D-017）"
     },
     {
       "id": "AC7",
       "text": "claude コマンドが実行可能でないとき、3 つのコマンドは WARN を出して何もせず、コマンドパレットにも出ない",
-      "result": "",
-      "how": "Unit テスト"
+      "result": "met",
+      "how": "commands_spec・chat_panel_spec"
     },
     {
       "id": "AC8",
       "text": "claude のツールは既定で Read / Grep / Glob と git・gh の参照系 Bash だけ。編集用のツールは渡さない。git の --output でファイルを書ける点と、利用者自身の claude の設定・MCP が効く点は許容し、文書に書く。設定で変えられる。GitHub レビューでは PR が持ち込むプロジェクトの claude 設定を既定で読まない",
-      "result": "",
-      "how": "Unit テスト、手動確認"
+      "result": "met",
+      "how": "Unit（引数）。PR の .mcp.json と hook は判断役が claude 2.1.332 で確認。編集を頼む手動確認は未実施"
     },
     {
       "id": "AC9",
       "text": "変わらない情報（PR 番号・URL・ブランチ）は --append-system-prompt で、変わりうる情報（ローカルの scope・base）は毎回の質問の先頭に添えて渡る",
-      "result": "",
-      "how": "Unit テスト"
+      "result": "met",
+      "how": "Unit（build_system_prompt・build_prompt_context）・chat.send のテスト"
     },
     {
       "id": "AC10",
       "text": "応答中はスピナーとツール実行の内容が出る。応答中の送信は拒否。キャンセルキー（既定 <C-c>）で止まり、そこまでの応答は残る",
-      "result": "",
-      "how": "結合テスト、手動確認"
+      "result": "met",
+      "how": "結合テスト（スピナーは changedtick が変わらない、中断、SIGKILL）"
     },
     {
       "id": "AC11",
       "text": "claude が失敗したとき、エラーが会話ログに出て入力は失われない（セッション開始前の失敗は入力欄に戻り、開始後の失敗は質問・応答・エラーを保存）。--resume のセッションが見つからないときは新しい ID で、「使用中」のときは同じ ID の --resume で 1 回やり直す",
-      "result": "",
-      "how": "結合テスト"
+      "result": "met",
+      "how": "結合テスト（init 前後の失敗、new / resume のやり直し）"
     },
     {
       "id": "AC12",
       "text": "レビューを止めたとき、実行中の claude は止まりパネルは閉じる。遅れて届いた出力は新しいセッションに触れない",
-      "result": "",
-      "how": "結合テスト"
+      "result": "met",
+      "how": "結合テスト（GitHub / ローカルの stop、遅れた出力）"
     },
     {
       "id": "AC13",
       "text": "会話ログは編集不可・filetype markdown。末尾を見ていれば追従スクロールし、途中を読んでいれば動かさない",
-      "result": "",
-      "how": "結合テスト、手動確認"
+      "result": "met",
+      "how": "結合テスト（追従スクロール）"
     }
   ],
   "prd": {
@@ -1002,13 +1034,22 @@
     }
   ],
   "revision": 1,
-  "revisions": [],
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": ":FudeReviewChat / :FudeReviewChatAdd / :FudeReviewChatNew と chat 設定を追加",
+      "refs": ""
+    }
+  ],
   "pr": {
     "number": 331,
     "url": "https://github.com/flexphere/fude.nvim/pull/331"
   },
   "copilot": {
-    "status": "",
+    "status": "Copilot はレビューできませんでした（unable: レビューを依頼した利用者の残り枠が足りない、という返事）。Copilot の指摘への対応はありません。",
     "comments": [],
     "timed_out": false
   },
