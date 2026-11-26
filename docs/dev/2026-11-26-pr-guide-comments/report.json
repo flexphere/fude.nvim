@@ -1,0 +1,170 @@
+{
+  "title": "PR本文から読む順番つきのガイドコメントを作るskill（fude-guide）",
+  "slug": "pr-guide-comments",
+  "date": "2026-11-26",
+  "branch": "feat/pr-guide-comments",
+  "base": "origin/main",
+  "status": "実装中",
+  "commits": 0,
+  "summary": "PRDが承認されました。実装役がcontrib/skills/fude-guideを実装しています。",
+  "generatedBy": "/develop-v2",
+  "tests": [],
+  "attention": [],
+  "acceptance": [],
+  "prd": {
+    "approvedAt": "2026-11-26",
+    "purpose": "PR本文（無ければコミットメッセージ）と差分から、変更行に読む順番つきのガイドコメントをローカルレビューのコメントとして置き、レビュワーが番号順に辿るだけで変更の全体を掴めるようにする。",
+    "users": "fude.nvimでPRをレビューする人。Claude Codeを同じリポジトリで起動し、fude-watchと同じ手順でskillを配置して使う。",
+    "outOfScope": [
+      "GitHubレビューモードでの表示",
+      "番号順に辿る専用コマンド",
+      "fude.nvimのLuaコードの変更",
+      "Neovimからskillを起動するコマンド",
+      "GitHubへの投稿"
+    ],
+    "constraints": [
+      "JSONLは追記のみ・1イベント1行（jq -c）",
+      "イベントのフィールドはlocal/storeのbuild_*_eventと同じ",
+      "セッションの特定はfude-watchと同じ",
+      "依存はbash・jq・uuidgenのみ",
+      "CLAUDE.mdの品質ルール"
+    ],
+    "changes": [],
+    "verification": [
+      "固定のテスト: make all",
+      "ヘルパースクリプトを一時gitリポジトリで実行しlocal/storeで読むテスト",
+      "実際のPRブランチで:FudeReviewLocal → skill実行 → :FudeReviewReload"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "生成はcontribのClaude Code skillにする",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "実装の形が決まる",
+      "by": "ユーザー",
+      "background": "Neovimのコマンドからclaude -pを起動する案と、fude-watchと同じcontrib skillにする案があった。",
+      "options": [
+        "contribのskill",
+        "fudeのコマンド"
+      ],
+      "decided": "contribのskill",
+      "reason": "JSONLが外部エージェント向けの契約として既にあり、Luaを変えずに済む。",
+      "impact": "contrib/skills/fude-guide",
+      "revisit": "Neovimから完結させたい要望が出たとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-002",
+      "title": "表示はローカルレビューのみ",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "高",
+      "severityReason": "GitHubへの投稿と同時に読めない",
+      "by": "ユーザー",
+      "background": "ローカルコメントは:FudeReviewLocal中だけ表示される。",
+      "options": [
+        "ローカルレビューのみ",
+        "GitHubレビュー中も表示する層を足す"
+      ],
+      "decided": "ローカルレビューのみ",
+      "reason": "Lua変更なしで最初の形を出す。",
+      "impact": "スコープ外",
+      "revisit": "GitHubレビュー中に読みたいという声が出たとき",
+      "refs": "スコープ外"
+    },
+    {
+      "id": "D-003",
+      "title": "読む順番は本文の番号で表す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "後から辿るコマンドを足せる",
+      "by": "ユーザー",
+      "background": "番号順に辿るコマンドを足すかどうか。",
+      "options": [
+        "本文に番号",
+        "辿るコマンドも足す"
+      ],
+      "decided": "本文に番号",
+      "reason": "既存UIのまま使える。",
+      "impact": "AC6",
+      "revisit": "番号順に辿りづらいと感じたとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-004",
+      "title": "PRが無ければコミットメッセージで代用する",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "手順の分岐のみ",
+      "by": "ユーザー",
+      "background": "PR作成前のブランチでの扱い。",
+      "options": [
+        "コミットメッセージで代用",
+        "PRがある場合のみ"
+      ],
+      "decided": "コミットメッセージで代用",
+      "reason": "自分の変更のセルフレビューにも使える。",
+      "impact": "AC5",
+      "revisit": "",
+      "refs": "AC5"
+    },
+    {
+      "id": "D-005",
+      "title": "再実行時は前回のガイドコメントをdeleteイベントで消す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "既存コメントを消す操作を含む",
+      "by": "作業する側",
+      "background": "再実行するとガイドコメントが二重になる。",
+      "options": [
+        "前回分を消してから作る",
+        "重ねて作る"
+      ],
+      "decided": "前回分を消してから作る（agentかつ本文が[guide で始まる先頭コメントのみ）",
+      "reason": "二重表示は読む順番を壊す。deleteは監査用に行が残るので戻せる。",
+      "impact": "AC7",
+      "revisit": "人がガイドコメントに返信したスレッドを残したい要望が出たとき",
+      "refs": "AC7"
+    },
+    {
+      "id": "D-006",
+      "title": "worktreeはgit-worktree-createでrepo内に作る",
+      "at": "2026-11-26",
+      "phase": "準備",
+      "severity": "低",
+      "severityReason": "作業場所のみ",
+      "by": "作業する側",
+      "background": "skillは<親>/fude.nvim-dev-<slug>を指定するが、ユーザーの全体設定とメモリはrepo内のworktree-ignored-<branch>を指定している。",
+      "options": [
+        "skillの指定",
+        "ユーザーの設定"
+      ],
+      "decided": "ユーザーの設定",
+      "reason": "ユーザー本人の明示的な指示を優先した。",
+      "impact": "state.jsonのworktree",
+      "revisit": "",
+      "refs": ""
+    }
+  ],
+  "reviews": [],
+  "unresolved": [],
+  "tasks": [],
+  "revision": 1,
+  "revisions": [],
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "copilot": {
+    "status": "",
+    "comments": [],
+    "timed_out": false
+  }
+}

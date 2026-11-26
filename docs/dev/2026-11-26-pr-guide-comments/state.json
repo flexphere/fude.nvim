@@ -1,0 +1,36 @@
+{
+  "slug": "pr-guide-comments",
+  "title": "PR本文から読む順番つきのガイドコメントを作るskill（fude-guide）",
+  "branch": "feat/pr-guide-comments",
+  "worktree": "/Users/kyu08/code/fude.nvim/worktree-ignored-feat-pr-guide-comments",
+  "phase": "implementing",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-26T18:20:02+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-26T18:20:02+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-26T18:21:32+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 4,
+    "prd_drafts": 1
+  },
+  "agents": {
+    "reviewer": null,
+    "judge": null
+  },
+  "review_outcomes": [],
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/4RSKTegrfwhtVxZpxjSGGr"
+}
