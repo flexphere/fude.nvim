@@ -1,0 +1,196 @@
+{
+  "title": "CLAUDE.md のモジュール詳細を docs/architecture へ分割",
+  "slug": "split-architecture",
+  "date": "2026-11-26",
+  "branch": "docs/split-architecture",
+  "base": "origin/main",
+  "status": "実装中",
+  "commits": 0,
+  "summary": "PRD が承認されました。モジュール詳細の移動と新しいチェックの追加を並行して進めています。",
+  "generatedBy": "/develop-v2",
+  "tests": [],
+  "attention": [],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "分割後、CLAUDE.md が 40,000 文字以下になる",
+      "result": "",
+      "how": "make check-claude-md・wc -m"
+    },
+    {
+      "id": "AC2",
+      "text": "lua/fude/ の各 .lua に、同じ相対パスの docs/architecture/<path>.md が 1 つずつあり、余計な .md が無い",
+      "result": "",
+      "how": "新設チェック"
+    },
+    {
+      "id": "AC3",
+      "text": "各モジュールの説明文が文言を変えずに移っている（どのモジュールにも属さない段落は関係する文書へ移り、completion/blink・cmp には説明を新たに書く）",
+      "result": "",
+      "how": "元の節との突き合わせ"
+    },
+    {
+      "id": "AC4",
+      "text": "CLAUDE.md に索引・読む指示・Key Patterns・State Dependencies 表が残り、他の節は変わらない",
+      "result": "",
+      "how": "CLAUDE.md を読む"
+    },
+    {
+      "id": "AC5",
+      "text": "check-state-deps が変更なしのスクリプトで通る",
+      "result": "",
+      "how": "make all"
+    },
+    {
+      "id": "AC6",
+      "text": "新設チェックが make all に入り、超過・欠落・余剰で失敗してファイル名を示す",
+      "result": "",
+      "how": "Unit テスト・make all"
+    },
+    {
+      "id": "AC7",
+      "text": "CLAUDE.md のモジュール責務を参照する記述が docs/architecture を指す",
+      "result": "",
+      "how": "grep"
+    },
+    {
+      "id": "AC8",
+      "text": "make all が通る",
+      "result": "",
+      "how": "make all・CI"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-26",
+    "purpose": "Claude Code の CLAUDE.md 文字数上限（150k）超過の警告を解消する。98% を占めるモジュール詳細を docs/architecture/ に移し、再発を make all で防ぐ。",
+    "users": "fude.nvim を開発する AI エージェントとメンテナ。モジュール変更前に責務と設計制約を調べる場面。",
+    "outOfScope": [
+      "移した文章の書き直し・整理",
+      "lua/fude/ のコード変更",
+      "README.md・doc/fude.txt の変更",
+      "文書の中身とコードの一致の検査"
+    ],
+    "constraints": [
+      "文言は変えずに移す",
+      "@ import は使わない",
+      "State Dependencies 表は CLAUDE.md に残し check_state_deps.lua は変えない",
+      "新設チェックは既存の scripts/check_*.lua と同じ形にし HARNESS.md に載せる"
+    ],
+    "changes": [],
+    "verification": [
+      "固定のテスト: make all",
+      "新設チェックの Unit テスト",
+      "新しいセッションで警告が出ないことを手で確かめる"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "モジュールごとに 1 ファイル（lua/fude/ と同じ構成）",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "文書の探し方が決まる",
+      "by": "ユーザー",
+      "background": "分割の単位を決める必要があった。",
+      "options": [
+        "モジュールごと",
+        "領域ごと",
+        "1 ファイル"
+      ],
+      "decided": "モジュールごと",
+      "reason": "触るファイルから読む文書が機械的に決まり、読む量も最小。",
+      "impact": "docs/architecture/ の構成",
+      "revisit": "ファイルが細かすぎて横断の説明が書きにくくなったとき",
+      "refs": "AC2"
+    },
+    {
+      "id": "D-002",
+      "title": "CLAUDE.md に索引・Key Patterns・State Dependencies 表を残す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "後から移せる",
+      "by": "ユーザー",
+      "background": "check_state_deps.lua が表を CLAUDE.md から読む。",
+      "options": [
+        "索引+表+Key Patterns",
+        "索引と Key Patterns だけ"
+      ],
+      "decided": "索引+表+Key Patterns",
+      "reason": "スクリプトを変えずに済む。",
+      "impact": "CLAUDE.md",
+      "revisit": "CLAUDE.md が再び上限に近づいたとき",
+      "refs": "AC4, AC5"
+    },
+    {
+      "id": "D-003",
+      "title": "文字数上限と文書の対応を make all で検査する",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "開発のたびに効く",
+      "by": "ユーザー",
+      "background": "同じ超過と文書の付け忘れを防ぎたい。",
+      "options": [
+        "上限と対応の両方",
+        "上限だけ",
+        "足さない"
+      ],
+      "decided": "上限と対応の両方",
+      "reason": "再発防止。",
+      "impact": "scripts/・Makefile・tests/",
+      "revisit": "検査が誤検出で邪魔になったとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-004",
+      "title": "文言は変えずに移す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "整理は別の PR でできる",
+      "by": "ユーザー",
+      "background": "移しながら整理するかを決める必要があった。",
+      "options": [
+        "そのまま移す",
+        "移しながら整理"
+      ],
+      "decided": "そのまま移す",
+      "reason": "差分を確かめやすく、情報が抜けない。",
+      "impact": "docs/architecture/",
+      "revisit": "整理の PR を始めるとき",
+      "refs": "AC3"
+    }
+  ],
+  "reviews": [],
+  "unresolved": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "モジュール詳細を docs/architecture へ移し、CLAUDE.md に索引を作る",
+      "status": "進行中",
+      "owner": "impl-docs"
+    },
+    {
+      "id": "T2",
+      "title": "CLAUDE.md の文字数と文書の対応を検査するチェックとテスト",
+      "status": "進行中",
+      "owner": "impl-check"
+    },
+    {
+      "id": "T3",
+      "title": "HARNESS.md・skill・スクリプトのコメントの参照先を更新",
+      "status": "未着手",
+      "owner": "impl-docs"
+    }
+  ],
+  "revision": 1,
+  "revisions": [],
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "copilot": {}
+}
