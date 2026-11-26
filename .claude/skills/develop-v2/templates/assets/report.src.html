@@ -288,10 +288,10 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const rounds = arr(D.reviews);
   const nAgent = rounds.filter(r => r.reviewer !== "Copilot").length;
   const facts = h("div", "facts");
-  [["状態", D.status || "—"], ["受け入れ基準", !acc.length ? "—" : acc.some(a => a.result) ? `${met} / ${acc.length} 満たした` : `${acc.length} 件・未確認`],
+  [["状態", D.status || "—"], ["見てほしいこと", `${arr(D.attention).length} 件`, "#attention"], ["受け入れ基準", !acc.length ? "—" : acc.some(a => a.result) ? `${met} / ${acc.length} 満たした` : `${acc.length} 件・未確認`],
    ["テスト", !tests.length ? "—" : failed ? `${failed} 件失敗` + (notPassed ? `・${notPassed} 件未実行` : "") : notPassed ? `${passed} 件通過・${notPassed} 件未実行` : `${tests.length} 件すべて通過`],
-   ["コミット", D.commits != null ? `${D.commits} 件` : "—"], ["レビュー", nAgent ? `${nAgent} 周` + (rounds.some(r => r.reviewer === "Copilot") ? "＋Copilot" : "") : "—"],
-   ["重要度 高の判断", `${highs} 件`]].forEach(([k, v]) => { const f = h("div", "fact"); add(f, h("span", "k", k), h("span", "v", v)); facts.append(f); });
+   ["レビュー", nAgent ? `${nAgent} 周` + (rounds.some(r => r.reviewer === "Copilot") ? "＋Copilot" : "") : "—"],
+   ["重要度 高の判断", `${highs} 件`]].forEach(([k, v, href]) => { const f = h("div", "fact"); let val = h("span", "v", v); if (href) { const a = h("a", null, v); a.href = href; val = h("span", "v"); val.append(a); } add(f, h("span", "k", k), val); facts.append(f); });
   add(hero, eb, h("h1", null, title), h("p", "summary", D.summary), facts);
   main.append(hero);
 
@@ -299,16 +299,24 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const attn = arr(D.attention);
   const sA = section("attention", "見てほしいこと", attn.length);
   if (attn.length) {
-    const box = h("div", "attn");
-    attn.forEach(a => { const it = h("div", "attn-item"); const body = h("div"); add(body, h("p", null, a.text), h("span", "ref", a.ref)); add(it, h("span", "mk", "要"), body); box.append(it); });
-    sA.append(box);
+    const KINDS = [["動作確認", "動作確認の手順", "確"], ["PRD 変更", "承認後に PRD を変えた点", "変"], [null, "そのほか", "要"]];
+    const grouped = attn.some(a => a.kind === "動作確認" || a.kind === "PRD 変更");
+    KINDS.forEach(([kind, label, mk]) => {
+      const items = attn.filter(a => kind ? a.kind === kind : !(a.kind === "動作確認" || a.kind === "PRD 変更"));
+      if (!items.length) return;
+      if (grouped) sA.append(h("h3", null, label));
+      const box = h("div", "attn");
+      items.forEach(a => { const it = h("div", "attn-item"); const body = h("div"); add(body, h("p", null, a.text), h("span", "ref", a.ref)); add(it, h("span", "mk", mk), body); box.append(it); });
+      sA.append(box);
+    });
   } else sA.append(h("p", "note", "人に見てほしいことはありません。"));
 
   // ---- 受け入れ基準 ----
+  const changed = new Set(arr((D.prd || {}).changes).map(c => c.field).filter(Boolean));
   const sAc = section("acceptance", "受け入れ基準", acc.length);
   sAc.append(table([
     { label: "#", key: "id", cls: "id" },
-    { label: "基準", key: "text" },
+    { label: "基準", render: r => { const sp = h("span", null, r.text); if (changed.has(r.id)) add(sp, " ", badge("承認後に変更", "b-mid")); return sp; } },
     { label: "結果", render: r => { const x = ACC[r.result] || [r.result || "—", "b-plain"]; return badge(x[0], x[1]); } },
     { label: "確かめ方", key: "how" },
   ], acc, true));
@@ -318,7 +326,7 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const sP = section("prd", "PRD");
   if (P.approvedAt) sP.append(h("p", "note", `承認 ${P.approvedAt}・下は承認版に、実装中の変更を反映したもの`));
   const prd = h("div", "prd");
-  const blk = (label, content, wide) => { const b = h("div", "sheet blk" + (wide ? " wide" : "")); add(b, h("span", "lbl", label), content); return b; };
+  const blk = (label, content, wide) => { const b = h("div", "sheet blk" + (wide ? " wide" : "")); const lb = h("span", "lbl", label); if (changed.has(label)) add(lb, " ", badge("承認後に変更", "b-mid")); add(b, lb, content); return b; };
   add(prd, blk("目的", h("p", null, P.purpose), true), blk("利用者", h("p", null, P.users), true),
     blk("スコープ外", list(P.outOfScope)), blk("制約", list(P.constraints)));
   if (arr(P.verification).length) prd.append(blk("確認方法", list(P.verification)));
@@ -327,14 +335,14 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const ch = arr(P.changes);
   if (ch.length) {
     sP.append(h("h3", null, "承認後の変更"));
-    sP.append(table([{ label: "日付", key: "date", cls: "mono" }, { label: "変更", key: "change" }, { label: "理由", key: "reason" }], ch));
+    sP.append(table([{ label: "日付", key: "date", cls: "mono" }, { label: "欄", key: "field", cls: "id" }, { label: "変更", key: "change" }, { label: "理由", key: "reason" }], ch));
   }
 
   // ---- 判断の履歴 ----
   const ORDER = { "高": 0, "中": 1, "低": 2 };
-  const decs = arr(D.decisions).slice().sort((a, b) => (ORDER[a.severity] ?? 9) - (ORDER[b.severity] ?? 9));
+  const decs = arr(D.decisions).slice().sort((a, b) => (b.prdChange === true) - (a.prdChange === true) || (ORDER[a.severity] ?? 9) - (ORDER[b.severity] ?? 9));
   const sD = section("decisions", "判断の履歴", decs.length);
-  sD.append(h("p", "note", "重要度 高 を先に並べています。各判断を開くと、背景・選べた案・理由・見直すきっかけを読めます。"));
+  sD.append(h("p", "note", "PRD を変えた判断、重要度 高 の順に並べています。各判断を開くと、背景・選べた案・理由・見直すきっかけを読めます。"));
   const filters = h("div", "filters");
   const dWrap = h("div", "decisions");
   let cur = "すべて";
@@ -347,11 +355,11 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   });
   decs.forEach(d => {
     const det = h("details", "dc"); det.dataset.sev = d.severity || "";
-    if (d.severity === "高") det.open = true;
+    if (d.severity === "高" || d.prdChange === true) det.open = true;
     const sm = h("summary");
     const meta = h("div", "meta");
     add(meta, h("span", null, d.by ? "決めた人: " + d.by : null), h("span", null, d.phase), h("span", null, d.at));
-    add(sm, h("span", "id", d.id), h("span", "t", d.title), add(h("span"), badge("重要度 " + (d.severity || "—"), SEV[d.severity])), meta);
+    add(sm, h("span", "id", d.id), h("span", "t", d.title), add(h("span"), d.prdChange === true ? badge("PRD を変更", "b-mid") : null, d.prdChange === true ? " " : null, badge("重要度 " + (d.severity || "—"), SEV[d.severity])), meta);
     sm.querySelector(".meta").before(h("span")); // 1 列目を空ける
     det.append(sm);
     const dl = h("dl", "dc-body");
@@ -393,29 +401,33 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
     add(box, rs, lg);
     sR.append(box);
   } else sR.append(h("p", "note", "レビューの記録はありません。"));
-  const un = arr(D.unresolved);
-  if (rounds.length || un.length) sR.append(h("h3", null, "直さなかった指摘"));
-  if (!rounds.length && !un.length) { /* まだレビューしていない */ }
-  else if (un.length) sR.append(table([
-    { label: "#", key: "id", cls: "id" },
-    { label: "重要度", render: r => badge(r.severity, SEV[r.severity]) },
-    { label: "指摘", key: "text" },
-    { label: "直さなかった理由", key: "reason" },
-  ], un, true));
-  else sR.append(h("p", "note", "すべての指摘に対応しました。"));
-
-  // ---- Copilot のレビュー ----
+  // ---- Copilot のレビュー（レビューの経過の中） ----
   if (D.copilot) {
     const cc = arr(D.copilot.comments);
-    const sC = section("copilot", "Copilot のレビュー", cc.length);
-    sC.append(h("p", "note", D.copilot.status || (cc.length ? null : (D.status === "Copilot レビュー待ち" ? "レビューを待っています。" : "結果はまだありません。"))));
-    if (cc.length) sC.append(table([
+    sR.append(h("h3", null, "Copilot のレビュー" + (cc.length ? `（${cc.length} 件）` : "")));
+    sR.append(h("p", "note", D.copilot.status || (cc.length ? null : (D.status === "Copilot レビュー待ち" ? "レビューを待っています。" : "結果はまだありません。"))));
+    if (cc.length) sR.append(table([
       { label: "#", key: "id", cls: "id" },
       { label: "場所", key: "location", cls: "mono" },
       { label: "指摘", key: "text" },
       { label: "対応", key: "response" },
       { label: "コミット", key: "commit", cls: "mono" },
     ], cc, true));
+  }
+
+  // ---- 直さなかった指摘 ----
+  const un = arr(D.unresolved);
+  if (rounds.length || un.length) {
+    const sU = section("unresolved", "直さなかった指摘", un.length);
+    if (un.length) {
+      sU.append(h("p", "note", "レビューで挙がり、直していない指摘です。直すかどうかを決めてください。直す場合は、番号を添えて修正を頼めます。"));
+      sU.append(table([
+        { label: "#", key: "id", cls: "id" },
+        { label: "重要度", render: r => badge(r.severity, SEV[r.severity]) },
+        { label: "指摘", key: "text" },
+        { label: "直さなかった理由", key: "reason" },
+      ], un, true));
+    } else sU.append(h("p", "note", "すべての指摘に対応しました。"));
   }
 
   // ---- テスト ----
@@ -451,6 +463,11 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
       { label: "関連", key: "refs", cls: "mono" },
     ], revs.slice().sort((a, b) => (b.revision || 0) - (a.revision || 0)), true));
   }
+
+  // ---- 節の並び: 約束（PRD）→ 結果（受け入れ基準）→ 読む人のすること → 決め直せるもの → 経緯 ----
+  const SECTION_ORDER = ["prd", "acceptance", "attention", "unresolved", "decisions", "reviews", "tests", "tasks", "revisions"];
+  SECTION_ORDER.forEach(id => { const e = sections.find(x => x[0] === id); if (!e) return; main.append(document.getElementById(id)); toc.append(e[1]); });
+  sections.sort((a, b) => SECTION_ORDER.indexOf(a[0]) - SECTION_ORDER.indexOf(b[0]));
 
   const ft = h("footer", null, [D.slug && "slug " + D.slug, D.generatedBy].filter(Boolean).join(" · "));
   main.append(ft);
