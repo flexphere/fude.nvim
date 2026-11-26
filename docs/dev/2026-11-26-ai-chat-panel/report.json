@@ -151,6 +151,16 @@
         "date": "2026-11-26",
         "change": "AC8: GitHub レビューでは PR が持ち込むプロジェクトの設定を既定で読まない（--setting-sources user）",
         "reason": "D-023"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC8: PR の .mcp.json の MCP サーバーも起動しないことを確かめた旨を追記",
+        "reason": "D-025"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "AC9: GitHub レビューの commit scope も質問の先頭に添える",
+        "reason": "D-026"
       }
     ],
     "verification": [
@@ -630,9 +640,188 @@
       "impact": "new_chat",
       "revisit": "新しい会話で前の入力が残るのが紛らわしいという声が出たとき",
       "refs": "AC5, R3-M3"
+    },
+    {
+      "id": "D-025",
+      "title": "PR の .mcp.json は --setting-sources user で既に塞がっているので、追加の対策はしない",
+      "at": "2026-11-26 13:00",
+      "phase": "レビュー",
+      "severity": "高",
+      "severityReason": "任意コード実行に関わる既定。claude の版に依存する",
+      "by": "判断役",
+      "background": "やり直し 1 周目の MUST（R1-1）。--setting-sources user だけでは PR の .mcp.json の MCP サーバーが起動するおそれがある、という指摘（実機未確認）。",
+      "options": [
+        "--strict-mcp-config を既定で付ける",
+        "--strict-mcp-config + 利用者の MCP を --mcp-config で渡し直す",
+        "実機で確かめ、塞がっていれば文書を直す"
+      ],
+      "decided": "追加の対策はしない。文書の「確かめていない」を直し、AC8 に確認結果を書く",
+      "reason": "claude 2.1.332 で、.mcp.json に無害な stdio サーバーを書き enableAllProjectMcpServers を有効にした条件で、旗あり = 起動しない / 旗なし = 起動する を確かめた。--strict-mcp-config は利用者の MCP も止め AC8 とぶつかる。",
+      "impact": "README・doc、AC8",
+      "revisit": "claude の版が上がったとき。user の settings.json に enableAllProjectMcpServers を書いた環境で起動したという報告が出たとき（--strict-mcp-config に切り替える）",
+      "refs": "R1-1, AC8"
+    },
+    {
+      "id": "D-026",
+      "title": "GitHub レビューの commit scope も質問の先頭に添える",
+      "at": "2026-11-26 13:00",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "答えの正しさに関わるが、手元の挙動",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-2）。GitHub の commit scope ではファイルが過去の時点になっているのに claude に伝えていなかった。AC9 の書き漏れ。",
+      "options": [
+        "直す",
+        "直さない"
+      ],
+      "decided": "直す（checkout 中のコミットを添える。full PR scope では何も添えない）",
+      "reason": "D-012 でローカルの scope を添えると決めた理由と同じ。",
+      "impact": "build_prompt_context、AC9",
+      "revisit": "claude が添えた行を無視して最新として答える例が出たとき",
+      "refs": "R1-2, AC9"
+    },
+    {
+      "id": "D-027",
+      "title": "PR の CLAUDE.md と git --output の組み合わせは直さない",
+      "at": "2026-11-26 13:00",
+      "phase": "レビュー",
+      "severity": "中",
+      "severityReason": "利用者が承知して決めた範囲の中",
+      "by": "判断役",
+      "background": "やり直し 1 周目の SHOULD（R1-3）。AC8 の決定（git --output を既定のまま許容）への異論として、PR の CLAUDE.md からも指示できると指摘された。",
+      "options": [
+        "直さない",
+        "直す"
+      ],
+      "decided": "直さない。文書に「指示文はレビュー対象のどこからでも来うる」と 1 行足す",
+      "reason": "AC8 で利用者本人が決めた範囲内。経路が 1 つ増えるだけで危険の種類は同じ。",
+      "impact": "README・doc",
+      "revisit": "利用者が AC8 の --output の決定を見直すとき",
+      "refs": "R1-3, AC8, D-019"
     }
   ],
-  "reviews": [],
+  "reviews": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 12,
+      "may": 5,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "GitHub レビューで、PR の .mcp.json にある MCP サーバーが起動するおそれ（実機未確認）",
+          "response": "文書を直す（D-025。実機で塞がっていると確認）"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "GitHub レビューの commit scope が claude に伝わらない",
+          "response": "修正中（D-026）"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "（AC8 への異論）PR の CLAUDE.md の指示で git --output を使わせられる",
+          "response": "直さない（D-027）。文書に 1 行"
+        },
+        {
+          "id": "R1-4",
+          "severity": "SHOULD",
+          "text": "README が :FudeReviewChatNew で止めた応答も保存されると誤って書いている",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-5",
+          "severity": "SHOULD",
+          "text": "名前のない特殊バッファから :FudeReviewChatAdd が通る",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-6",
+          "severity": "SHOULD",
+          "text": "新しいセッションでやり直したとき、表示されたログと保存内容が食い違う",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-7",
+          "severity": "SHOULD",
+          "text": "中断の直後に送信すると、同じセッションで claude が 2 つ並んで動く",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-8",
+          "severity": "SHOULD",
+          "text": "途中で失敗した回を保存しないため、claude 側の記録と質問が二重になる",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-9",
+          "severity": "SHOULD",
+          "text": "resume でやり直すときセッション ID をディスクから読み直し、保存失敗に気づけない",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-10",
+          "severity": "SHOULD",
+          "text": "別のタブに移ったときの後始末が別のタブで起きる",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-11",
+          "severity": "SHOULD",
+          "text": "開き直したときカーソルが入力の先頭に入る",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-12",
+          "severity": "SHOULD",
+          "text": "State Dependencies 表の R 列に chat が足りない",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-13",
+          "severity": "SHOULD",
+          "text": "文書のこまかな不正確さ（失敗の判定、chat.args、:only、detached HEAD のキー）",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-14",
+          "severity": "MAY",
+          "text": "1 行の選択が path:L5 になる（AC6 の字面は L5-L5）",
+          "response": "見送り（D-017）"
+        },
+        {
+          "id": "R1-15",
+          "severity": "MAY",
+          "text": "restore_input の docstring の位置ずれ",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-16",
+          "severity": "MAY",
+          "text": "commands_spec のスタブが例外時に戻らない",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-17",
+          "severity": "MAY",
+          "text": "init_integration_spec が repo_root を取る順序を確かめていない",
+          "response": "修正中"
+        },
+        {
+          "id": "R1-18",
+          "severity": "MAY",
+          "text": "（既存）leave_panel_window が quickfix ウィンドウを選びうる",
+          "response": "見送り（既存の問題）"
+        }
+      ]
+    }
+  ],
   "unresolved": [],
   "tasks": [
     {

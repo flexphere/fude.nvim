@@ -27,9 +27,10 @@
     "prd_drafts": 1
   },
   "agents": {
-    "reviewer": "a474d3af582a59558",
+    "reviewer": "aa29257b0f95dd3a1",
     "judge": "a6de5e78b77ecd3f7",
-    "implementer": "a301180494c2d3e2c"
+    "implementer": "a301180494c2d3e2c",
+    "reviewer_before_restart": "a474d3af582a59558"
   },
   "review_outcomes": [],
   "pr": {
