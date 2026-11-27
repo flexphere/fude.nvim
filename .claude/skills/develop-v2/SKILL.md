@@ -115,9 +115,9 @@ argument-hint: "[作りたいものの説明・issue の URL]"
   ```sh
   python3 -I "${CLAUDE_SKILL_DIR}/scripts/check-ac-tests.py" mutate docs/dev/<dir>/ac-tests/ac-tests.json
   ```
-  出力をそのまま `ac-tests/results/mutate-<revision>-<round>.json` に保存してコミットし、`acceptance[].mutation` に写す。同じ周で走らせ直したとき（`survived` のパッチを直したなど）は上書きせず、`mutate-<revision>-<round>-<n>.json`（`n` は 2 から）に保存する。`acceptance[].mutation` に写すのも、レビュー役の `mutateByReviewer` と突き合わせるのも、その周の最新のファイル。終了コード 2 でパッチが当たらない・戻せない、またはコマンドが時間切れになったときは、その周の前に実装役に直してもらう（パッチ、止まらないテスト、または長くかかるだけなら項目の `timeout`。項目が変われば `ac-tests.json` はメインが直す）。
+  出力をそのまま `ac-tests/results/mutate-<revision>-<round>.json` に保存してコミットし、`acceptance[].mutation` に写す。同じ周で走らせ直したとき（`survived` のパッチを直したなど）は上書きせず、`mutate-<revision>-<round>-<n>.json`（`n` は 2 から）に保存する。その周の最新のファイルは `n` が最大のもの（`-<n>` の無いものは `n` = 1）で、`acceptance[].mutation` にはその値を写す。走らせ直すのはパッチか実装を直した後だけで、理由を `evidence` に書く。走らせ直しはレビュー役に頼む前に済ませる。頼んだ後に走らせ直したら、レビュー役にも走らせ直してもらう。終了コード 2 でパッチが当たらない・戻せない、またはコマンドが時間切れになったときは、その周の前に実装役に直してもらう（パッチ、止まらないテスト、または長くかかるだけなら項目の `timeout`。項目が変われば `ac-tests.json` はメインが直す）。
 - レビュー役に `prd.md` の場所（`docs/dev/` で読んでよいのはこのファイルと `ac-tests/` の一覧とパッチだけ）と差分の取り方を渡す。レビュー役は `/code-review` で不具合を探し、PRD の受け入れ基準と照らし、`mutate` を自分でも走らせ、固定のチェックを走らせ、指摘を MUST / SHOULD / MAY で返す。**重要度はレビュー役が決める。** 異論は判断役に回す。
-- 受け入れ基準の判定は根拠付きで返ってくる。自動の基準は、確かめる方法のテストが通り、`mutate` が `killed` で、項目の `command` と `fail_marker` がそのテストを指し、パッチが基準の機能を壊している（無関係な箇所を壊していない）ときだけ「満たす」。それ以外（テストが無い・通らない、`mutate` が `survived`・`baseline_failed`・`rejected`・`no_patch`、パッチが基準の機能を壊していない）は MUST になる。手動の基準は「手動」と返り、MUST にはならない。メインはその判定と根拠を `report.json` の `acceptance` に、項目ごとの `mutate` の結果を `reviews[].mutateByReviewer` に、そのまま写す（自分で「満たした」と書かない）。
+- 受け入れ基準の判定は根拠付きで返ってくる。自動の基準は、確かめる方法のテストが通り、`mutate` が `killed` で、項目の `command` と `fail_marker` がそのテストを指し、パッチが基準の機能を壊している（無関係な箇所を壊していない）ときだけ「満たす」。それ以外（テストが無い・通らない、`mutate` が `survived`・`baseline_failed`・`rejected`・`no_patch`、パッチが基準の機能を壊していない）は MUST になる。手動の基準は「手動」と返り、MUST にはならない。メインはその判定と根拠を `report.json` の `acceptance[].result`・`evidence` に、項目ごとの `mutate` の結果を `reviews[].mutateByReviewer` に、そのまま写す（自分で「満たした」と書かない。`acceptance[].mutation` はメインの最新のファイルの値のまま）。`mutateByReviewer` はその周のメインの最新のファイルと `ac` ごとに突き合わせ、食い違いがあれば MUST とする。
 - **1 周目の指摘は、MUST も SHOULD も直す**（直さない SHOULD は理由を判断として記録する。MAY は任意）。**2 周目からは MUST だけを直す。** 2 周目以降に出た SHOULD・MAY は直さず、`report.json` の `unresolved` に載せて報告で示す（端の場面の修正が別の不具合を生み、周が延びるため。直すかどうかはユーザーが報告を見て決める）。直すのは、その場所を受け持った実装役。直すときは、指摘を再現するテストを足し、同じ形の問題を他の場所でも探し、触った関数を使う既存の挙動が変わっていないことを確かめてもらう。
 - **MUST を直さないと決めたら（判断役かユーザーの決定）、次の周の前に PRD に書く**（受け入れ基準か「スコープ外」に、何を許容するかを明示する）。レビュー役が読めるのは PRD だけなので、書かなければ同じ MUST が毎周戻ってくる。
 - **MUST 0 件の周で終わる。** MUST を直したら、必ず全体をもう 1 周見せる。上限は 5 周。
@@ -166,7 +166,7 @@ PRD の承認から最後まで、**同じ URL のページを育てる**。タ�
   - `attention[].kind`: 動作確認の手順は `"動作確認"`、承認後に PRD を変えた点は `"PRD 変更"`（この順に、その他より先に並ぶ）。
   - `prd.changes[].field`: 変えた欄（`"目的"`・`"スコープ外"`・`"制約"` などの欄の名前、または `"AC4"` のような基準の番号）。その欄に「承認後に変更」の印が付く。
   - `decisions[].prdChange`: PRD を変えた判断は `true`（判断の履歴の先頭に並ぶ）。
-  - `acceptance[]`: `verify`（`"auto"` / `"manual"`）、`how`（確かめる方法）、`result`（`"met"` / `"partial"` / `"unmet"`、手動で未確認なら `"unverified"`）、`evidence`（根拠: 通ったテストの名前と、走らせた `red`・`mutate` とその結果の要点、または確かめた人と日付）。自動の基準には `red`（実装前の最新の `red-<task>.json` か `red-<task>-<n>.json` の値: `"fail"` / `"pass"` / `"skipped"`）と `mutation`（最後の周の最新の `mutate-<revision>-<round>.json` か `mutate-<revision>-<round>-<n>.json` の値）も付ける。走らせていない欄は省く。
+  - `acceptance[]`: `verify`（`"auto"` / `"manual"`）、`how`（確かめる方法）、`result`（`"met"` / `"partial"` / `"unmet"`、手動で未確認なら `"unverified"`）、`evidence`（根拠: 通ったテストの名前と、走らせた `red`・`mutate` とその結果の要点、または確かめた人と日付）。自動の基準には `red`（実装前の最新の `red-<task>.json` か `red-<task>-<n>.json` の値: `"fail"` / `"pass"` / `"skipped"`）と `mutation`（最後の周の最新のファイル、つまり `mutate-<revision>-<round>.json` と `mutate-<revision>-<round>-<n>.json` のうち `n` が最大のもの（`-<n>` の無いものは `n` = 1）の値）も付ける。走らせていない欄は省く。
 - まだ無い欄は空にする（「まだ〜していません」と出る）。`summary` に、今どの段階で次に何が起きるかを 1〜2 文で書く。テンプレートの HTML は読まなくてよい。
 
 ## 指標
