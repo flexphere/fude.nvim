@@ -21,27 +21,27 @@
 
 | # | 基準 | 種類 | 確かめる方法 | 結果 | 根拠 |
 |---|---|---|---|---|---|
-| AC1 | `red` で、コマンドが失敗する項目は、結果が `"fail"` になる | 自動 | `test_red_failing_command_is_fail` | | |
-| AC2 | `red` で、コマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる | 自動 | `test_red_passing_command_exits_1` | | |
-| AC3 | `red` で、`existing: true` の項目は、結果が `"skipped"` になる | 自動 | `test_red_existing_is_skipped` | | |
-| AC4 | `red` で、`existing: true` の項目のコマンドは、走った回数が 0 回になる | 自動 | `test_red_existing_does_not_run` | | |
-| AC5 | `mutate` で、パッチを当てるとコマンドが失敗する項目は、結果が `"killed"` になる | 自動 | `test_mutate_failing_after_patch_is_killed` | | |
-| AC6 | `mutate` で、パッチを当ててもコマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる | 自動 | `test_mutate_surviving_patch_exits_1` | | |
-| AC7 | `killed` の項目と `survived` の項目を 1 つずつ含む一覧で `mutate` を走らせた後、`git status --porcelain` と `git diff` の出力が走らせる前と同じになる | 自動 | `test_mutate_restores_worktree` | | |
-| AC8 | `mutate` で、パッチを当てる前にコマンドが失敗する項目は、結果が `"baseline_failed"` になる | 自動 | `test_mutate_baseline_failure_is_reported` | | |
-| AC9 | `mutate` で、パッチを当てる前にコマンドが失敗する項目のコマンドは、走った回数が 1 回になる（パッチを当てた後の実行が無い） | 自動 | `test_mutate_baseline_failure_runs_once` | | |
-| AC10 | `mutate` で、`tests/` の下のファイル・名前に `_spec.` を含むファイル・名前に `_test.` を含むファイル・名前が `test_` で始まるファイルのどれかを変えるパッチは、4 通りのどれでも結果が `"rejected"` になる | 自動 | `test_mutate_rejects_patch_touching_tests`（4 通りを 1 つずつ確かめる） | | |
-| AC11 | `mutate` で、結果が `"rejected"` の項目のコマンドは、走った回数が 0 回になる | 自動 | `test_mutate_rejected_does_not_run` | | |
-| AC12 | `mutate` で、作業ツリーの `docs/dev/` の外に、ステージ済みの変更・ステージ前の変更・未追跡のファイル（`.gitignore` で除かれたものは除く）のどれかがあるとき、終了コードが 2 になる | 自動 | `test_mutate_refuses_dirty_worktree`（3 通りを 1 つずつ確かめる） | | |
-| AC13 | `mutate` が終了コード 2 で終わったとき、どの項目のコマンドも走った回数が 0 回になる | 自動 | `test_mutate_dirty_worktree_runs_nothing` | | |
-| AC14 | `fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`mutate` の結果が `"survived"` になる | 自動 | `test_fail_marker_unmatched_is_survived` | | |
-| AC15 | `fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`red` の結果が `"pass"` になる | 自動 | `test_fail_marker_unmatched_red_is_pass` | | |
-| AC16 | 自動の基準 4 つ（`red`/`mutation` が `fail`/`killed`、`fail`/`survived`、`skipped`/`killed`、`pass`/無し）と手動の基準 1 つ（どちらも無し）を持つ `report.json` から `build-metrics.py` で作った `metrics.json` の `implementation.acceptance` が、`red_fail: 2`、`red_skipped: 1`、`mutation_killed: 2`、`mutation_survived: 1`、`auto_without_mutation: 1` を持つ | 自動 | `test_build_metrics_counts_red_and_mutation` | | |
-| AC17 | 報告のページの受け入れ基準の表で、自動の基準の行に、`red` と `mutation` の値が下の対応表どおりに表示される | 手動 | `templates/report.example.json`（対応表のすべての値を持つ行を含める）から `build-report.py` でページを作り、ブラウザで開く → 自動の各行に対応表どおりの文言が見える | | |
-| AC18 | 次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `"fail"` か `"skipped"` になる | 手動 | その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `"auto"` のものの `red` を見る | | |
-| AC19 | 次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる | 手動 | 基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる | | |
-| AC20 | 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある | 手動 | `reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る | | |
-| AC21 | 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する | 手動 | 各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる | | |
+| AC1 | `red` で、コマンドが失敗する項目は、結果が `"fail"` になる | 自動 | `test_red_failing_command_is_fail` | 満たした | `test_red_failing_command_is_fail`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC2 | `red` で、コマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる | 自動 | `test_red_passing_command_exits_1` | 満たした | `test_red_passing_command_exits_1`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC3 | `red` で、`existing: true` の項目は、結果が `"skipped"` になる | 自動 | `test_red_existing_is_skipped` | 満たした | `test_red_existing_is_skipped`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC4 | `red` で、`existing: true` の項目のコマンドは、走った回数が 0 回になる | 自動 | `test_red_existing_does_not_run` | 満たした | `test_red_existing_does_not_run`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC5 | `mutate` で、パッチを当てるとコマンドが失敗する項目は、結果が `"killed"` になる | 自動 | `test_mutate_failing_after_patch_is_killed` | 満たした | `test_mutate_failing_after_patch_is_killed`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC6 | `mutate` で、パッチを当ててもコマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる | 自動 | `test_mutate_surviving_patch_exits_1` | 満たした | `test_mutate_surviving_patch_exits_1`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC7 | `killed` の項目と `survived` の項目を 1 つずつ含む一覧で `mutate` を走らせた後、`git status --porcelain` と `git diff` の出力が走らせる前と同じになる | 自動 | `test_mutate_restores_worktree` | 満たした | `test_mutate_restores_worktree`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC8 | `mutate` で、パッチを当てる前にコマンドが失敗する項目は、結果が `"baseline_failed"` になる | 自動 | `test_mutate_baseline_failure_is_reported` | 満たした | `test_mutate_baseline_failure_is_reported`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC9 | `mutate` で、パッチを当てる前にコマンドが失敗する項目のコマンドは、走った回数が 1 回になる（パッチを当てた後の実行が無い） | 自動 | `test_mutate_baseline_failure_runs_once` | 満たした | `test_mutate_baseline_failure_runs_once`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC10 | `mutate` で、`tests/` の下のファイル・名前に `_spec.` を含むファイル・名前に `_test.` を含むファイル・名前が `test_` で始まるファイルのどれかを変えるパッチは、4 通りのどれでも結果が `"rejected"` になる | 自動 | `test_mutate_rejects_patch_touching_tests`（4 通りを 1 つずつ確かめる） | 満たした | `test_mutate_rejects_patch_touching_tests`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC11 | `mutate` で、結果が `"rejected"` の項目のコマンドは、走った回数が 0 回になる | 自動 | `test_mutate_rejected_does_not_run` | 満たした | `test_mutate_rejected_does_not_run`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC12 | `mutate` で、作業ツリーの `docs/dev/` の外に、ステージ済みの変更・ステージ前の変更・未追跡のファイル（`.gitignore` で除かれたものは除く）のどれかがあるとき、終了コードが 2 になる | 自動 | `test_mutate_refuses_dirty_worktree`（3 通りを 1 つずつ確かめる） | 満たした | `test_mutate_refuses_dirty_worktree`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC13 | `mutate` が終了コード 2 で終わったとき、どの項目のコマンドも走った回数が 0 回になる | 自動 | `test_mutate_dirty_worktree_runs_nothing` | 満たした | `test_mutate_dirty_worktree_runs_nothing`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC14 | `fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`mutate` の結果が `"survived"` になる | 自動 | `test_fail_marker_unmatched_is_survived` | 満たした | `test_fail_marker_unmatched_is_survived`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC15 | `fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`red` の結果が `"pass"` になる | 自動 | `test_fail_marker_unmatched_red_is_pass` | 満たした | `test_fail_marker_unmatched_red_is_pass`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC16 | 自動の基準 4 つ（`red`/`mutation` が `fail`/`killed`、`fail`/`survived`、`skipped`/`killed`、`pass`/無し）と手動の基準 1 つ（どちらも無し）を持つ `report.json` から `build-metrics.py` で作った `metrics.json` の `implementation.acceptance` が、`red_fail: 2`、`red_skipped: 1`、`mutation_killed: 2`、`mutation_survived: 1`、`auto_without_mutation: 1` を持つ | 自動 | `test_build_metrics_counts_red_and_mutation` | 満たした | `test_build_metrics_counts_red_and_mutation`（通過。レビュー役が機能を壊して落ちることを確認） |
+| AC17 | 報告のページの受け入れ基準の表で、自動の基準の行に、`red` と `mutation` の値が下の対応表どおりに表示される | 手動 | `templates/report.example.json`（対応表のすべての値を持つ行を含める）から `build-report.py` でページを作り、ブラウザで開く → 自動の各行に対応表どおりの文言が見える | 未確認 |  |
+| AC18 | 次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `"fail"` か `"skipped"` になる | 手動 | その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `"auto"` のものの `red` を見る | 未確認 |  |
+| AC19 | 次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる | 手動 | 基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる | 未確認 |  |
+| AC20 | 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある | 手動 | `reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る | 未確認 |  |
+| AC21 | 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する | 手動 | 各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる | 未確認 |  |
 
 AC17 の対応表（`red` の値 → 表示）: `fail` → 「先に赤: 落ちた」、`skipped` → 「先に赤: 既存の挙動」、`pass` → 「先に赤: 通ってしまった」（警告の色）、無し → 「先に赤: —」。（`mutation` の値 → 表示）: `killed` → 「壊して確認: 落ちた」、`survived` → 「壊して確認: 落ちない」（警告の色）、`baseline_failed` → 「壊して確認: 壊す前から落ちる」（警告の色）、`rejected` → 「壊して確認: パッチがテストを変えている」（警告の色）、`no_patch` → 「壊して確認: パッチなし」（警告の色）、無し → 「壊して確認: —」。
 

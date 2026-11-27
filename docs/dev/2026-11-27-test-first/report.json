@@ -245,8 +245,8 @@
   "date": "2026-11-27",
   "branch": "docs/develop-v2-test-first",
   "base": "origin/main",
-  "status": "レビュー対応中",
-  "summary": "draft の PR #341 を作り、レビュー役のレビューを始めます。",
+  "status": "完了",
+  "summary": "PR #341 を ready for review にしました。自動の受け入れ基準 16 件はすべて満たし、レビュー役のレビューは 2 周で MUST 0 件です。手動の基準 5 件（報告ページの見た目と、#340 で手順が回るか）の確認をお願いします。",
   "generatedBy": "/develop-v2",
   "acceptance": [
     {
@@ -604,6 +604,41 @@
       "kind": "PRD 変更",
       "ref": "D-007, D-008",
       "text": "承認後に PRD の「スクリプトの形」と AC19 を変えました。(1) red の結果ファイルはタスクごとにそのタスクの基準だけに絞って残します。(2) 実装前なのにテストが通った（pass）ときは、テストを直して走らせ直し、その結果を red-<task>-<n>.json に残して、受け入れ基準の red には最新の値を写します（最初の pass のファイルも残ります）。元に戻すには、prd.md の変更履歴の行と SKILL.md の「3. 実装」の該当の手順を、最初の値のまま走らせ直しは evidence に書く形に戻してください。"
+    },
+    {
+      "kind": "動作確認",
+      "ref": "AC17",
+      "text": "AC17（手動）: 報告のページの受け入れ基準の表で、自動の基準の行に、`red` と `mutation` の値が下の対応表どおりに表示される。確かめ方: `templates/report.example.json`（対応表のすべての値を持つ行を含める）から `build-report.py` でページを作り、ブラウザで開く → 自動の各行に対応表どおりの文言が見える"
+    },
+    {
+      "kind": "動作確認",
+      "ref": "AC18",
+      "text": "AC18（手動）: 次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `\"fail\"` か `\"skipped\"` になる。確かめ方: その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `\"auto\"` のものの `red` を見る。#340 を /develop-v2 で進めた後に確かめてください。"
+    },
+    {
+      "kind": "動作確認",
+      "ref": "AC19",
+      "text": "AC19（手動）: 次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる。確かめ方: 基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる。#340 を /develop-v2 で進めた後に確かめてください。"
+    },
+    {
+      "kind": "動作確認",
+      "ref": "AC20",
+      "text": "AC20（手動）: 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある。確かめ方: `reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る。#340 を /develop-v2 で進めた後に確かめてください。"
+    },
+    {
+      "kind": "動作確認",
+      "ref": "AC21",
+      "text": "AC21（手動）: 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する。確かめ方: 各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる。#340 を /develop-v2 で進めた後に確かめてください。"
+    },
+    {
+      "kind": "動作確認",
+      "ref": "R2-1",
+      "text": "直さなかった SHOULD（R2-1）: PRD の「スクリプトの形」に、項目の timeout（秒、既定 900）と、時間切れ・SIGTERM などでパッチを戻して終了コード 2 で終わることが書かれていません。実装と手順の文書には書かれています。PRD にも残すかを決めてください。"
+    },
+    {
+      "kind": "その他",
+      "ref": "Copilot",
+      "text": "Copilot のレビューは待たずに報告しました（ユーザーの指示）。後から届いた指摘は PR #341 で確かめてください。"
     }
   ],
   "unresolved": [
@@ -639,10 +674,23 @@
     }
   ],
   "revision": 1,
-  "revisions": [],
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-27",
+      "kind": "最初の報告",
+      "request": "#339",
+      "changes": "check-ac-tests.py（red / mutate）を足し、テストを先に書いて赤を確かめ、パッチで機能を壊して落ちることを確かめる手順にした",
+      "refs": ""
+    }
+  ],
   "pr": {
     "number": 341,
     "url": "https://github.com/flexphere/fude.nvim/pull/341"
   },
-  "commits": 5
+  "commits": 11,
+  "copilot": {
+    "status": "ユーザーの指示で Copilot のレビューは待たずに進めました。",
+    "comments": []
+  }
 }
