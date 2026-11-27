@@ -3,7 +3,7 @@
   "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
   "branch": "docs/develop-v2-test-first",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-test-first",
-  "phase": "revising",
+  "phase": "done",
   "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done（scripts/set-phase.py で進める）",
   "phase_history": [
     {
@@ -45,6 +45,10 @@
     {
       "phase": "revising",
       "at": "2026-11-28T07:05:35+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-28T07:08:18+09:00"
     }
   ],
   "hearing": {
@@ -68,6 +72,11 @@
       "revision": 2,
       "ended": "must0",
       "rounds": 2
+    },
+    {
+      "revision": 3,
+      "ended": "must0",
+      "rounds": 1
     }
   ],
   "_review_outcomes_note": "レビューが終わるたびに {\"revision\": 1, \"ended\": \"must0\" | \"capped\", \"rounds\": 3} を足す（Copilot 対応のあとのレビューには \"after\": \"copilot\" も付ける）",

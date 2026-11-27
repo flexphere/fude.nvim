@@ -8,7 +8,7 @@
     "number": 341,
     "url": "https://github.com/flexphere/fude.nvim/pull/341"
   },
-  "revision": 2,
+  "revision": 3,
   "hearing": {
     "questions_asked": 2,
     "prd_drafts": 1,
@@ -19,11 +19,12 @@
   "implementation": {
     "tasks": 3,
     "commits": 11,
-    "review_rounds": 4,
+    "review_rounds": 5,
     "must_by_round": [
       0,
       0,
       1,
+      0,
       0
     ],
     "must_total": 1,
@@ -52,7 +53,7 @@
     "tests_failed": 0
   },
   "decisions": {
-    "total": 14,
+    "total": 15,
     "by_judge": 4,
     "high": 0,
     "escalated_to_user": 0
@@ -65,8 +66,8 @@
     "timed_out": false
   },
   "revisions": {
-    "count": 1,
-    "rework": 1,
+    "count": 2,
+    "rework": 2,
     "requirement_change": 0
   },
   "phase_hours": {
@@ -76,7 +77,7 @@
     "reviewing": 0.3,
     "pr": 0.01,
     "reporting": 0.0,
-    "revising": 0.15
+    "revising": 0.2
   },
-  "unresolved": 10
+  "unresolved": 13
 }

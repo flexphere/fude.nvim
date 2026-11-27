@@ -279,6 +279,25 @@
       "impact": "prd.md の AC20・AC21・「スクリプトの形」、SKILL.md、implement-prompt.md",
       "revisit": "1 つの周で走らせ直しが繰り返され、最新の取り違えが起きたとき",
       "refs": "R2.1-1"
+    },
+    {
+      "id": "D-015",
+      "title": "revision 3 の 1 周目の SHOULD は直さない",
+      "at": "2026-11-28 07:15",
+      "phase": "報告後の修正",
+      "severity": "低",
+      "severityReason": "手順の文書の端の場面で、直すかどうかはユーザーが報告で決められる",
+      "by": "作業する側",
+      "background": "1 周目の SHOULD は直す決まりだが、ユーザーは R2.2-1 だけを直すよう頼んだ。1 行の修正の周で新しい SHOULD が 2 件出た。",
+      "options": [
+        "直さず unresolved に載せる",
+        "決まりどおり直す"
+      ],
+      "decided": "直さず unresolved に載せる",
+      "reason": "ユーザーが直す範囲を 1 件に絞った。直すと、手順の端の場面を足すたびに新しい端の指摘が出る流れが続く。",
+      "impact": "R3.1-1〜R3.1-4 が unresolved に残る",
+      "revisit": "ユーザーが直すと決めたとき",
+      "refs": "R3.1-1, R3.1-2"
     }
   ],
   "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
@@ -286,8 +305,8 @@
   "date": "2026-11-27",
   "branch": "docs/develop-v2-test-first",
   "base": "origin/main",
-  "status": "修正中",
-  "summary": "報告後の修正（第 3 版）中です。R2.2-1（mutate を走らせ直してよい場合が狭い）を直しています。",
+  "status": "完了",
+  "summary": "報告後の修正（第 3 版）が終わりました。mutate を走らせ直してよいのを、パッチ・テスト・実装・ac-tests.json の項目のどれかを直した後に広げました（R2.2-1）。レビューは MUST 0 件で、新しい SHOULD 2 件は直さずに残しています。",
   "generatedBy": "/develop-v2",
   "acceptance": [
     {
@@ -728,6 +747,43 @@
           "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
         }
       ]
+    },
+    {
+      "round": 1,
+      "revision": 3,
+      "date": "2026-11-28",
+      "tests": "pass",
+      "must": 0,
+      "should": 2,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "scope": "revision 3 の差分（4b82d9e..HEAD）",
+      "findings": [
+        {
+          "id": "R3.1-1",
+          "severity": "SHOULD",
+          "text": "レビュー役に頼んだ後でテストや実装を直して mutate を走らせ直すと、その変更は /code-review にも受け入れ基準の照合にも通らない（頼むのは mutate の走らせ直しだけ）",
+          "response": "直さない（D-015）。unresolved に載せる"
+        },
+        {
+          "id": "R3.1-2",
+          "severity": "SHOULD",
+          "text": "レビュー中に基準のテストを直しても red を走らせ直す決まりが無く、acceptance[].red が古いテストの結果のままになる",
+          "response": "直さない（D-015）。unresolved に載せる"
+        },
+        {
+          "id": "R3.1-3",
+          "severity": "MAY",
+          "text": "環境が原因の一時的な baseline_failed でも、何かを直さない限り走らせ直せない",
+          "response": "直さない（D-015）。unresolved に載せる"
+        },
+        {
+          "id": "R3.1-4",
+          "severity": "MAY",
+          "text": "走らせ直しの前にコミットすることが書かれておらず、汚れた作業ツリーで error だけのファイルが最新になりうる",
+          "response": "直さない（D-015）。unresolved に載せる"
+        }
+      ]
     }
   ],
   "tasks": [
@@ -769,10 +825,28 @@
   ],
   "unresolved": [
     {
-      "id": "R2.2-1",
+      "id": "R3.1-1",
       "severity": "SHOULD",
-      "text": "「走らせ直すのはパッチか実装を直した後だけ」が狭く、テストや ac-tests.json の項目（timeout など）を直した後の走らせ直しが禁じられて読める（SKILL.md・PRD「スクリプトの形」）",
-      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+      "text": "レビュー役に頼んだ後でテストや実装を直して mutate を走らせ直すと、その変更は /code-review にも受け入れ基準の照合にも通らない（頼むのは mutate の走らせ直しだけ）",
+      "reason": "D-015"
+    },
+    {
+      "id": "R3.1-2",
+      "severity": "SHOULD",
+      "text": "レビュー中に基準のテストを直しても red を走らせ直す決まりが無く、acceptance[].red が古いテストの結果のままになる",
+      "reason": "D-015"
+    },
+    {
+      "id": "R3.1-3",
+      "severity": "MAY",
+      "text": "環境が原因の一時的な baseline_failed でも、何かを直さない限り走らせ直せない",
+      "reason": "D-015"
+    },
+    {
+      "id": "R3.1-4",
+      "severity": "MAY",
+      "text": "走らせ直しの前にコミットすることが書かれておらず、汚れた作業ツリーで error だけのファイルが最新になりうる",
+      "reason": "D-015"
     },
     {
       "id": "R2.2-2",
