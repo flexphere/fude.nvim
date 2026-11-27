@@ -108,6 +108,8 @@ def main():
         ("PR", lambda m: f"#{g(m, 'pr', 'number')}" if g(m, "pr", "number") else None),
         ("質問", lambda m: g(m, "hearing", "questions_asked")),
         ("PRD 提示", lambda m: g(m, "hearing", "prd_drafts")),
+        ("基準の点検 回/指摘", lambda m: None if g(m, "hearing", "ac_checks") is None
+         else f"{g(m, 'hearing', 'ac_checks')}/{g(m, 'hearing', 'ac_check_findings', default=0)}"),
         ("承認後の PRD 変更", lambda m: g(m, "hearing", "prd_changes_after_approval")),
         ("レビュー周", lambda m: g(m, "implementation", "review_rounds")),
         ("MUST/周", lambda m: "-".join(map(str, g(m, "implementation", "must_by_round", default=[]))) or None),
@@ -119,6 +121,9 @@ def main():
         ("Copilot 直した", lambda m: g(m, "copilot", "fixed")),
         ("基準 未達", lambda m: g(m, "implementation", "acceptance", "partial", default=0)
          + g(m, "implementation", "acceptance", "unmet", default=0)),
+        ("基準 手動/未確認", lambda m: None if g(m, "implementation", "acceptance", "manual") is None
+         else f"{g(m, 'implementation', 'acceptance', 'manual')}/{g(m, 'implementation', 'acceptance', 'unverified', default=0)}"),
+        ("根拠なしの自動基準", lambda m: g(m, "implementation", "acceptance", "auto_without_evidence")),
         ("報告後 手直し/要件", lambda m: f"{g(m, 'revisions', 'rework', default=0)}/{g(m, 'revisions', 'requirement_change', default=0)}"),
     ]
     if a.git:

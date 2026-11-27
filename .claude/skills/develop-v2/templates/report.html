@@ -226,7 +226,8 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   }
   function add(parent, ...kids) { kids.flat().forEach(k => k && parent.append(k)); return parent; }
 
-  const ACC = { met: ["満たした", "b-ok"], partial: ["一部", "b-mid"], unmet: ["満たしていない", "b-ng"] };
+  const ACC = { met: ["満たした", "b-ok"], partial: ["一部", "b-mid"], unmet: ["満たしていない", "b-ng"], unverified: ["未確認", "b-mid"] };
+  const VERIFY = { auto: "自動", manual: "手動" };
   const TEST = { pass: ["通過", "b-ok"], fail: ["失敗", "b-ng"], skip: ["未実行", "b-plain"] };
   const SEV = { "高": "b-ng", "中": "b-mid", "低": "b-plain", "MUST": "b-ng", "SHOULD": "b-mid", "MAY": "b-plain" };
   const TASK = { "完了": "b-ok", "実装中": "b-mid", "テスト中": "b-mid", "待ち": "b-plain" };
@@ -284,11 +285,12 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   const notPassed = tests.length - passed - failed;
   const acc = arr(D.acceptance);
   const met = acc.filter(a => a.result === "met").length;
+  const unverified = acc.filter(a => a.result === "unverified").length;
   const highs = arr(D.decisions).filter(d => d.severity === "高").length;
   const rounds = arr(D.reviews);
   const nAgent = rounds.filter(r => r.reviewer !== "Copilot").length;
   const facts = h("div", "facts");
-  [["状態", D.status || "—"], ["見てほしいこと", `${arr(D.attention).length} 件`, "#attention"], ["受け入れ基準", !acc.length ? "—" : acc.some(a => a.result) ? `${met} / ${acc.length} 満たした` : `${acc.length} 件・未確認`],
+  [["状態", D.status || "—"], ["見てほしいこと", `${arr(D.attention).length} 件`, "#attention"], ["受け入れ基準", !acc.length ? "—" : acc.some(a => a.result && a.result !== "unverified") ? `${met} / ${acc.length} 満たした` + (unverified ? `・手動 ${unverified} 件未確認` : "") : `${acc.length} 件・未確認`],
    ["テスト", !tests.length ? "—" : failed ? `${failed} 件失敗` + (notPassed ? `・${notPassed} 件未実行` : "") : notPassed ? `${passed} 件通過・${notPassed} 件未実行` : `${tests.length} 件すべて通過`],
    ["レビュー", nAgent ? `${nAgent} 周` + (rounds.some(r => r.reviewer === "Copilot") ? "＋Copilot" : "") : "—"],
    ["重要度 高の判断", `${highs} 件`]].forEach(([k, v, href]) => { const f = h("div", "fact"); let val = h("span", "v", v); if (href) { const a = h("a", null, v); a.href = href; val = h("span", "v"); val.append(a); } add(f, h("span", "k", k), val); facts.append(f); });
@@ -317,8 +319,14 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   sAc.append(table([
     { label: "#", key: "id", cls: "id" },
     { label: "基準", render: r => { const sp = h("span", null, r.text); if (changed.has(r.id)) add(sp, " ", badge("承認後に変更", "b-mid")); return sp; } },
+    { label: "種類", render: r => VERIFY[r.verify] ? badge(VERIFY[r.verify], r.verify === "manual" ? "b-mid" : "b-plain") : "—" },
     { label: "結果", render: r => { const x = ACC[r.result] || [r.result || "—", "b-plain"]; return badge(x[0], x[1]); } },
     { label: "確かめ方", key: "how" },
+    { label: "根拠", render: r => {
+      const ev = String(r.evidence || "").trim();
+      if (ev) return ev;
+      return r.verify === "auto" && ["met", "partial"].includes(r.result) ? badge("根拠なし", "b-ng") : "—";
+    } },
   ], acc, true));
 
   // ---- PRD ----
