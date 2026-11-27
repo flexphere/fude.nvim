@@ -1,0 +1,39 @@
+{
+  "slug": "tla-verification",
+  "title": "/develop-v2 で非同期・競合・タイマーが絡む開発を TLA+ で設計検証する",
+  "branch": "feat/tla-verification",
+  "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification",
+  "base": "docs/develop-v2-test-first",
+  "phase": "implementing",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-27T23:07:29+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-27T23:11:08+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-27T23:18:46+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 4,
+    "prd_drafts": 1,
+    "ac_checks": 2,
+    "ac_check_findings": 8
+  },
+  "agents": {
+    "reviewer": "a017e5b2e3515f482",
+    "judge": null
+  },
+  "review_outcomes": [],
+  "pr": {
+    "number": null,
+    "url": null
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/JczjJTm1ZE1q73pwUtZjRL"
+}
