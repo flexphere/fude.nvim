@@ -5,7 +5,7 @@
          "holds": sum(1 for p in props if p.get("result") == "holds"),
          "violated": sum(1 for p in props if p.get("result") == "violated"),
 -        "guard_violated": sum(1 for g in guards if isinstance(g, dict) and g.get("result") == "violated"),
-+        "guard_violated": sum(1 for g in guards if isinstance(g, dict) and g.get("result") == "holds"),
++        "guard_violated": sum(1 for g in guards if isinstance(g, dict)),
          "guard_holds": sum(1 for g in guards if isinstance(g, dict) and g.get("result") == "holds"),
          "guard_missing": sum(1 for g in guards if not isinstance(g, dict)),
      }
