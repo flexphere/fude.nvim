@@ -21,159 +21,235 @@
       "id": "AC1",
       "text": "TLC が「Model checking completed. No error has been found.」と状態数の行を出して終わったとき、`run-tlc.py` の出力の JSON が `\"result\": \"ok\"` と、状態数の行から読んだ `states.generated`・`states.distinct` を持ち、終了コードが 0 になる",
       "verify": "auto",
-      "how": "テスト `test_ok_output_reports_ok_and_states`"
+      "how": "テスト `test_ok_output_reports_ok_and_states`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_ok_output_reports_ok_and_states`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC1.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC2",
       "text": "TLC が「Error: Invariant <名前> is violated.」と手順（`State 1:` 〜 `State 4:`）を出したとき、出力の JSON が `\"result\": \"violation\"`、`violation.kind` が `\"invariant\"`、`violation.name` が `<名前>`、`violation.steps` が 4 を持ち、終了コードが 1 になる",
       "verify": "auto",
-      "how": "テスト `test_invariant_violation_reports_name_and_steps`"
+      "how": "テスト `test_invariant_violation_reports_name_and_steps`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_invariant_violation_reports_name_and_steps`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC2.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC3",
       "text": "TLC が「Error: Temporal properties were violated.」を出したとき、出力の JSON が `\"result\": \"violation\"`、`violation.kind` が `\"temporal\"`、`violation.name` が null を持ち、終了コードが 1 になる",
       "verify": "auto",
-      "how": "テスト `test_temporal_violation_reports_temporal_kind`"
+      "how": "テスト `test_temporal_violation_reports_temporal_kind`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_temporal_violation_reports_temporal_kind`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC3.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC4",
       "text": "TLC が「Error: Deadlock reached.」を出したとき、出力の JSON が `\"result\": \"violation\"`、`violation.kind` が `\"deadlock\"` を持ち、終了コードが 1 になる",
       "verify": "auto",
-      "how": "テスト `test_deadlock_reports_deadlock_kind`"
+      "how": "テスト `test_deadlock_reports_deadlock_kind`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_deadlock_reports_deadlock_kind`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC4.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC5",
       "text": "違反のとき、出力の JSON の `violation.trace` が、TLC が出した「Error: The behavior up to this point is:」（不変条件・デッドロック）または「Error: The following behavior constitutes a counter-example:」（時間的性質。直後の空行は含めない）の次の行から始まり、最後の `State <n>:` の塊の後の最初の空行の手前で終わる文字列になる。ただし最後の行が `Back to state <n>` で始まる行か `State <n>: Stuttering` なら、その行で終わる（その行を含む。末尾の改行は含まない）。テストは、不変条件の場合・`Back to state` で終わる場合・`Stuttering` で終わる場合の 3 つを確かめる",
       "verify": "auto",
-      "how": "テスト `test_violation_trace_is_the_behavior_block`"
+      "how": "テスト `test_violation_trace_is_the_behavior_block`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_violation_trace_is_the_behavior_block`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC5.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC6",
       "text": "`<dir>/Spec.tla` と `--config <dir>/Other.cfg` を渡したとき、偽の `docker` が受け取る引数が、`run`・`--rm`・`--name <名前>`・`<dir>` の書き込める mount・jar の読み取り専用の mount・イメージ `eclipse-temurin:21-jre`・`java`・`tlc2.TLC`・`-workers auto`・`-config Other.cfg`・値が `/tmp/` で始まる `-metadir`・`Spec` を含み、`-deadlock` を含まない",
       "verify": "auto",
-      "how": "テスト `test_docker_args_without_allow_deadlock`"
+      "how": "テスト `test_docker_args_without_allow_deadlock`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_docker_args_without_allow_deadlock`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC6.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC7",
       "text": "`--allow-deadlock` を渡したとき、偽の `docker` が受け取る `tlc2.TLC` の引数に `-deadlock` が含まれる",
       "verify": "auto",
-      "how": "テスト `test_allow_deadlock_passes_deadlock_flag`"
+      "how": "テスト `test_allow_deadlock_passes_deadlock_flag`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_allow_deadlock_passes_deadlock_flag`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC7.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC8",
       "text": "TLC が `--timeout <秒>` を過ぎても終わらないとき、出力の JSON が `\"result\": \"timeout\"` を持ち、終了コードが 2 になる",
       "verify": "auto",
-      "how": "テスト `test_timeout_reports_timeout_and_exit_2`"
+      "how": "テスト `test_timeout_reports_timeout_and_exit_2`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_timeout_reports_timeout_and_exit_2`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC8.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC9",
       "text": "時間切れのとき、偽の `docker` が、`run` に渡したのと同じ名前で `kill <名前>` を受け取る",
       "verify": "auto",
-      "how": "テスト `test_timeout_kills_the_container_by_name`"
+      "how": "テスト `test_timeout_kills_the_container_by_name`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_timeout_kills_the_container_by_name`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC9.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC10",
       "text": "`docker` が `PATH` に無いとき、出力の JSON が `\"result\": \"error\"` と空でない文字列の `error` を持ち、終了コードが 2 になる",
       "verify": "auto",
-      "how": "テスト `test_missing_docker_reports_error`"
+      "how": "テスト `test_missing_docker_reports_error`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_missing_docker_reports_error`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC10.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC11",
       "text": "TLC の出力に「No error has been found」も違反の行も無いとき（構文エラー、Docker のデーモンが止まっているなど）、出力の JSON が `\"result\": \"error\"` と、TLC の出力の最後の行を含む `detail` を持ち、終了コードが 2 になる",
       "verify": "auto",
-      "how": "テスト `test_unrecognized_output_reports_error_with_detail`"
+      "how": "テスト `test_unrecognized_output_reports_error_with_detail`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_unrecognized_output_reports_error_with_detail`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC11.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC12",
       "text": "jar がキャッシュに無く、ダウンロードした jar の SHA-256 が決めた値と違うとき、終了コードが 2 になり、キャッシュのディレクトリに jar が残らない",
       "verify": "auto",
-      "how": "テスト `test_checksum_mismatch_removes_download`"
+      "how": "テスト `test_checksum_mismatch_removes_download`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_checksum_mismatch_removes_download`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC12.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC13",
       "text": "`--jar <path>` を渡したとき、ダウンロードせず（偽の `curl` が呼ばれず）、偽の `docker` が受け取る mount に `<path>` が含まれる",
       "verify": "auto",
-      "how": "テスト `test_jar_option_skips_download`"
+      "how": "テスト `test_jar_option_skips_download`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_jar_option_skips_download`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC13.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC14",
       "text": "性質 3 つ（`result` が `holds`・`holds`・`violated`、`guard.result` が `violated`・`holds`・無し）を持つ `verification`（`used: true`）を含む `report.json` から `build-metrics.py` で作った `metrics.json` の `verification` が、`used: true`、`properties: 3`、`holds: 2`、`violated: 1`、`guard_violated: 1`、`guard_holds: 1`、`guard_missing: 1` を持つ（`guard_violated`・`guard_holds` は `guard.result` がその値の性質の数、`guard_missing` は `guard` が無い性質の数）",
       "verify": "auto",
-      "how": "テスト `test_build_metrics_counts_verification`"
+      "how": "テスト `test_build_metrics_counts_verification`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_build_metrics_counts_verification`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC14.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC15",
       "text": "`verification` の無い `report.json` から作った `metrics.json` の `verification` が null になる",
       "verify": "auto",
-      "how": "テスト `test_build_metrics_verification_null_when_absent`"
+      "how": "テスト `test_build_metrics_verification_null_when_absent`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_build_metrics_verification_null_when_absent`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC15.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC16",
       "text": "`verification.used` が false の `report.json` から作った `metrics.json` の `verification` が `{\"used\": false, \"properties\": 0, \"holds\": 0, \"violated\": 0, \"guard_violated\": 0, \"guard_holds\": 0, \"guard_missing\": 0}` になる",
       "verify": "auto",
-      "how": "テスト `test_build_metrics_verification_unused`"
+      "how": "テスト `test_build_metrics_verification_unused`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_build_metrics_verification_unused`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC16.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC17",
       "text": "AC14 の `metrics.json`、AC16 の `metrics.json`、`verification` が null の `metrics.json` を `docs/dev/` の下の別々のディレクトリに置いて `aggregate-metrics.py --root <そのルート>` を走らせたとき、開発ごとの表の「設計の検証」の列が、それぞれ `性質 3・破れた 1・守り外し 1/3`、`検証なし`、`—` になる",
       "verify": "auto",
-      "how": "テスト `test_aggregate_metrics_shows_verification_column`"
+      "how": "テスト `test_aggregate_metrics_shows_verification_column`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_aggregate_metrics_shows_verification_column`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC17.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
     },
     {
       "id": "AC18",
       "text": "下の対応表の値をすべて含む `verification`（`used: true`）を持つ `templates/report.example.json` から `build-report.py` で作ったページの「設計の検証」の節に、性質ごとの行が下の対応表どおりに表示される",
       "verify": "manual",
       "how": "`python3 -I .claude/skills/develop-v2/templates/build-report.py .claude/skills/develop-v2/templates/report.example.json <scratchpad>/report.html` → ブラウザで開く → 「設計の検証」の節の各行に対応表どおりの文言が見える",
-      "result": "unverified"
+      "result": "unverified",
+      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
     },
     {
       "id": "AC19",
       "text": "jar のキャッシュが空の状態で、`templates/tla-example/` の例のモデル（#340 の試作 `ChatDrain`）を守りを残した設定で実際の Docker で走らせたとき、出力が `\"result\": \"ok\"` で終了コードが 0 になる",
       "verify": "manual",
       "how": "`export XDG_CACHE_HOME=<scratchpad の空のディレクトリ>` → `python3 -I .claude/skills/develop-v2/scripts/run-tlc.py .claude/skills/develop-v2/templates/tla-example/ChatDrain.tla --allow-deadlock; echo $?` → JSON に `\"result\": \"ok\"`、最後の行に `0`",
-      "result": "unverified"
+      "result": "met",
+      "evidence": "レビュー役が 2026-11-27 に実際の Docker で手順どおり確認（実装役も確認）"
     },
     {
       "id": "AC20",
       "text": "例のモデルの守りを外した設定（`send` の「draining 中は待つ」を外す）を実際の Docker で走らせたとき、出力が `\"result\": \"violation\"` と `violation.name` が `\"OneWriterUnlessKilled\"` を持ち、終了コードが 1 になる",
       "verify": "manual",
       "how": "`python3 -I .claude/skills/develop-v2/scripts/run-tlc.py .claude/skills/develop-v2/templates/tla-example/ChatDrain.tla --config .claude/skills/develop-v2/templates/tla-example/ChatDrain_unguarded.cfg --allow-deadlock; echo $?` → JSON に `\"result\": \"violation\"` と `\"name\": \"OneWriterUnlessKilled\"`、最後の行に `1`",
-      "result": "unverified"
+      "result": "met",
+      "evidence": "レビュー役が 2026-11-27 に実際の Docker で手順どおり確認（実装役も確認）"
     },
     {
       "id": "AC21",
       "text": "`SKILL.md`・`templates/model-prompt.md`・`templates/prd.md`・`templates/implement-prompt.md` を読んだとき、下の「手順のチェックリスト」の項目がすべて書かれている",
       "verify": "manual",
       "how": "4 つのファイルを開き、チェックリストの項目ごとに書かれている箇所を探す → すべての項目に該当する箇所がある",
-      "result": "unverified"
+      "result": "unverified",
+      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
     },
     {
       "id": "AC22",
       "text": "`templates/report.example.json` から `verification` を除いた JSON で作ったページの「設計の検証」の節に、「まだ設計を検証していません」が表示される",
       "verify": "manual",
       "how": "例の JSON から `verification` を消したものを scratchpad に作り、`build-report.py` でページを作ってブラウザで開く → 節にその文言が見える",
-      "result": "unverified"
+      "result": "unverified",
+      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
     },
     {
       "id": "AC23",
       "text": "`verification` を `{\"used\": false, \"reason\": \"<理由>\"}` にした JSON で作ったページの「設計の検証」の節に、「TLA+ による検証はしていません」と `<理由>` が表示される",
       "verify": "manual",
       "how": "例の JSON の `verification` をその値に変えたものを scratchpad に作り、ページを作ってブラウザで開く → 節にその文言と理由が見える",
-      "result": "unverified"
+      "result": "unverified",
+      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
     },
     {
       "id": "AC24",
       "text": "報告のページで、「設計の検証」の節が受け入れ基準の節のすぐ次に表示される",
       "verify": "manual",
       "how": "AC18 のページを開く → 受け入れ基準の節の次の節が「設計の検証」",
-      "result": "unverified"
+      "result": "unverified",
+      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
     },
     {
       "id": "AC25",
       "text": "AC19 を走らせたあと、`$XDG_CACHE_HOME/develop-v2/tla2tools-1.7.4.jar` ができていて、その SHA-256 が制約に書いた値になる",
       "verify": "manual",
       "how": "AC19 のあとに `shasum -a 256 \"$XDG_CACHE_HOME/develop-v2/tla2tools-1.7.4.jar\"` → 制約の値と同じ",
-      "result": "unverified"
+      "result": "met",
+      "evidence": "レビュー役が 2026-11-27 に実際の Docker で手順どおり確認（実装役も確認）"
     }
   ],
   "prd": {
@@ -618,6 +694,87 @@
           "response": "直した。Action property の違反を kind action で読む。同じ形の穴として、初期状態で破れる PROPERTY も読むようにした。テスト 3 件を追加"
         }
       ]
+    },
+    {
+      "round": 3,
+      "revision": 1,
+      "date": "2026-11-28",
+      "reviewer": "レビュー役",
+      "tests": "pass",
+      "must": 0,
+      "should": 0,
+      "may": 0,
+      "mutateByReviewer": [
+        {
+          "ac": "AC1",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC2",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC3",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC4",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC5",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC6",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC7",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC8",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC9",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC10",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC11",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC12",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC13",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC14",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC15",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC16",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC17",
+          "mutation": "killed"
+        }
+      ],
+      "findings": []
     }
   ],
   "unresolved": [

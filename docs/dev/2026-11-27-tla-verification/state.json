@@ -33,7 +33,13 @@
     "reviewer": "a017e5b2e3515f482",
     "judge": "a865844d8c29dac38"
   },
-  "review_outcomes": [],
+  "review_outcomes": [
+    {
+      "revision": 1,
+      "ended": "must0",
+      "rounds": 3
+    }
+  ],
   "pr": {
     "number": 342,
     "url": "https://github.com/flexphere/fude.nvim/pull/342"
