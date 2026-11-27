@@ -530,9 +530,140 @@
           "response": "直さない（D-009 で判断済み。ネットワークに出るため）"
         }
       ]
+    },
+    {
+      "round": 2,
+      "revision": 1,
+      "date": "2026-11-27",
+      "reviewer": "レビュー役",
+      "tests": "pass",
+      "must": 1,
+      "should": 4,
+      "may": 2,
+      "mutateByReviewer": [
+        {
+          "ac": "AC1",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC2",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC3",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC4",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC5",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC6",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC7",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC8",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC9",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC10",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC11",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC12",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC13",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC14",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC15",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC16",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC17",
+          "mutation": "killed"
+        }
+      ],
+      "findings": [
+        {
+          "id": "R2-M1",
+          "severity": "MUST",
+          "text": "action property（[][A]_v）の違反が error・終了コード 2 になる（run-tlc.py parse_output）",
+          "response": "直した。Action property の違反を kind action で読む。同じ形の穴として、初期状態で破れる PROPERTY も読むようにした。テスト 3 件を追加"
+        }
+      ]
     }
   ],
-  "unresolved": [],
+  "unresolved": [
+    {
+      "id": "R2-S1",
+      "severity": "SHOULD",
+      "text": "report.src.html に、新しい節が使う .checks のスタイルが無い（src から作り直すとバッジが縦に並ばない。.checks 自体は base からのずれ）",
+      "reason": "2 周目の SHOULD のため直していない"
+    },
+    {
+      "id": "R2-S2",
+      "severity": "SHOULD",
+      "text": "run-tlc.py が SIGTERM で止められると docker kill を呼ばず、コンテナが残りうる（コードを読んだ結果で、未確認）",
+      "reason": "2 周目の SHOULD のため直していない"
+    },
+    {
+      "id": "R2-S3",
+      "severity": "SHOULD",
+      "text": "例のモデルが、model-prompt.md の「--allow-deadlock を使うなら、上限に達していない状態で止まらないことを不変条件で確かめる」に従っていない",
+      "reason": "2 周目の SHOULD のため直していない"
+    },
+    {
+      "id": "R2-S4",
+      "severity": "SHOULD",
+      "text": "verification が無い報告に「まだ設計を検証していません」が出て、未着手のように読める（AC22 で承認済みの文言への異論）",
+      "reason": "PRD で承認された挙動。変えるなら PRD の変更"
+    },
+    {
+      "id": "R2-M-1",
+      "severity": "MAY",
+      "text": "最初のイメージの pull が時間の上限に含まれる",
+      "reason": "2 周目の MAY のため直していない"
+    },
+    {
+      "id": "R2-M-2",
+      "severity": "MAY",
+      "text": "出力の config が入力したパスのままで、SKILL.md の「設定のファイル名」と食い違う",
+      "reason": "2 周目の MAY のため直していない"
+    },
+    {
+      "id": "R1-4",
+      "severity": "MAY",
+      "text": "AC13 のパッチが実際に起こりうる退行の形をしていない",
+      "reason": "D-009。ネットワークに出るため"
+    }
+  ],
   "tasks": [
     {
       "id": "T1",
