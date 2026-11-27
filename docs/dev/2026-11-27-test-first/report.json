@@ -179,6 +179,45 @@
       "impact": "implement-prompt.md の 2 段の進め方",
       "revisit": "空のモジュールの上で一部のテストが実装前に通ってしまうとき、固定のチェックで問題になるとき",
       "refs": "AC18"
+    },
+    {
+      "at": "2026-11-27 23:00",
+      "phase": "レビュー",
+      "by": "作業する側",
+      "id": "D-010",
+      "title": "ac-tests.json は実装役の報告をもとにメインが書き、並列のときはパッチの確かめを共有の作業ツリーで行わない",
+      "severity": "低",
+      "severityReason": "手順の文書の書き方だけ",
+      "background": "レビュー 1 周目で、並列のタスクが同じ ac-tests.json を書き換える競合（R1-5）と、パッチの確かめが他の実装役のテストを壊すこと（R1-6）が指摘された。",
+      "options": [
+        "メインが一覧をまとめて書き、並列のときは確かめを mutate に任せる",
+        "タスクごとに一覧を分ける",
+        "自動の基準を持つタスクは並列にしない"
+      ],
+      "decided": "メインが一覧をまとめて書き、並列のときは確かめを mutate に任せる",
+      "reason": "一覧は記録なのでメインが書いてよく、mutate の結果ファイルを 1 つに保てる（AC20）。並列も止めずに済む。",
+      "impact": "implement-prompt.md、SKILL.md",
+      "revisit": "メインのまとめ書きで取り違えが起きたとき",
+      "refs": "AC20"
+    },
+    {
+      "at": "2026-11-27 23:00",
+      "phase": "レビュー",
+      "by": "作業する側",
+      "id": "D-011",
+      "title": "1 周目の MAY 2 件は直さない",
+      "severity": "低",
+      "severityReason": "指標の粒度と、変更前からの問題",
+      "background": "R1-10（指標が数えない値がある）と R1-11（終わりの条件の食い違い、変更前から）。",
+      "options": [
+        "直す",
+        "見送る"
+      ],
+      "decided": "見送る",
+      "reason": "R1-10 は AC16 を満たしており、必要になってから足せる。R1-11 はこの開発の範囲の外で、前からある問題。",
+      "impact": "なし",
+      "revisit": "/harness-audit で数えたい値が出たとき／終わりの条件の食い違いで迷う開発が出たとき",
+      "refs": "R1-10, R1-11"
     }
   ],
   "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
@@ -409,7 +448,86 @@
       "detail": "16 件通過（実装前に 16 件すべて落ちることをメインが確認: 2026-11-27T22:28）"
     }
   ],
-  "reviews": [],
+  "reviews": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-27",
+      "tests": "pass",
+      "must": 0,
+      "should": 9,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "SHOULD",
+          "text": "patch_paths が hunk 本文の `--- ` 行（消した Lua のコメント）をパスと誤読し、正しいパッチが rejected になる",
+          "response": "T1 が直す"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "レビュー役が command と fail_marker を確かめていない（fail_marker が無いと別のテストの失敗で killed になる）",
+          "response": "T3 が直す"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "コマンドに時間の上限が無く、殺されるとパッチが当たったまま残る",
+          "response": "T1（スクリプト）と T3（手順）が直す"
+        },
+        {
+          "id": "R1-4",
+          "severity": "SHOULD",
+          "text": "想定外の入力（patch の型、UTF-8 でない出力）でトレースバックを出し終了コード 1 で落ちる",
+          "response": "T1 が直す"
+        },
+        {
+          "id": "R1-5",
+          "severity": "SHOULD",
+          "text": "並列のタスクが同じ ac-tests.json を書き換える",
+          "response": "T3 が直す（D-010）"
+        },
+        {
+          "id": "R1-6",
+          "severity": "SHOULD",
+          "text": "並列のとき、パッチを確かめる作業が共有の作業ツリーで本番のコードを壊す",
+          "response": "T3 が直す（D-010）"
+        },
+        {
+          "id": "R1-7",
+          "severity": "SHOULD",
+          "text": "レビュー役の git status / git diff で、未コミットの docs/dev/ の記録が見える",
+          "response": "T3 が直す"
+        },
+        {
+          "id": "R1-8",
+          "severity": "SHOULD",
+          "text": "「戻した後の作業ツリーが違えば終了コード 2」と「パッチを戻せない」の処理にテストが無い",
+          "response": "T1 が直す"
+        },
+        {
+          "id": "R1-9",
+          "severity": "SHOULD",
+          "text": "例のデータの AC8 が mutation 無しで met になっている",
+          "response": "T3 が直す"
+        },
+        {
+          "id": "R1-10",
+          "severity": "MAY",
+          "text": "指標が red: pass、baseline_failed・rejected・no_patch を数えていない",
+          "response": "見送り（D-011）"
+        },
+        {
+          "id": "R1-11",
+          "severity": "MAY",
+          "text": "4. レビューの終わりの条件が capped・判断役が認めた未達と両立しない（この変更の前から）",
+          "response": "見送り（D-011）"
+        }
+      ]
+    }
+  ],
   "tasks": [
     {
       "id": "T1",
