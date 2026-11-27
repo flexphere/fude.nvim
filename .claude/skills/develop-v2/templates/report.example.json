@@ -115,6 +115,52 @@
       "evidence": "`ExportControllerTest`「不正な期間で 400 を返す」（通過。red・mutate を走らせる前に追加した基準のため記録がなく、mutate が killed でないので満たすにしていない）"
     }
   ],
+  "verification": {
+    "used": true,
+    "runs": [
+      { "config": "ExportJobs.cfg", "result": "timeout", "seconds": 600, "constants": { "Users": 3, "MaxRows": 5 } },
+      { "config": "ExportJobs.cfg", "result": "ok", "states": { "generated": 48213, "distinct": 9604 }, "depth": 23, "seconds": 41.2, "constants": { "Users": 2, "MaxRows": 3 } },
+      { "config": "ExportJobs_no_lock.cfg", "result": "violation", "violation": { "kind": "invariant", "name": "OneExportPerUser", "steps": 5 }, "states": { "generated": 3120, "distinct": 811 }, "seconds": 4.8, "constants": { "Users": 2, "MaxRows": 3 } },
+      { "config": "ExportJobs_no_cancel_check.cfg", "result": "ok", "states": { "generated": 51007, "distinct": 10233 }, "seconds": 44.0, "constants": { "Users": 2, "MaxRows": 3 } },
+      { "config": "ExportJobs_liveness.cfg", "result": "violation", "violation": { "kind": "temporal", "name": null, "steps": 7 }, "states": { "generated": 48213, "distinct": 9604 }, "seconds": 58.6, "constants": { "Users": 2, "MaxRows": 3 } },
+      { "config": "ExportJobs_no_timeout_flag.cfg", "result": "violation", "violation": { "kind": "invariant", "name": "NoRowAfterTimeout", "steps": 4 }, "states": { "generated": 1544, "distinct": 402 }, "seconds": 2.9, "constants": { "Users": 2, "MaxRows": 3 } }
+    ],
+    "properties": [
+      {
+        "name": "OneExportPerUser",
+        "kind": "invariant",
+        "text": "同じ利用者の出力は、同時に 1 つしか走らない",
+        "result": "holds",
+        "guard": { "config": "ExportJobs_no_lock.cfg", "result": "violated", "steps": 5 },
+        "ac": "AC6"
+      },
+      {
+        "name": "CancelledStreamCloses",
+        "kind": "invariant",
+        "text": "取り消した出力のストリームは、次の行を書く前に閉じる",
+        "result": "holds",
+        "guard": { "config": "ExportJobs_no_cancel_check.cfg", "result": "holds" },
+        "ac": "AC6"
+      },
+      {
+        "name": "EveryRequestAnswered",
+        "kind": "temporal",
+        "text": "どの要求も、いずれ CSV か 400 のどちらかで答えられる",
+        "result": "violated",
+        "ac": "AC8",
+        "handling": "制約"
+      },
+      {
+        "name": "NoRowAfterTimeout",
+        "kind": "invariant",
+        "text": "時間切れのあとに、行が書かれない",
+        "result": "violated",
+        "guard": { "config": "ExportJobs_no_timeout_flag.cfg", "result": "violated", "steps": 4 },
+        "ac": "AC6",
+        "handling": "設計を変更"
+      }
+    ]
+  },
   "prd": {
     "approvedAt": "2026-11-24",
     "purpose": "会社の担当者が、必要な期間・状態の物件だけを CSV で取り出せるようにする。今は全件を出して表計算ソフトで絞っており、件数の多い会社では出力に時間がかかっている。",

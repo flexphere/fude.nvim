@@ -106,7 +106,8 @@ th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-botto
 th { font-size: 12px; font-weight: 500; color: var(--ink-2); background: var(--wash); white-space: nowrap; }
 tr:last-child td { border-bottom: 0; }
 td.id { font-family: var(--mono); font-size: 12px; color: var(--ink-2); white-space: nowrap; }
-td.mono { font-family: var(--mono); font-size: 12px; }
+td.mono, span.mono { font-family: var(--mono); font-size: 12px; }
+span.mono { overflow-wrap: anywhere; }
 
 /* 受け入れ基準: 狭い画面ではカード */
 @media (max-width: 640px) {
@@ -341,6 +342,64 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
     } },
   ], acc, true));
 
+  // ---- 設計の検証（TLA+） ----
+  // verification が無ければ未検証、used: false なら検証しなかった理由、used: true なら検査の実行と性質ごとの結果
+  const V = D.verification && typeof D.verification === "object" ? D.verification : null;
+  const props = V && V.used === true ? arr(V.properties) : [];
+  const sVf = section("verification", "設計の検証", props.length || null);
+  if (!V) sVf.append(h("p", "note", "まだ設計を検証していません。"));
+  else if (V.used !== true) {
+    sVf.append(h("p", "note", "TLA+ による検証はしていません。"));
+    if (V.reason) sVf.append(h("p", null, "理由: " + V.reason));
+  } else {
+    // run-tlc.py の result。守りを外した設定では違反が出るのが正しいので、違反ありは警告の色にしない
+    const RUN = { ok: ["違反なし", "b-ok"], violation: ["違反あり", "b-plain"], timeout: ["時間切れ", "b-mid"], error: ["走らせられない", "b-ng"] };
+    const VKIND = { invariant: "", temporal: "活性", deadlock: "デッドロック" };
+    const PROP = { holds: ["成り立つ", "b-ok"], violated: ["破れた", "b-mid"] };
+    const KIND = { invariant: "不変条件", temporal: "活性" };
+    const num = n => typeof n === "number" ? n.toLocaleString("ja-JP") : null;
+    const runs = arr(V.runs);
+    sVf.append(h("h3", null, "検査の実行"));
+    if (!runs.length) sVf.append(h("p", "note", "検査の実行の記録はありません。"));
+    else sVf.append(table([
+      { label: "設定", key: "config", cls: "mono" },
+      { label: "結果", render: r => {
+        const x = RUN[r.result] || [r.result || "—", "b-mid"];
+        const v = r.result === "violation" && r.violation ? r.violation : null;
+        const what = v ? (v.name || VKIND[v.kind] || "") : "";
+        return badge(x[0] + (what ? "（" + what + "）" : ""), x[1]);
+      } },
+      { label: "状態数", cls: "mono", render: r => { const s = r.states || {}; const d = num(s.distinct), g = num(s.generated); return d ? d + (g ? `（生成 ${g}）` : "") : g ? `生成 ${g}` : "—"; } },
+      { label: "時間", cls: "mono", render: r => typeof r.seconds === "number" ? r.seconds + " 秒" : "—" },
+      { label: "使った定数", cls: "mono", render: r => {
+        const c = r.constants;
+        if (c && typeof c === "object" && !Array.isArray(c)) return Object.entries(c).map(([k, v]) => `${k} = ${typeof v === "object" ? JSON.stringify(v) : v}`).join(", ") || "—";
+        return c ? String(c) : "—";
+      } },
+    ], runs, true));
+    sVf.append(h("h3", null, "性質"));
+    if (!props.length) sVf.append(h("p", "note", "性質の記録はありません。"));
+    else sVf.append(table([
+      { label: "性質", render: r => add(h("span", "checks"), h("span", "mono", r.name || "—"), r.kind ? badge(KIND[r.kind] || r.kind, "b-plain") : null) },
+      { label: "説明", key: "text" },
+      { label: "結果", render: r => {
+        // 対応表に無い値はそのまま警告の色で出す
+        const x = PROP[r.result] || [r.result || "—", "b-mid"];
+        const out = add(h("span", "checks"), badge(x[0], x[1]));
+        if (r.result === "violated") out.append(r.handling ? badge(r.handling, "b-plain") : badge("扱いが未記入", "b-mid"));
+        return out;
+      } },
+      { label: "守りを外した版", render: r => {
+        const g = r.guard && typeof r.guard === "object" ? r.guard : null;
+        if (!g) return badge("守りを外した版なし", "b-mid");
+        const b = g.result === "violated" ? badge("守りを外すと破れる" + (typeof g.steps === "number" ? `（${g.steps} 手）` : ""), "b-plain")
+          : g.result === "holds" ? badge("守りを外しても破れない", "b-mid") : badge(String(g.result || "—"), "b-mid");
+        return add(h("span", "checks"), b, g.config ? h("span", "mono", g.config) : null);
+      } },
+      { label: "基準", key: "ac", cls: "id" },
+    ], props, true));
+  }
+
   // ---- PRD ----
   const P = D.prd || {};
   const sP = section("prd", "PRD");
@@ -484,8 +543,8 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
     ], revs.slice().sort((a, b) => (b.revision || 0) - (a.revision || 0)), true));
   }
 
-  // ---- 節の並び: 約束（PRD）→ 結果（受け入れ基準）→ 読む人のすること → 決め直せるもの → 経緯 ----
-  const SECTION_ORDER = ["prd", "acceptance", "attention", "unresolved", "decisions", "reviews", "tests", "tasks", "revisions"];
+  // ---- 節の並び: 約束（PRD）→ 結果（受け入れ基準・設計の検証）→ 読む人のすること → 決め直せるもの → 経緯 ----
+  const SECTION_ORDER = ["prd", "acceptance", "verification", "attention", "unresolved", "decisions", "reviews", "tests", "tasks", "revisions"];
   SECTION_ORDER.forEach(id => { const e = sections.find(x => x[0] === id); if (!e) return; main.append(document.getElementById(id)); toc.append(e[1]); });
   sections.sort((a, b) => SECTION_ORDER.indexOf(a[0]) - SECTION_ORDER.indexOf(b[0]));
 
