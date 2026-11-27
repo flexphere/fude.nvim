@@ -6,7 +6,7 @@
   "base": "docs/develop-v2-test-first",
   "status": "完了",
   "commits": 19,
-  "summary": "PR #342 を ready for review にしました。レビュー役は 3 周目で MUST 0 件、自動の基準 17 件はすべて満たし、mutate もすべて killed です。手動の基準のうち AC18・AC21〜AC24 は、画面での確認をお願いします。",
+  "summary": "PR #342 を ready for review にしました。レビュー役は 3 周目で MUST 0 件、自動の基準 17 件はすべて満たし、mutate もすべて killed です。手動の基準（AC18・AC21〜AC25）もすべて確かめ、満たしています。",
   "generatedBy": "/develop-v2",
   "tests": [
     {
@@ -40,31 +40,6 @@
       "text": "承認後に AC5 の文を変えました。違反の手順（trace）の切り出しを、TLC 2.19 の実際の出力に合わせています。時間的性質の見出し「Error: The following behavior constitutes a counter-example:」も読むようにし、`Back to state` や `Stuttering` の行で終わる場合も扱います。元の文のままでは、時間的性質の手順が取れませんでした。元に戻すには、AC5 の文を戻し、テストの時間的性質の 2 つの場合を消します。",
       "ref": "D-008 · AC5",
       "kind": "PRD 変更"
-    },
-    {
-      "text": "AC18（手動）: `python3 -I .claude/skills/develop-v2/templates/build-report.py .claude/skills/develop-v2/templates/report.example.json <scratchpad>/report.html` でページを作り、ブラウザで開いてください。「設計の検証」の節の各行に、PRD の AC18 の対応表どおりの文言が見えれば合格です（成り立つ／破れた＋扱い／守りを外すと破れる（N 手）／守りを外しても破れない／守りを外した版なし）。",
-      "ref": "AC18",
-      "kind": "動作確認"
-    },
-    {
-      "text": "AC22（手動）: 例の JSON から `verification` を消したものでページを作ると、節に「まだ設計を検証していません」と出れば合格です。",
-      "ref": "AC22",
-      "kind": "動作確認"
-    },
-    {
-      "text": "AC23（手動）: 例の JSON の `verification` を `{\"used\": false, \"reason\": \"<理由>\"}` に変えてページを作ると、節に「TLA+ による検証はしていません」とその理由が出れば合格です。",
-      "ref": "AC23",
-      "kind": "動作確認"
-    },
-    {
-      "text": "AC24（手動）: AC18 のページで、受け入れ基準の節のすぐ次が「設計の検証」なら合格です。",
-      "ref": "AC24",
-      "kind": "動作確認"
-    },
-    {
-      "text": "AC21（手動）: SKILL.md・templates/model-prompt.md・templates/prd.md・templates/implement-prompt.md を開き、PRD の「手順のチェックリスト」の 11 項目すべてに当たる箇所があれば合格です（レビュー役はすべてあると判定）。",
-      "ref": "AC21",
-      "kind": "動作確認"
     },
     {
       "text": "#341 の動作確認（AC18〜AC21）の結果です。AC18: 自動の基準 17 件の red はすべて fail で、合格です。AC20・AC21: レビューの 3 周それぞれに 17 件を持つ mutate-1-<周>.json があり、mutateByReviewer と一致して、合格です。AC19 は、手順の `git log -S'<テスト名>'` をそのまま走らせると、テスト名を含む PRD のコミット（23:18:46）が最も古い時刻として出て、red の `at`（23:20:41・23:23:07）より前になります。そのため手順どおりでは不合格になります。テストのファイルに絞る（`-- <テストのファイル>`）と、テストを足したコミットは 23:22:00・23:23:50 で、合格です。AC19 の確かめる方法を、テストのファイルに絞る形に直すことを勧めます。",
@@ -263,8 +238,8 @@
       "text": "下の対応表の値をすべて含む `verification`（`used: true`）を持つ `templates/report.example.json` から `build-report.py` で作ったページの「設計の検証」の節に、性質ごとの行が下の対応表どおりに表示される",
       "verify": "manual",
       "how": "`python3 -I .claude/skills/develop-v2/templates/build-report.py .claude/skills/develop-v2/templates/report.example.json <scratchpad>/report.html` → ブラウザで開く → 「設計の検証」の節の各行に対応表どおりの文言が見える",
-      "result": "unverified",
-      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: 例の JSON から作ったページをヘッドレスの Chromium で描き、性質の 4 行が対応表どおり（成り立つ／破れた＋制約・設計を変更／守りを外すと破れる（5 手・4 手）／守りを外しても破れない・守りを外した版なしは警告の色 b-mid）で、基準 AC6・AC8 も出ることを見た"
     },
     {
       "id": "AC19",
@@ -287,32 +262,32 @@
       "text": "`SKILL.md`・`templates/model-prompt.md`・`templates/prd.md`・`templates/implement-prompt.md` を読んだとき、下の「手順のチェックリスト」の項目がすべて書かれている",
       "verify": "manual",
       "how": "4 つのファイルを開き、チェックリストの項目ごとに書かれている箇所を探す → すべての項目に該当する箇所がある",
-      "result": "unverified",
-      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: 11 項目すべてに該当する箇所がある（SKILL.md 93〜117・135・56・200〜202 行、model-prompt.md 6〜30 行、implement-prompt.md 23〜27 行、prd.md 30〜44 行）"
     },
     {
       "id": "AC22",
       "text": "`templates/report.example.json` から `verification` を除いた JSON で作ったページの「設計の検証」の節に、「まだ設計を検証していません」が表示される",
       "verify": "manual",
       "how": "例の JSON から `verification` を消したものを scratchpad に作り、`build-report.py` でページを作ってブラウザで開く → 節にその文言が見える",
-      "result": "unverified",
-      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: verification を消した JSON のページをヘッドレスの Chromium で描き、節に「まだ設計を検証していません。」が出た"
     },
     {
       "id": "AC23",
       "text": "`verification` を `{\"used\": false, \"reason\": \"<理由>\"}` にした JSON で作ったページの「設計の検証」の節に、「TLA+ による検証はしていません」と `<理由>` が表示される",
       "verify": "manual",
       "how": "例の JSON の `verification` をその値に変えたものを scratchpad に作り、ページを作ってブラウザで開く → 節にその文言と理由が見える",
-      "result": "unverified",
-      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: verification を {used:false, reason:\"非同期の処理が無いため\"} にしたページで、節に「TLA+ による検証はしていません。」と「理由: 非同期の処理が無いため」が出た"
     },
     {
       "id": "AC24",
       "text": "報告のページで、「設計の検証」の節が受け入れ基準の節のすぐ次に表示される",
       "verify": "manual",
       "how": "AC18 のページを開く → 受け入れ基準の節の次の節が「設計の検証」",
-      "result": "unverified",
-      "evidence": "レビュー役がコードを読み、手順どおりなら合格の見え方になると判断（画面では未確認）"
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: AC18 のページの節の並びが PRD → 受け入れ基準 → 設計の検証 → 見てほしいこと"
     },
     {
       "id": "AC25",

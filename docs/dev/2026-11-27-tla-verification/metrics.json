@@ -36,17 +36,12 @@
     },
     "acceptance": {
       "total": 25,
-      "met": 20,
+      "met": 25,
       "partial": 0,
       "unmet": 0,
-      "unverified": 5,
+      "unverified": 0,
       "manual": 8,
-      "auto_without_evidence": 0,
-      "red_fail": 17,
-      "red_skipped": 0,
-      "mutation_killed": 17,
-      "mutation_survived": 0,
-      "auto_without_mutation": 0
+      "auto_without_evidence": 0
     },
     "tests_failed": 0
   },
@@ -76,6 +71,5 @@
     "pr": 0.18,
     "reporting": 0.0
   },
-  "unresolved": 7,
-  "verification": null
+  "unresolved": 7
 }
