@@ -109,10 +109,10 @@
     {
       "id": "AC8",
       "text": "絞り込みの条件が不正な値のとき、400 を返して CSV を出力しない",
-      "result": "met",
+      "result": "unmet",
       "how": "Unit テスト `ExportControllerTest`「不正な期間で 400 を返す」",
       "verify": "auto",
-      "evidence": "`ExportControllerTest`「不正な期間で 400 を返す」（通過。red・mutate を走らせる前に追加した基準のため記録なし）"
+      "evidence": "`ExportControllerTest`「不正な期間で 400 を返す」（通過。red・mutate を走らせる前に追加した基準のため記録がなく、mutate が killed でないので満たすにしていない）"
     }
   ],
   "prd": {
