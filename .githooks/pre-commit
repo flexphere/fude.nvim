@@ -21,4 +21,7 @@ nvim --headless -l scripts/check_purity.lua
 echo "=> check-docs"
 nvim --headless -l scripts/check_docs.lua
 
+echo "=> check-doc-lang"
+nvim --headless -l scripts/check_doc_lang.lua
+
 echo "All checks passed."

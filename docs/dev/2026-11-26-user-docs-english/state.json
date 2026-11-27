@@ -1,0 +1,63 @@
+{
+  "slug": "user-docs-english",
+  "title": "利用者向け文書を英語にするルールと自動チェック",
+  "branch": "docs/user-docs-english",
+  "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-user-docs-english",
+  "phase": "done",
+  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done（scripts/set-phase.py で進める）",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-26T16:34:06+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-26T16:36:50+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-26T17:00:22+09:00"
+    },
+    {
+      "phase": "reviewing",
+      "at": "2026-11-26T17:05:16+09:00"
+    },
+    {
+      "phase": "pr",
+      "at": "2026-11-26T17:14:46+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-26T17:15:15+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-26T17:15:15+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 4,
+    "prd_drafts": 1,
+    "ac_checks": 3,
+    "ac_check_findings": 5
+  },
+  "agents": {
+    "reviewer": "a089f6625aaae06a7",
+    "judge": null,
+    "_note": "SendMessage で続けて頼むための ID（セッションをまたぐと使えない）"
+  },
+  "review_outcomes": [
+    {
+      "revision": 1,
+      "ended": "must0",
+      "rounds": 2
+    }
+  ],
+  "_review_outcomes_note": "レビューが終わるたびに {\"revision\": 1, \"ended\": \"must0\" | \"capped\", \"rounds\": 3} を足す（Copilot 対応のあとのレビューには \"after\": \"copilot\" も付ける）",
+  "pr": {
+    "number": 334,
+    "url": "https://github.com/flexphere/fude.nvim/pull/334"
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/C8FcrkDJqQVgJDYvtnoAfB"
+}

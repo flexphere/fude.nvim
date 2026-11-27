@@ -19,7 +19,7 @@ fude.nvim is a Neovim plugin for GitHub PR code review. It shows base branch dif
   - Test files: `tests/fude/*_spec.lua`
   - Bootstrap: `tests/minimal_init.lua`
   - Shared helpers: `tests/helpers.lua` (mock management, test buffer creation, async wait)
-- **All checks**: `make all` (lint + format-check + test + check-state-deps + check-purity + check-docs)
+- **All checks**: `make all` (lint + format-check + test + check-state-deps + check-purity + check-docs + check-doc-lang)
 
 ## Architecture
 
@@ -168,6 +168,7 @@ ranges get a separate draft row. The shared `build_comment_map` remains line-bas
 3. **Test coverage check**: After writing code, review whether the changed/added functions have test coverage. If not, write tests before committing.
 4. **Formatting**: Run `stylua lua/ plugin/ tests/` after editing any Lua file to ensure consistent formatting.
 5. **Documentation**: When adding or changing features, commands, keymaps, or configuration options, update the corresponding documentation (`README.md`, `doc/fude.txt`, `CLAUDE.md` Architecture section) before committing.
+6. **User-facing docs in English**: Write user-facing documentation (`README.md`, `doc/fude.txt`, Markdown under `contrib/`, and `CONTRIBUTING.md` before the `# Collaborator guide` heading) in English. Exceptions: `*.ja.md` translation files, `CONTRIBUTING.md` from the Collaborator guide on, and the frontmatter `description:` line of a contrib `SKILL.md` (Japanese trigger phrases). Enforced by `make check-doc-lang` (`scripts/check_doc_lang.lua`), which runs in `make all`, pre-commit and CI.
 
 ## PR/Commit Conventions
 

@@ -47,9 +47,10 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `make check-state-deps` (`scripts/check_state_deps.lua`) | 開発中・pre-commit・CI | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性検証 |
 | 計算的 | `make check-purity` (`scripts/check_purity.lua`) | 開発中・pre-commit・CI | `*/data.lua` `*/format.lua` の純粋性 (vim API・`config.state` 不参照) の検証 |
 | 計算的 | `make check-docs` (`scripts/check_docs.lua`) | 開発中・pre-commit・CI | `lua/fude/commands.lua` のレジストリ + `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向整合性、および `lua/fude/config.lua` `M.defaults` の top-level 設定キーが `doc/fude.txt` に backtick 形式で文書化されているかの forward 検証 |
+| 計算的 | `make check-doc-lang` (`scripts/check_doc_lang.lua`) | 開発中・pre-commit・CI | 利用者向け文書 (`README.md`・`doc/fude.txt`・`contrib/` 以下の Markdown・`CONTRIBUTING.md` の `# Collaborator guide` より前) に日本語の文字が残っていないかの検証。`*.ja.md` 翻訳と contrib `SKILL.md` frontmatter の `description:` 行は対象外 |
 | 計算的 | `make coverage` (luacov) | 開発中（手動）・CI | `lua/fude/` のテストカバレッジ計測。`make all` には未組み込み（報告のみ・閾値強制なし）。CI artifact `coverage-report` に保管 |
-| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 6 つを順次実行する **ローカルゲート** |
-| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 7 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
+| 計算的 | `.githooks/pre-commit` | commit | 上記のうち coverage を除く 7 つを順次実行する **ローカルゲート** |
+| 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 8 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
 | 計算的 | `/develop-v2` の指標 (`docs/dev/*/metrics.json`、`aggregate-metrics.py`) | `/develop-v2` の報告時に生成・`/harness-audit` で集計 | 開発ごとのヒアリングの手戻り、レビューの周数と MUST、判断役・人への差し戻し、Copilot で直した数（レビュー役の見逃しの目安）、レビューの打ち切り・4 周目以降の MUST（周の上限の見直し）、報告後の修正、マージ後の fix 候補 |
@@ -104,6 +105,7 @@ Fowler の枠組みで埋められる余地を、優先度別の **PR Roadmap** 
 | `check_state_deps` | #134-#135 | CLAUDE.md State Dependencies テーブル (W/R) と `lua/fude/` 実コードの整合性 | multi-LHS 代入 `state.a, state.b = ...` は最後の LHS のみ W 検出、動的フィールド `state[key]` は検出不可、greedy file-wide alias スコープのため shadowing で誤検出の可能性（現コードベースに該当ケースなし） |
 | `check_purity` | #136 | `*/data.lua` `*/format.lua` の純粋性（vim API・`config.state` 不参照） | 動的アクセス `vim["api"]`、`require` 経由の間接的副作用、`getmetatable` トリックは検出不可 |
 | `check_docs` | #137, #140, #206 | (1) `plugin/fude.lua` のコマンド登録と `doc/fude.txt` の `*:FudeXxx*` タグの双方向集合差分 (PR #137。PR #206 から `lua/fude/commands.lua` のレジストリも抽出元に追加)、(2) `config.lua` の `M.defaults` top-level キーが doc に backtick 形式で文書化されているか forward 検証 (PR #140) | config option は **forward のみ** (doc backtick は関数名等を含むため reverse 不適)。nested key (`signs.comment` 等) と default value の整合性は未対応。keymap 検証は §4.2 #3 で別 PR 化 |
+| `check_doc_lang` | #334 | 利用者向け文書 (`README.md`・`doc/fude.txt`・`contrib/` 以下の `*.md`・`CONTRIBUTING.md` の `# Collaborator guide` より前) の行に日本語の文字 (ひらがな・カタカナ・CJK 統合漢字・CJK 記号と句読点・全角形) が含まれないかの検証。`*.ja.md` 翻訳と contrib `SKILL.md` frontmatter の `description:` 行は対象外 | 日本語以外の非英語 (ハングル等) は検出しない。漢字は日本語と中国語を区別せず検出する。検出は PRD の 5 範囲だけで、その外の日本語の文字 (㈱・㌔ などの囲み文字や CJK 互換文字、CJK 統合漢字拡張 A 以降の漢字、カタカナ拡張 ㇰ 等) は検出しない。英語として自然かどうかは見ない |
 | `luacov` (`make coverage`) | #138 | `lua/fude/` のテストカバレッジ計測（line-hit 率）。報告のみ、閾値強制なし。CI artifact から取得 | 初期は 45-50% 程度の見込み。閾値強制は段階 3（将来 PR）で検討。`/harness-audit` の sensor 発火率指標とは別の独立メトリクス |
 
 ### 4.2 次に着手する PR 候補

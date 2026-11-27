@@ -749,9 +749,8 @@ Add `.fude/` to the target project's `.gitignore` to keep review logs local.
    branch). Optionally use `:FudeReviewLocalScope uncommitted` to review only
    uncommitted changes. The `commit` scope does not allow comments.
 2. Start Claude Code in the same repository and worktree, then ask it to
-   "Use fude-watch to watch my local review comments" or
-   "fude-watchでレビュー待受してください". It also checks existing unresolved
-   comments when starting.
+   "Use fude-watch to watch my local review comments". It also checks existing
+   unresolved comments when starting.
 3. In Neovim, use `:FudeReviewComment` on a line or selection, write a
    question or change request, and press `<CR>` in normal mode to save it.
    No GitHub review submission is needed.

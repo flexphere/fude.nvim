@@ -1,0 +1,504 @@
+{
+  "title": "利用者向け文書を英語にするルールと自動チェック",
+  "slug": "user-docs-english",
+  "date": "2026-11-26",
+  "branch": "docs/user-docs-english",
+  "base": "origin/main",
+  "status": "完了",
+  "commits": 9,
+  "summary": "完了しました。レビューは 2 周で MUST 0 件、受け入れ基準 17 件はすべて自動で満たし、CI も通っています。PR #334 は ready for review です。",
+  "generatedBy": "/develop-v2",
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト・check-state-deps・check-purity・check-docs・check-doc-lang すべて通過"
+    }
+  ],
+  "attention": [
+    {
+      "text": "README の fude-watch の手順（2.）は、日本語の例文を外して英語の例文 \"Use fude-watch to watch my local review comments\" だけにしました。文のつながりが自然か見てください。",
+      "ref": "AC12",
+      "kind": "動作確認"
+    },
+    {
+      "text": "CLAUDE.md の Quality Rules 6 番（利用者向け文書は英語）の文面が意図どおりか見てください。AGENTS.md はシンボリックリンクなので同じ内容になります。",
+      "ref": "AC17",
+      "kind": "動作確認"
+    },
+    {
+      "text": "Copilot のレビューは受けられませんでした（unable）。",
+      "ref": "Copilot",
+      "kind": "その他"
+    },
+    {
+      "text": "直さなかった MAY が 6 件あります（「直さなかった指摘」を参照）。どれも今のファイルでは起きない端の場面です。",
+      "ref": "R1-4〜R2-2",
+      "kind": "その他"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "対象の文書の行に日本語の文字が含まれるとき、チェックはその行を違反として返す（ファイルのパスと 1 始まりの行番号付き）",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「reports a line containing Japanese with its path and line number」",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「reports a line containing Japanese with its path and line number」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC2",
+      "text": "対象の文書の行が日本語の文字を含まないとき（ASCII のほか `·` `→` `▶` `✓` `●` などの記号を含む行も含む）、チェックはその行を違反として返さない",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「does not report lines without Japanese characters, including non-ASCII symbols」",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「does not report lines without Japanese characters, including non-ASCII symbols」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC3",
+      "text": "`CONTRIBUTING.md` の行 `# Collaborator guide` 以降の行に日本語の文字があっても、チェックはその行を違反として返さない",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「ignores CONTRIBUTING.md lines from the Collaborator guide heading on」",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「ignores CONTRIBUTING.md lines from the Collaborator guide heading on」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC4",
+      "text": "`CONTRIBUTING.md` の行 `# Collaborator guide` より前の行に日本語の文字があるとき、チェックはその行を違反として返す",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「reports CONTRIBUTING.md lines before the Collaborator guide heading」",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「reports CONTRIBUTING.md lines before the Collaborator guide heading」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC5",
+      "text": "名前が `.ja.md` で終わる `contrib/` 以下のファイルは、日本語の文字を含んでいてもチェック対象のファイル一覧に入らない",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「excludes *.ja.md translation files from the target list」",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「excludes *.ja.md translation files from the target list」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC6",
+      "text": "`contrib/` 以下の `SKILL.md` の YAML frontmatter（先頭の `---` から次の `---` まで）の `description:` 行に日本語の文字があっても、チェックはその行を違反として返さない",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「allows Japanese in the frontmatter description line of a contrib SKILL.md」",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「allows Japanese in the frontmatter description line of a contrib SKILL.md」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC7",
+      "text": "`contrib/` 以下の `SKILL.md` の frontmatter の外（本文）の行に日本語の文字があるとき、チェックはその行を違反として返す",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「reports Japanese in the body of a contrib SKILL.md」",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「reports Japanese in the body of a contrib SKILL.md」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC8",
+      "text": "違反が 2 件以上あるとき、違反の出力は 1 件につき 1 行で、各行が `<path>:<line>: <行の内容>` の形になる",
+      "verify": "auto",
+      "how": "`tests/fude/scripts/check_doc_lang_spec.lua`「formats each violation as <path>:<line>: <content> on its own line」（違反 2 件を入れて出力の 2 行を照らす）",
+      "result": "met",
+      "evidence": "`check_doc_lang_spec.lua`「formats each violation as <path>:<line>: <content> on its own line」（通過。機能を壊すと落ちることをレビュー役が確認）"
+    },
+    {
+      "id": "AC9",
+      "text": "違反を含むディレクトリをルートとして渡してスクリプトを実行したとき、終了コード 1 で終わる",
+      "verify": "auto",
+      "how": "`T=$(mktemp -d) && printf 'ok\\nテスト\\n' > \"$T/README.md\" && nvim --headless -l scripts/check_doc_lang.lua \"$T\"; echo \"exit=$?\"` → 最後の行が `exit=1`",
+      "result": "met",
+      "evidence": "PRD のコマンドで `README.md:2: テスト` と `exit=1`（レビュー役が実行）"
+    },
+    {
+      "id": "AC10",
+      "text": "違反があるとき、`make check-doc-lang` は 0 以外の終了コードで終わる",
+      "verify": "auto",
+      "how": "`T=$(mktemp -d) && printf 'テスト\\n' > \"$T/README.md\" && make check-doc-lang ROOT=\"$T\"; echo \"exit=$?\"` → `exit=0` 以外（`make` はレシピ失敗で 2 を返す）",
+      "result": "met",
+      "evidence": "`make: *** [check-doc-lang] Error 1` → `exit=2`（レビュー役が実行）"
+    },
+    {
+      "id": "AC11",
+      "text": "このブランチのリポジトリをルートとしてスクリプトを実行したとき（引数なし）、終了コード 0 で終わる（今の日本語がすべて英語に直されている）",
+      "verify": "auto",
+      "how": "`nvim --headless -l scripts/check_doc_lang.lua; echo \"exit=$?\"` → 最後の行が `exit=0`",
+      "result": "met",
+      "evidence": "`exit=0`（レビュー役が実行）"
+    },
+    {
+      "id": "AC12",
+      "text": "`README.md` の fude-watch の使い方の例文に、日本語の例文（「fude-watchでレビュー待受してください」）が無い",
+      "verify": "auto",
+      "how": "`grep -c 'レビュー待受' README.md` → `0`",
+      "result": "met",
+      "evidence": "`grep -c` → `0`"
+    },
+    {
+      "id": "AC13",
+      "text": "`Makefile` の `all` ターゲットが `check-doc-lang` を依存に含む",
+      "verify": "auto",
+      "how": "`grep -E '^all:.* check-doc-lang( |$)' Makefile` → 1 行出力される",
+      "result": "met",
+      "evidence": "`all: ... check-docs check-doc-lang` の 1 行"
+    },
+    {
+      "id": "AC14",
+      "text": "`.githooks/pre-commit` が `scripts/check_doc_lang.lua` を実行する",
+      "verify": "auto",
+      "how": "`grep -nE '^nvim --headless -l scripts/check_doc_lang\\.lua$' .githooks/pre-commit` → 1 行出力される",
+      "result": "met",
+      "evidence": "`.githooks/pre-commit:25` の 1 行"
+    },
+    {
+      "id": "AC15",
+      "text": "`.github/workflows/ci.yml` に `check-doc-lang` という ID のジョブがあり、その `run:` で `make check-doc-lang` を実行する",
+      "verify": "auto",
+      "how": "`awk '/^  check-doc-lang:$/{f=1;next} f&&/^  [a-z-]+:$/{f=0} f' .github/workflows/ci.yml \\| grep -nE 'make check-doc-lang$'` → 1 行出力される",
+      "result": "met",
+      "evidence": "ジョブ `check-doc-lang` 内の `make check-doc-lang` の 1 行"
+    },
+    {
+      "id": "AC16",
+      "text": "PR の CI で、名前が `Doc Language Check` のチェックが成功している",
+      "verify": "auto",
+      "how": "`gh pr checks <PR 番号> \\| grep 'Doc Language Check'` → その行の状態が `pass`",
+      "result": "met",
+      "evidence": "`gh pr checks 334` で `Doc Language Check pass`"
+    },
+    {
+      "id": "AC17",
+      "text": "`CLAUDE.md` の「Quality Rules (MUST follow)」節に、`check-doc-lang`・`.ja.md`・`Collaborator guide`・`description` をすべて含む番号付きの項目（1 行）がある",
+      "verify": "auto",
+      "how": "`awk '/^## Quality Rules/,/^## PR\\/Commit/' CLAUDE.md \\| grep -E '^[0-9]+\\. ' \\| grep 'check-doc-lang' \\| grep -F '.ja.md' \\| grep 'Collaborator guide' \\| grep -c 'description'` → `1`",
+      "result": "met",
+      "evidence": "結果 `1`"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-26",
+    "purpose": "利用者向けの文書（README、ヘルプ、同梱スキル）を英語で書くことをルールにし、make all（pre-commit と CI）で機械的に守らせる。今の利用者向け文書に残る日本語も英語に直す。",
+    "users": "メンテナーと、CLAUDE.md / AGENTS.md を読んで作業する AI エージェント。間接的に README と :help fude を読む利用者。",
+    "outOfScope": [
+      "CONTRIBUTING.md の Collaborator guide 以降（日本語のまま）",
+      "*.ja.md 翻訳ファイル",
+      "contrib の SKILL.md frontmatter description の日本語起動フレーズ",
+      "Lua のコードコメント、CLAUDE.md、.claude/、copilot-instructions、docs/dev の言語",
+      "PR タイトル・本文・レビュー返信を日本語で書く既存規約",
+      "日本語以外の非英語の検出"
+    ],
+    "constraints": [
+      "既存の check_docs / check_purity と同じ形（nvim -l、終了コード 0/1/2、純粋関数をテスト）",
+      "スクリプトはルートを省略可能な引数で受け取る",
+      "既存のチェックの挙動を変えない",
+      "英語化は意味を変えない",
+      "CLAUDE.md / CONTRIBUTING.md / HARNESS.md を更新、pre-commit と CI にも足す",
+      "AGENTS.md はシンボリックリンクなので直接編集しない"
+    ],
+    "changes": [],
+    "verification": [
+      "固定のテスト: make all"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "CONTRIBUTING.md の Collaborator guide は対象外",
+      "at": "2026-11-26 16:30",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "",
+      "by": "ユーザー",
+      "background": "Collaborator guide は日本語のコラボレーター向け資料",
+      "options": [
+        "英語化の対象に含める",
+        "含めない"
+      ],
+      "decided": "含めない",
+      "reason": "コラボレーター向けの内部資料として日本語のまま残す",
+      "impact": "チェック対象の範囲",
+      "revisit": "外部のコラボレーターが増えたとき",
+      "refs": "AC3"
+    },
+    {
+      "id": "D-002",
+      "title": "SKILL.ja.md は翻訳として残す",
+      "at": "2026-11-26 16:30",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "",
+      "by": "ユーザー",
+      "background": "fude-watch スキルに日本語訳がある",
+      "options": [
+        "削除する",
+        "翻訳として残す"
+      ],
+      "decided": "翻訳として残す",
+      "reason": "日本語の利用者向けの翻訳として価値がある",
+      "impact": "*.ja.md をチェック対象から外す",
+      "revisit": "翻訳の同期が負担になったとき",
+      "refs": "AC5"
+    },
+    {
+      "id": "D-003",
+      "title": "README の日本語例文は外し、SKILL.md の description の起動フレーズは残す",
+      "at": "2026-11-26 16:30",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "",
+      "by": "ユーザー",
+      "background": "日本語の起動フレーズが README と SKILL.md frontmatter にある",
+      "options": [
+        "README から外し SKILL.md は残す",
+        "両方残す",
+        "両方外す"
+      ],
+      "decided": "README から外し SKILL.md は残す",
+      "reason": "description は日本語で頼まれたときにスキルを起動させる機能的な文字列",
+      "impact": "frontmatter description 行を例外にする",
+      "revisit": "起動の仕組みが変わったとき",
+      "refs": "AC6, AC12"
+    },
+    {
+      "id": "D-004",
+      "title": "make all に自動チェックを足す",
+      "at": "2026-11-26 16:30",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "",
+      "by": "ユーザー",
+      "background": "ルールを守らせる方法",
+      "options": [
+        "make all に自動チェックを足す",
+        "ルールの文章だけ"
+      ],
+      "decided": "make all に自動チェックを足す",
+      "reason": "文章だけでは守られにくい",
+      "impact": "Makefile / pre-commit / CI",
+      "revisit": "誤検出が多いとき",
+      "refs": "AC13-AC16"
+    },
+    {
+      "id": "D-005",
+      "title": "CONTRIBUTING.md の公開部分（Collaborator guide より前）はチェック対象に含める",
+      "at": "2026-11-26 16:30",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "",
+      "by": "作業する側",
+      "background": "D-001 で Collaborator guide は対象外としたが、その前の部分は外部利用者向けの英語の文章",
+      "options": [
+        "含める",
+        "CONTRIBUTING.md 全体を外す"
+      ],
+      "decided": "含める",
+      "reason": "外部の利用者が読む部分で、今も英語のため",
+      "impact": "CONTRIBUTING.md の見出しで範囲を区切る",
+      "revisit": "Collaborator guide の見出しが変わったとき",
+      "refs": "AC3, AC4"
+    },
+    {
+      "id": "D-006",
+      "title": "検出する文字はかな・漢字・CJK 記号・全角形",
+      "at": "2026-11-26 16:30",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "",
+      "by": "作業する側",
+      "background": "日本語の判定方法",
+      "options": [
+        "かなだけ",
+        "かな＋漢字＋CJK 記号＋全角形"
+      ],
+      "decided": "かな＋漢字＋CJK 記号＋全角形",
+      "reason": "漢字だけの語や全角括弧も日本語の混入として拾うため。既存の文書の · → ▶ などは範囲外で誤検出しない",
+      "impact": "検出範囲",
+      "revisit": "正当な CJK 文字が必要になったとき",
+      "refs": "AC1, AC2"
+    },
+    {
+      "id": "D-007",
+      "title": "HARNESS.md §4.1 の完了済 Sensor の表には PR 番号が決まってから行を足す",
+      "at": "2026-11-26 17:10",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "記録の表の 1 行",
+      "by": "作業する側",
+      "background": "表に「実装 PR」の列があり、実装時点では PR 番号が無かった",
+      "options": [
+        "PR 番号が決まってから足す",
+        "「(本 PR)」と書いて今足す"
+      ],
+      "decided": "PR 番号が決まってから足す",
+      "reason": "既存の行と同じ形（PR 番号）にそろえるため",
+      "impact": ".claude/HARNESS.md",
+      "revisit": "",
+      "refs": "T2"
+    }
+  ],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 1,
+      "may": 6,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "M.main と list_contrib_files にテストが無い（Quality Rule 2）",
+          "response": "直す"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "環境変数 ROOT が export されていると別ディレクトリを調べて OK になる",
+          "response": "直す"
+        },
+        {
+          "id": "R1-3",
+          "severity": "MAY",
+          "text": "閉じていない frontmatter で本文の description: 行も例外になる",
+          "response": "直す"
+        },
+        {
+          "id": "R1-4",
+          "severity": "MAY",
+          "text": "複数行の description（ブロック記法）の続きの行は例外にならない",
+          "response": "直さない（PRD どおり）"
+        },
+        {
+          "id": "R1-5",
+          "severity": "MAY",
+          "text": "BOM や --- 末尾空白の frontmatter を認識しない",
+          "response": "直さない"
+        },
+        {
+          "id": "R1-6",
+          "severity": "MAY",
+          "text": "コードブロック内の # Collaborator guide でも区切る",
+          "response": "直さない"
+        },
+        {
+          "id": "R1-7",
+          "severity": "MAY",
+          "text": "contrib/ 以下のシンボリックリンクを調べない",
+          "response": "直さない"
+        },
+        {
+          "id": "R1-8",
+          "severity": "MAY",
+          "text": "PRD の範囲外の日本語の文字を検出しない（記録の正確さ）",
+          "response": "HARNESS.md の既知の限界に追記"
+        },
+        {
+          "id": "R1-9",
+          "severity": "MAY",
+          "text": "is_contrib_skill の条件の重複",
+          "response": "直す"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 0,
+      "may": 2,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R2-1",
+          "severity": "MAY",
+          "text": "スクリプト先頭コメントが「固定の対象が 1 つも無いと終了コード 2」を書いていない",
+          "response": "直さない（2 周目以降の MAY）"
+        },
+        {
+          "id": "R2-2",
+          "severity": "MAY",
+          "text": "pre-commit がステージ内容でなく作業ツリーを調べる",
+          "response": "直さない（既存チェックと同じ作り。CI で止まる）"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R1-4",
+      "severity": "MAY",
+      "text": "複数行の description（ブロック記法）の続きの行は例外にならない",
+      "reason": "PRD が「description: 行」と決めている。今の SKILL.md は 1 行"
+    },
+    {
+      "id": "R1-5",
+      "severity": "MAY",
+      "text": "BOM や末尾空白付きの --- を frontmatter と認識しない",
+      "reason": "今のファイルでは起きない。安全側（違反として出る）に倒れる"
+    },
+    {
+      "id": "R1-6",
+      "severity": "MAY",
+      "text": "CONTRIBUTING.md 公開部分のコードブロック内の # Collaborator guide でも区切る",
+      "reason": "今のファイルでは起きない"
+    },
+    {
+      "id": "R1-7",
+      "severity": "MAY",
+      "text": "contrib/ 以下のシンボリックリンクを調べない",
+      "reason": "今の contrib にリンクは無い"
+    },
+    {
+      "id": "R2-1",
+      "severity": "MAY",
+      "text": "scripts/check_doc_lang.lua 先頭コメントに「固定の対象が 1 つも無いルートは終了コード 2」を書き足す",
+      "reason": "2 周目以降の MAY は直さない方針"
+    },
+    {
+      "id": "R2-2",
+      "severity": "MAY",
+      "text": "pre-commit がステージした内容ではなく作業ツリーを調べる",
+      "reason": "既存のチェックもすべて同じ作りで、CI で止まる"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "チェックスクリプトとテスト、Makefile・pre-commit・CI への組み込み",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "文書の更新（README 英語化、CLAUDE.md ルール、CONTRIBUTING・HARNESS）",
+      "status": "完了",
+      "owner": "impl-2"
+    }
+  ],
+  "revision": 1,
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "最初の開発",
+      "changes": "check-doc-lang の追加、README の英語化、CLAUDE.md のルール追加",
+      "refs": ""
+    }
+  ],
+  "pr": {
+    "number": 334,
+    "url": "https://github.com/flexphere/fude.nvim/pull/334"
+  },
+  "copilot": {
+    "status": "Copilot のレビューは受けられませんでした（copilot-wait.sh が unable を返した）。",
+    "comments": [],
+    "timed_out": false
+  }
+}
