@@ -124,6 +124,11 @@ def main():
         ("基準 手動/未確認", lambda m: None if g(m, "implementation", "acceptance", "manual") is None
          else f"{g(m, 'implementation', 'acceptance', 'manual')}/{g(m, 'implementation', 'acceptance', 'unverified', default=0)}"),
         ("根拠なしの自動基準", lambda m: g(m, "implementation", "acceptance", "auto_without_evidence")),
+        ("先に赤 落ちた/既存", lambda m: None if g(m, "implementation", "acceptance", "red_fail") is None
+         else f"{g(m, 'implementation', 'acceptance', 'red_fail')}/{g(m, 'implementation', 'acceptance', 'red_skipped', default=0)}"),
+        ("壊して 落ちた/落ちない", lambda m: None if g(m, "implementation", "acceptance", "mutation_killed") is None
+         else f"{g(m, 'implementation', 'acceptance', 'mutation_killed')}/{g(m, 'implementation', 'acceptance', 'mutation_survived', default=0)}"),
+        ("壊して未確認の自動基準", lambda m: g(m, "implementation", "acceptance", "auto_without_mutation")),
         ("報告後 手直し/要件", lambda m: f"{g(m, 'revisions', 'rework', default=0)}/{g(m, 'revisions', 'requirement_change', default=0)}"),
     ]
     if a.git:

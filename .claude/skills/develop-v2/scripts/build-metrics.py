@@ -103,6 +103,25 @@ def review_end(agent_rounds, outcomes):
     }
 
 
+def red_mutation_counts(acc):
+    """受け入れ基準の red（実装前に落ちたか）と mutation（壊すと落ちるか）の数。
+
+    どの基準にも red / mutation の欄が無い古い記録では、数えずに null にする（推測で埋めない）。
+    """
+    keys = ("red_fail", "red_skipped", "mutation_killed", "mutation_survived", "auto_without_mutation")
+    if not any("red" in a or "mutation" in a for a in acc):
+        return dict.fromkeys(keys)
+    auto = [a for a in acc if a.get("verify") == "auto"]
+    return {
+        "red_fail": sum(1 for a in acc if a.get("red") == "fail"),
+        "red_skipped": sum(1 for a in acc if a.get("red") == "skipped"),
+        "mutation_killed": sum(1 for a in acc if a.get("mutation") == "killed"),
+        "mutation_survived": sum(1 for a in acc if a.get("mutation") == "survived"),
+        # 自動の基準で、壊して確かめた結果が無いもの
+        "auto_without_mutation": sum(1 for a in auto if not a.get("mutation")),
+    }
+
+
 def build(report, state):
     report = report or {}
     state = state or {}
@@ -159,6 +178,7 @@ def build(report, state):
                 "auto_without_evidence": count(
                     acc, lambda a: a.get("verify") == "auto" and not str(a.get("evidence") or "").strip()
                 ),
+                **red_mutation_counts(acc),
             },
             "tests_failed": count(arr(report.get("tests")), lambda t: isinstance(t, dict) and t.get("result") == "fail"),
         },
