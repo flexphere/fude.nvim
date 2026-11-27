@@ -238,6 +238,26 @@
       "impact": "check-ac-tests.py、SKILL.md・implement-prompt.md・review-prompt.md の timeout の説明",
       "revisit": "テストが遅いだけで時間切れが繰り返されるとき",
       "refs": "R1-3, R2-1"
+    },
+    {
+      "id": "D-013",
+      "title": "同じ周の mutate の走らせ直しは別のファイルに残し、最新の値を使う",
+      "at": "2026-11-28 06:50",
+      "phase": "報告後の修正",
+      "severity": "低",
+      "severityReason": "記録の残し方だけで、スクリプトの挙動は変えない",
+      "by": "ユーザー",
+      "background": "#340 の開発で、1 周目の mutate で AC14 が survived になり、パッチを直して走らせ直した結果が mutate-1-1.json を上書きした。survived だったことが git の履歴にしか残らなかった。",
+      "options": [
+        "mutate-<revision>-<round>-<n>.json に残し最新を使う（red と同じ形）",
+        "上書きを続ける",
+        "1 つのファイルに走らせた回をすべて並べる"
+      ],
+      "decided": "mutate-<revision>-<round>-<n>.json に残し最新を使う",
+      "reason": "red-<task>-<n>.json と同じ形で覚えることが増えず、スクリプトを変えずに済む。弱いパッチが見つかったことが記録に残る。",
+      "impact": "PRD の「スクリプトの形」、SKILL.md・review-prompt.md など mutate の結果ファイルを書いている手順。AC20・AC21 の文面は変えず、走らせ直しがあればその周の最新のファイルで突き合わせる",
+      "revisit": "走らせ直しが周ごとに何度も起きるとき",
+      "refs": "R2-1"
     }
   ],
   "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
@@ -245,8 +265,8 @@
   "date": "2026-11-27",
   "branch": "docs/develop-v2-test-first",
   "base": "origin/main",
-  "status": "完了",
-  "summary": "PR #341 を ready for review にしました。受け入れ基準 21 件をすべて満たしました（AC18〜AC21 は #340 の開発の記録で確認）。レビュー役のレビューは 2 周で MUST 0 件です。",
+  "status": "修正中",
+  "summary": "報告後の修正（第 2 版）中です。mutate の走らせ直しの記録の残し方と、R2-1（PRD の timeout の説明）を直しています。",
   "generatedBy": "/develop-v2",
   "acceptance": [
     {
@@ -606,23 +626,12 @@
       "text": "承認後に PRD の「スクリプトの形」と AC19 を変えました。(1) red の結果ファイルはタスクごとにそのタスクの基準だけに絞って残します。(2) 実装前なのにテストが通った（pass）ときは、テストを直して走らせ直し、その結果を red-<task>-<n>.json に残して、受け入れ基準の red には最新の値を写します（最初の pass のファイルも残ります）。元に戻すには、prd.md の変更履歴の行と SKILL.md の「3. 実装」の該当の手順を、最初の値のまま走らせ直しは evidence に書く形に戻してください。"
     },
     {
-      "kind": "動作確認",
-      "ref": "R2-1",
-      "text": "直さなかった SHOULD（R2-1）: PRD の「スクリプトの形」に、項目の timeout（秒、既定 900）と、時間切れ・SIGTERM などでパッチを戻して終了コード 2 で終わることが書かれていません。実装と手順の文書には書かれています。PRD にも残すかを決めてください。"
-    },
-    {
       "kind": "その他",
       "ref": "Copilot",
       "text": "Copilot のレビューは待たずに報告しました（ユーザーの指示）。後から届いた指摘は PR #341 で確かめてください。"
     }
   ],
   "unresolved": [
-    {
-      "id": "R2-1",
-      "severity": "SHOULD",
-      "text": "PRD の「スクリプトの形」に、項目の timeout（秒、既定 900）、時間切れ・SIGTERM などでパッチを戻して終了コード 2 で終わること、existing が真偽値でないと終了コード 2 になることが書かれていない（実装とスクリプトの docstring・手順の文書には書かれている）",
-      "reason": "2 周目の指摘のため決まりどおり直していない。PRD に足すなら変更履歴に 1 行足すだけ"
-    },
     {
       "id": "R2-2",
       "severity": "MAY",
@@ -648,7 +657,7 @@
       "reason": "D-011"
     }
   ],
-  "revision": 1,
+  "revision": 2,
   "revisions": [
     {
       "revision": 1,
@@ -657,6 +666,14 @@
       "request": "#339",
       "changes": "check-ac-tests.py（red / mutate）を足し、テストを先に書いて赤を確かめ、パッチで機能を壊して落ちることを確かめる手順にした",
       "refs": ""
+    },
+    {
+      "revision": 2,
+      "date": "2026-11-28",
+      "kind": "手直し",
+      "request": "#340 の記録の確認で見つかった、同じ周の mutate の走らせ直しで最初の結果が上書きされる点を直す。直さなかった SHOULD の R2-1 も入れる",
+      "changes": "同じ周の mutate の走らせ直しを mutate-<revision>-<round>-<n>.json に残し、最新の値を使う決まりを PRD と手順に足した。PRD の「スクリプトの形」に timeout・終了コード 2・項目の型の確認を書いた",
+      "refs": "D-013, R2-1"
     }
   ],
   "pr": {

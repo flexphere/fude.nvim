@@ -49,8 +49,9 @@ AC17 の対応表（`red` の値 → 表示）: `fail` → 「先に赤: 落ち�
 - 項目の一覧 `docs/dev/<dir>/ac-tests/ac-tests.json`: `[{ "ac": "AC1", "command": "bash run_tests.sh tests/fude/foo_spec.lua", "fail_marker": "Fail.*〜のとき〜になる", "patch": "AC1.patch", "existing": false }]`。`fail_marker`・`patch`・`existing` は省略できる。パッチの場所は一覧と同じディレクトリから見たもの。
 - `python3 -I check-ac-tests.py red <ac-tests.json>` / `python3 -I check-ac-tests.py mutate <ac-tests.json>`。コマンドはリポジトリのルートで走らせる。
 - 「コマンドが失敗する」は、終了コードが 0 でなく、`fail_marker` があるならその出力（stdout と stderr）が正規表現に合うこと。
-- 出力は標準出力への JSON 1 つ: `{ "mode": "red" | "mutate", "at": "<ISO 8601 の時刻>", "results": [{ "ac", "red" | "mutation", "detail" }] }`。メインはこれを、`red` はタスクごとに `ac-tests/results/red-<task>.json`（タスクの番号、例 `red-T1.json`。`results` はそのタスクの基準に絞り、`mode`・`at` は出力のまま。後のタスクで前のタスクの基準が `pass` になって終了コードが 1 になっても、絞った結果で判断する。走らせ直しても上書きせず、最初の結果を残す。実装の前にテストを直して走らせ直した結果は `red-<task>-<n>.json`（`n` は 2 から）に残し、`acceptance[].red` には実装前の最新の値を写す）、`mutate` は`ac-tests/results/mutate-<revision>-<round>.json` に保存してコミットする。
+- 出力は標準出力への JSON 1 つ: `{ "mode": "red" | "mutate", "at": "<ISO 8601 の時刻>", "results": [{ "ac", "red" | "mutation", "detail" }] }`。メインはこれを、`red` はタスクごとに `ac-tests/results/red-<task>.json`（タスクの番号、例 `red-T1.json`。`results` はそのタスクの基準に絞り、`mode`・`at` は出力のまま。後のタスクで前のタスクの基準が `pass` になって終了コードが 1 になっても、絞った結果で判断する。走らせ直しても上書きせず、最初の結果を残す。実装の前にテストを直して走らせ直した結果は `red-<task>-<n>.json`（`n` は 2 から）に残し、`acceptance[].red` には実装前の最新の値を写す）、`mutate` は `ac-tests/results/mutate-<revision>-<round>.json` に保存してコミットする。同じ周の `mutate` を走らせ直したとき（パッチを直したなど）は上書きせず、`mutate-<revision>-<round>-<n>.json`（`n` は 2 から）に残す。`acceptance[].mutation` に写すのも、レビュー役の `mutateByReviewer` と突き合わせるのも、その周の最新のファイル。
 - `mutate` の順序: 作業ツリーの確認 → 項目ごとに、テストのファイルに触れるパッチなら `"rejected"`（コマンドは走らせない）→ パッチを当てずにコマンド（失敗なら `"baseline_failed"`）→ `git apply` → コマンド → `git apply -R`。`patch` の無い項目は `"no_patch"`。
+- 項目の `timeout`（秒、正の数、省略時は 900）は、その項目のコマンド 1 回の時間の上限。時間切れや、走らせているあいだの SIGTERM・SIGINT・SIGHUP では、当てたパッチを戻して終了コード 2 で終わる（時間切れは失敗とも成功とも決められないため。D-012）。`patch` が文字列でない、`existing` が真偽値でない、`timeout` が正の数でない項目があれば、一覧が読めないものとして終了コード 2。
 - 終了コード: 0 = すべて期待どおり（`red` はすべて `fail` か `skipped`、`mutate` はすべて `killed`）、1 = 期待に外れた項目がある、2 = 走らせられない（一覧が読めない、作業ツリーが汚れている、パッチが当たらない、戻した後の作業ツリーが走らせる前と違う。最後の場合は残りの項目を走らせない）。
 
 ## スコープ外
@@ -88,3 +89,4 @@ AC17 の対応表（`red` の値 → 表示）: `fail` → 「先に赤: 落ち�
 | 日付 | 変更 | 理由 |
 |---|---|---|
 | 2026-11-27 | 「スクリプトの形」: `red-<task>.json` の `results` をそのタスクの基準に絞る。実装前にテストを直して走らせ直した結果を `red-<task>-<n>.json` に残し、`acceptance[].red` には最新の値を写す。AC19 の対象に `red-<task>-<n>.json` を含める | D-007, D-008 |
+| 2026-11-28 | 「スクリプトの形」: 同じ周の `mutate` の走らせ直しを `mutate-<revision>-<round>-<n>.json` に残し、最新の値を使う。項目の `timeout`、時間切れ・シグナルでの終了コード 2、項目の型の確認を書き足す | D-013（報告後の修正。R2-1） |
