@@ -39,6 +39,7 @@ argument-hint: "[作りたいものの説明・issue の URL]"
 | 実装役 | 受け持ちの範囲ごとに 1 人。指摘を直すときも同じ実装役に `SendMessage` で頼む（[依頼の形](templates/implement-prompt.md)） |
 | レビュー役 | 開発ごとに 1 人。ヒアリングの終わりに立てて受け入れ基準を点検させ、4. のレビューの周も同じレビュー役に `SendMessage` で頼む（[依頼の形](templates/review-prompt.md)） |
 | 判断役 | 開発ごとに 1 人。判断のたびに同じ判断役に頼む（[依頼の形](templates/judge-prompt.md)） |
+| モデル役 | TLA+ で設計を検証する開発だけ、ヒアリングの中で 1 人。モデルと性質を書き、TLC で検査する。PRD を直したあとの検査し直しも同じモデル役に `SendMessage` で頼む（[依頼の形](templates/model-prompt.md)） |
 
 `SendMessage` が届かなくなったら（セッションが変わったなど）、同じ依頼の形で立て直す。
 
@@ -52,6 +53,7 @@ argument-hint: "[作りたいものの説明・issue の URL]"
 | `report.json` | それ以外のすべての記録（タスク、テスト、判断、レビューの周、PR、見てほしいこと）。報告のページと指標の元。形は [例](templates/report.example.json) に合わせる |
 | `state.json` | 進行の記録（[書式](templates/state.json)）。段階が変わるたびに `python3 -I "${CLAUDE_SKILL_DIR}/scripts/set-phase.py" docs/dev/<dir> <phase>` で進める（手で書くと履歴が抜け、時間の指標が欠ける） |
 | `metrics.json` | 指標。スクリプトが作る（手で書かない） |
+| `tla/` | TLA+ で設計を検証した開発だけ。モデル役が書く仕様（`<Name>.tla` と、守りを残した設定・守りを外した版の設定の `.cfg`）と、`run-tlc.py` の出力（`tla/results/<cfg の名前>.json`。例 `results/ChatDrain_unguarded.json`。同じ設定を走らせ直したら最後の実行で上書きし、前の実行（時間切れなど）は `report.json` の `verification.runs` に残す） |
 | `ac-tests/` | 自動の基準のテストを機械的に確かめる材料。`ac-tests.json`（基準ごとの項目）は実装役が返した項目をメインがまとめて書き、`<AC>.patch`（基準の機能を壊すパッチ）は実装役が置く。`results/red-<task>.json`（走らせ直しは `red-<task>-<n>.json`）・`results/mutate-<revision>-<round>.json` は `check-ac-tests.py` の出力で、メインが保存する |
 
 - **判断**は、したその場で `report.json` の `decisions` に足す（背景、選べた案、決めたこと、決めた人、理由、重要度、見直すきっかけ）。
@@ -63,7 +65,7 @@ argument-hint: "[作りたいものの説明・issue の URL]"
 
 | 段階 | `phase` | 終わりの条件 |
 |---|---|---|
-| 1. ヒアリング | `hearing` | PRD の全欄が具体的に書け、受け入れ基準の点検で指摘が残っていない |
+| 1. ヒアリング | `hearing` | PRD の全欄が具体的に書け（設計を検証する開発では検査も済み）、受け入れ基準の点検で指摘が残っていない |
 | 2. PRD の承認 | `prd_approval` | ユーザーが承認した |
 | 3. 実装 | `implementing` | 全タスクが済み、固定のチェックが通り、コミットして draft の PR を作った |
 | 4. レビュー | `reviewing` | レビュー役が MUST 0 件を返し、自動の受け入れ基準がすべて根拠（通ったテストと `mutate` の `killed`）付きで満たされ、CI が通っている |
@@ -84,8 +86,35 @@ argument-hint: "[作りたいものの説明・issue の URL]"
 - 何をしたいのかを聞き、コードを読んで PRD の欄（目的、利用者、受け入れ基準、スコープ外、制約、確認方法）を埋める。**コードや資料を読めば分かることは聞かない。**
 - 残った論点は `AskUserQuestion` で、選択肢と推奨を付けて聞く（1 回に 4 問まで）。
 - 受け入れ基準は [PRD の書式](templates/prd.md#受け入れ基準)に従う: 1 つの基準に合否を決められる結果を 1 つ、種類（`自動` / `手動`）、確かめる方法（自動はテストの名前かコマンドと期待する出力、手動は手順と合格の見え方）。自動にできるものは自動にする。影響するモジュールと CLAUDE.md の設計制約も調べて「制約」に入れる。
+- **設計の検証（任意）**: 下の[設計の検証](#設計の検証任意)を判定し、検証するなら受け入れ基準の点検より前に済ませる。
 - **受け入れ基準の点検**: PRD をユーザーに示す前に、レビュー役を立てて受け入れ基準の点検を頼む（[依頼の形](templates/review-prompt.md#受け入れ基準の点検)。このレビュー役が 4. のレビューも続けて受け持つ）。指摘があれば PRD を直して、指摘が無くなるまで頼み直す（上限 3 回。残ったものは「未決事項」に書いてユーザーに示す）。基準の点検は検証できるかだけを見る。基準を足す・削る提案は採らなくてよい（何を作るかはユーザーと決める）。
 - 聞いた問いの数を `state.json` の `hearing.questions_asked` に、PRD を示した回数を `hearing.prd_drafts` に、点検の回数と指摘の合計を `hearing.ac_checks`・`hearing.ac_check_findings` に数える。
+
+#### 設計の検証（任意）
+
+非同期・競合・タイマーが絡む設計は、イベントの順番の組み合わせで壊れやすく、テストでは全部の順番を書き切れない。そういう開発では、PRD の承認前に設計を TLA+ でモデルにし、TLC で全部の順番を検査できる。検証は任意で、新しい段階（`phase`）は足さない。手がかりに当たらない開発の手順は変わらない。
+
+1. **判定する。** PRD の草稿と関係するコードを、次の手がかりに照らす。
+   - `vim.system` などのコールバック（非同期の結果が後から届く）
+   - `vim.defer_fn` / `vim.uv` のタイマー
+   - `vim.schedule`（処理が後の周回にずれる）
+   - 処理中を表すフラグや待ち行列（`running`・`draining`・`pending`・`waiting` など）
+   - 取り消し・止める操作（cancel、stop、kill、close）
+   - 同じ要求の二重送信（連打、走っているあいだの再要求）
+2. **聞く。** 手がかりに 1 つでも当たったら、`AskUserQuestion` で TLA+ で検証するかを聞く。当たった手がかりと、検証にかかる手間（モデル役 1 人と TLC の実行。1 回の上限は 10 分）を添え、推奨を付ける（決めるのはユーザー）。この問いも `hearing.questions_asked` に数える。当たらなければ聞かない。検証しないと決まったら、`report.json` に `"verification": { "used": false, "reason": "<理由>" }` を書く（当たらずに聞かなかった開発では `verification` を書かない）。
+3. **モデル役を立てる。** 検証するなら、受け入れ基準の点検より前に、モデル役を立てる（[依頼の形](templates/model-prompt.md)）。経緯は見せず、PRD の草稿、関係するコード、置き場所 `docs/dev/<dir>/tla/`、`run-tlc.py` の場所を渡す。モデル役は次を守る（依頼の形に書いてある。メインは返ってきた結果で確かめる）。
+   - 定数は小さく（集合の大きさ 2〜3）始める。1 回の上限は 10 分（`run-tlc.py` の既定の 600 秒）。時間切れなら定数を小さくして走らせ直し、使った定数を記録する。
+   - 性質ごとに、守りを外した版で違反が出ることを確かめる。出なければモデルが甘い（性質が守りに頼っていない）ので、モデルか性質を直す。
+   - TLC 2.19 は活性の違反で性質の名前を出さないので、活性の性質の守りを外した版は、その性質だけを `PROPERTIES` に書いた設定で走らせる。質問の数などに上限を付けたモデルは、最後に止まる状態がデッドロックとして報告されるので `--allow-deadlock` を付ける。
+4. **TLC の走らせ方。** モデル役が走らせる。
+   ```sh
+   python3 -I "${CLAUDE_SKILL_DIR}/scripts/run-tlc.py" <spec.tla> [--config <cfg>] [--timeout <秒>] [--allow-deadlock] [--jar <path>]
+   ```
+   出力は標準出力への JSON 1 つ（`result` は `ok` / `violation` / `timeout` / `error`）。終了コードは 0 = 違反なし、1 = 違反あり、2 = 走らせられない・時間切れ・読めない出力。`--config` を省くと spec と同じ名前の `.cfg`。1 回で数分かかりうるので `run_in_background` で走らせ、出力を `tla/results/<cfg の名前>.json` に受ける。Docker が要る（初回は `tla2tools.jar` をダウンロードしてキャッシュする）。
+5. **結果を PRD に写す。** 返ってきた結果を、PRD の[「設計の検証」の欄](templates/prd.md#設計の検証)に書く。
+   - 違反の手順は日本語に直して書く。意図した妥協なら「制約」に書く（何を許容するか）。直すべきものなら設計を変え、PRD を直して、同じモデル役に検査し直してもらう。
+   - 確かめた性質は自動の受け入れ基準にする。確かめる方法は busted の状態機械テスト（実際のコードにイベントの列を流し、各手のあとに性質を照らす。守りを外した版の違反の手順をテストの列に含める）にし、テストのファイルと名前を書く。
+   - `report.json` の `verification` を書く（形は[報告のページ](#報告のページ)）。
 
 ### 2. PRD の承認
 
@@ -103,6 +132,7 @@ argument-hint: "[作りたいものの説明・issue の URL]"
      ```
      出力の JSON を、`results` をそのタスクの基準に絞って（`mode`・`at` はそのまま）`ac-tests/results/red-<task>.json`（例 `red-T1.json`）に保存し、`report.json` の `acceptance[].red` に写す。合否も絞った結果で判断する（後のタスクでは実装済みの前のタスクの基準が `pass` になり、終了コードが 1 になる）。そのタスクの結果がすべて `fail` か `skipped` なら、`SendMessage` で実装を続けてもらう。`pass` の基準はテストが基準を確かめていないので、実装に入る前にテストを直してもらい、`red` を走らせ直す。走らせ直した結果は同じく絞って `red-<task>-<n>.json`（`n` は 2 から）に保存し、`acceptance[].red` には実装前の最新の値を写す。**最初の `red-<task>.json` は上書きせずに残す。** `evidence` には「最初は pass（`red-T1.json`）、直したテストで fail（`red-T1-2.json`）」のように書く。実装の前から通るのが正しい基準だと実装役が言うなら、判断役に回す（認めるなら PRD の基準に「（既存の挙動）」と書き、項目を `existing: true` にする）。終了コード 2（時間切れを含む）なら、出力の `error` を実装役に伝えて直してもらう。
   2. 実装役が実装し、基準ごとに本番のコードを壊すパッチを `ac-tests/` に置いて返す。項目が変わったと返ったら、メインが `ac-tests.json` を直す。
+- **設計の検証から来た基準**（PRD の「設計の検証」の欄にある性質）のテストは、状態機械テストにする（実際のコードにイベントの列を流し、各手のあとに性質を照らす。守りを外した版の違反の手順を列に含める）。実装役には、PRD の「設計の検証」の欄の場所と、基準に対応する性質と違反の手順を渡す。
 - 実装役がテストの名前を変えた、または基準を確かめるテストを書けなかったと返したら、`prd.md` の確かめる方法を実際の名前に直す。書けなかった基準は判断役に回す（手動に変えるか、テストの書き方を変えるか）。
 - タスクの一覧を表でチャットに示し、状態が変わったら示し直す。
 - 実装役はコミットしない。戻ってきたらメインが確かめ、タスクごとに（`ac-tests/` も含めて）コミットする。固定のチェックが通らない状態をコミットしない。
@@ -162,11 +192,14 @@ PRD の承認から最後まで、**同じ URL のページを育てる**。タ�
   ```sh
   python3 -I "${CLAUDE_SKILL_DIR}/templates/build-report.py" docs/dev/<dir>/report.json <scratchpad>/report-<slug>.html
   ```
-- ページは、読む人の問いの順に並ぶ: PRD（何を作る約束か）→ 受け入れ基準（守られたか）→ 見てほしいこと（自分は何を確かめ、決めるか）→ 直さなかった指摘 → 判断の履歴 → レビューの経過 → テスト → タスク → 改訂履歴。並びはテンプレートが決めるので、次の印だけ `report.json` に付ける。
+- ページは、読む人の問いの順に並ぶ: PRD（何を作る約束か）→ 受け入れ基準（守られたか）→ 設計の検証（どの順番でも性質が成り立つか）→ 見てほしいこと（自分は何を確かめ、決めるか）→ 直さなかった指摘 → 判断の履歴 → レビューの経過 → テスト → タスク → 改訂履歴。並びはテンプレートが決めるので、次の印だけ `report.json` に付ける。
   - `attention[].kind`: 動作確認の手順は `"動作確認"`、承認後に PRD を変えた点は `"PRD 変更"`（この順に、その他より先に並ぶ）。
   - `prd.changes[].field`: 変えた欄（`"目的"`・`"スコープ外"`・`"制約"` などの欄の名前、または `"AC4"` のような基準の番号）。その欄に「承認後に変更」の印が付く。
   - `decisions[].prdChange`: PRD を変えた判断は `true`（判断の履歴の先頭に並ぶ）。
   - `acceptance[]`: `verify`（`"auto"` / `"manual"`）、`how`（確かめる方法）、`result`（`"met"` / `"partial"` / `"unmet"`、手動で未確認なら `"unverified"`）、`evidence`（根拠: 通ったテストの名前と、走らせた `red`・`mutate` とその結果の要点、または確かめた人と日付）。自動の基準には `red`（実装前の最新の `red-<task>.json` か `red-<task>-<n>.json` の値: `"fail"` / `"pass"` / `"skipped"`）と `mutation`（最後の周の `mutate-<revision>-<round>.json` の値）も付ける。走らせていない欄は省く。
+  - `verification`（設計の検証。受け入れ基準の節の次に出る）: 手がかりに当たらず聞かなかった開発では書かない。検証しないと決めたら `{ "used": false, "reason": "<理由>" }`。検証したら `used: true` と次の 2 つを書く（形は [例](templates/report.example.json) の `verification`）。
+    - `runs[]`: `run-tlc.py` を走らせるたびに 1 件（時間切れも残す）。`config`（設定のファイル名）、`result`、`states.{generated,distinct}`、`depth`、`seconds`、違反なら `violation.{kind,name,steps}`（出力の値をそのまま。`trace` は写さず `tla/results/` に残す）、`constants`（使った定数。`{ "Users": 2 }` のように）。
+    - `properties[]`: 性質ごとに 1 件。`name`（TLA+ での名前）、`kind`（`invariant` / `temporal`）、`text`（日本語の説明）、`result`（最初に検査したときの結果。`holds` / `violated`）、`guard`（守りを外した版: `config`、`result`（`violated` / `holds`）、違反なら `steps`。守りを外した版が無ければ書かない）、`ac`（対応する基準の番号）、`handling`（`result` が `violated` のときだけ: 意図した妥協として PRD の「制約」に書いたなら `"制約"`、設計を変えて直したなら `"設計を変更"`。直したなら、直した設計で成り立つ実行を `runs` に残し、直した守りを外した版を `guard` にする）。
 - まだ無い欄は空にする（「まだ〜していません」と出る）。`summary` に、今どの段階で次に何が起きるかを 1〜2 文で書く。テンプレートの HTML は読まなくてよい。
 
 ## 指標
@@ -174,7 +207,7 @@ PRD の承認から最後まで、**同じ URL のページを育てる**。タ�
 `metrics.json` は、`/harness-audit` がこのスキルの改善点を探すための材料（集計は `scripts/aggregate-metrics.py`）。スクリプトが `report.json` と `state.json` から数えるので、次の記録を省かない。
 
 - `state.json`: `phase_history`、`hearing.questions_asked`・`hearing.prd_drafts`・`hearing.ac_checks`・`hearing.ac_check_findings`、`review_outcomes`
-- `report.json`: `reviews`（周ごとの件数。Copilot 対応のあとの周には `"after": "copilot"`）、`decisions`（`by` は `ユーザー` / `判断役` / `作業する側`。判断役が人に回したものは `"escalated": true`）、`acceptance[].result`・`verify`・`evidence`・`red`・`mutation`、`copilot.comments[].outcome`、`revisions`
+- `report.json`: `reviews`（周ごとの件数。Copilot 対応のあとの周には `"after": "copilot"`）、`decisions`（`by` は `ユーザー` / `判断役` / `作業する側`。判断役が人に回したものは `"escalated": true`）、`acceptance[].result`・`verify`・`evidence`・`red`・`mutation`、`copilot.comments[].outcome`、`revisions`、`verification`（`used`、`properties[].result`・`guard.result`。`metrics.json` の `verification` に、検証したか・性質の数・成り立つ / 破れた性質の数・守りを外した版で破れた / 破れなかった / 版の無い性質の数として数えられる。書かなければ null、`used: false` なら数はすべて 0）
 
 ## 中断したとき
 

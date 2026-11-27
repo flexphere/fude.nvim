@@ -23,7 +23,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 |------|------|------|------|
 | 推論的 | `CLAUDE.md` | アーキテクチャ、モジュール責務、状態依存テーブル、品質ルール | repo root |
 | 推論的 | `/develop` skill | 計画→実装→テスト→ドキュメント→セルフレビュー→PR→Copilot レビュー対応の一貫ワークフロー（計画合意後は自律実行） | `.claude/skills/develop/` |
-| 推論的 | `/develop-v2` skill | エージェント主導の開発。ユーザーが判断するのはヒアリング・PRD の承認・完成後の動作確認だけ。メインは進行と記録を受け持ち、実装役・レビュー役・判断役はサブエージェント（レビュー役・判断役は開発中に使い回し、レビュー役は `/code-review` を呼ぶ）。ヒアリング→PRD 承認→実装→経緯を知らないレビュー役（MUST 0 の周まで、上限 5 周）→PR（Copilot のレビューは届けば対応）→報告のページ→報告後の修正 | `.claude/skills/develop-v2/` |
+| 推論的 | `/develop-v2` skill | エージェント主導の開発。ユーザーが判断するのはヒアリング・PRD の承認・完成後の動作確認だけ。メインは進行と記録を受け持ち、実装役・レビュー役・判断役（と、TLA+ で設計を検証する開発だけモデル役）はサブエージェント（レビュー役・判断役は開発中に使い回し、レビュー役は `/code-review` を呼ぶ）。ヒアリング（非同期・競合・タイマーの手がかりに当たれば TLA+ での設計の検証を聞く）→PRD 承認→実装→経緯を知らないレビュー役（MUST 0 の周まで、上限 5 周）→PR（Copilot のレビューは届けば対応）→報告のページ→報告後の修正 | `.claude/skills/develop-v2/` |
 | 推論的 | `/pj-checklist` skill | fude.nvim 固有の実装・レビューチェックリスト | `.claude/skills/pj-checklist/` |
 | 推論的 | `/self-review` skill | 3 ラウンドのセルフレビュー手順 | `.claude/skills/self-review/` |
 | 推論的 | `/pr` skill | コミット分割と draft PR 作成 | `.claude/skills/pr/` |
@@ -53,7 +53,7 @@ Martin Fowler "Harness Engineering for Coding Agents"
 | 計算的 | `.github/workflows/ci.yml` | PR / push to main | 上記 8 つを CI 上で実行（テストは Neovim 0.10.4 / 0.11.7 / stable の matrix、その他は stable 単一） |
 | 推論的 | `/self-review` ラウンド 1〜2 | PR 前 | `/pj-checklist` を diff に適用して検出・自律修正 |
 | 推論的 | `/self-review` ラウンド 3 | PR 前 | Claude Code 標準の `/review` で汎用観点の検出 |
-| 計算的 | `/develop-v2` の指標 (`docs/dev/*/metrics.json`、`aggregate-metrics.py`) | `/develop-v2` の報告時に生成・`/harness-audit` で集計 | 開発ごとのヒアリングの手戻り、レビューの周数と MUST、判断役・人への差し戻し、Copilot で直した数（レビュー役の見逃しの目安）、レビューの打ち切り・4 周目以降の MUST（周の上限の見直し）、報告後の修正、マージ後の fix 候補 |
+| 計算的 | `/develop-v2` の指標 (`docs/dev/*/metrics.json`、`aggregate-metrics.py`) | `/develop-v2` の報告時に生成・`/harness-audit` で集計 | 開発ごとのヒアリングの手戻り、レビューの周数と MUST、判断役・人への差し戻し、Copilot で直した数（レビュー役の見逃しの目安）、レビューの打ち切り・4 周目以降の MUST（周の上限の見直し）、報告後の修正、マージ後の fix 候補、設計の検証（検証したか・性質の結果・守りを外した版で破れたか） |
 | 推論的 | Copilot 自動レビュー | PR | GitHub 上での AI レビュー（fork PR は手動 trigger 要） |
 | 推論的 | 人間レビュー | PR | プロジェクト視点・組織的判断 |
 
