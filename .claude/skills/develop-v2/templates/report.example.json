@@ -22,6 +22,11 @@
   ],
   "attention": [
     {
+      "text": "AC4（手動）: staging で 1 万件の出力を実行し、ダウンロード完了までの時間を測ってください。10 秒以内なら合格です（手元の DB では 6.2 秒）。",
+      "ref": "AC4",
+      "kind": "動作確認"
+    },
+    {
       "text": "状態の絞り込みで「下書き」を選べるようにしました。今までの CSV には下書きが含まれていなかったため、運用で使われるかを確かめてください。",
       "ref": "D-004 · 重要度 高",
       "kind": "動作確認"
@@ -37,25 +42,33 @@
       "id": "AC1",
       "text": "期間を指定したとき、作成日がその期間に入る行だけが出力される",
       "result": "met",
-      "how": "Unit テスト ExportFilterTest・手動確認"
+      "how": "Unit テスト `ExportFilterTest`「期間の外の行を出さない」",
+      "verify": "auto",
+      "evidence": "`ExportFilterTest`「期間の外の行を出さない」（通過。期間の判定を外すと落ちることをレビュー役が確認）"
     },
     {
       "id": "AC2",
       "text": "状態を指定したとき、その状態の行だけが出力される",
       "result": "met",
-      "how": "Unit テスト ExportFilterTest"
+      "how": "Unit テスト `ExportFilterTest`「指定した状態の行だけを出す」",
+      "verify": "auto",
+      "evidence": "`ExportFilterTest`「指定した状態の行だけを出す」（通過）"
     },
     {
       "id": "AC3",
       "text": "絞り込みを指定しないとき、出力は今と 1 バイトも変わらない",
       "result": "met",
-      "how": "テスト（export 系 38 件）"
+      "how": "`ExportSnapshotTest`「絞り込みなしの出力が保存済みの CSV と一致する」",
+      "verify": "auto",
+      "evidence": "`ExportSnapshotTest`「絞り込みなしの出力が保存済みの CSV と一致する」（通過）"
     },
     {
       "id": "AC4",
       "text": "1 万件の出力が 10 秒以内に終わる",
-      "result": "partial",
-      "how": "手元の DB で 6.2 秒。本番の件数では未確認"
+      "result": "unverified",
+      "how": "staging で 1 万件の出力を実行し、ダウンロード完了までの時間を測る → 10 秒以内",
+      "verify": "manual",
+      "evidence": ""
     }
   ],
   "prd": {

@@ -132,6 +132,9 @@ def build(report, state):
         "hearing": {
             "questions_asked": hearing.get("questions_asked"),
             "prd_drafts": hearing.get("prd_drafts"),
+            # 受け入れ基準の点検（PRD の承認前）の回数と指摘の合計
+            "ac_checks": hearing.get("ac_checks"),
+            "ac_check_findings": hearing.get("ac_check_findings"),
             "prd_changes_after_approval": len(arr(prd.get("changes"))),
         },
         "implementation": {
@@ -149,6 +152,13 @@ def build(report, state):
                 "met": count(acc, lambda a: a.get("result") == "met"),
                 "partial": count(acc, lambda a: a.get("result") == "partial"),
                 "unmet": count(acc, lambda a: a.get("result") == "unmet"),
+                # 手動の基準で、まだ誰も確かめていないもの
+                "unverified": count(acc, lambda a: a.get("result") == "unverified"),
+                "manual": count(acc, lambda a: a.get("verify") == "manual"),
+                # 自動の基準で、根拠（通ったテストの名前）が書かれていないもの
+                "auto_without_evidence": count(
+                    acc, lambda a: a.get("verify") == "auto" and not str(a.get("evidence") or "").strip()
+                ),
             },
             "tests_failed": count(arr(report.get("tests")), lambda t: isinstance(t, dict) and t.get("result") == "fail"),
         },

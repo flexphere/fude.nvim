@@ -13,7 +13,9 @@
   ],
   "hearing": {
     "questions_asked": 0,
-    "prd_drafts": 0
+    "prd_drafts": 0,
+    "ac_checks": 0,
+    "ac_check_findings": 0
   },
   "agents": {
     "reviewer": null,
