@@ -4,7 +4,7 @@
   "branch": "feat/tla-verification",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification",
   "base": "docs/develop-v2-test-first",
-  "phase": "reviewing",
+  "phase": "pr",
   "phase_history": [
     {
       "phase": "hearing",
@@ -21,6 +21,10 @@
     {
       "phase": "reviewing",
       "at": "2026-11-27T23:29:41+09:00"
+    },
+    {
+      "phase": "pr",
+      "at": "2026-11-28T00:10:00+09:00"
     }
   ],
   "hearing": {
