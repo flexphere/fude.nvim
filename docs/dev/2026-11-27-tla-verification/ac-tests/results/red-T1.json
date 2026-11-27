@@ -1,0 +1,71 @@
+{
+  "mode": "red",
+  "at": "2026-11-27T23:23:07+09:00",
+  "results": [
+    {
+      "ac": "AC1",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.315s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC2",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.316s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC3",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.317s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC4",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.315s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC5",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.324s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC6",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.318s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC7",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.314s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC8",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.317s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC9",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.317s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC10",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.316s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC11",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.316s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC12",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.313s\n\nFAILED (failures=16)"
+    },
+    {
+      "ac": "AC13",
+      "red": "fail",
+      "detail": "exit 1: acOS/Python: can't open file '/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification/.claude/skills/develop-v2/scripts/run-tlc.py': [Errno 2] No such file or directory\\n\"\n\n----------------------------------------------------------------------\nRan 13 tests in 0.319s\n\nFAILED (failures=16)"
+    }
+  ]
+}

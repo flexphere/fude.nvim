@@ -9,7 +9,13 @@
   "summary": "PRD が承認されました。run-tlc.py・指標・報告のページを並列で実装し、そのあと手順とテンプレートを書きます。",
   "generatedBy": "/develop-v2",
   "tests": [],
-  "attention": [],
+  "attention": [
+    {
+      "text": "承認後に AC5 の文を変えました。違反の手順（trace）の切り出しを、TLC 2.19 の実際の出力に合わせています。時間的性質の見出し「Error: The following behavior constitutes a counter-example:」も読むようにし、`Back to state` や `Stuttering` の行で終わる場合も扱います。元の文のままでは、時間的性質の手順が取れませんでした。元に戻すには、AC5 の文を戻し、テストの時間的性質の 2 つの場合を消します。",
+      "ref": "D-008 · AC5",
+      "kind": "PRD 変更"
+    }
+  ],
   "acceptance": [
     {
       "id": "AC1",
@@ -37,7 +43,7 @@
     },
     {
       "id": "AC5",
-      "text": "違反のとき、出力の JSON の `violation.trace` が、TLC が出した「Error: The behavior up to this point is:」の次の行から、最後の `State <n>:` または `Back to state <n>` で始まる行より後の最初の空行の手前までの文字列（末尾の改行を含まない。`State <n>: Stuttering` と `Back to state <n>` の行を含む）になる",
+      "text": "違反のとき、出力の JSON の `violation.trace` が、TLC が出した「Error: The behavior up to this point is:」（不変条件・デッドロック）または「Error: The following behavior constitutes a counter-example:」（時間的性質。直後の空行は含めない）の次の行から始まり、最後の `State <n>:` の塊の後の最初の空行の手前で終わる文字列になる。ただし最後の行が `Back to state <n>` で始まる行か `State <n>: Stuttering` なら、その行で終わる（その行を含む。末尾の改行は含まない）。テストは、不変条件の場合・`Back to state` で終わる場合・`Stuttering` で終わる場合の 3 つを確かめる",
       "verify": "auto",
       "how": "テスト `test_violation_trace_is_the_behavior_block`"
     },
@@ -191,7 +197,14 @@
       "時間切れでは docker kill でコンテナを止める",
       "「設計の検証」の節は受け入れ基準の節の次"
     ],
-    "changes": [],
+    "changes": [
+      {
+        "date": "2026-11-27",
+        "change": "AC5 の文を TLC 2.19 の実際の出力に合わせた",
+        "reason": "D-008。時間的性質の見出しが別の文言で、Stuttering の後に空行が無い",
+        "field": "AC5"
+      }
+    ],
     "verification": [
       "固定のテスト: make all",
       "python3 -I .claude/skills/develop-v2/scripts/test_run_tlc.py と test_check_ac_tests.py が通る"
@@ -335,6 +348,26 @@
       "impact": "PR の base",
       "revisit": "#341 がマージされたら base を main に変える",
       "refs": ""
+    },
+    {
+      "id": "D-008",
+      "title": "AC5 の手順の切り出しを TLC 2.19 の実際の出力に合わせる",
+      "at": "2026-11-27 23:30",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "このブランチの PRD・テスト・新しいスクリプトだけが変わる",
+      "by": "判断役",
+      "prdChange": true,
+      "background": "実装役が TLC 2.19 を実際に走らせたところ、時間的性質の違反の見出しが「Error: The following behavior constitutes a counter-example:」で、Stuttering で終わる反例の後には空行が無く統計の行が続くことが分かった。承認時の AC5 の文のままでは、時間的性質の手順が取れない。",
+      "options": [
+        "案A: AC5 の文を実際の出力に合わせて直し、3 つの場合を確かめる",
+        "案B: AC5 はそのまま、時間的性質の場合をテストから外す"
+      ],
+      "decided": "案A",
+      "reason": "目的 2・3（違反の手順を PRD に書き戻す、機械が読める形で受け取る）に合う。機能は足さず、AC5 がもともと意図した範囲を実際の出力どおりに書き直すだけ。",
+      "impact": "prd.md の AC5、test_run_tlc.py、run-tlc.py",
+      "revisit": "TLC の版を上げたとき、AC20 などで trace に統計の行が入ったとき",
+      "refs": "AC5"
     }
   ],
   "reviews": [],
@@ -343,19 +376,19 @@
     {
       "id": "T1",
       "title": "run-tlc.py とテスト、例のモデル（AC1〜AC13, AC19, AC20, AC25）",
-      "status": "未着手",
+      "status": "実装中",
       "owner": "impl-1"
     },
     {
       "id": "T2",
       "title": "build-metrics / aggregate-metrics に verification を足す（AC14〜AC17）",
-      "status": "未着手",
+      "status": "完了",
       "owner": "impl-2"
     },
     {
       "id": "T3",
       "title": "報告のページに「設計の検証」の節（AC18, AC22〜AC24）",
-      "status": "未着手",
+      "status": "完了",
       "owner": "impl-3"
     },
     {

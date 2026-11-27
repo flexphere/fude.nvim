@@ -32,7 +32,7 @@ AC1〜AC13 のテストは新しいファイル `.claude/skills/develop-v2/scrip
 | AC2 | TLC が「Error: Invariant <名前> is violated.」と手順（`State 1:` 〜 `State 4:`）を出したとき、出力の JSON が `"result": "violation"`、`violation.kind` が `"invariant"`、`violation.name` が `<名前>`、`violation.steps` が 4 を持ち、終了コードが 1 になる | 自動 | テスト `test_invariant_violation_reports_name_and_steps` | | |
 | AC3 | TLC が「Error: Temporal properties were violated.」を出したとき、出力の JSON が `"result": "violation"`、`violation.kind` が `"temporal"`、`violation.name` が null を持ち、終了コードが 1 になる | 自動 | テスト `test_temporal_violation_reports_temporal_kind` | | |
 | AC4 | TLC が「Error: Deadlock reached.」を出したとき、出力の JSON が `"result": "violation"`、`violation.kind` が `"deadlock"` を持ち、終了コードが 1 になる | 自動 | テスト `test_deadlock_reports_deadlock_kind` | | |
-| AC5 | 違反のとき、出力の JSON の `violation.trace` が、TLC が出した「Error: The behavior up to this point is:」の次の行から、最後の `State <n>:` または `Back to state <n>` で始まる行より後の最初の空行の手前までの文字列（末尾の改行を含まない。`State <n>: Stuttering` と `Back to state <n>` の行を含む）になる | 自動 | テスト `test_violation_trace_is_the_behavior_block` | | |
+| AC5 | 違反のとき、出力の JSON の `violation.trace` が、TLC が出した「Error: The behavior up to this point is:」（不変条件・デッドロック）または「Error: The following behavior constitutes a counter-example:」（時間的性質。直後の空行は含めない）の次の行から始まり、最後の `State <n>:` の塊の後の最初の空行の手前で終わる文字列になる。ただし最後の行が `Back to state <n>` で始まる行か `State <n>: Stuttering` なら、その行で終わる（その行を含む。末尾の改行は含まない）。テストは、不変条件の場合・`Back to state` で終わる場合・`Stuttering` で終わる場合の 3 つを確かめる | 自動 | テスト `test_violation_trace_is_the_behavior_block` | | |
 | AC6 | `<dir>/Spec.tla` と `--config <dir>/Other.cfg` を渡したとき、偽の `docker` が受け取る引数が、`run`・`--rm`・`--name <名前>`・`<dir>` の書き込める mount・jar の読み取り専用の mount・イメージ `eclipse-temurin:21-jre`・`java`・`tlc2.TLC`・`-workers auto`・`-config Other.cfg`・値が `/tmp/` で始まる `-metadir`・`Spec` を含み、`-deadlock` を含まない | 自動 | テスト `test_docker_args_without_allow_deadlock` | | |
 | AC7 | `--allow-deadlock` を渡したとき、偽の `docker` が受け取る `tlc2.TLC` の引数に `-deadlock` が含まれる | 自動 | テスト `test_allow_deadlock_passes_deadlock_flag` | | |
 | AC8 | TLC が `--timeout <秒>` を過ぎても終わらないとき、出力の JSON が `"result": "timeout"` を持ち、終了コードが 2 になる | 自動 | テスト `test_timeout_reports_timeout_and_exit_2` | | |
@@ -116,3 +116,4 @@ AC21 の手順のチェックリスト:
 
 | 日付 | 変更 | 理由 |
 |---|---|---|
+| 2026-11-27 | AC5 の文を TLC 2.19 の実際の出力に合わせた（時間的性質の見出し「Error: The following behavior constitutes a counter-example:」と、空行の無い `Stuttering` の終わり） | D-008 |
