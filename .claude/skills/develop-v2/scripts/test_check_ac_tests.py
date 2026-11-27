@@ -10,6 +10,7 @@
 import json
 import pathlib
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,7 @@ TRACKED = {
     "lua/x_test.lua": "return 1\n",
     "lua/test_x.lua": "return 1\n",
     ".gitignore": "ignored/\n",
+    "comment.lua": "local x = 1\n-- see tests/fude/x_spec.lua\n",
 }
 
 
@@ -303,6 +305,115 @@ class TestMutate(Repo):
         items[0]["command"] = self.cmd("b", "grep -q good src.txt || { echo 'MARKER_X here'; exit 1; }")
         _, out, r = self.run_check("mutate", items)
         self.assertEqual(self.result(out, "AC14", "mutation"), "killed", r.stderr)
+
+
+class TestRobustness(Repo):
+    """レビューの指摘（SHOULD-1/3/4/8）を再現するテスト。"""
+
+    def test_patch_body_lines_are_not_read_as_paths(self):
+        # hunk の本文の `--- ` / `+++ ` 行（`-- ` のコメントを消す・`++ ` の行を足す）をパスと読まない
+        cases = {
+            "removed": "local x = 2\n",
+            "added": "local x = 2\n-- see tests/fude/x_spec.lua\n++ see tests/fude/y_spec.lua\n",
+        }
+        for i, (kind, new_text) in enumerate(cases.items()):
+            with self.subTest(kind=kind):
+                patch = self.make_patch(f"c{i}.patch", "comment.lua", new_text)
+                items = [{"ac": "AC1", "command": self.cmd(f"c{i}", "grep -q 'local x = 1' comment.lua"),
+                          "patch": patch}]
+                code, out, r = self.run_check("mutate", items)
+                self.assertEqual(self.result(out, "AC1", "mutation"), "killed", r.stderr)
+                self.assertEqual(code, 0)
+
+    def test_timeout_aborts_and_restores(self):
+        body = "grep -q good src.txt || sleep 30"
+        items = [
+            {"ac": "AC1", "command": self.cmd("a", body), "patch": self.break_src_patch(), "timeout": 1},
+            {"ac": "AC2", "command": self.checks_src("b"), "patch": self.make_patch("b.patch", "src.txt", "bad2\n")},
+        ]
+        code, out, r = self.run_check("mutate", items)
+        self.assertEqual(code, 2, r.stderr)
+        self.assertIn("error", out)
+        self.assertEqual((self.root / "src.txt").read_text(), SRC)
+        self.assertEqual(self.runs("b"), 0)
+        code, out, r = self.run_check("red", [{"ac": "AC1", "command": "sleep 30", "timeout": 1}])
+        self.assertEqual(code, 2, r.stderr)
+        self.assertIn("error", out)
+
+    def test_sigterm_restores_patch(self):
+        started = self.logs / "started"
+        body = f"grep -q good src.txt && exit 0; touch '{started}'; sleep 30"
+        items = [{"ac": "AC1", "command": self.cmd("a", body), "patch": self.break_src_patch()}]
+        path = self.ac_dir / "ac-tests.json"
+        path.write_text(json.dumps(items), encoding="utf-8")
+        p = subprocess.Popen([sys.executable, "-I", str(CHECK), "mutate", str(path)], cwd=self.root,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            for _ in range(200):
+                if started.exists():
+                    break
+                p.poll()
+                if p.returncode is not None:
+                    break
+                subprocess.run(["sleep", "0.05"])
+            self.assertTrue(started.exists(), "パッチを当てた後のコマンドが始まりませんでした")
+            p.send_signal(signal.SIGTERM)
+            stdout, _ = p.communicate(timeout=10)
+        finally:
+            if p.poll() is None:
+                p.kill()
+                p.communicate()
+        self.assertEqual(p.returncode, 2)
+        self.assertIn("error", json.loads(stdout))
+        self.assertEqual((self.root / "src.txt").read_text(), SRC)
+        self.assertEqual(git(self.root, "diff"), "")
+
+    def test_non_string_patch_exits_2(self):
+        code, out, r = self.run_check("mutate", [{"ac": "AC1", "command": self.checks_src("a"), "patch": 123}])
+        self.assertEqual(code, 2, r.stderr)
+        self.assertIn("error", out)
+        self.assertEqual(self.runs("a"), 0)
+
+    def test_non_utf8_output_and_patch(self):
+        code, out, r = self.run_check("red", [{"ac": "AC1", "command": "printf '\\377\\376'; exit 1"}])
+        self.assertEqual(self.result(out, "AC1", "red"), "fail", r.stderr)
+        self.assertEqual(code, 0)
+        # Latin-1 のファイルを壊すパッチ（UTF-8 として読めない）
+        (self.root / "latin.txt").write_bytes(b"caf\xe9 good\n")
+        git(self.root, "add", "latin.txt")
+        git(self.root, "commit", "-q", "-m", "latin")
+        (self.root / "latin.txt").write_bytes(b"caf\xe9 bad\n")
+        diff = subprocess.run(["git", "-C", str(self.root), "diff", "--", "latin.txt"], capture_output=True).stdout
+        (self.root / "latin.txt").write_bytes(b"caf\xe9 good\n")
+        (self.ac_dir / "latin.patch").write_bytes(diff)
+        items = [{"ac": "AC2", "command": self.cmd("l", "LC_ALL=C grep -q good latin.txt"), "patch": "latin.patch"}]
+        code, out, r = self.run_check("mutate", items)
+        self.assertEqual(self.result(out, "AC2", "mutation"), "killed", r.stderr)
+        self.assertEqual(code, 0)
+
+    def test_worktree_changed_after_revert_exits_2(self):
+        # パッチを当てた後のコマンドがリポジトリに未追跡のファイルを残す → 戻しても走らせる前と違う
+        body = "grep -q good src.txt || { touch leftover.txt; exit 1; }"
+        items = [
+            {"ac": "AC1", "command": self.cmd("a", body), "patch": self.break_src_patch()},
+            {"ac": "AC2", "command": self.checks_src("b"), "patch": self.make_patch("b.patch", "src.txt", "bad2\n")},
+        ]
+        code, out, r = self.run_check("mutate", items)
+        self.assertEqual(code, 2, r.stderr)
+        self.assertIn("error", out)
+        self.assertEqual(self.runs("b"), 0)
+
+    def test_revert_failure_exits_2(self):
+        # パッチを当てた後のコマンドが同じファイルをさらに変える → git apply -R が当たらない
+        body = "grep -q good src.txt || { echo extra >> src.txt; exit 1; }"
+        items = [
+            {"ac": "AC1", "command": self.cmd("a", body), "patch": self.break_src_patch()},
+            {"ac": "AC2", "command": self.checks_src("b"), "patch": self.unrelated_patch()},
+        ]
+        code, out, r = self.run_check("mutate", items)
+        self.assertEqual(code, 2, r.stderr)
+        self.assertIn("戻せません", out["error"])
+        self.assertEqual(self.runs("b"), 0)
 
 
 class TestBuildMetrics(unittest.TestCase):
