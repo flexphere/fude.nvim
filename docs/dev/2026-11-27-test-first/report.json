@@ -1,0 +1,942 @@
+{
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "#338 はマージ済みのため origin/main から切る",
+      "at": "2026-11-27 22:10",
+      "phase": "準備",
+      "severity": "低",
+      "severityReason": "どちらでも中身は同じ（スキルのファイルに差が無い）",
+      "by": "作業する側",
+      "background": "#339 は #338 のブランチから切る前提だったが、着手時には #338 が main にマージされていた。",
+      "options": [
+        "origin/main から切る",
+        "docs/develop-v2-verifiable-ac から切る"
+      ],
+      "decided": "origin/main から切る",
+      "reason": "スキルの手順どおり。#338 の内容は main に入っており、古いブランチの上に積む理由が無い。",
+      "impact": "ブランチの起点",
+      "revisit": "なし",
+      "refs": "#338"
+    },
+    {
+      "id": "D-002",
+      "title": "テストを先に書くのは実装役。書いたら一度止まり、メインが赤を確かめる",
+      "at": "2026-11-27 22:14",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "実装の進め方（実装役とのやり取りの回数）が変わる",
+      "by": "ユーザー",
+      "background": "テストを先に書く担い手と、赤を誰が確かめるかを決める必要があった。",
+      "options": [
+        "実装役が書いて一度止まり、メインが走らせる",
+        "テスト専用の役を立てる",
+        "実装役の自己申告"
+      ],
+      "decided": "実装役が書いて一度止まり、メインが走らせる",
+      "reason": "赤を確かめるのがメインなので自己申告にならず、まだ無い関数の形を推測する手間も増えない。",
+      "impact": "implement-prompt.md、SKILL.md の実装",
+      "revisit": "実装役とのやり取りが増えて実装が大きく遅れるとき",
+      "refs": "AC18, AC19"
+    },
+    {
+      "id": "D-003",
+      "title": "壊して確かめるのは、実装役の書くパッチをスクリプトで当てる形にする",
+      "at": "2026-11-27 22:14",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "レビューの判定条件（満たす／MUST）が変わる",
+      "by": "ユーザー",
+      "background": "メインはコードを書かないため、機能を壊す作業をメイン以外が用意する必要があった。",
+      "options": [
+        "壊し方のパッチ＋スクリプト",
+        "レビュー役が毎回手で壊す",
+        "実装役の自己申告のまま"
+      ],
+      "decided": "壊し方のパッチ＋スクリプト",
+      "reason": "当てる・走らせる・戻すが機械的で、レビュー役が同じスクリプトで再現できる。",
+      "impact": "check-ac-tests.py の追加、review-prompt.md",
+      "revisit": "パッチの維持が実装の負担になるとき",
+      "refs": "AC5〜AC14, AC20, AC21"
+    },
+    {
+      "id": "D-004",
+      "title": "スクリプトは Python の 1 本（red / mutate の 2 つのモード）、項目の一覧は ac-tests.json",
+      "at": "2026-11-27 22:20",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "スキルの中に閉じ、後から変えやすい",
+      "by": "作業する側",
+      "background": "赤の確認と壊して確認の両方で、走らせるコマンドと期待する失敗を機械的に扱う形が要った。",
+      "options": [
+        "1 本のスクリプトに 2 モード",
+        "モードごとに別スクリプト",
+        "シェルスクリプト"
+      ],
+      "decided": "1 本のスクリプトに 2 モード、一覧は ac-tests.json",
+      "reason": "既存のスクリプトと同じ Python・標準ライブラリだけで書け、一覧を赤と壊して確認で共有できる。テストのランナーが 1 ファイル単位でしか走らないため、他のテストの失敗と区別できるよう fail_marker を持たせる。",
+      "impact": "scripts/check-ac-tests.py、ac-tests/ の置き方",
+      "revisit": "fail_marker の正規表現が書きにくいとき",
+      "refs": "AC1〜AC15"
+    },
+    {
+      "id": "D-005",
+      "title": "赤の結果はタスクごとのファイルに残し、上書きしない",
+      "at": "2026-11-27 22:40",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "記録の置き方だけ",
+      "by": "作業する側",
+      "background": "赤はタスクごとに確かめるので、1 つのファイルだと後のタスクが前の結果を上書きし、時刻で順序を確かめられなくなる（受け入れ基準の点検の補足から）。",
+      "options": [
+        "red-<task>.json に分ける",
+        "red.json に追記する"
+      ],
+      "decided": "red-<task>.json に分け、最初の結果を残す",
+      "reason": "スクリプトの出力をそのまま保存でき、時刻との突き合わせが単純になる。",
+      "impact": "ac-tests/results/ の置き方",
+      "revisit": "なし",
+      "refs": "AC19"
+    },
+    {
+      "id": "D-006",
+      "title": "報告ページでは、警告の値を黄土色（b-mid）、それ以外を色なしで「結果」の列の中に出す",
+      "at": "2026-11-27 22:27",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "見た目だけで、後から変えやすい",
+      "by": "作業する側",
+      "background": "PRD の対応表は「警告の色」とだけ書き、色そのものと表示の場所を決めていなかった。",
+      "options": [
+        "b-mid（一部・未確認と同じ色）",
+        "b-ng（赤）",
+        "新しい列を足す",
+        "結果の列の中に並べる"
+      ],
+      "decided": "b-mid、結果の列の中",
+      "reason": "「満たしていない」の赤と区別でき、表を広げないので狭い画面のカード表示でも読める。",
+      "impact": "templates/report.html",
+      "revisit": "警告が目立たないと感じたとき",
+      "refs": "AC17"
+    },
+    {
+      "at": "2026-11-27 22:50",
+      "phase": "実装",
+      "by": "判断役",
+      "id": "D-007",
+      "title": "red-<task>.json の results はそのタスクの基準に絞る",
+      "severity": "低",
+      "severityReason": "記録の書き方だけで、ブランチの中に収まる",
+      "background": "red は一覧の全項目を走らせるので、後のタスクでは実装済みの前のタスクの基準が pass になって混ざる。",
+      "options": [
+        "保存時に results をそのタスクの基準に絞る",
+        "出力をそのまま保存する",
+        "スクリプトに --ac の絞り込みを足す"
+      ],
+      "decided": "保存時に results をそのタスクの基準に絞る",
+      "reason": "基準ごとにファイルが 1 つに決まり、AC18・AC19 の判定が一意になる。スクリプトの引数の形（PRD）を変えずに済む。",
+      "impact": "SKILL.md の 3. 実装、PRD のスクリプトの形",
+      "revisit": "手で絞るときの取り違えが見つかったとき（--ac を足す）",
+      "refs": "AC18, AC19",
+      "prdChange": true
+    },
+    {
+      "at": "2026-11-27 22:50",
+      "phase": "実装",
+      "by": "判断役",
+      "id": "D-008",
+      "title": "red が pass のときはテストを直して走らせ直し、red-<task>-<n>.json に残して最新の値を写す",
+      "severity": "中",
+      "severityReason": "AC18 の判定と指標の red の意味が変わる（最初の pass は指標から消え、ファイルと evidence に残る）",
+      "background": "実装前なのにテストが通った（pass）ときの扱いが PRD に無かった。",
+      "options": [
+        "テストを直し、最初の値（pass）のまま走らせ直しの結果は evidence に書く",
+        "走らせ直しを red-<task>-<n>.json に残し、最新の値を写す",
+        "直さずに進め、報告で警告する"
+      ],
+      "decided": "走らせ直しを red-<task>-<n>.json に残し、最新の値を写す",
+      "reason": "目的は「実装前にテストが落ちた記録がある」こと。直したテストの赤が正しい記録になり、最初の pass も上書きせず残る。直さずに進めるのは目的に反する。",
+      "impact": "SKILL.md の 3. 実装、PRD のスクリプトの形と AC19",
+      "revisit": "先にテストが通ってしまった件数を指標で追いたくなったとき",
+      "refs": "AC18, AC19",
+      "prdChange": true
+    },
+    {
+      "at": "2026-11-27 22:50",
+      "phase": "実装",
+      "by": "判断役",
+      "id": "D-009",
+      "title": "1 段目では、新しく作るモジュールに限り中身の無いモジュールを置いてよい",
+      "severity": "低",
+      "severityReason": "手順の文書の書き方だけ",
+      "background": "spec の先頭で無いモジュールを require すると読み込みで止まり（E5108）、Fail の行が出ないので red が pass に見える。",
+      "options": [
+        "中身の無いモジュール（空のテーブルを返すだけ）を置いてよい",
+        "require を it() の中に置く書き方を指示する"
+      ],
+      "decided": "中身の無いモジュールを置いてよい（新しく作るモジュールに限る）",
+      "reason": "既存の spec はすべて先頭で require しており、it() の中の require が後まで残ると慣習から外れる。空のモジュールは機能を実装しないので「実装せずに返す」に反しない。",
+      "impact": "implement-prompt.md の 2 段の進め方",
+      "revisit": "空のモジュールの上で一部のテストが実装前に通ってしまうとき、固定のチェックで問題になるとき",
+      "refs": "AC18"
+    },
+    {
+      "at": "2026-11-27 23:00",
+      "phase": "レビュー",
+      "by": "作業する側",
+      "id": "D-010",
+      "title": "ac-tests.json は実装役の報告をもとにメインが書き、並列のときはパッチの確かめを共有の作業ツリーで行わない",
+      "severity": "低",
+      "severityReason": "手順の文書の書き方だけ",
+      "background": "レビュー 1 周目で、並列のタスクが同じ ac-tests.json を書き換える競合（R1-5）と、パッチの確かめが他の実装役のテストを壊すこと（R1-6）が指摘された。",
+      "options": [
+        "メインが一覧をまとめて書き、並列のときは確かめを mutate に任せる",
+        "タスクごとに一覧を分ける",
+        "自動の基準を持つタスクは並列にしない"
+      ],
+      "decided": "メインが一覧をまとめて書き、並列のときは確かめを mutate に任せる",
+      "reason": "一覧は記録なのでメインが書いてよく、mutate の結果ファイルを 1 つに保てる（AC20）。並列も止めずに済む。",
+      "impact": "implement-prompt.md、SKILL.md",
+      "revisit": "メインのまとめ書きで取り違えが起きたとき",
+      "refs": "AC20"
+    },
+    {
+      "at": "2026-11-27 23:00",
+      "phase": "レビュー",
+      "by": "作業する側",
+      "id": "D-011",
+      "title": "1 周目の MAY 2 件は直さない",
+      "severity": "低",
+      "severityReason": "指標の粒度と、変更前からの問題",
+      "background": "R1-10（指標が数えない値がある）と R1-11（終わりの条件の食い違い、変更前から）。",
+      "options": [
+        "直す",
+        "見送る"
+      ],
+      "decided": "見送る",
+      "reason": "R1-10 は AC16 を満たしており、必要になってから足せる。R1-11 はこの開発の範囲の外で、前からある問題。",
+      "impact": "なし",
+      "revisit": "/harness-audit で数えたい値が出たとき／終わりの条件の食い違いで迷う開発が出たとき",
+      "refs": "R1-10, R1-11"
+    },
+    {
+      "id": "D-012",
+      "title": "コマンドの時間切れは終了コード 2（走らせられない）にする",
+      "at": "2026-11-27 23:05",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "スクリプトの中に閉じ、後から変えやすい",
+      "by": "作業する側",
+      "background": "レビュー 1 周目の R1-3 を直すときに、コマンドの時間の上限を足した。時間切れを結果の値のどれにするかが PRD に無かった。",
+      "options": [
+        "終了コード 2（走らせられない）",
+        "fail / killed とみなす",
+        "pass / survived とみなす"
+      ],
+      "decided": "終了コード 2",
+      "reason": "PRD の「失敗」は「終了コードが 0 でない」ことで、時間切れはそれに当たらず、どちらとも決められない。PRD に無い新しい結果の値も作らずに済む。",
+      "impact": "check-ac-tests.py、SKILL.md・implement-prompt.md・review-prompt.md の timeout の説明",
+      "revisit": "テストが遅いだけで時間切れが繰り返されるとき",
+      "refs": "R1-3, R2-1"
+    },
+    {
+      "id": "D-013",
+      "title": "同じ周の mutate の走らせ直しは別のファイルに残し、最新の値を使う",
+      "at": "2026-11-28 06:50",
+      "phase": "報告後の修正",
+      "severity": "低",
+      "severityReason": "記録の残し方だけで、スクリプトの挙動は変えない",
+      "by": "ユーザー",
+      "background": "#340 の開発で、1 周目の mutate で AC14 が survived になり、パッチを直して走らせ直した結果が mutate-1-1.json を上書きした。survived だったことが git の履歴にしか残らなかった。",
+      "options": [
+        "mutate-<revision>-<round>-<n>.json に残し最新を使う（red と同じ形）",
+        "上書きを続ける",
+        "1 つのファイルに走らせた回をすべて並べる"
+      ],
+      "decided": "mutate-<revision>-<round>-<n>.json に残し最新を使う",
+      "reason": "red-<task>-<n>.json と同じ形で覚えることが増えず、スクリプトを変えずに済む。弱いパッチが見つかったことが記録に残る。",
+      "impact": "PRD の「スクリプトの形」、SKILL.md・review-prompt.md など mutate の結果ファイルを書いている手順。AC20・AC21 の文面は変えず、走らせ直しがあればその周の最新のファイルで突き合わせる",
+      "revisit": "走らせ直しが周ごとに何度も起きるとき",
+      "refs": "R2-1"
+    },
+    {
+      "id": "D-014",
+      "title": "AC20・AC21 は、その周の最新の mutate ファイルと比べる",
+      "at": "2026-11-28 07:05",
+      "phase": "報告後の修正",
+      "severity": "中",
+      "severityReason": "AC20・AC21 の判定と記録の読み方が変わる。影響はこの PR の中に収まる",
+      "by": "判断役",
+      "prdChange": true,
+      "background": "D-013 で同じ周の mutate の走らせ直しを別のファイルに残すことにしたが、AC20・AC21 は最初のファイルと比べる文面のままで、走らせ直しがあると手順どおりでも合格しない（レビューの MUST）。",
+      "options": [
+        "AC20・AC21 を最新のファイルと比べる形に直し、走らせ直しの時機を決める",
+        "走らせ直しを禁じ、次の周に回す",
+        "AC21 を変えず、走らせ直しのファイルは参考にする"
+      ],
+      "decided": "最新のファイル（n が最大、-<n> の無いものは n=1）と比べる。走らせ直しはパッチか実装を直した後だけで、レビュー役に頼む前に済ませ、頼んだ後ならレビュー役にも走らせ直してもらう。食い違いは MUST",
+      "reason": "禁じるのはユーザーの依頼を打ち消す。変えないと AC21 が手順どおりでも不合格になる。レビュー役の再現を確かめるには今のパッチに対応する最新の結果と比べる必要がある。red の走らせ直し（D-008）と同じ形。",
+      "impact": "prd.md の AC20・AC21・「スクリプトの形」、SKILL.md、implement-prompt.md",
+      "revisit": "1 つの周で走らせ直しが繰り返され、最新の取り違えが起きたとき",
+      "refs": "R2.1-1"
+    },
+    {
+      "id": "D-015",
+      "title": "revision 3 の 1 周目の SHOULD は直さない",
+      "at": "2026-11-28 07:15",
+      "phase": "報告後の修正",
+      "severity": "低",
+      "severityReason": "手順の文書の端の場面で、直すかどうかはユーザーが報告で決められる",
+      "by": "作業する側",
+      "background": "1 周目の SHOULD は直す決まりだが、ユーザーは R2.2-1 だけを直すよう頼んだ。1 行の修正の周で新しい SHOULD が 2 件出た。",
+      "options": [
+        "直さず unresolved に載せる",
+        "決まりどおり直す"
+      ],
+      "decided": "直さず unresolved に載せる",
+      "reason": "ユーザーが直す範囲を 1 件に絞った。直すと、手順の端の場面を足すたびに新しい端の指摘が出る流れが続く。",
+      "impact": "R3.1-1〜R3.1-4 が unresolved に残る",
+      "revisit": "ユーザーが直すと決めたとき",
+      "refs": "R3.1-1, R3.1-2"
+    }
+  ],
+  "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
+  "slug": "test-first",
+  "date": "2026-11-27",
+  "branch": "docs/develop-v2-test-first",
+  "base": "origin/main",
+  "status": "完了",
+  "summary": "報告後の修正（第 3 版）が終わりました。mutate を走らせ直してよいのを、パッチ・テスト・実装・ac-tests.json の項目のどれかを直した後に広げました（R2.2-1）。レビューは MUST 0 件で、新しい SHOULD 2 件は直さずに残しています。",
+  "generatedBy": "/develop-v2",
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "`red` で、コマンドが失敗する項目は、結果が `\"fail\"` になる",
+      "verify": "auto",
+      "how": "`test_red_failing_command_is_fail`",
+      "result": "met",
+      "evidence": "`test_red_failing_command_is_fail`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC2",
+      "text": "`red` で、コマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる",
+      "verify": "auto",
+      "how": "`test_red_passing_command_exits_1`",
+      "result": "met",
+      "evidence": "`test_red_passing_command_exits_1`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC3",
+      "text": "`red` で、`existing: true` の項目は、結果が `\"skipped\"` になる",
+      "verify": "auto",
+      "how": "`test_red_existing_is_skipped`",
+      "result": "met",
+      "evidence": "`test_red_existing_is_skipped`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC4",
+      "text": "`red` で、`existing: true` の項目のコマンドは、走った回数が 0 回になる",
+      "verify": "auto",
+      "how": "`test_red_existing_does_not_run`",
+      "result": "met",
+      "evidence": "`test_red_existing_does_not_run`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC5",
+      "text": "`mutate` で、パッチを当てるとコマンドが失敗する項目は、結果が `\"killed\"` になる",
+      "verify": "auto",
+      "how": "`test_mutate_failing_after_patch_is_killed`",
+      "result": "met",
+      "evidence": "`test_mutate_failing_after_patch_is_killed`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC6",
+      "text": "`mutate` で、パッチを当ててもコマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる",
+      "verify": "auto",
+      "how": "`test_mutate_surviving_patch_exits_1`",
+      "result": "met",
+      "evidence": "`test_mutate_surviving_patch_exits_1`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC7",
+      "text": "`killed` の項目と `survived` の項目を 1 つずつ含む一覧で `mutate` を走らせた後、`git status --porcelain` と `git diff` の出力が走らせる前と同じになる",
+      "verify": "auto",
+      "how": "`test_mutate_restores_worktree`",
+      "result": "met",
+      "evidence": "`test_mutate_restores_worktree`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC8",
+      "text": "`mutate` で、パッチを当てる前にコマンドが失敗する項目は、結果が `\"baseline_failed\"` になる",
+      "verify": "auto",
+      "how": "`test_mutate_baseline_failure_is_reported`",
+      "result": "met",
+      "evidence": "`test_mutate_baseline_failure_is_reported`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC9",
+      "text": "`mutate` で、パッチを当てる前にコマンドが失敗する項目のコマンドは、走った回数が 1 回になる（パッチを当てた後の実行が無い）",
+      "verify": "auto",
+      "how": "`test_mutate_baseline_failure_runs_once`",
+      "result": "met",
+      "evidence": "`test_mutate_baseline_failure_runs_once`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC10",
+      "text": "`mutate` で、`tests/` の下のファイル・名前に `_spec.` を含むファイル・名前に `_test.` を含むファイル・名前が `test_` で始まるファイルのどれかを変えるパッチは、4 通りのどれでも結果が `\"rejected\"` になる",
+      "verify": "auto",
+      "how": "`test_mutate_rejects_patch_touching_tests`（4 通りを 1 つずつ確かめる）",
+      "result": "met",
+      "evidence": "`test_mutate_rejects_patch_touching_tests`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC11",
+      "text": "`mutate` で、結果が `\"rejected\"` の項目のコマンドは、走った回数が 0 回になる",
+      "verify": "auto",
+      "how": "`test_mutate_rejected_does_not_run`",
+      "result": "met",
+      "evidence": "`test_mutate_rejected_does_not_run`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC12",
+      "text": "`mutate` で、作業ツリーの `docs/dev/` の外に、ステージ済みの変更・ステージ前の変更・未追跡のファイル（`.gitignore` で除かれたものは除く）のどれかがあるとき、終了コードが 2 になる",
+      "verify": "auto",
+      "how": "`test_mutate_refuses_dirty_worktree`（3 通りを 1 つずつ確かめる）",
+      "result": "met",
+      "evidence": "`test_mutate_refuses_dirty_worktree`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC13",
+      "text": "`mutate` が終了コード 2 で終わったとき、どの項目のコマンドも走った回数が 0 回になる",
+      "verify": "auto",
+      "how": "`test_mutate_dirty_worktree_runs_nothing`",
+      "result": "met",
+      "evidence": "`test_mutate_dirty_worktree_runs_nothing`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC14",
+      "text": "`fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`mutate` の結果が `\"survived\"` になる",
+      "verify": "auto",
+      "how": "`test_fail_marker_unmatched_is_survived`",
+      "result": "met",
+      "evidence": "`test_fail_marker_unmatched_is_survived`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC15",
+      "text": "`fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`red` の結果が `\"pass\"` になる",
+      "verify": "auto",
+      "how": "`test_fail_marker_unmatched_red_is_pass`",
+      "result": "met",
+      "evidence": "`test_fail_marker_unmatched_red_is_pass`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC16",
+      "text": "自動の基準 4 つ（`red`/`mutation` が `fail`/`killed`、`fail`/`survived`、`skipped`/`killed`、`pass`/無し）と手動の基準 1 つ（どちらも無し）を持つ `report.json` から `build-metrics.py` で作った `metrics.json` の `implementation.acceptance` が、`red_fail: 2`、`red_skipped: 1`、`mutation_killed: 2`、`mutation_survived: 1`、`auto_without_mutation: 1` を持つ",
+      "verify": "auto",
+      "how": "`test_build_metrics_counts_red_and_mutation`",
+      "result": "met",
+      "evidence": "`test_build_metrics_counts_red_and_mutation`（通過。レビュー役が機能を壊して落ちることを確認）"
+    },
+    {
+      "id": "AC17",
+      "text": "報告のページの受け入れ基準の表で、自動の基準の行に、`red` と `mutation` の値が下の対応表どおりに表示される",
+      "verify": "manual",
+      "how": "`templates/report.example.json`（対応表のすべての値を持つ行を含める）から `build-report.py` でページを作り、ブラウザで開く → 自動の各行に対応表どおりの文言が見える",
+      "result": "met",
+      "evidence": "Claude（メイン）がヘッドレス Chromium で例のデータのページを開いて確認（2026-11-27。ライト・ダーク・幅 390px のカード表示で、自動の 7 行に対応表どおりの文言と警告の色、手動の AC4 には表示なし）"
+    },
+    {
+      "id": "AC18",
+      "text": "次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `\"fail\"` か `\"skipped\"` になる",
+      "verify": "manual",
+      "how": "その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `\"auto\"` のものの `red` を見る",
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。自動の基準 17 件（AC1〜AC17）の red はすべて fail（existing の基準は無し）"
+    },
+    {
+      "id": "AC19",
+      "text": "次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる",
+      "verify": "manual",
+      "how": "基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる",
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。17 件すべてで red-<task>.json の at がテストを足したコミットより前（AC1〜AC13: red-T1 23:23:07 < 3487167 23:23:50、AC14〜AC17: red-T2 23:20:41 < 4390488 23:22:00）。ただし PRD どおり `git log -S'<テスト名>'` をリポジトリ全体にかけると、テスト名を書いた PRD のコミット（c2b0619）を拾って全件が前後逆に見えるため、`-- <テストのファイル>` で絞って比べた"
+    },
+    {
+      "id": "AC20",
+      "text": "次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある",
+      "verify": "manual",
+      "how": "`reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る",
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。レビューの 3 周それぞれに mutate-1-1/1-2/1-3.json があり、どれも 17 件すべての結果を持つ（すべて killed）"
+    },
+    {
+      "id": "AC21",
+      "text": "次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する",
+      "verify": "manual",
+      "how": "各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる",
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。3 周すべてで mutateByReviewer が 17 件を含み、ac ごとの mutation が同じ周の mutate ファイルと一致"
+    }
+  ],
+  "prd": {
+    "purpose": "/develop-v2 では、自動の受け入れ基準をテストで判定している。しかし「そのテストが基準を本当に確かめているか」は、実装役とレビュー役が各自で判断し、必要なら手で機能を壊してみる運用に留まる。確かめたかどうかも、どう壊したかも記録に残らない。\n\nうまくいったと言える状態:\n- 自動の受け入れ基準ごとに、実装前にテストが落ちた（赤）ことを、メインが自分で走らせて確かめた記録がある。\n- 自動の受け入れ基準ごとに、機能を壊すパッチを当てるとテストが落ちることを、スクリプトが機械的に確かめた記録がある。\n- レビュー役が、同じスクリプトを自分で走らせて結果を再現している。",
+    "users": "/develop-v2 で開発を進めるメインのエージェント、実装役、レビュー役。結果を報告のページで見るユーザー。`/harness-audit` で指標を集計する人。",
+    "outOfScope": [
+      "機能を壊すパッチを自動で作ること（壊し方は実装役が考えて書く）。",
+      "本格的なミューテーションテストの道具（ランダムに多数の変異を作るもの）の導入。",
+      "`make all` や CI でこのテストを走らせること（スキルのスクリプトのテストとして手で走らせる）。",
+      "過去の開発の記録（`docs/dev/` の既存のディレクトリ）を新しい書式に直すこと。"
+    ],
+    "constraints": [
+      "メインはコードを書かない。テストとパッチは実装役が書き、メインはスクリプトを走らせて結果を写すだけにする。",
+      "変更を捨てる操作（`reset --hard`・`checkout .`・`clean -f`）を使わない。パッチは `git apply -R` で戻す。",
+      "既存のスクリプトと同じく Python 3 の標準ライブラリだけで書き、`python3 -I` で動く。",
+      "`build-metrics.py` と `aggregate-metrics.py` は、新しい欄の無い古い記録でも止まらず動く（欠けた欄は数えない・「—」）。",
+      "`report.json` の新しい欄は `acceptance[].red`（`\"fail\"` / `\"pass\"` / `\"skipped\"`）と `acceptance[].mutation`（`check-ac-tests.py` の結果の値）。既存の `evidence` は残し、そこに走らせたコマンドと結果の要点を書く。",
+      "手順の変更（`SKILL.md`、`templates/implement-prompt.md`、`templates/review-prompt.md`、`templates/prd.md`）:"
+    ],
+    "verification": [
+      "固定のテスト: `make all`",
+      "受け入れ基準の「確かめる方法」のほかに、この開発で足すテスト・手で確かめること:"
+    ],
+    "openQuestions": [],
+    "approvedAt": "2026-11-27",
+    "changes": [
+      {
+        "date": "2026-11-27",
+        "change": "red-<task>.json の results をそのタスクの基準に絞る",
+        "reason": "D-007",
+        "field": "制約"
+      },
+      {
+        "date": "2026-11-27",
+        "change": "red が pass のとき、走らせ直しを red-<task>-<n>.json に残して最新の値を写す。AC19 の対象に含める",
+        "reason": "D-008",
+        "field": "AC19"
+      },
+      {
+        "date": "2026-11-28",
+        "field": "AC20",
+        "change": "その周の最新の mutate ファイルと比べる（D-013, D-014）",
+        "reason": "D-014"
+      },
+      {
+        "date": "2026-11-28",
+        "field": "AC21",
+        "change": "その周の最新の mutate ファイルと比べる（D-013, D-014）",
+        "reason": "D-014"
+      },
+      {
+        "date": "2026-11-28",
+        "field": "スクリプトの形",
+        "change": "その周の最新の mutate ファイルと比べる（D-013, D-014）",
+        "reason": "D-014"
+      }
+    ]
+  },
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト・check-state-deps・check-purity・check-docs・check-doc-lang すべて通過"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_check_ac_tests.py",
+      "result": "pass",
+      "detail": "16 件通過（実装前に 16 件すべて落ちることをメインが確認: 2026-11-27T22:28）"
+    }
+  ],
+  "reviews": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-27",
+      "tests": "pass",
+      "must": 0,
+      "should": 9,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "SHOULD",
+          "text": "patch_paths が hunk 本文の `--- ` 行（消した Lua のコメント）をパスと誤読し、正しいパッチが rejected になる",
+          "response": "T1 が直した"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "レビュー役が command と fail_marker を確かめていない（fail_marker が無いと別のテストの失敗で killed になる）",
+          "response": "T3 が直した"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "コマンドに時間の上限が無く、殺されるとパッチが当たったまま残る",
+          "response": "T1（スクリプト）と T3（手順）が直した"
+        },
+        {
+          "id": "R1-4",
+          "severity": "SHOULD",
+          "text": "想定外の入力（patch の型、UTF-8 でない出力）でトレースバックを出し終了コード 1 で落ちる",
+          "response": "T1 が直した"
+        },
+        {
+          "id": "R1-5",
+          "severity": "SHOULD",
+          "text": "並列のタスクが同じ ac-tests.json を書き換える",
+          "response": "T3 が直した（D-010）"
+        },
+        {
+          "id": "R1-6",
+          "severity": "SHOULD",
+          "text": "並列のとき、パッチを確かめる作業が共有の作業ツリーで本番のコードを壊す",
+          "response": "T3 が直した（D-010）"
+        },
+        {
+          "id": "R1-7",
+          "severity": "SHOULD",
+          "text": "レビュー役の git status / git diff で、未コミットの docs/dev/ の記録が見える",
+          "response": "T3 が直した"
+        },
+        {
+          "id": "R1-8",
+          "severity": "SHOULD",
+          "text": "「戻した後の作業ツリーが違えば終了コード 2」と「パッチを戻せない」の処理にテストが無い",
+          "response": "T1 が直した"
+        },
+        {
+          "id": "R1-9",
+          "severity": "SHOULD",
+          "text": "例のデータの AC8 が mutation 無しで met になっている",
+          "response": "T3 が直した"
+        },
+        {
+          "id": "R1-10",
+          "severity": "MAY",
+          "text": "指標が red: pass、baseline_failed・rejected・no_patch を数えていない",
+          "response": "見送り（D-011）"
+        },
+        {
+          "id": "R1-11",
+          "severity": "MAY",
+          "text": "4. レビューの終わりの条件が capped・判断役が認めた未達と両立しない（この変更の前から）",
+          "response": "見送り（D-011）"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "revision": 1,
+      "date": "2026-11-27",
+      "tests": "pass",
+      "must": 0,
+      "should": 1,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "scope": "直した箇所だけ（c0158f8..HEAD）",
+      "findings": [
+        {
+          "id": "R2-1",
+          "severity": "SHOULD",
+          "text": "PRD の「スクリプトの形」に、項目の timeout（既定 900 秒）、時間切れ・シグナルでの終了コード 2、existing の型の確認が書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2-2",
+          "severity": "MAY",
+          "text": "時間切れ・中断のとき、それまでの項目の結果が出力から捨てられる",
+          "response": "直さない。unresolved に載せる"
+        },
+        {
+          "id": "R2-3",
+          "severity": "MAY",
+          "text": "パッチを当てた後のコマンドが終わってから git apply -R までのごく短い間に SIGTERM が届くと、パッチが当たったまま終わる",
+          "response": "直さない。unresolved に載せる"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "revision": 2,
+      "date": "2026-11-28",
+      "tests": "pass",
+      "must": 1,
+      "should": 2,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "scope": "revision 2 の差分（726c177..HEAD）と全体",
+      "findings": [
+        {
+          "id": "R2.1-1",
+          "severity": "MUST",
+          "text": "AC21（と確かめる方法）が、同じ周の最新の mutate ファイルと比べる新しい決まりと合っておらず、走らせ直しがレビュー役の実行の前か後かも決まっていない",
+          "response": "判断役の結論（D-014）で AC20・AC21 と「スクリプトの形」を直し、手順にも書いた"
+        },
+        {
+          "id": "R2.1-2",
+          "severity": "SHOULD",
+          "text": "acceptance[].mutation の出どころが SKILL.md の 2 つの規則で食い違う",
+          "response": "メインの最新のファイルの値に揃え、レビュー役の結果は mutateByReviewer に写して突き合わせると書いた"
+        },
+        {
+          "id": "R2.1-3",
+          "severity": "SHOULD",
+          "text": "implement-prompt.md の型の一文が timeout の括弧の中にあり、続く文を読み違えるおそれ",
+          "response": "括弧の外に出した"
+        },
+        {
+          "id": "R2.1-4",
+          "severity": "MAY",
+          "text": "docstring の「一覧が読めない」の列挙が一部だけ",
+          "response": "直した"
+        },
+        {
+          "id": "R2.1-5",
+          "severity": "MAY",
+          "text": "「最新」の決め方（n が最大）が書かれていない",
+          "response": "PRD と SKILL.md に書いた"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "revision": 2,
+      "date": "2026-11-28",
+      "tests": "pass",
+      "must": 0,
+      "should": 3,
+      "may": 3,
+      "reviewer": "レビュー役",
+      "scope": "直した箇所（24c07c6..HEAD）",
+      "findings": [
+        {
+          "id": "R2.2-1",
+          "severity": "SHOULD",
+          "text": "「走らせ直すのはパッチか実装を直した後だけ」が狭く、テストや ac-tests.json の項目（timeout など）を直した後の走らせ直しが禁じられて読める（SKILL.md・PRD「スクリプトの形」）",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-2",
+          "severity": "SHOULD",
+          "text": "レビュー役に頼んだ後にメインが走らせ直すと、レビュー役の mutate と同じ作業ツリーで重なりうる。レビュー役が返してから走らせ直す、と書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-3",
+          "severity": "SHOULD",
+          "text": "メインの結果とレビュー役の結果の食い違いを MUST にするとき、誰が起票し、reviews の件数や「MUST 0 件の周で終わる」にどう数えるかが書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-4",
+          "severity": "MAY",
+          "text": "再現しない一度だけの食い違い（不安定なテスト）でも MUST になる",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-5",
+          "severity": "MAY",
+          "text": "implement-prompt.md に、ac・command が無い、fail_marker が正規表現でないときも終了コード 2 になることが書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-6",
+          "severity": "MAY",
+          "text": "レビュー役が走らせ直したとき、mutateByReviewer に最新の結果を写すことが SKILL.md に書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "revision": 3,
+      "date": "2026-11-28",
+      "tests": "pass",
+      "must": 0,
+      "should": 2,
+      "may": 2,
+      "reviewer": "レビュー役",
+      "scope": "revision 3 の差分（4b82d9e..HEAD）",
+      "findings": [
+        {
+          "id": "R3.1-1",
+          "severity": "SHOULD",
+          "text": "レビュー役に頼んだ後でテストや実装を直して mutate を走らせ直すと、その変更は /code-review にも受け入れ基準の照合にも通らない（頼むのは mutate の走らせ直しだけ）",
+          "response": "直さない（D-015）。unresolved に載せる"
+        },
+        {
+          "id": "R3.1-2",
+          "severity": "SHOULD",
+          "text": "レビュー中に基準のテストを直しても red を走らせ直す決まりが無く、acceptance[].red が古いテストの結果のままになる",
+          "response": "直さない（D-015）。unresolved に載せる"
+        },
+        {
+          "id": "R3.1-3",
+          "severity": "MAY",
+          "text": "環境が原因の一時的な baseline_failed でも、何かを直さない限り走らせ直せない",
+          "response": "直さない（D-015）。unresolved に載せる"
+        },
+        {
+          "id": "R3.1-4",
+          "severity": "MAY",
+          "text": "走らせ直しの前にコミットすることが書かれておらず、汚れた作業ツリーで error だけのファイルが最新になりうる",
+          "response": "直さない（D-015）。unresolved に載せる"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "check-ac-tests.py とそのテスト、build-metrics.py・aggregate-metrics.py の新しい欄",
+      "status": "完了",
+      "owner": "impl-scripts"
+    },
+    {
+      "id": "T2",
+      "title": "報告ページ（report.html）と例のデータに「先に赤」「壊して確認」を出す",
+      "status": "完了",
+      "owner": "impl-report"
+    },
+    {
+      "id": "T3",
+      "title": "手順とテンプレート（SKILL.md、implement-prompt.md、review-prompt.md、prd.md）",
+      "status": "完了",
+      "owner": "impl-docs"
+    }
+  ],
+  "attention": [
+    {
+      "kind": "PRD 変更",
+      "ref": "D-007, D-008",
+      "text": "承認後に PRD の「スクリプトの形」と AC19 を変えました。(1) red の結果ファイルはタスクごとにそのタスクの基準だけに絞って残します。(2) 実装前なのにテストが通った（pass）ときは、テストを直して走らせ直し、その結果を red-<task>-<n>.json に残して、受け入れ基準の red には最新の値を写します（最初の pass のファイルも残ります）。元に戻すには、prd.md の変更履歴の行と SKILL.md の「3. 実装」の該当の手順を、最初の値のまま走らせ直しは evidence に書く形に戻してください。"
+    },
+    {
+      "kind": "PRD 変更",
+      "ref": "D-014",
+      "text": "AC20・AC21 の比べる相手を「その周の最新の mutate ファイル（n が最大のもの）」に変え、走らせ直しはレビュー役に頼む前に済ませる決まりを足しました。今回の依頼（走らせ直しを残す）に合わせるためで、変えないと手順どおりでも AC21 が不合格になります。元に戻すには、AC20・AC21 から「最新の」と括弧の文を消し、「スクリプトの形」と手順から走らせ直しの決まりを消します。"
+    },
+    {
+      "kind": "その他",
+      "ref": "Copilot",
+      "text": "Copilot のレビューは待たずに報告しました（ユーザーの指示）。後から届いた指摘は PR #341 で確かめてください。"
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R3.1-1",
+      "severity": "SHOULD",
+      "text": "レビュー役に頼んだ後でテストや実装を直して mutate を走らせ直すと、その変更は /code-review にも受け入れ基準の照合にも通らない（頼むのは mutate の走らせ直しだけ）",
+      "reason": "D-015"
+    },
+    {
+      "id": "R3.1-2",
+      "severity": "SHOULD",
+      "text": "レビュー中に基準のテストを直しても red を走らせ直す決まりが無く、acceptance[].red が古いテストの結果のままになる",
+      "reason": "D-015"
+    },
+    {
+      "id": "R3.1-3",
+      "severity": "MAY",
+      "text": "環境が原因の一時的な baseline_failed でも、何かを直さない限り走らせ直せない",
+      "reason": "D-015"
+    },
+    {
+      "id": "R3.1-4",
+      "severity": "MAY",
+      "text": "走らせ直しの前にコミットすることが書かれておらず、汚れた作業ツリーで error だけのファイルが最新になりうる",
+      "reason": "D-015"
+    },
+    {
+      "id": "R2.2-2",
+      "severity": "SHOULD",
+      "text": "レビュー役に頼んだ後にメインが走らせ直すと、レビュー役の mutate と同じ作業ツリーで重なりうる。レビュー役が返してから走らせ直す、と書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-3",
+      "severity": "SHOULD",
+      "text": "メインの結果とレビュー役の結果の食い違いを MUST にするとき、誰が起票し、reviews の件数や「MUST 0 件の周で終わる」にどう数えるかが書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-4",
+      "severity": "MAY",
+      "text": "再現しない一度だけの食い違い（不安定なテスト）でも MUST になる",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-5",
+      "severity": "MAY",
+      "text": "implement-prompt.md に、ac・command が無い、fail_marker が正規表現でないときも終了コード 2 になることが書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-6",
+      "severity": "MAY",
+      "text": "レビュー役が走らせ直したとき、mutateByReviewer に最新の結果を写すことが SKILL.md に書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2-2",
+      "severity": "MAY",
+      "text": "時間切れ・中断で終了コード 2 になったとき、それまでに終わった項目の結果も出力から捨てられ、走らせ直しが要る",
+      "reason": "2 周目の指摘のため見送り"
+    },
+    {
+      "id": "R2-3",
+      "severity": "MAY",
+      "text": "パッチを当てた後のコマンドが終わってから git apply -R を始めるまでのごく短い間に SIGTERM が届くと、パッチが当たったまま終わる（手順の「走らせた後に git status を見る」で気づける）",
+      "reason": "2 周目の指摘のため見送り"
+    },
+    {
+      "id": "R1-10",
+      "severity": "MAY",
+      "text": "指標が red: pass と mutation の baseline_failed・rejected・no_patch を数えていない",
+      "reason": "D-011"
+    },
+    {
+      "id": "R1-11",
+      "severity": "MAY",
+      "text": "4. レビューの終わりの条件が capped・判断役が認めた未達と両立しない（この変更の前から）",
+      "reason": "D-011"
+    }
+  ],
+  "revision": 3,
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-27",
+      "kind": "最初の報告",
+      "request": "#339",
+      "changes": "check-ac-tests.py（red / mutate）を足し、テストを先に書いて赤を確かめ、パッチで機能を壊して落ちることを確かめる手順にした",
+      "refs": ""
+    },
+    {
+      "revision": 2,
+      "date": "2026-11-28",
+      "kind": "手直し",
+      "request": "#340 の記録の確認で見つかった、同じ周の mutate の走らせ直しで最初の結果が上書きされる点を直す。直さなかった SHOULD の R2-1 も入れる",
+      "changes": "同じ周の mutate の走らせ直しを mutate-<revision>-<round>-<n>.json に残し、最新の値を使う決まりを PRD と手順に足した。PRD の「スクリプトの形」に timeout・終了コード 2・項目の型の確認を書いた",
+      "refs": "D-013, R2-1"
+    },
+    {
+      "revision": 3,
+      "date": "2026-11-28",
+      "kind": "手直し",
+      "request": "直さなかった SHOULD の R2.2-1 を直す",
+      "changes": "mutate を走らせ直してよいのを、パッチ・テスト・実装・ac-tests.json の項目のどれかを直した後に広げた",
+      "refs": "R2.2-1"
+    }
+  ],
+  "pr": {
+    "number": 341,
+    "url": "https://github.com/flexphere/fude.nvim/pull/341"
+  },
+  "commits": 11,
+  "copilot": {
+    "status": "ユーザーの指示で Copilot のレビューは待たずに進めました。",
+    "comments": []
+  }
+}

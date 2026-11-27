@@ -1,0 +1,89 @@
+{
+  "slug": "test-first",
+  "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
+  "branch": "docs/develop-v2-test-first",
+  "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-test-first",
+  "phase": "done",
+  "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done（scripts/set-phase.py で進める）",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-27T22:16:49+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-27T22:21:01+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-27T22:24:55+09:00"
+    },
+    {
+      "phase": "reviewing",
+      "at": "2026-11-27T22:41:08+09:00"
+    },
+    {
+      "phase": "pr",
+      "at": "2026-11-27T22:59:21+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-27T23:00:09+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-27T23:00:10+09:00"
+    },
+    {
+      "phase": "revising",
+      "at": "2026-11-28T06:49:44+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-28T06:58:34+09:00"
+    },
+    {
+      "phase": "revising",
+      "at": "2026-11-28T07:05:35+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-28T07:08:18+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 2,
+    "prd_drafts": 1,
+    "ac_checks": 3,
+    "ac_check_findings": 12
+  },
+  "agents": {
+    "reviewer": "a1f72714dbd636722",
+    "judge": "a7150dabe4c41e923",
+    "_note": "SendMessage で続けて頼むための ID（セッションをまたぐと使えない）"
+  },
+  "review_outcomes": [
+    {
+      "revision": 1,
+      "ended": "must0",
+      "rounds": 2
+    },
+    {
+      "revision": 2,
+      "ended": "must0",
+      "rounds": 2
+    },
+    {
+      "revision": 3,
+      "ended": "must0",
+      "rounds": 1
+    }
+  ],
+  "_review_outcomes_note": "レビューが終わるたびに {\"revision\": 1, \"ended\": \"must0\" | \"capped\", \"rounds\": 3} を足す（Copilot 対応のあとのレビューには \"after\": \"copilot\" も付ける）",
+  "pr": {
+    "number": 341,
+    "url": "https://github.com/flexphere/fude.nvim/pull/341"
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/U8hLhv3U6gkSf33U7EK3Tu"
+}

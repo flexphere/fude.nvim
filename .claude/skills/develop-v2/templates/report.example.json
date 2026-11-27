@@ -44,23 +44,29 @@
       "result": "met",
       "how": "Unit テスト `ExportFilterTest`「期間の外の行を出さない」",
       "verify": "auto",
-      "evidence": "`ExportFilterTest`「期間の外の行を出さない」（通過。期間の判定を外すと落ちることをレビュー役が確認）"
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`ExportFilterTest`「期間の外の行を出さない」（通過。red: 実装前に落ちた。mutate: 期間の判定を外す AC1.patch で落ちた）"
     },
     {
       "id": "AC2",
       "text": "状態を指定したとき、その状態の行だけが出力される",
-      "result": "met",
+      "result": "unmet",
       "how": "Unit テスト `ExportFilterTest`「指定した状態の行だけを出す」",
       "verify": "auto",
-      "evidence": "`ExportFilterTest`「指定した状態の行だけを出す」（通過）"
+      "red": "fail",
+      "mutation": "survived",
+      "evidence": "`ExportFilterTest`「指定した状態の行だけを出す」（通過。mutate: 状態の条件を外す AC2.patch でも落ちない。テストのデータがすべて同じ状態のため）"
     },
     {
       "id": "AC3",
-      "text": "絞り込みを指定しないとき、出力は今と 1 バイトも変わらない",
+      "text": "絞り込みを指定しないとき、出力は今と 1 バイトも変わらない（既存の挙動）",
       "result": "met",
       "how": "`ExportSnapshotTest`「絞り込みなしの出力が保存済みの CSV と一致する」",
       "verify": "auto",
-      "evidence": "`ExportSnapshotTest`「絞り込みなしの出力が保存済みの CSV と一致する」（通過）"
+      "red": "skipped",
+      "mutation": "killed",
+      "evidence": "`ExportSnapshotTest`「絞り込みなしの出力が保存済みの CSV と一致する」（通過。red: existing のため走らせていない。mutate: 列の順を入れ替える AC3.patch で落ちた）"
     },
     {
       "id": "AC4",
@@ -69,6 +75,44 @@
       "how": "staging で 1 万件の出力を実行し、ダウンロード完了までの時間を測る → 10 秒以内",
       "verify": "manual",
       "evidence": ""
+    },
+    {
+      "id": "AC5",
+      "text": "期間の終わりの日に作成された行も出力される",
+      "result": "unmet",
+      "how": "Unit テスト `ExportFilterTest`「期間の終わりの日の行を出す」",
+      "verify": "auto",
+      "red": "pass",
+      "mutation": "rejected",
+      "evidence": "`ExportFilterTest`「期間の終わりの日の行を出す」（通過。red: 実装前から通った。mutate: AC5.patch が ExportFilterTest を書き換えているため走らせていない）"
+    },
+    {
+      "id": "AC6",
+      "text": "1 万件を超える出力は、全件をメモリに載せずにストリームで返す",
+      "result": "unmet",
+      "how": "Unit テスト `ExportStreamTest`「1 万件を超えるとストリームで返す」",
+      "verify": "auto",
+      "red": "fail",
+      "mutation": "baseline_failed",
+      "evidence": "`ExportStreamTest`「1 万件を超えるとストリームで返す」（mutate: パッチを当てる前のコマンドが失敗。テストのデータの用意が時間切れになる）"
+    },
+    {
+      "id": "AC7",
+      "text": "状態の選択肢に「下書き」が含まれる",
+      "result": "unmet",
+      "how": "Unit テスト `ExportQueryTest`「状態の選択肢に下書きを含む」",
+      "verify": "auto",
+      "red": "fail",
+      "mutation": "no_patch",
+      "evidence": "`ExportQueryTest`「状態の選択肢に下書きを含む」（通過。mutate: ac-tests.json の項目に patch が無い）"
+    },
+    {
+      "id": "AC8",
+      "text": "絞り込みの条件が不正な値のとき、400 を返して CSV を出力しない",
+      "result": "unmet",
+      "how": "Unit テスト `ExportControllerTest`「不正な期間で 400 を返す」",
+      "verify": "auto",
+      "evidence": "`ExportControllerTest`「不正な期間で 400 を返す」（通過。red・mutate を走らせる前に追加した基準のため記録がなく、mutate が killed でないので満たすにしていない）"
     }
   ],
   "prd": {
@@ -207,7 +251,15 @@
       "should": 3,
       "may": 4,
       "revision": 1,
-      "reviewer": "レビュー役"
+      "reviewer": "レビュー役",
+      "mutateByReviewer": [
+        { "ac": "AC1", "mutation": "killed" },
+        { "ac": "AC2", "mutation": "survived" },
+        { "ac": "AC3", "mutation": "killed" },
+        { "ac": "AC5", "mutation": "rejected" },
+        { "ac": "AC6", "mutation": "baseline_failed" },
+        { "ac": "AC7", "mutation": "no_patch" }
+      ]
     },
     {
       "round": 2,
