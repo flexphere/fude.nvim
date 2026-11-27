@@ -97,6 +97,88 @@
       "impact": "ac-tests/results/ の置き方",
       "revisit": "なし",
       "refs": "AC19"
+    },
+    {
+      "id": "D-006",
+      "title": "報告ページでは、警告の値を黄土色（b-mid）、それ以外を色なしで「結果」の列の中に出す",
+      "at": "2026-11-27 22:27",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "見た目だけで、後から変えやすい",
+      "by": "作業する側",
+      "background": "PRD の対応表は「警告の色」とだけ書き、色そのものと表示の場所を決めていなかった。",
+      "options": [
+        "b-mid（一部・未確認と同じ色）",
+        "b-ng（赤）",
+        "新しい列を足す",
+        "結果の列の中に並べる"
+      ],
+      "decided": "b-mid、結果の列の中",
+      "reason": "「満たしていない」の赤と区別でき、表を広げないので狭い画面のカード表示でも読める。",
+      "impact": "templates/report.html",
+      "revisit": "警告が目立たないと感じたとき",
+      "refs": "AC17"
+    },
+    {
+      "at": "2026-11-27 22:50",
+      "phase": "実装",
+      "by": "判断役",
+      "id": "D-007",
+      "title": "red-<task>.json の results はそのタスクの基準に絞る",
+      "severity": "低",
+      "severityReason": "記録の書き方だけで、ブランチの中に収まる",
+      "background": "red は一覧の全項目を走らせるので、後のタスクでは実装済みの前のタスクの基準が pass になって混ざる。",
+      "options": [
+        "保存時に results をそのタスクの基準に絞る",
+        "出力をそのまま保存する",
+        "スクリプトに --ac の絞り込みを足す"
+      ],
+      "decided": "保存時に results をそのタスクの基準に絞る",
+      "reason": "基準ごとにファイルが 1 つに決まり、AC18・AC19 の判定が一意になる。スクリプトの引数の形（PRD）を変えずに済む。",
+      "impact": "SKILL.md の 3. 実装、PRD のスクリプトの形",
+      "revisit": "手で絞るときの取り違えが見つかったとき（--ac を足す）",
+      "refs": "AC18, AC19",
+      "prdChange": true
+    },
+    {
+      "at": "2026-11-27 22:50",
+      "phase": "実装",
+      "by": "判断役",
+      "id": "D-008",
+      "title": "red が pass のときはテストを直して走らせ直し、red-<task>-<n>.json に残して最新の値を写す",
+      "severity": "中",
+      "severityReason": "AC18 の判定と指標の red の意味が変わる（最初の pass は指標から消え、ファイルと evidence に残る）",
+      "background": "実装前なのにテストが通った（pass）ときの扱いが PRD に無かった。",
+      "options": [
+        "テストを直し、最初の値（pass）のまま走らせ直しの結果は evidence に書く",
+        "走らせ直しを red-<task>-<n>.json に残し、最新の値を写す",
+        "直さずに進め、報告で警告する"
+      ],
+      "decided": "走らせ直しを red-<task>-<n>.json に残し、最新の値を写す",
+      "reason": "目的は「実装前にテストが落ちた記録がある」こと。直したテストの赤が正しい記録になり、最初の pass も上書きせず残る。直さずに進めるのは目的に反する。",
+      "impact": "SKILL.md の 3. 実装、PRD のスクリプトの形と AC19",
+      "revisit": "先にテストが通ってしまった件数を指標で追いたくなったとき",
+      "refs": "AC18, AC19",
+      "prdChange": true
+    },
+    {
+      "at": "2026-11-27 22:50",
+      "phase": "実装",
+      "by": "判断役",
+      "id": "D-009",
+      "title": "1 段目では、新しく作るモジュールに限り中身の無いモジュールを置いてよい",
+      "severity": "低",
+      "severityReason": "手順の文書の書き方だけ",
+      "background": "spec の先頭で無いモジュールを require すると読み込みで止まり（E5108）、Fail の行が出ないので red が pass に見える。",
+      "options": [
+        "中身の無いモジュール（空のテーブルを返すだけ）を置いてよい",
+        "require を it() の中に置く書き方を指示する"
+      ],
+      "decided": "中身の無いモジュールを置いてよい（新しく作るモジュールに限る）",
+      "reason": "既存の spec はすべて先頭で require しており、it() の中の require が後まで残ると慣習から外れる。空のモジュールは機能を実装しないので「実装せずに返す」に反しない。",
+      "impact": "implement-prompt.md の 2 段の進め方",
+      "revisit": "空のモジュールの上で一部のテストが実装前に通ってしまうとき、固定のチェックで問題になるとき",
+      "refs": "AC18"
     }
   ],
   "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
@@ -299,31 +381,62 @@
       "受け入れ基準の「確かめる方法」のほかに、この開発で足すテスト・手で確かめること:"
     ],
     "openQuestions": [],
-    "approvedAt": "2026-11-27"
+    "approvedAt": "2026-11-27",
+    "changes": [
+      {
+        "date": "2026-11-27",
+        "change": "red-<task>.json の results をそのタスクの基準に絞る",
+        "reason": "D-007",
+        "field": "制約"
+      },
+      {
+        "date": "2026-11-27",
+        "change": "red が pass のとき、走らせ直しを red-<task>-<n>.json に残して最新の値を写す。AC19 の対象に含める",
+        "reason": "D-008",
+        "field": "AC19"
+      }
+    ]
   },
-  "tests": [],
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト・check-state-deps・check-purity・check-docs・check-doc-lang すべて通過"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_check_ac_tests.py",
+      "result": "pass",
+      "detail": "16 件通過（実装前に 16 件すべて落ちることをメインが確認: 2026-11-27T22:28）"
+    }
+  ],
   "reviews": [],
   "tasks": [
     {
       "id": "T1",
       "title": "check-ac-tests.py とそのテスト、build-metrics.py・aggregate-metrics.py の新しい欄",
-      "status": "進行中",
+      "status": "完了",
       "owner": "impl-scripts"
     },
     {
       "id": "T2",
       "title": "報告ページ（report.html）と例のデータに「先に赤」「壊して確認」を出す",
-      "status": "進行中",
+      "status": "完了",
       "owner": "impl-report"
     },
     {
       "id": "T3",
       "title": "手順とテンプレート（SKILL.md、implement-prompt.md、review-prompt.md、prd.md）",
-      "status": "待ち",
-      "owner": ""
+      "status": "完了",
+      "owner": "impl-docs"
     }
   ],
-  "attention": [],
+  "attention": [
+    {
+      "kind": "PRD 変更",
+      "ref": "D-007, D-008",
+      "text": "承認後に PRD の「スクリプトの形」と AC19 を変えました。(1) red の結果ファイルはタスクごとにそのタスクの基準だけに絞って残します。(2) 実装前なのにテストが通った（pass）ときは、テストを直して走らせ直し、その結果を red-<task>-<n>.json に残して、受け入れ基準の red には最新の値を写します（最初の pass のファイルも残ります）。元に戻すには、prd.md の変更履歴の行と SKILL.md の「3. 実装」の該当の手順を、最初の値のまま走らせ直しは evidence に書く形に戻してください。"
+    }
+  ],
   "unresolved": [],
   "revision": 1,
   "revisions": []

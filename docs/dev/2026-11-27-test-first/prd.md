@@ -39,7 +39,7 @@
 | AC16 | 自動の基準 4 つ（`red`/`mutation` が `fail`/`killed`、`fail`/`survived`、`skipped`/`killed`、`pass`/無し）と手動の基準 1 つ（どちらも無し）を持つ `report.json` から `build-metrics.py` で作った `metrics.json` の `implementation.acceptance` が、`red_fail: 2`、`red_skipped: 1`、`mutation_killed: 2`、`mutation_survived: 1`、`auto_without_mutation: 1` を持つ | 自動 | `test_build_metrics_counts_red_and_mutation` | | |
 | AC17 | 報告のページの受け入れ基準の表で、自動の基準の行に、`red` と `mutation` の値が下の対応表どおりに表示される | 手動 | `templates/report.example.json`（対応表のすべての値を持つ行を含める）から `build-report.py` でページを作り、ブラウザで開く → 自動の各行に対応表どおりの文言が見える | | |
 | AC18 | 次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `"fail"` か `"skipped"` になる | 手動 | その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `"auto"` のものの `red` を見る | | |
-| AC19 | 次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json` の `at` が、その基準のテストを追加したコミットの時刻より前になる | 手動 | 基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる | | |
+| AC19 | 次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる | 手動 | 基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる | | |
 | AC20 | 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある | 手動 | `reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る | | |
 | AC21 | 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する | 手動 | 各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる | | |
 
@@ -49,7 +49,7 @@ AC17 の対応表（`red` の値 → 表示）: `fail` → 「先に赤: 落ち�
 - 項目の一覧 `docs/dev/<dir>/ac-tests/ac-tests.json`: `[{ "ac": "AC1", "command": "bash run_tests.sh tests/fude/foo_spec.lua", "fail_marker": "Fail.*〜のとき〜になる", "patch": "AC1.patch", "existing": false }]`。`fail_marker`・`patch`・`existing` は省略できる。パッチの場所は一覧と同じディレクトリから見たもの。
 - `python3 -I check-ac-tests.py red <ac-tests.json>` / `python3 -I check-ac-tests.py mutate <ac-tests.json>`。コマンドはリポジトリのルートで走らせる。
 - 「コマンドが失敗する」は、終了コードが 0 でなく、`fail_marker` があるならその出力（stdout と stderr）が正規表現に合うこと。
-- 出力は標準出力への JSON 1 つ: `{ "mode": "red" | "mutate", "at": "<ISO 8601 の時刻>", "results": [{ "ac", "red" | "mutation", "detail" }] }`。メインはこれを、`red` はタスクごとに `ac-tests/results/red-<task>.json`（タスクの番号、例 `red-T1.json`。走らせ直しても上書きせず、最初の結果を残す）、`mutate` は`ac-tests/results/mutate-<revision>-<round>.json` に保存してコミットする。
+- 出力は標準出力への JSON 1 つ: `{ "mode": "red" | "mutate", "at": "<ISO 8601 の時刻>", "results": [{ "ac", "red" | "mutation", "detail" }] }`。メインはこれを、`red` はタスクごとに `ac-tests/results/red-<task>.json`（タスクの番号、例 `red-T1.json`。`results` はそのタスクの基準に絞り、`mode`・`at` は出力のまま。後のタスクで前のタスクの基準が `pass` になって終了コードが 1 になっても、絞った結果で判断する。走らせ直しても上書きせず、最初の結果を残す。実装の前にテストを直して走らせ直した結果は `red-<task>-<n>.json`（`n` は 2 から）に残し、`acceptance[].red` には実装前の最新の値を写す）、`mutate` は`ac-tests/results/mutate-<revision>-<round>.json` に保存してコミットする。
 - `mutate` の順序: 作業ツリーの確認 → 項目ごとに、テストのファイルに触れるパッチなら `"rejected"`（コマンドは走らせない）→ パッチを当てずにコマンド（失敗なら `"baseline_failed"`）→ `git apply` → コマンド → `git apply -R`。`patch` の無い項目は `"no_patch"`。
 - 終了コード: 0 = すべて期待どおり（`red` はすべて `fail` か `skipped`、`mutate` はすべて `killed`）、1 = 期待に外れた項目がある、2 = 走らせられない（一覧が読めない、作業ツリーが汚れている、パッチが当たらない、戻した後の作業ツリーが走らせる前と違う。最後の場合は残りの項目を走らせない）。
 
@@ -87,3 +87,4 @@ AC17 の対応表（`red` の値 → 表示）: `fail` → 「先に赤: 落ち�
 
 | 日付 | 変更 | 理由 |
 |---|---|---|
+| 2026-11-27 | 「スクリプトの形」: `red-<task>.json` の `results` をそのタスクの基準に絞る。実装前にテストを直して走らせ直した結果を `red-<task>-<n>.json` に残し、`acceptance[].red` には最新の値を写す。AC19 の対象に `red-<task>-<n>.json` を含める | D-007, D-008 |

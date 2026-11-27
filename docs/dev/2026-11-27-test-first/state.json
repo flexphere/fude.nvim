@@ -27,7 +27,7 @@
   },
   "agents": {
     "reviewer": "a1f72714dbd636722",
-    "judge": null,
+    "judge": "a7150dabe4c41e923",
     "_note": "SendMessage で続けて頼むための ID（セッションをまたぐと使えない）"
   },
   "review_outcomes": [],
