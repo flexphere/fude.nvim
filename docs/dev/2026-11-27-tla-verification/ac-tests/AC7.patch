@@ -1,0 +1,11 @@
+--- a/.claude/skills/develop-v2/scripts/run-tlc.py
++++ b/.claude/skills/develop-v2/scripts/run-tlc.py
+@@ -162,7 +162,7 @@
+         "-metadir",
+         METADIR,
+     ]
+-    if allow_deadlock:
++    if False:
+         args.append("-deadlock")
+     args.append(spec.stem)
+     return args

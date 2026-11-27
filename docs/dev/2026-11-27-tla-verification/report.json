@@ -1,0 +1,916 @@
+{
+  "title": "/develop-v2 で非同期・競合・タイマーが絡む開発を TLA+ で設計検証する",
+  "slug": "tla-verification",
+  "date": "2026-11-27",
+  "branch": "feat/tla-verification",
+  "base": "docs/develop-v2-test-first",
+  "status": "完了",
+  "commits": 19,
+  "summary": "PR #342 を ready for review にしました。レビュー役は 3 周目で MUST 0 件、自動の基準 17 件はすべて満たし、mutate もすべて killed です。手動の基準（AC18・AC21〜AC25）もすべて確かめ、満たしています。",
+  "generatedBy": "/develop-v2",
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト・check-state-deps・check-purity・check-docs・check-doc-lang すべて通過"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_run_tlc.py",
+      "result": "pass",
+      "detail": "18 件（受け入れ基準 13 件＋レビューの指摘で 5 件追加）"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_verification_metrics.py",
+      "result": "pass",
+      "detail": "4 件"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_check_ac_tests.py",
+      "result": "pass",
+      "detail": "23 件（既存。変えていない）"
+    },
+    {
+      "command": "run-tlc.py で例のモデルを実際の Docker で走らせる（AC19・AC20・AC25）",
+      "result": "pass",
+      "detail": "守りあり: ok（10309 状態）・終了コード 0。守りなし: OneWriterUnlessKilled の違反（4 手）・終了コード 1。jar の SHA-256 が一致"
+    }
+  ],
+  "attention": [
+    {
+      "text": "承認後に AC5 の文を変えました。違反の手順（trace）の切り出しを、TLC 2.19 の実際の出力に合わせています。時間的性質の見出し「Error: The following behavior constitutes a counter-example:」も読むようにし、`Back to state` や `Stuttering` の行で終わる場合も扱います。元の文のままでは、時間的性質の手順が取れませんでした。元に戻すには、AC5 の文を戻し、テストの時間的性質の 2 つの場合を消します。",
+      "ref": "D-008 · AC5",
+      "kind": "PRD 変更"
+    },
+    {
+      "text": "#341 の動作確認（AC18〜AC21）の結果です。AC18: 自動の基準 17 件の red はすべて fail で、合格です。AC20・AC21: レビューの 3 周それぞれに 17 件を持つ mutate-1-<周>.json があり、mutateByReviewer と一致して、合格です。AC19 は、手順の `git log -S'<テスト名>'` をそのまま走らせると、テスト名を含む PRD のコミット（23:18:46）が最も古い時刻として出て、red の `at`（23:20:41・23:23:07）より前になります。そのため手順どおりでは不合格になります。テストのファイルに絞る（`-- <テストのファイル>`）と、テストを足したコミットは 23:22:00・23:23:50 で、合格です。AC19 の確かめる方法を、テストのファイルに絞る形に直すことを勧めます。",
+      "ref": "#341 AC18〜AC21",
+      "kind": "動作確認"
+    },
+    {
+      "text": "#341 の手順を回して気づいたことです。(1) mutate が AC14 の弱いパッチ（survived）を実際に見つけ、レビューの前に直せました。(2) T2 はテストと実装を 1 つのコミットにまとめました。red は実装の前に走らせていますが、テストだけのコミットは履歴に残っていません。(3) PR の base が main でないため CI が走らず、段階 4 の「CI が通っている」は確かめられませんでした。(4) 3 周目の /code-review は、セッションの作業ディレクトリが元のチェックアウトのままだったため、別のブランチの差分を見ました。レビュー役は差分を自分で読んで補っています。worktree で /code-review を呼ぶときの扱いを、手順に足す必要があります。(5) レビュー役の /code-review は、#341 の範囲の指摘を毎周 9 件ほど返しました（SKILL.md の段階 1・4 の終わりの条件と上限の食い違い、build-metrics.py の auto_without_evidence の数え方、並列の実装役がパッチで本番のコードを壊すこと、report.src.html と report.html のずれなど）。#341 の側で見てください。",
+      "ref": "#341",
+      "kind": "その他"
+    },
+    {
+      "text": "スキルの Python のテスト（test_run_tlc.py など）は make all と CI に入っていません。手で走らせて確かめています。",
+      "ref": "",
+      "kind": "その他"
+    },
+    {
+      "text": "Copilot のレビューは 10 分待っても届きませんでした（base が main でない PR のため、来ないのかもしれません）。",
+      "ref": "",
+      "kind": "その他"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "TLC が「Model checking completed. No error has been found.」と状態数の行を出して終わったとき、`run-tlc.py` の出力の JSON が `\"result\": \"ok\"` と、状態数の行から読んだ `states.generated`・`states.distinct` を持ち、終了コードが 0 になる",
+      "verify": "auto",
+      "how": "テスト `test_ok_output_reports_ok_and_states`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_ok_output_reports_ok_and_states`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC1.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC2",
+      "text": "TLC が「Error: Invariant <名前> is violated.」と手順（`State 1:` 〜 `State 4:`）を出したとき、出力の JSON が `\"result\": \"violation\"`、`violation.kind` が `\"invariant\"`、`violation.name` が `<名前>`、`violation.steps` が 4 を持ち、終了コードが 1 になる",
+      "verify": "auto",
+      "how": "テスト `test_invariant_violation_reports_name_and_steps`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_invariant_violation_reports_name_and_steps`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC2.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC3",
+      "text": "TLC が「Error: Temporal properties were violated.」を出したとき、出力の JSON が `\"result\": \"violation\"`、`violation.kind` が `\"temporal\"`、`violation.name` が null を持ち、終了コードが 1 になる",
+      "verify": "auto",
+      "how": "テスト `test_temporal_violation_reports_temporal_kind`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_temporal_violation_reports_temporal_kind`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC3.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC4",
+      "text": "TLC が「Error: Deadlock reached.」を出したとき、出力の JSON が `\"result\": \"violation\"`、`violation.kind` が `\"deadlock\"` を持ち、終了コードが 1 になる",
+      "verify": "auto",
+      "how": "テスト `test_deadlock_reports_deadlock_kind`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_deadlock_reports_deadlock_kind`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC4.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC5",
+      "text": "違反のとき、出力の JSON の `violation.trace` が、TLC が出した「Error: The behavior up to this point is:」（不変条件・デッドロック）または「Error: The following behavior constitutes a counter-example:」（時間的性質。直後の空行は含めない）の次の行から始まり、最後の `State <n>:` の塊の後の最初の空行の手前で終わる文字列になる。ただし最後の行が `Back to state <n>` で始まる行か `State <n>: Stuttering` なら、その行で終わる（その行を含む。末尾の改行は含まない）。テストは、不変条件の場合・`Back to state` で終わる場合・`Stuttering` で終わる場合の 3 つを確かめる",
+      "verify": "auto",
+      "how": "テスト `test_violation_trace_is_the_behavior_block`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_violation_trace_is_the_behavior_block`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC5.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC6",
+      "text": "`<dir>/Spec.tla` と `--config <dir>/Other.cfg` を渡したとき、偽の `docker` が受け取る引数が、`run`・`--rm`・`--name <名前>`・`<dir>` の書き込める mount・jar の読み取り専用の mount・イメージ `eclipse-temurin:21-jre`・`java`・`tlc2.TLC`・`-workers auto`・`-config Other.cfg`・値が `/tmp/` で始まる `-metadir`・`Spec` を含み、`-deadlock` を含まない",
+      "verify": "auto",
+      "how": "テスト `test_docker_args_without_allow_deadlock`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_docker_args_without_allow_deadlock`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC6.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC7",
+      "text": "`--allow-deadlock` を渡したとき、偽の `docker` が受け取る `tlc2.TLC` の引数に `-deadlock` が含まれる",
+      "verify": "auto",
+      "how": "テスト `test_allow_deadlock_passes_deadlock_flag`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_allow_deadlock_passes_deadlock_flag`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC7.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC8",
+      "text": "TLC が `--timeout <秒>` を過ぎても終わらないとき、出力の JSON が `\"result\": \"timeout\"` を持ち、終了コードが 2 になる",
+      "verify": "auto",
+      "how": "テスト `test_timeout_reports_timeout_and_exit_2`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_timeout_reports_timeout_and_exit_2`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC8.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC9",
+      "text": "時間切れのとき、偽の `docker` が、`run` に渡したのと同じ名前で `kill <名前>` を受け取る",
+      "verify": "auto",
+      "how": "テスト `test_timeout_kills_the_container_by_name`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_timeout_kills_the_container_by_name`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC9.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC10",
+      "text": "`docker` が `PATH` に無いとき、出力の JSON が `\"result\": \"error\"` と空でない文字列の `error` を持ち、終了コードが 2 になる",
+      "verify": "auto",
+      "how": "テスト `test_missing_docker_reports_error`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_missing_docker_reports_error`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC10.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC11",
+      "text": "TLC の出力に「No error has been found」も違反の行も無いとき（構文エラー、Docker のデーモンが止まっているなど）、出力の JSON が `\"result\": \"error\"` と、TLC の出力の最後の行を含む `detail` を持ち、終了コードが 2 になる",
+      "verify": "auto",
+      "how": "テスト `test_unrecognized_output_reports_error_with_detail`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_unrecognized_output_reports_error_with_detail`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC11.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC12",
+      "text": "jar がキャッシュに無く、ダウンロードした jar の SHA-256 が決めた値と違うとき、終了コードが 2 になり、キャッシュのディレクトリに jar が残らない",
+      "verify": "auto",
+      "how": "テスト `test_checksum_mismatch_removes_download`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_checksum_mismatch_removes_download`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC12.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC13",
+      "text": "`--jar <path>` を渡したとき、ダウンロードせず（偽の `curl` が呼ばれず）、偽の `docker` が受け取る mount に `<path>` が含まれる",
+      "verify": "auto",
+      "how": "テスト `test_jar_option_skips_download`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_jar_option_skips_download`（通過。red: 実装前に落ちた（red-T1.json）。mutate: AC13.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC14",
+      "text": "性質 3 つ（`result` が `holds`・`holds`・`violated`、`guard.result` が `violated`・`holds`・無し）を持つ `verification`（`used: true`）を含む `report.json` から `build-metrics.py` で作った `metrics.json` の `verification` が、`used: true`、`properties: 3`、`holds: 2`、`violated: 1`、`guard_violated: 1`、`guard_holds: 1`、`guard_missing: 1` を持つ（`guard_violated`・`guard_holds` は `guard.result` がその値の性質の数、`guard_missing` は `guard` が無い性質の数）",
+      "verify": "auto",
+      "how": "テスト `test_build_metrics_counts_verification`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_build_metrics_counts_verification`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC14.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC15",
+      "text": "`verification` の無い `report.json` から作った `metrics.json` の `verification` が null になる",
+      "verify": "auto",
+      "how": "テスト `test_build_metrics_verification_null_when_absent`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_build_metrics_verification_null_when_absent`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC15.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC16",
+      "text": "`verification.used` が false の `report.json` から作った `metrics.json` の `verification` が `{\"used\": false, \"properties\": 0, \"holds\": 0, \"violated\": 0, \"guard_violated\": 0, \"guard_holds\": 0, \"guard_missing\": 0}` になる",
+      "verify": "auto",
+      "how": "テスト `test_build_metrics_verification_unused`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_build_metrics_verification_unused`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC16.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC17",
+      "text": "AC14 の `metrics.json`、AC16 の `metrics.json`、`verification` が null の `metrics.json` を `docs/dev/` の下の別々のディレクトリに置いて `aggregate-metrics.py --root <そのルート>` を走らせたとき、開発ごとの表の「設計の検証」の列が、それぞれ `性質 3・破れた 1・守り外し 1/3`、`検証なし`、`—` になる",
+      "verify": "auto",
+      "how": "テスト `test_aggregate_metrics_shows_verification_column`",
+      "result": "met",
+      "red": "fail",
+      "mutation": "killed",
+      "evidence": "`test_aggregate_metrics_shows_verification_column`（通過。red: 実装前に落ちた（red-T2.json）。mutate: AC17.patch で落ちた（mutate-1-3.json）。レビュー役 3 周目で「満たす」）"
+    },
+    {
+      "id": "AC18",
+      "text": "下の対応表の値をすべて含む `verification`（`used: true`）を持つ `templates/report.example.json` から `build-report.py` で作ったページの「設計の検証」の節に、性質ごとの行が下の対応表どおりに表示される",
+      "verify": "manual",
+      "how": "`python3 -I .claude/skills/develop-v2/templates/build-report.py .claude/skills/develop-v2/templates/report.example.json <scratchpad>/report.html` → ブラウザで開く → 「設計の検証」の節の各行に対応表どおりの文言が見える",
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: 例の JSON から作ったページをヘッドレスの Chromium で描き、性質の 4 行が対応表どおり（成り立つ／破れた＋制約・設計を変更／守りを外すと破れる（5 手・4 手）／守りを外しても破れない・守りを外した版なしは警告の色 b-mid）で、基準 AC6・AC8 も出ることを見た"
+    },
+    {
+      "id": "AC19",
+      "text": "jar のキャッシュが空の状態で、`templates/tla-example/` の例のモデル（#340 の試作 `ChatDrain`）を守りを残した設定で実際の Docker で走らせたとき、出力が `\"result\": \"ok\"` で終了コードが 0 になる",
+      "verify": "manual",
+      "how": "`export XDG_CACHE_HOME=<scratchpad の空のディレクトリ>` → `python3 -I .claude/skills/develop-v2/scripts/run-tlc.py .claude/skills/develop-v2/templates/tla-example/ChatDrain.tla --allow-deadlock; echo $?` → JSON に `\"result\": \"ok\"`、最後の行に `0`",
+      "result": "met",
+      "evidence": "レビュー役が 2026-11-27 に実際の Docker で手順どおり確認（実装役も確認）"
+    },
+    {
+      "id": "AC20",
+      "text": "例のモデルの守りを外した設定（`send` の「draining 中は待つ」を外す）を実際の Docker で走らせたとき、出力が `\"result\": \"violation\"` と `violation.name` が `\"OneWriterUnlessKilled\"` を持ち、終了コードが 1 になる",
+      "verify": "manual",
+      "how": "`python3 -I .claude/skills/develop-v2/scripts/run-tlc.py .claude/skills/develop-v2/templates/tla-example/ChatDrain.tla --config .claude/skills/develop-v2/templates/tla-example/ChatDrain_unguarded.cfg --allow-deadlock; echo $?` → JSON に `\"result\": \"violation\"` と `\"name\": \"OneWriterUnlessKilled\"`、最後の行に `1`",
+      "result": "met",
+      "evidence": "レビュー役が 2026-11-27 に実際の Docker で手順どおり確認（実装役も確認）"
+    },
+    {
+      "id": "AC21",
+      "text": "`SKILL.md`・`templates/model-prompt.md`・`templates/prd.md`・`templates/implement-prompt.md` を読んだとき、下の「手順のチェックリスト」の項目がすべて書かれている",
+      "verify": "manual",
+      "how": "4 つのファイルを開き、チェックリストの項目ごとに書かれている箇所を探す → すべての項目に該当する箇所がある",
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: 11 項目すべてに該当する箇所がある（SKILL.md 93〜117・135・56・200〜202 行、model-prompt.md 6〜30 行、implement-prompt.md 23〜27 行、prd.md 30〜44 行）"
+    },
+    {
+      "id": "AC22",
+      "text": "`templates/report.example.json` から `verification` を除いた JSON で作ったページの「設計の検証」の節に、「まだ設計を検証していません」が表示される",
+      "verify": "manual",
+      "how": "例の JSON から `verification` を消したものを scratchpad に作り、`build-report.py` でページを作ってブラウザで開く → 節にその文言が見える",
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: verification を消した JSON のページをヘッドレスの Chromium で描き、節に「まだ設計を検証していません。」が出た"
+    },
+    {
+      "id": "AC23",
+      "text": "`verification` を `{\"used\": false, \"reason\": \"<理由>\"}` にした JSON で作ったページの「設計の検証」の節に、「TLA+ による検証はしていません」と `<理由>` が表示される",
+      "verify": "manual",
+      "how": "例の JSON の `verification` をその値に変えたものを scratchpad に作り、ページを作ってブラウザで開く → 節にその文言と理由が見える",
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: verification を {used:false, reason:\"非同期の処理が無いため\"} にしたページで、節に「TLA+ による検証はしていません。」と「理由: 非同期の処理が無いため」が出た"
+    },
+    {
+      "id": "AC24",
+      "text": "報告のページで、「設計の検証」の節が受け入れ基準の節のすぐ次に表示される",
+      "verify": "manual",
+      "how": "AC18 のページを開く → 受け入れ基準の節の次の節が「設計の検証」",
+      "result": "met",
+      "evidence": "Claude（メイン）が 2026-11-28 に確認: AC18 のページの節の並びが PRD → 受け入れ基準 → 設計の検証 → 見てほしいこと"
+    },
+    {
+      "id": "AC25",
+      "text": "AC19 を走らせたあと、`$XDG_CACHE_HOME/develop-v2/tla2tools-1.7.4.jar` ができていて、その SHA-256 が制約に書いた値になる",
+      "verify": "manual",
+      "how": "AC19 のあとに `shasum -a 256 \"$XDG_CACHE_HOME/develop-v2/tla2tools-1.7.4.jar\"` → 制約の値と同じ",
+      "result": "met",
+      "evidence": "レビュー役が 2026-11-27 に実際の Docker で手順どおり確認（実装役も確認）"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-27",
+    "purpose": "非同期・競合・タイマーが絡む開発で、PRD の承認前に設計を TLA+ でモデルにし TLC で全部の順番を検査する手順を、任意で /develop-v2 に足す。判定→ユーザーに確認→モデル役が検査（守りを外した版で違反が出ることも確認）→違反の手順を PRD に書き戻し→性質を自動の受け入れ基準（busted の状態機械テスト）にする。",
+    "users": "/develop-v2 のメイン、新しいモデル役、PRD を承認し報告を見るユーザー、/harness-audit で指標を集計する人",
+    "outOfScope": [
+      "検証を必須にすること",
+      "モデルとコードのずれを機械的に見つけること",
+      "TLA+ 以外の道具",
+      "Docker の無い環境",
+      "新しい phase を足すこと",
+      "この開発そのものを TLA+ で検証すること",
+      "実際の Docker を使う自動テスト"
+    ],
+    "constraints": [
+      "対象は .claude/skills/develop-v2/ のみ。make all が通る",
+      "検証しない開発では既存の手順・スクリプトの挙動を変えない",
+      "run-tlc.py は標準ライブラリのみ・python3 -I で走る。終了コード 0/1/2",
+      "Docker eclipse-temurin:21-jre + tla2tools v1.7.4 を SHA-256 で確かめてキャッシュ",
+      "時間切れでは docker kill でコンテナを止める",
+      "「設計の検証」の節は受け入れ基準の節の次"
+    ],
+    "changes": [
+      {
+        "date": "2026-11-27",
+        "change": "AC5 の文を TLC 2.19 の実際の出力に合わせた",
+        "reason": "D-008。時間的性質の見出しが別の文言で、Stuttering の後に空行が無い",
+        "field": "AC5"
+      }
+    ],
+    "verification": [
+      "固定のテスト: make all",
+      "python3 -I .claude/skills/develop-v2/scripts/test_run_tlc.py と test_check_ac_tests.py が通る"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "判定はメインが手がかりの一覧で行う",
+      "at": "2026-11-27 23:05",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "聞くかどうかの入口を決める",
+      "by": "ユーザー",
+      "background": "非同期・競合・タイマーが絡むかを誰がどう判定するか（Issue の決めること）。",
+      "options": [
+        "メインが手がかりで判定",
+        "毎回聞く",
+        "レビュー役が点検で判定"
+      ],
+      "decided": "メインが手がかりで判定",
+      "reason": "関係ない開発で問いを増やさず、手がかりを SKILL.md に書けば判定がぶれにくい。",
+      "impact": "SKILL.md の 1. ヒアリング",
+      "revisit": "手がかりに当たらない開発で競合の不具合がレビューで続けて出たとき",
+      "refs": "AC21"
+    },
+    {
+      "id": "D-002",
+      "title": "モデルは新しいモデル役が書く",
+      "at": "2026-11-27 23:05",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "役が 1 つ増える",
+      "by": "ユーザー",
+      "background": "メインはコードを書かないため、モデルを書く役が要る。",
+      "options": [
+        "新しいモデル役",
+        "判断役",
+        "レビュー役"
+      ],
+      "decided": "新しいモデル役（templates/model-prompt.md）",
+      "reason": "判断役・レビュー役の中立さを保つ。",
+      "impact": "SKILL.md の役割の表、templates/model-prompt.md",
+      "revisit": "モデル役の結果がレビューで覆されることが続いたとき",
+      "refs": "AC21"
+    },
+    {
+      "id": "D-003",
+      "title": "定数は小さく始め、1 回の上限は 10 分",
+      "at": "2026-11-27 23:05",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "既定の値で、引数で変えられる",
+      "by": "ユーザー",
+      "background": "検査の範囲と時間の上限。",
+      "options": [
+        "小さく始め 1 回 10 分",
+        "1 回 30 分",
+        "1 回 3 分"
+      ],
+      "decided": "集合の大きさ 2〜3 から、--timeout の既定 600 秒",
+      "reason": "PRD 作成の時間を抑えつつ、試作の規模（27 秒）は収まる。",
+      "impact": "run-tlc.py の既定、model-prompt.md",
+      "revisit": "時間切れで定数を小さくすることが続いたとき",
+      "refs": "AC8, AC21"
+    },
+    {
+      "id": "D-004",
+      "title": "報告のページに節、指標に verification を足す",
+      "at": "2026-11-27 23:05",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "記録の形の追加",
+      "by": "ユーザー",
+      "background": "報告・指標に何を足すか。",
+      "options": [
+        "ページに節＋指標",
+        "指標だけ",
+        "ページだけ"
+      ],
+      "decided": "ページに「設計の検証」の節、metrics.json と aggregate に verification",
+      "reason": "ユーザーが報告で結果を確かめられ、/harness-audit で効果を測れる。",
+      "impact": "report.html, report.example.json, build-metrics.py, aggregate-metrics.py",
+      "revisit": "",
+      "refs": "AC14〜AC18"
+    },
+    {
+      "id": "D-005",
+      "title": "tla2tools.jar は安定版 v1.7.4 を SHA-256 で固定する",
+      "at": "2026-11-27 23:10",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "定数 1 つで変えられる",
+      "by": "作業する側",
+      "background": "Issue の試作は v1.8.0 だが、v1.8.0 は 2026-11-26 にも差し替えられた pre-release で、中身が変わりうる。",
+      "options": [
+        "v1.8.0（試作と同じ）",
+        "v1.7.4（安定版）を SHA-256 で固定"
+      ],
+      "decided": "v1.7.4（TLC 2.19）。Java 21 のコンテナで動くことを確かめた",
+      "reason": "固定した値で中身を確かめられる。試作のモデルが使う機能は v1.7.4 にもある。",
+      "impact": "run-tlc.py",
+      "revisit": "v1.8 系が安定版になったとき",
+      "refs": "AC12"
+    },
+    {
+      "id": "D-006",
+      "title": "この開発自体は TLA+ で検証しない",
+      "at": "2026-11-27 23:12",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "",
+      "by": "作業する側",
+      "background": "新しい手順に照らすと、この開発で検証するかを判定する場面。",
+      "options": [
+        "検証する",
+        "検証しない"
+      ],
+      "decided": "検証しない",
+      "reason": "run-tlc.py は逐次の処理で、手がかり（コールバック、タイマー、処理中のフラグ、取り消し、二重送信）のどれにも当たらない。",
+      "impact": "",
+      "revisit": "",
+      "refs": "スコープ外"
+    },
+    {
+      "id": "D-007",
+      "title": "#341 のブランチから派生して進める",
+      "at": "2026-11-27 23:00",
+      "phase": "準備",
+      "severity": "低",
+      "severityReason": "",
+      "by": "ユーザー",
+      "background": "Issue の前提が #339（#341）で、この開発は #341 の手順の動作確認も兼ねる。",
+      "options": [
+        "origin/main から",
+        "#341 のブランチから"
+      ],
+      "decided": "docs/develop-v2-test-first から派生し、#341 版のスキルの手順で進める",
+      "reason": "ユーザーの指示。",
+      "impact": "PR の base",
+      "revisit": "#341 がマージされたら base を main に変える",
+      "refs": ""
+    },
+    {
+      "id": "D-008",
+      "title": "AC5 の手順の切り出しを TLC 2.19 の実際の出力に合わせる",
+      "at": "2026-11-27 23:30",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "このブランチの PRD・テスト・新しいスクリプトだけが変わる",
+      "by": "判断役",
+      "prdChange": true,
+      "background": "実装役が TLC 2.19 を実際に走らせたところ、時間的性質の違反の見出しが「Error: The following behavior constitutes a counter-example:」で、Stuttering で終わる反例の後には空行が無く統計の行が続くことが分かった。承認時の AC5 の文のままでは、時間的性質の手順が取れない。",
+      "options": [
+        "案A: AC5 の文を実際の出力に合わせて直し、3 つの場合を確かめる",
+        "案B: AC5 はそのまま、時間的性質の場合をテストから外す"
+      ],
+      "decided": "案A",
+      "reason": "目的 2・3（違反の手順を PRD に書き戻す、機械が読める形で受け取る）に合う。機能は足さず、AC5 がもともと意図した範囲を実際の出力どおりに書き直すだけ。",
+      "impact": "prd.md の AC5、test_run_tlc.py、run-tlc.py",
+      "revisit": "TLC の版を上げたとき、AC20 などで trace に統計の行が入ったとき",
+      "refs": "AC5"
+    },
+    {
+      "id": "D-009",
+      "title": "AC13 のパッチは --jar のときに curl を呼ぶ形で壊す",
+      "at": "2026-11-27 23:45",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "確かめる材料で、手元に収まる",
+      "by": "判断役",
+      "background": "「--jar を無視してダウンロードする」形に壊すと、テストの PATH に本物の curl があり、ネットワークに出る。",
+      "options": [
+        "curl --version を呼ぶ形（今のまま）",
+        "--jar を無視してダウンロードする形"
+      ],
+      "decided": "curl を呼ぶ形",
+      "reason": "AC13 の「curl が呼ばれない」の照合で落ちる。ネットワークに出ず、テストも変えずに済む。mount の照合はこのパッチでは落ちない。",
+      "impact": "ac-tests/AC13.patch",
+      "revisit": "テストの PATH から本物の curl を外せるようになったとき",
+      "refs": "AC13"
+    },
+    {
+      "id": "D-010",
+      "title": "例のモデルの定数を試作より小さくする",
+      "at": "2026-11-27 23:45",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "例のファイルの 2 行で戻せる",
+      "by": "判断役",
+      "background": "試作は Jobs={1,2,3,4}・MaxProcs=6。手順では、定数は集合の大きさ 2〜3 から始める。",
+      "options": [
+        "Jobs={1,2,3}・MaxProcs=4",
+        "試作の値"
+      ],
+      "decided": "Jobs={1,2,3}・MaxProcs=4",
+      "reason": "見本が手順に合う。この大きさでも、守りありで違反なし（10309 状態・約 2 秒）、守りを外すと 4 手で違反になる。",
+      "impact": "templates/tla-example/ChatDrain*.cfg",
+      "revisit": "試作の値でだけ出る違反が分かったとき",
+      "refs": "AC19, AC20"
+    },
+    {
+      "id": "D-011",
+      "title": "verification の書き方の細部（手順の実装役が決めた）",
+      "at": "2026-11-27 23:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "手順の文面の解釈",
+      "by": "作業する側",
+      "background": "PRD からは一意に決まらない細部。",
+      "options": [],
+      "decided": "手がかりに当たらず聞かなかった開発では verification を書かない。聞いて検証しないと決まったら {used:false, reason}。properties[].result は最初に検査したときの結果で、設計を変えたものは violated＋handling「設計を変更」。同じ設定を走らせ直したら results の JSON は上書きし、前の実行は runs に残す。モデル役は --timeout を変えない",
+      "reason": "手がかりに当たらない開発の手順を変えないため。report.example.json の例に合わせた。",
+      "impact": "SKILL.md、model-prompt.md",
+      "revisit": "",
+      "refs": "AC21"
+    }
+  ],
+  "reviews": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-27",
+      "reviewer": "レビュー役",
+      "tests": "pass",
+      "must": 1,
+      "should": 2,
+      "may": 1,
+      "mutateByReviewer": [
+        {
+          "ac": "AC1",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC2",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC3",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC4",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC5",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC6",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC7",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC8",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC9",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC10",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC11",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC12",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC13",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC14",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC15",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC16",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC17",
+          "mutation": "killed"
+        }
+      ],
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "初期状態で不変条件が破れると（Error: Invariant X is violated by the initial state:）違反ではなく error・終了コード 2 になる（run-tlc.py:55）",
+          "response": "直した。初期状態の見出しも受け、steps 1・trace を取る。test_initial_state_invariant_violation_is_a_violation を追加"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "Failure 以外の例外（OSError など）で JSON を出さず終了コード 1（＝違反ありと同じ）で落ちる（run-tlc.py:238）",
+          "response": "直した。想定外の例外も result error・終了コード 2 の JSON にする。test_unexpected_os_errors_report_error_and_exit_2 を追加"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "report.html だけを直し、元の templates/assets/report.src.html を直していない",
+          "response": "直した。report.src.html にも同じ変更を入れた（base からある src とのずれは範囲外）"
+        },
+        {
+          "id": "R1-4",
+          "severity": "MAY",
+          "text": "AC13 のパッチが実際に起こりうる退行（--jar を無視してダウンロード）の形をしていない",
+          "response": "直さない（D-009 で判断済み。ネットワークに出るため）"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "revision": 1,
+      "date": "2026-11-27",
+      "reviewer": "レビュー役",
+      "tests": "pass",
+      "must": 1,
+      "should": 4,
+      "may": 2,
+      "mutateByReviewer": [
+        {
+          "ac": "AC1",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC2",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC3",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC4",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC5",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC6",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC7",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC8",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC9",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC10",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC11",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC12",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC13",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC14",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC15",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC16",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC17",
+          "mutation": "killed"
+        }
+      ],
+      "findings": [
+        {
+          "id": "R2-M1",
+          "severity": "MUST",
+          "text": "action property（[][A]_v）の違反が error・終了コード 2 になる（run-tlc.py parse_output）",
+          "response": "直した。Action property の違反を kind action で読む。同じ形の穴として、初期状態で破れる PROPERTY も読むようにした。テスト 3 件を追加"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "revision": 1,
+      "date": "2026-11-28",
+      "reviewer": "レビュー役",
+      "tests": "pass",
+      "must": 0,
+      "should": 0,
+      "may": 0,
+      "mutateByReviewer": [
+        {
+          "ac": "AC1",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC2",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC3",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC4",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC5",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC6",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC7",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC8",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC9",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC10",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC11",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC12",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC13",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC14",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC15",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC16",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC17",
+          "mutation": "killed"
+        }
+      ],
+      "findings": []
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R2-S1",
+      "severity": "SHOULD",
+      "text": "report.src.html に、新しい節が使う .checks のスタイルが無い（src から作り直すとバッジが縦に並ばない。.checks 自体は base からのずれ）",
+      "reason": "2 周目の SHOULD のため直していない"
+    },
+    {
+      "id": "R2-S2",
+      "severity": "SHOULD",
+      "text": "run-tlc.py が SIGTERM で止められると docker kill を呼ばず、コンテナが残りうる（コードを読んだ結果で、未確認）",
+      "reason": "2 周目の SHOULD のため直していない"
+    },
+    {
+      "id": "R2-S3",
+      "severity": "SHOULD",
+      "text": "例のモデルが、model-prompt.md の「--allow-deadlock を使うなら、上限に達していない状態で止まらないことを不変条件で確かめる」に従っていない",
+      "reason": "2 周目の SHOULD のため直していない"
+    },
+    {
+      "id": "R2-S4",
+      "severity": "SHOULD",
+      "text": "verification が無い報告に「まだ設計を検証していません」が出て、未着手のように読める（AC22 で承認済みの文言への異論）",
+      "reason": "PRD で承認された挙動。変えるなら PRD の変更"
+    },
+    {
+      "id": "R2-M-1",
+      "severity": "MAY",
+      "text": "最初のイメージの pull が時間の上限に含まれる",
+      "reason": "2 周目の MAY のため直していない"
+    },
+    {
+      "id": "R2-M-2",
+      "severity": "MAY",
+      "text": "出力の config が入力したパスのままで、SKILL.md の「設定のファイル名」と食い違う",
+      "reason": "2 周目の MAY のため直していない"
+    },
+    {
+      "id": "R1-4",
+      "severity": "MAY",
+      "text": "AC13 のパッチが実際に起こりうる退行の形をしていない",
+      "reason": "D-009。ネットワークに出るため"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "run-tlc.py とテスト、例のモデル（AC1〜AC13, AC19, AC20, AC25）",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "build-metrics / aggregate-metrics に verification を足す（AC14〜AC17）",
+      "status": "完了",
+      "owner": "impl-2"
+    },
+    {
+      "id": "T3",
+      "title": "報告のページに「設計の検証」の節（AC18, AC22〜AC24）",
+      "status": "完了",
+      "owner": "impl-3"
+    },
+    {
+      "id": "T4",
+      "title": "SKILL.md・model-prompt.md・prd.md・implement-prompt.md（AC21）",
+      "status": "完了",
+      "owner": "impl-4"
+    }
+  ],
+  "revision": 1,
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-28",
+      "kind": "最初の報告",
+      "request": "#340",
+      "changes": "run-tlc.py、例のモデル、手順とテンプレート、報告のページと指標",
+      "refs": ""
+    }
+  ],
+  "pr": {
+    "number": 342,
+    "url": "https://github.com/flexphere/fude.nvim/pull/342"
+  },
+  "copilot": {
+    "status": "10 分待ちましたが、Copilot のレビューは届きませんでした（timeout）。",
+    "comments": [],
+    "timed_out": true
+  }
+}

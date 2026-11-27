@@ -1,0 +1,26 @@
+{
+  "mode": "red",
+  "at": "2026-11-27T23:20:41+09:00",
+  "results": [
+    {
+      "ac": "AC14",
+      "red": "fail",
+      "detail": "exit 1: : {'total': 0, 'by_judge': 0, 'high': 0, 'escalated_to_user': 0}, 'copilot': None, 'revisions': {'count': 0, 'rework': 0, 'requirement_change': 0}, 'phase_hours': None, 'unresolved': 0}\n\n----------------------------------------------------------------------\nRan 4 tests in 0.113s\n\nFAILED (failures=4)"
+    },
+    {
+      "ac": "AC15",
+      "red": "fail",
+      "detail": "exit 1: : {'total': 0, 'by_judge': 0, 'high': 0, 'escalated_to_user': 0}, 'copilot': None, 'revisions': {'count': 0, 'rework': 0, 'requirement_change': 0}, 'phase_hours': None, 'unresolved': 0}\n\n----------------------------------------------------------------------\nRan 4 tests in 0.114s\n\nFAILED (failures=4)"
+    },
+    {
+      "ac": "AC16",
+      "red": "fail",
+      "detail": "exit 1: : {'total': 0, 'by_judge': 0, 'high': 0, 'escalated_to_user': 0}, 'copilot': None, 'revisions': {'count': 0, 'rework': 0, 'requirement_change': 0}, 'phase_hours': None, 'unresolved': 0}\n\n----------------------------------------------------------------------\nRan 4 tests in 0.114s\n\nFAILED (failures=4)"
+    },
+    {
+      "ac": "AC17",
+      "red": "fail",
+      "detail": "exit 1: : {'total': 0, 'by_judge': 0, 'high': 0, 'escalated_to_user': 0}, 'copilot': None, 'revisions': {'count': 0, 'rework': 0, 'requirement_change': 0}, 'phase_hours': None, 'unresolved': 0}\n\n----------------------------------------------------------------------\nRan 4 tests in 0.112s\n\nFAILED (failures=4)"
+    }
+  ]
+}

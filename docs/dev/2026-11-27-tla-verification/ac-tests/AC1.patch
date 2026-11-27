@@ -1,0 +1,11 @@
+--- a/.claude/skills/develop-v2/scripts/run-tlc.py
++++ b/.claude/skills/develop-v2/scripts/run-tlc.py
+@@ -225,7 +225,7 @@
+     for m in STATES_RE.finditer(text):
+         pass
+     if m:
+-        out["states"] = {"generated": int(m.group(1)), "distinct": int(m.group(2))}
++        out["states"] = {"generated": int(m.group(2)), "distinct": int(m.group(1))}
+     d = None
+     for d in DEPTH_RE.finditer(text):
+         pass

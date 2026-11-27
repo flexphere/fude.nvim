@@ -1,0 +1,11 @@
+--- a/.claude/skills/develop-v2/scripts/build-metrics.py
++++ b/.claude/skills/develop-v2/scripts/build-metrics.py
+@@ -131,7 +131,7 @@
+ def verification_counts(v):
+     """report.json の verification（TLA+ による設計の検証）を数える。無ければ None。"""
+     if not isinstance(v, dict):
+-        return None
++        v = {}
+     used = v.get("used") is True
+     props = [p for p in arr(v.get("properties")) if isinstance(p, dict)] if used else []
+     guards = [p.get("guard") for p in props]

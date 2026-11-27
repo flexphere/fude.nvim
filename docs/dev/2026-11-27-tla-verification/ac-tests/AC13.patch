@@ -1,0 +1,12 @@
+--- a/.claude/skills/develop-v2/scripts/run-tlc.py
++++ b/.claude/skills/develop-v2/scripts/run-tlc.py
+@@ -306,6 +306,9 @@
+             jar = pathlib.Path(a.jar).resolve()
+             if not jar.is_file():
+                 raise Failure(f"--jar のファイルがありません: {a.jar}")
++            curl = shutil.which("curl")
++            if curl:
++                subprocess.run([curl, "--version"], capture_output=True)
+         else:
+             jar = ensure_jar()
+ 

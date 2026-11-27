@@ -7,6 +7,8 @@
 - `--git` を付けると、各開発の PR の squash コミット（件名の `(#<番号>)`）が触ったファイルを、
   マージ後 `--days` 日以内に触った `fix` のコミットを「マージ後の不具合の候補」として数える。
   候補であり、本当にその開発が原因かは人が確かめる。
+- 「設計の検証」の列は TLA+ による検証の結果を `性質 N・破れた V・守り外し G/N`（G は守りを外した版で
+  違反が出た性質の数）で出す。検証しなかった開発は `検証なし`、欄の無い古い metrics.json は `—`。
 - HARNESS.md §4.2 の着手のきっかけに当たりそうな傾向を「シグナル」として出す。目安であり、
   決めるのは /harness-audit でのユーザーの判断。
 """
@@ -80,6 +82,17 @@ def cell(v):
     return "—" if v is None else str(v)
 
 
+def verification_cell(m):
+    """「設計の検証」の列。欄が無い（古い metrics.json）か null なら None（— と表示）。"""
+    v = m.get("verification")
+    if not isinstance(v, dict):
+        return None
+    if v.get("used") is not True:
+        return "検証なし"
+    n = g(v, "properties", default=0)
+    return f"性質 {n}・破れた {g(v, 'violated', default=0)}・守り外し {g(v, 'guard_violated', default=0)}/{n}"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=".")
@@ -130,6 +143,7 @@ def main():
          else f"{g(m, 'implementation', 'acceptance', 'mutation_killed')}/{g(m, 'implementation', 'acceptance', 'mutation_survived', default=0)}"),
         ("壊して未確認の自動基準", lambda m: g(m, "implementation", "acceptance", "auto_without_mutation")),
         ("報告後 手直し/要件", lambda m: f"{g(m, 'revisions', 'rework', default=0)}/{g(m, 'revisions', 'requirement_change', default=0)}"),
+        ("設計の検証", verification_cell),
     ]
     if a.git:
         cols.append(("マージ後 fix 候補", lambda m: None if m.get("_fixes") is None else len(m["_fixes"])))

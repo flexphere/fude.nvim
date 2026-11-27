@@ -1,0 +1,91 @@
+{
+  "mode": "mutate",
+  "at": "2026-11-28T00:00:30+09:00",
+  "results": [
+    {
+      "ac": "AC1",
+      "mutation": "killed",
+      "detail": "exit 1: , in test_ok_output_reports_ok_and_states\n    self.assertEqual(out[\"states\"][\"generated\"], 30439)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 10309 != 30439\n\n----------------------------------------------------------------------\nRan 18 tests in 5.424s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC2",
+      "mutation": "killed",
+      "detail": "exit 1: f.assertEqual(out[\"violation\"][\"name\"], \"OneWriterUnlessKilled\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: None != 'OneWriterUnlessKilled'\n\n----------------------------------------------------------------------\nRan 18 tests in 5.419s\n\nFAILED (failures=2)"
+    },
+    {
+      "ac": "AC3",
+      "mutation": "killed",
+      "detail": "exit 1: nd\n    self.assertEqual(out[\"violation\"][\"kind\"], \"temporal\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'liveness' != 'temporal'\n- liveness\n+ temporal\n\n\n----------------------------------------------------------------------\nRan 18 tests in 5.400s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC4",
+      "mutation": "killed",
+      "detail": "exit 1: rtEqual(out[\"violation\"][\"kind\"], \"deadlock\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'deadlock_reached' != 'deadlock'\n- deadlock_reached\n+ deadlock\n\n\n----------------------------------------------------------------------\nRan 18 tests in 5.458s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC5",
+      "mutation": "killed",
+      "detail": "exit 1: - Finished checking temporal properties in 00s at 2026-11-27 14:20:15\n- 4 states generated, 3 distinct states found, 0 states left on queue.\n- Finished in 00s at (2026-11-27 14:20:15)\n\n\n----------------------------------------------------------------------\nRan 18 tests in 5.451s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC6",
+      "mutation": "killed",
+      "detail": "exit 1: ec', 'eclipse-temurin:21-jre', 'java', '-XX:+UseParallelGC', '-cp', '/opt/tla2tools.jar', 'tlc2.TLC', '-workers', 'auto', '-config', 'Other.cfg', '-metadir', '/tmp/tlc-states', 'Spec']\n\n----------------------------------------------------------------------\nRan 18 tests in 5.484s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC7",
+      "mutation": "killed",
+      "detail": "exit 1: ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: '-deadlock' not found in ['-workers', 'auto', '-config', 'Spec.cfg', '-metadir', '/tmp/tlc-states', 'Spec']\n\n----------------------------------------------------------------------\nRan 18 tests in 5.435s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC8",
+      "mutation": "killed",
+      "detail": "exit 1: meout_reports_timeout_and_exit_2\n    self.assertEqual(out[\"result\"], \"timeout\")\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'killed' != 'timeout'\n- killed\n+ timeout\n\n\n----------------------------------------------------------------------\nRan 18 tests in 5.471s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC9",
+      "mutation": "killed",
+      "detail": "exit 1: ame\n    self.assertIn([\"kill\", name], kills)\n    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: ['kill', 'run-tlc-aa8f730387d4'] not found in [['kill', 'run-tlc-aa8f730387d4-x']]\n\n----------------------------------------------------------------------\nRan 18 tests in 5.453s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC10",
+      "mutation": "killed",
+      "detail": "exit 1: ipts/test_run_tlc.py\", line 558, in test_missing_docker_reports_error\n    self.assertTrue(out[\"error\"].strip())\n    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: '' is not true\n\n----------------------------------------------------------------------\nRan 18 tests in 5.418s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC11",
+      "mutation": "killed",
+      "detail": "exit 1: ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: 'docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?' not found in 'docker の終了コード 125（出力なし）'\n\n----------------------------------------------------------------------\nRan 18 tests in 5.442s\n\nFAILED (failures=3)"
+    },
+    {
+      "ac": "AC12",
+      "mutation": "killed",
+      "detail": "exit 1: aude/skills/develop-v2/scripts/test_run_tlc.py\", line 586, in test_checksum_mismatch_removes_download\n    self.assertEqual(code, 2)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^\nAssertionError: 0 != 2\n\n----------------------------------------------------------------------\nRan 18 tests in 5.599s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC13",
+      "mutation": "killed",
+      "detail": "exit 1: ^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Lists differ: [['--version']] != []\n\nFirst list contains 1 additional elements.\nFirst extra element 0:\n['--version']\n\n- [['--version']]\n+ []\n\n----------------------------------------------------------------------\nRan 18 tests in 5.638s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC14",
+      "mutation": "killed",
+      "detail": "exit 1: 'guard_missing': 1,\n-  'guard_violated': 2,\n?                    ^\n\n+  'guard_violated': 1,\n?                    ^\n\n   'holds': 2,\n   'properties': 3,\n   'used': True,\n   'violated': 1}\n\n----------------------------------------------------------------------\nRan 4 tests in 0.113s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC15",
+      "mutation": "killed",
+      "detail": "exit 1:   ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^\nAssertionError: {'used': False, 'properties': 0, 'holds': 0, 'violated': 0, 'guard_violated': 0, 'guard_holds': 0, 'guard_missing': 0} is not None\n\n----------------------------------------------------------------------\nRan 4 tests in 0.115s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC16",
+      "mutation": "killed",
+      "detail": "exit 1: f.assertEqual(m[\"verification\"], METRICS_UNUSED)\n    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: None != {'used': False, 'properties': 0, 'holds':[72 chars]': 0}\n\n----------------------------------------------------------------------\nRan 4 tests in 0.113s\n\nFAILED (failures=1)"
+    },
+    {
+      "ac": "AC17",
+      "mutation": "killed",
+      "detail": "exit 1: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: '性質 3・破れた 2・守り外し 1/3' != '性質 3・破れた 1・守り外し 1/3'\n- 性質 3・破れた 2・守り外し 1/3\n?          ^\n+ 性質 3・破れた 1・守り外し 1/3\n?          ^\n\n\n----------------------------------------------------------------------\nRan 4 tests in 0.114s\n\nFAILED (failures=1)"
+    }
+  ]
+}

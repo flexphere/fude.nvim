@@ -1,0 +1,61 @@
+{
+  "slug": "tla-verification",
+  "title": "/develop-v2 で非同期・競合・タイマーが絡む開発を TLA+ で設計検証する",
+  "branch": "feat/tla-verification",
+  "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification",
+  "base": "docs/develop-v2-test-first",
+  "phase": "done",
+  "phase_history": [
+    {
+      "phase": "hearing",
+      "at": "2026-11-27T23:07:29+09:00"
+    },
+    {
+      "phase": "prd_approval",
+      "at": "2026-11-27T23:11:08+09:00"
+    },
+    {
+      "phase": "implementing",
+      "at": "2026-11-27T23:18:46+09:00"
+    },
+    {
+      "phase": "reviewing",
+      "at": "2026-11-27T23:29:41+09:00"
+    },
+    {
+      "phase": "pr",
+      "at": "2026-11-28T00:10:00+09:00"
+    },
+    {
+      "phase": "reporting",
+      "at": "2026-11-28T00:20:39+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-28T00:20:39+09:00"
+    }
+  ],
+  "hearing": {
+    "questions_asked": 4,
+    "prd_drafts": 1,
+    "ac_checks": 2,
+    "ac_check_findings": 8
+  },
+  "agents": {
+    "reviewer": "a017e5b2e3515f482",
+    "judge": "a865844d8c29dac38"
+  },
+  "review_outcomes": [
+    {
+      "revision": 1,
+      "ended": "must0",
+      "rounds": 3
+    }
+  ],
+  "pr": {
+    "number": 342,
+    "url": "https://github.com/flexphere/fude.nvim/pull/342"
+  },
+  "revision": 1,
+  "report_url": "https://claude.ai/artifact/JczjJTm1ZE1q73pwUtZjRL"
+}
