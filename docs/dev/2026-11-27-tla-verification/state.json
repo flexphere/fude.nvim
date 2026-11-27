@@ -4,7 +4,7 @@
   "branch": "feat/tla-verification",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-tla-verification",
   "base": "docs/develop-v2-test-first",
-  "phase": "implementing",
+  "phase": "reviewing",
   "phase_history": [
     {
       "phase": "hearing",
@@ -17,6 +17,10 @@
     {
       "phase": "implementing",
       "at": "2026-11-27T23:18:46+09:00"
+    },
+    {
+      "phase": "reviewing",
+      "at": "2026-11-27T23:29:41+09:00"
     }
   ],
   "hearing": {
@@ -27,12 +31,12 @@
   },
   "agents": {
     "reviewer": "a017e5b2e3515f482",
-    "judge": null
+    "judge": "a865844d8c29dac38"
   },
   "review_outcomes": [],
   "pr": {
-    "number": null,
-    "url": null
+    "number": 342,
+    "url": "https://github.com/flexphere/fude.nvim/pull/342"
   },
   "revision": 1,
   "report_url": "https://claude.ai/artifact/JczjJTm1ZE1q73pwUtZjRL"

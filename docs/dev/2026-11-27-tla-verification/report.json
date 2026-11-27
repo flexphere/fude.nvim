@@ -4,9 +4,9 @@
   "date": "2026-11-27",
   "branch": "feat/tla-verification",
   "base": "docs/develop-v2-test-first",
-  "status": "実装中",
+  "status": "レビュー対応中",
   "commits": 0,
-  "summary": "PRD が承認されました。run-tlc.py・指標・報告のページを並列で実装し、そのあと手順とテンプレートを書きます。",
+  "summary": "全タスクを実装し、draft の PR #342 を作りました。レビュー役のレビューを受けています。",
   "generatedBy": "/develop-v2",
   "tests": [],
   "attention": [
@@ -368,6 +368,60 @@
       "impact": "prd.md の AC5、test_run_tlc.py、run-tlc.py",
       "revisit": "TLC の版を上げたとき、AC20 などで trace に統計の行が入ったとき",
       "refs": "AC5"
+    },
+    {
+      "id": "D-009",
+      "title": "AC13 のパッチは --jar のときに curl を呼ぶ形で壊す",
+      "at": "2026-11-27 23:45",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "確かめる材料で、手元に収まる",
+      "by": "判断役",
+      "background": "「--jar を無視してダウンロードする」形に壊すと、テストの PATH に本物の curl があり、ネットワークに出る。",
+      "options": [
+        "curl --version を呼ぶ形（今のまま）",
+        "--jar を無視してダウンロードする形"
+      ],
+      "decided": "curl を呼ぶ形",
+      "reason": "AC13 の「curl が呼ばれない」の照合で落ちる。ネットワークに出ず、テストも変えずに済む。mount の照合はこのパッチでは落ちない。",
+      "impact": "ac-tests/AC13.patch",
+      "revisit": "テストの PATH から本物の curl を外せるようになったとき",
+      "refs": "AC13"
+    },
+    {
+      "id": "D-010",
+      "title": "例のモデルの定数を試作より小さくする",
+      "at": "2026-11-27 23:45",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "例のファイルの 2 行で戻せる",
+      "by": "判断役",
+      "background": "試作は Jobs={1,2,3,4}・MaxProcs=6。手順では、定数は集合の大きさ 2〜3 から始める。",
+      "options": [
+        "Jobs={1,2,3}・MaxProcs=4",
+        "試作の値"
+      ],
+      "decided": "Jobs={1,2,3}・MaxProcs=4",
+      "reason": "見本が手順に合う。この大きさでも、守りありで違反なし（10309 状態・約 2 秒）、守りを外すと 4 手で違反になる。",
+      "impact": "templates/tla-example/ChatDrain*.cfg",
+      "revisit": "試作の値でだけ出る違反が分かったとき",
+      "refs": "AC19, AC20"
+    },
+    {
+      "id": "D-011",
+      "title": "verification の書き方の細部（手順の実装役が決めた）",
+      "at": "2026-11-27 23:40",
+      "phase": "実装",
+      "severity": "低",
+      "severityReason": "手順の文面の解釈",
+      "by": "作業する側",
+      "background": "PRD からは一意に決まらない細部。",
+      "options": [],
+      "decided": "手がかりに当たらず聞かなかった開発では verification を書かない。聞いて検証しないと決まったら {used:false, reason}。properties[].result は最初に検査したときの結果で、設計を変えたものは violated＋handling「設計を変更」。同じ設定を走らせ直したら results の JSON は上書きし、前の実行は runs に残す。モデル役は --timeout を変えない",
+      "reason": "手がかりに当たらない開発の手順を変えないため。report.example.json の例に合わせた。",
+      "impact": "SKILL.md、model-prompt.md",
+      "revisit": "",
+      "refs": "AC21"
     }
   ],
   "reviews": [],
@@ -376,7 +430,7 @@
     {
       "id": "T1",
       "title": "run-tlc.py とテスト、例のモデル（AC1〜AC13, AC19, AC20, AC25）",
-      "status": "実装中",
+      "status": "完了",
       "owner": "impl-1"
     },
     {
@@ -394,15 +448,15 @@
     {
       "id": "T4",
       "title": "SKILL.md・model-prompt.md・prd.md・implement-prompt.md（AC21）",
-      "status": "未着手",
+      "status": "完了",
       "owner": "impl-4"
     }
   ],
   "revision": 1,
   "revisions": [],
   "pr": {
-    "number": null,
-    "url": null
+    "number": 342,
+    "url": "https://github.com/flexphere/fude.nvim/pull/342"
   },
   "copilot": null
 }
