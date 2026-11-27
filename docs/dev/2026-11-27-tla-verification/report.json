@@ -424,7 +424,114 @@
       "refs": "AC21"
     }
   ],
-  "reviews": [],
+  "reviews": [
+    {
+      "round": 1,
+      "revision": 1,
+      "date": "2026-11-27",
+      "reviewer": "レビュー役",
+      "tests": "pass",
+      "must": 1,
+      "should": 2,
+      "may": 1,
+      "mutateByReviewer": [
+        {
+          "ac": "AC1",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC2",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC3",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC4",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC5",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC6",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC7",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC8",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC9",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC10",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC11",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC12",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC13",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC14",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC15",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC16",
+          "mutation": "killed"
+        },
+        {
+          "ac": "AC17",
+          "mutation": "killed"
+        }
+      ],
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "初期状態で不変条件が破れると（Error: Invariant X is violated by the initial state:）違反ではなく error・終了コード 2 になる（run-tlc.py:55）",
+          "response": "直した。初期状態の見出しも受け、steps 1・trace を取る。test_initial_state_invariant_violation_is_a_violation を追加"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "Failure 以外の例外（OSError など）で JSON を出さず終了コード 1（＝違反ありと同じ）で落ちる（run-tlc.py:238）",
+          "response": "直した。想定外の例外も result error・終了コード 2 の JSON にする。test_unexpected_os_errors_report_error_and_exit_2 を追加"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "report.html だけを直し、元の templates/assets/report.src.html を直していない",
+          "response": "直した。report.src.html にも同じ変更を入れた（base からある src とのずれは範囲外）"
+        },
+        {
+          "id": "R1-4",
+          "severity": "MAY",
+          "text": "AC13 のパッチが実際に起こりうる退行（--jar を無視してダウンロード）の形をしていない",
+          "response": "直さない（D-009 で判断済み。ネットワークに出るため）"
+        }
+      ]
+    }
+  ],
   "unresolved": [],
   "tasks": [
     {
