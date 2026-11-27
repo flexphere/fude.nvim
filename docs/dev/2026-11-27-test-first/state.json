@@ -3,7 +3,7 @@
   "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
   "branch": "docs/develop-v2-test-first",
   "worktree": "/Users/ankh/ghq/github.com/flexphere/fude.nvim-dev-test-first",
-  "phase": "revising",
+  "phase": "done",
   "_phase_values": "hearing | prd_approval | implementing | reviewing | pr | reporting | revising | done（scripts/set-phase.py で進める）",
   "phase_history": [
     {
@@ -37,6 +37,10 @@
     {
       "phase": "revising",
       "at": "2026-11-28T06:49:44+09:00"
+    },
+    {
+      "phase": "done",
+      "at": "2026-11-28T06:58:34+09:00"
     }
   ],
   "hearing": {
@@ -53,6 +57,11 @@
   "review_outcomes": [
     {
       "revision": 1,
+      "ended": "must0",
+      "rounds": 2
+    },
+    {
+      "revision": 2,
       "ended": "must0",
       "rounds": 2
     }

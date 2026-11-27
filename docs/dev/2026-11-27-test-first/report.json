@@ -286,8 +286,8 @@
   "date": "2026-11-27",
   "branch": "docs/develop-v2-test-first",
   "base": "origin/main",
-  "status": "修正中",
-  "summary": "報告後の修正（第 2 版）中です。mutate の走らせ直しの記録の残し方と、R2-1（PRD の timeout の説明）を直しています。",
+  "status": "完了",
+  "summary": "報告後の修正（第 2 版）が終わりました。同じ周の mutate の走らせ直しを別のファイルに残して最新の値を使う決まりと、PRD の timeout の説明（R2-1）を足しました。そのため AC20・AC21 の比べる相手を「その周の最新のファイル」に変えています（D-014）。レビューは 2 周で MUST 0 件です。",
   "generatedBy": "/develop-v2",
   "acceptance": [
     {
@@ -679,6 +679,55 @@
           "response": "PRD と SKILL.md に書いた"
         }
       ]
+    },
+    {
+      "round": 2,
+      "revision": 2,
+      "date": "2026-11-28",
+      "tests": "pass",
+      "must": 0,
+      "should": 3,
+      "may": 3,
+      "reviewer": "レビュー役",
+      "scope": "直した箇所（24c07c6..HEAD）",
+      "findings": [
+        {
+          "id": "R2.2-1",
+          "severity": "SHOULD",
+          "text": "「走らせ直すのはパッチか実装を直した後だけ」が狭く、テストや ac-tests.json の項目（timeout など）を直した後の走らせ直しが禁じられて読める（SKILL.md・PRD「スクリプトの形」）",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-2",
+          "severity": "SHOULD",
+          "text": "レビュー役に頼んだ後にメインが走らせ直すと、レビュー役の mutate と同じ作業ツリーで重なりうる。レビュー役が返してから走らせ直す、と書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-3",
+          "severity": "SHOULD",
+          "text": "メインの結果とレビュー役の結果の食い違いを MUST にするとき、誰が起票し、reviews の件数や「MUST 0 件の周で終わる」にどう数えるかが書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-4",
+          "severity": "MAY",
+          "text": "再現しない一度だけの食い違い（不安定なテスト）でも MUST になる",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-5",
+          "severity": "MAY",
+          "text": "implement-prompt.md に、ac・command が無い、fail_marker が正規表現でないときも終了コード 2 になることが書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        },
+        {
+          "id": "R2.2-6",
+          "severity": "MAY",
+          "text": "レビュー役が走らせ直したとき、mutateByReviewer に最新の結果を写すことが SKILL.md に書かれていない",
+          "response": "直さない（2 周目からは MUST だけを直す）。unresolved に載せる"
+        }
+      ]
     }
   ],
   "tasks": [
@@ -719,6 +768,42 @@
     }
   ],
   "unresolved": [
+    {
+      "id": "R2.2-1",
+      "severity": "SHOULD",
+      "text": "「走らせ直すのはパッチか実装を直した後だけ」が狭く、テストや ac-tests.json の項目（timeout など）を直した後の走らせ直しが禁じられて読める（SKILL.md・PRD「スクリプトの形」）",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-2",
+      "severity": "SHOULD",
+      "text": "レビュー役に頼んだ後にメインが走らせ直すと、レビュー役の mutate と同じ作業ツリーで重なりうる。レビュー役が返してから走らせ直す、と書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-3",
+      "severity": "SHOULD",
+      "text": "メインの結果とレビュー役の結果の食い違いを MUST にするとき、誰が起票し、reviews の件数や「MUST 0 件の周で終わる」にどう数えるかが書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-4",
+      "severity": "MAY",
+      "text": "再現しない一度だけの食い違い（不安定なテスト）でも MUST になる",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-5",
+      "severity": "MAY",
+      "text": "implement-prompt.md に、ac・command が無い、fail_marker が正規表現でないときも終了コード 2 になることが書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
+    {
+      "id": "R2.2-6",
+      "severity": "MAY",
+      "text": "レビュー役が走らせ直したとき、mutateByReviewer に最新の結果を写すことが SKILL.md に書かれていない",
+      "reason": "revision 2 の 2 周目の指摘のため決まりどおり直していない"
+    },
     {
       "id": "R2-2",
       "severity": "MAY",
