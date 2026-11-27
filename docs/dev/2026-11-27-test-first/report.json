@@ -1,0 +1,330 @@
+{
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "#338 はマージ済みのため origin/main から切る",
+      "at": "2026-11-27 22:10",
+      "phase": "準備",
+      "severity": "低",
+      "severityReason": "どちらでも中身は同じ（スキルのファイルに差が無い）",
+      "by": "作業する側",
+      "background": "#339 は #338 のブランチから切る前提だったが、着手時には #338 が main にマージされていた。",
+      "options": [
+        "origin/main から切る",
+        "docs/develop-v2-verifiable-ac から切る"
+      ],
+      "decided": "origin/main から切る",
+      "reason": "スキルの手順どおり。#338 の内容は main に入っており、古いブランチの上に積む理由が無い。",
+      "impact": "ブランチの起点",
+      "revisit": "なし",
+      "refs": "#338"
+    },
+    {
+      "id": "D-002",
+      "title": "テストを先に書くのは実装役。書いたら一度止まり、メインが赤を確かめる",
+      "at": "2026-11-27 22:14",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "実装の進め方（実装役とのやり取りの回数）が変わる",
+      "by": "ユーザー",
+      "background": "テストを先に書く担い手と、赤を誰が確かめるかを決める必要があった。",
+      "options": [
+        "実装役が書いて一度止まり、メインが走らせる",
+        "テスト専用の役を立てる",
+        "実装役の自己申告"
+      ],
+      "decided": "実装役が書いて一度止まり、メインが走らせる",
+      "reason": "赤を確かめるのがメインなので自己申告にならず、まだ無い関数の形を推測する手間も増えない。",
+      "impact": "implement-prompt.md、SKILL.md の実装",
+      "revisit": "実装役とのやり取りが増えて実装が大きく遅れるとき",
+      "refs": "AC18, AC19"
+    },
+    {
+      "id": "D-003",
+      "title": "壊して確かめるのは、実装役の書くパッチをスクリプトで当てる形にする",
+      "at": "2026-11-27 22:14",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "レビューの判定条件（満たす／MUST）が変わる",
+      "by": "ユーザー",
+      "background": "メインはコードを書かないため、機能を壊す作業をメイン以外が用意する必要があった。",
+      "options": [
+        "壊し方のパッチ＋スクリプト",
+        "レビュー役が毎回手で壊す",
+        "実装役の自己申告のまま"
+      ],
+      "decided": "壊し方のパッチ＋スクリプト",
+      "reason": "当てる・走らせる・戻すが機械的で、レビュー役が同じスクリプトで再現できる。",
+      "impact": "check-ac-tests.py の追加、review-prompt.md",
+      "revisit": "パッチの維持が実装の負担になるとき",
+      "refs": "AC5〜AC14, AC20, AC21"
+    },
+    {
+      "id": "D-004",
+      "title": "スクリプトは Python の 1 本（red / mutate の 2 つのモード）、項目の一覧は ac-tests.json",
+      "at": "2026-11-27 22:20",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "スキルの中に閉じ、後から変えやすい",
+      "by": "作業する側",
+      "background": "赤の確認と壊して確認の両方で、走らせるコマンドと期待する失敗を機械的に扱う形が要った。",
+      "options": [
+        "1 本のスクリプトに 2 モード",
+        "モードごとに別スクリプト",
+        "シェルスクリプト"
+      ],
+      "decided": "1 本のスクリプトに 2 モード、一覧は ac-tests.json",
+      "reason": "既存のスクリプトと同じ Python・標準ライブラリだけで書け、一覧を赤と壊して確認で共有できる。テストのランナーが 1 ファイル単位でしか走らないため、他のテストの失敗と区別できるよう fail_marker を持たせる。",
+      "impact": "scripts/check-ac-tests.py、ac-tests/ の置き方",
+      "revisit": "fail_marker の正規表現が書きにくいとき",
+      "refs": "AC1〜AC15"
+    },
+    {
+      "id": "D-005",
+      "title": "赤の結果はタスクごとのファイルに残し、上書きしない",
+      "at": "2026-11-27 22:40",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "記録の置き方だけ",
+      "by": "作業する側",
+      "background": "赤はタスクごとに確かめるので、1 つのファイルだと後のタスクが前の結果を上書きし、時刻で順序を確かめられなくなる（受け入れ基準の点検の補足から）。",
+      "options": [
+        "red-<task>.json に分ける",
+        "red.json に追記する"
+      ],
+      "decided": "red-<task>.json に分け、最初の結果を残す",
+      "reason": "スクリプトの出力をそのまま保存でき、時刻との突き合わせが単純になる。",
+      "impact": "ac-tests/results/ の置き方",
+      "revisit": "なし",
+      "refs": "AC19"
+    }
+  ],
+  "title": "受け入れ基準のテストを先に書き、機能を壊して落ちることを機械的に確かめる",
+  "slug": "test-first",
+  "date": "2026-11-27",
+  "branch": "docs/develop-v2-test-first",
+  "base": "origin/main",
+  "status": "実装中",
+  "summary": "PRD が承認され、実装中です。スクリプトと報告ページを並列で作り、最後に手順とテンプレートを直します。",
+  "generatedBy": "/develop-v2",
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "`red` で、コマンドが失敗する項目は、結果が `\"fail\"` になる",
+      "verify": "auto",
+      "how": "`test_red_failing_command_is_fail`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC2",
+      "text": "`red` で、コマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる",
+      "verify": "auto",
+      "how": "`test_red_passing_command_exits_1`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC3",
+      "text": "`red` で、`existing: true` の項目は、結果が `\"skipped\"` になる",
+      "verify": "auto",
+      "how": "`test_red_existing_is_skipped`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC4",
+      "text": "`red` で、`existing: true` の項目のコマンドは、走った回数が 0 回になる",
+      "verify": "auto",
+      "how": "`test_red_existing_does_not_run`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC5",
+      "text": "`mutate` で、パッチを当てるとコマンドが失敗する項目は、結果が `\"killed\"` になる",
+      "verify": "auto",
+      "how": "`test_mutate_failing_after_patch_is_killed`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC6",
+      "text": "`mutate` で、パッチを当ててもコマンドが成功する項目があるとき、スクリプトの終了コードが 1 になる",
+      "verify": "auto",
+      "how": "`test_mutate_surviving_patch_exits_1`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC7",
+      "text": "`killed` の項目と `survived` の項目を 1 つずつ含む一覧で `mutate` を走らせた後、`git status --porcelain` と `git diff` の出力が走らせる前と同じになる",
+      "verify": "auto",
+      "how": "`test_mutate_restores_worktree`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC8",
+      "text": "`mutate` で、パッチを当てる前にコマンドが失敗する項目は、結果が `\"baseline_failed\"` になる",
+      "verify": "auto",
+      "how": "`test_mutate_baseline_failure_is_reported`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC9",
+      "text": "`mutate` で、パッチを当てる前にコマンドが失敗する項目のコマンドは、走った回数が 1 回になる（パッチを当てた後の実行が無い）",
+      "verify": "auto",
+      "how": "`test_mutate_baseline_failure_runs_once`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC10",
+      "text": "`mutate` で、`tests/` の下のファイル・名前に `_spec.` を含むファイル・名前に `_test.` を含むファイル・名前が `test_` で始まるファイルのどれかを変えるパッチは、4 通りのどれでも結果が `\"rejected\"` になる",
+      "verify": "auto",
+      "how": "`test_mutate_rejects_patch_touching_tests`（4 通りを 1 つずつ確かめる）",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC11",
+      "text": "`mutate` で、結果が `\"rejected\"` の項目のコマンドは、走った回数が 0 回になる",
+      "verify": "auto",
+      "how": "`test_mutate_rejected_does_not_run`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC12",
+      "text": "`mutate` で、作業ツリーの `docs/dev/` の外に、ステージ済みの変更・ステージ前の変更・未追跡のファイル（`.gitignore` で除かれたものは除く）のどれかがあるとき、終了コードが 2 になる",
+      "verify": "auto",
+      "how": "`test_mutate_refuses_dirty_worktree`（3 通りを 1 つずつ確かめる）",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC13",
+      "text": "`mutate` が終了コード 2 で終わったとき、どの項目のコマンドも走った回数が 0 回になる",
+      "verify": "auto",
+      "how": "`test_mutate_dirty_worktree_runs_nothing`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC14",
+      "text": "`fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`mutate` の結果が `\"survived\"` になる",
+      "verify": "auto",
+      "how": "`test_fail_marker_unmatched_is_survived`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC15",
+      "text": "`fail_marker` を持つ項目は、コマンドが失敗しても出力がその正規表現に合わなければ、`red` の結果が `\"pass\"` になる",
+      "verify": "auto",
+      "how": "`test_fail_marker_unmatched_red_is_pass`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC16",
+      "text": "自動の基準 4 つ（`red`/`mutation` が `fail`/`killed`、`fail`/`survived`、`skipped`/`killed`、`pass`/無し）と手動の基準 1 つ（どちらも無し）を持つ `report.json` から `build-metrics.py` で作った `metrics.json` の `implementation.acceptance` が、`red_fail: 2`、`red_skipped: 1`、`mutation_killed: 2`、`mutation_survived: 1`、`auto_without_mutation: 1` を持つ",
+      "verify": "auto",
+      "how": "`test_build_metrics_counts_red_and_mutation`",
+      "result": "",
+      "evidence": ""
+    },
+    {
+      "id": "AC17",
+      "text": "報告のページの受け入れ基準の表で、自動の基準の行に、`red` と `mutation` の値が下の対応表どおりに表示される",
+      "verify": "manual",
+      "how": "`templates/report.example.json`（対応表のすべての値を持つ行を含める）から `build-report.py` でページを作り、ブラウザで開く → 自動の各行に対応表どおりの文言が見える",
+      "result": "unverified",
+      "evidence": ""
+    },
+    {
+      "id": "AC18",
+      "text": "次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `\"fail\"` か `\"skipped\"` になる",
+      "verify": "manual",
+      "how": "その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `\"auto\"` のものの `red` を見る",
+      "result": "unverified",
+      "evidence": ""
+    },
+    {
+      "id": "AC19",
+      "text": "次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json` の `at` が、その基準のテストを追加したコミットの時刻より前になる",
+      "verify": "manual",
+      "how": "基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる",
+      "result": "unverified",
+      "evidence": ""
+    },
+    {
+      "id": "AC20",
+      "text": "次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある",
+      "verify": "manual",
+      "how": "`reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る",
+      "result": "unverified",
+      "evidence": ""
+    },
+    {
+      "id": "AC21",
+      "text": "次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する",
+      "verify": "manual",
+      "how": "各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる",
+      "result": "unverified",
+      "evidence": ""
+    }
+  ],
+  "prd": {
+    "purpose": "/develop-v2 では、自動の受け入れ基準をテストで判定している。しかし「そのテストが基準を本当に確かめているか」は、実装役とレビュー役が各自で判断し、必要なら手で機能を壊してみる運用に留まる。確かめたかどうかも、どう壊したかも記録に残らない。\n\nうまくいったと言える状態:\n- 自動の受け入れ基準ごとに、実装前にテストが落ちた（赤）ことを、メインが自分で走らせて確かめた記録がある。\n- 自動の受け入れ基準ごとに、機能を壊すパッチを当てるとテストが落ちることを、スクリプトが機械的に確かめた記録がある。\n- レビュー役が、同じスクリプトを自分で走らせて結果を再現している。",
+    "users": "/develop-v2 で開発を進めるメインのエージェント、実装役、レビュー役。結果を報告のページで見るユーザー。`/harness-audit` で指標を集計する人。",
+    "outOfScope": [
+      "機能を壊すパッチを自動で作ること（壊し方は実装役が考えて書く）。",
+      "本格的なミューテーションテストの道具（ランダムに多数の変異を作るもの）の導入。",
+      "`make all` や CI でこのテストを走らせること（スキルのスクリプトのテストとして手で走らせる）。",
+      "過去の開発の記録（`docs/dev/` の既存のディレクトリ）を新しい書式に直すこと。"
+    ],
+    "constraints": [
+      "メインはコードを書かない。テストとパッチは実装役が書き、メインはスクリプトを走らせて結果を写すだけにする。",
+      "変更を捨てる操作（`reset --hard`・`checkout .`・`clean -f`）を使わない。パッチは `git apply -R` で戻す。",
+      "既存のスクリプトと同じく Python 3 の標準ライブラリだけで書き、`python3 -I` で動く。",
+      "`build-metrics.py` と `aggregate-metrics.py` は、新しい欄の無い古い記録でも止まらず動く（欠けた欄は数えない・「—」）。",
+      "`report.json` の新しい欄は `acceptance[].red`（`\"fail\"` / `\"pass\"` / `\"skipped\"`）と `acceptance[].mutation`（`check-ac-tests.py` の結果の値）。既存の `evidence` は残し、そこに走らせたコマンドと結果の要点を書く。",
+      "手順の変更（`SKILL.md`、`templates/implement-prompt.md`、`templates/review-prompt.md`、`templates/prd.md`）:"
+    ],
+    "verification": [
+      "固定のテスト: `make all`",
+      "受け入れ基準の「確かめる方法」のほかに、この開発で足すテスト・手で確かめること:"
+    ],
+    "openQuestions": [],
+    "approvedAt": "2026-11-27"
+  },
+  "tests": [],
+  "reviews": [],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "check-ac-tests.py とそのテスト、build-metrics.py・aggregate-metrics.py の新しい欄",
+      "status": "進行中",
+      "owner": "impl-scripts"
+    },
+    {
+      "id": "T2",
+      "title": "報告ページ（report.html）と例のデータに「先に赤」「壊して確認」を出す",
+      "status": "進行中",
+      "owner": "impl-report"
+    },
+    {
+      "id": "T3",
+      "title": "手順とテンプレート（SKILL.md、implement-prompt.md、review-prompt.md、prd.md）",
+      "status": "待ち",
+      "owner": ""
+    }
+  ],
+  "attention": [],
+  "unresolved": [],
+  "revision": 1,
+  "revisions": []
+}
