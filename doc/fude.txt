@@ -2192,6 +2192,21 @@ automatically. Agents must append whole lines only — never rewrite existing
 lines. A skill scaffold for a resident Claude Code session is provided at
 `contrib/skills/fude-watch/` in the repository.
 
+A second skill, `contrib/skills/fude-guide/`, adds reading-order guide
+comments: it reads the PR description (or the commit messages when there is
+no PR) and the diff against the session's base branch, then appends comments
+starting with `[guide 1/N]` on the changed lines through its bundled script
+(requires `bash`, `jq` and `uuidgen`; `gh` to read the PR). Run
+|:FudeReviewLocal| first, ask Claude Code to use fude-guide, then
+|:FudeReviewReload|. Running it again deletes the guide comments it wrote
+before; comments and replies written by people stay, and a guide comment
+someone replied to is kept, while one without such a reply is deleted even
+if it was edited or resolved. |:FudeReviewListComments| lists the guide
+comments from the top in the order guide 1, 2, and so on. The skill
+refuses in the
+`commit` scope, where comments are not shown. See the README for the setup
+steps.
+
 ==============================================================================
 11. AI CHAT                                                    *fude-chat*
 

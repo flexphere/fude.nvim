@@ -1,0 +1,540 @@
+{
+  "title": "PR本文から読む順番つきのガイドコメントを作るskill（fude-guide）",
+  "slug": "pr-guide-comments",
+  "date": "2026-11-26",
+  "branch": "feat/pr-guide-comments",
+  "base": "origin/main",
+  "status": "完了",
+  "commits": 10,
+  "summary": "PR #335をready for reviewにしました。報告後に出た「止めて開き直すとガイドが消える」依頼は、ローカルレビュー本体の挙動の変更なので、別のPRで扱います。",
+  "generatedBy": "/develop-v2",
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト（fude_guide_script_spec.lua 34件を含む）・check-state-deps・check-purity・check-docs すべて通過"
+    },
+    {
+      "command": "GitHub Actions（PR #335）",
+      "result": "pass",
+      "detail": "Luacheck・StyLua・Purity・State Dependencies・Test Coverage・Tests（stable / v0.10.4 / v0.11.7）すべて通過"
+    }
+  ],
+  "attention": [
+    {
+      "text": "<leader>el（:FudeReviewLocalToggle）を2回押すとガイドが消える件は、:FudeReviewStopがセッションのポインタを消す既存の仕様が原因。このPRでは扱わず、停止しても再開するよう変える別のPRで直す。",
+      "ref": "報告後の依頼",
+      "kind": "その他"
+    },
+    {
+      "text": "skillを入れる: レビューしたいリポジトリのルートで `mkdir -p .claude/skills/fude-guide && cp /Users/kyu08/code/fude.nvim/worktree-ignored-feat-pr-guide-comments/contrib/skills/fude-guide/{SKILL.ja.md,fude-guide-comment.sh} .claude/skills/fude-guide/ && mv .claude/skills/fude-guide/SKILL.ja.md .claude/skills/fude-guide/SKILL.md` を実行する（READMEの手順と同じ）。",
+      "ref": "AC1",
+      "kind": "動作確認"
+    },
+    {
+      "text": "PRのあるブランチで、Neovimから `:FudeReviewLocal <PRのbase>` を開き、同じリポジトリで起動したClaude Codeに「fude-guideでガイドコメントを作って」と頼む。`[guide n/N]` で始まり、PR本文の説明と結びついたコメントが、読む順番（定義 → 利用 → テスト）で3〜10件ほどできるはず。",
+      "ref": "AC5, AC6",
+      "kind": "動作確認"
+    },
+    {
+      "text": "Neovimで `:FudeReviewReload` を実行すると、変更行にガイドが `[agent]` バッジつきで出て、`:FudeReviewListComments` では上からガイド1, 2, …の順に並ぶはず。",
+      "ref": "AC8, D-009",
+      "kind": "動作確認"
+    },
+    {
+      "text": "どれか1つのガイドに `:FudeReviewComment` で返信してから、もう一度skillを実行する。返信の無いガイドは入れ替わり、返信したガイドは残って、そのことをClaude Codeが伝えるはず。",
+      "ref": "AC7, D-007",
+      "kind": "動作確認"
+    },
+    {
+      "text": "手元のNeovimがこのworktreeのfudeを読んでいなくても確認できる（Luaは変えていないため）。",
+      "ref": "",
+      "kind": "動作確認"
+    },
+    {
+      "text": "承認後にAC7を変えました。人の返信が付いたガイドthreadは、再実行しても消さずに残し、skillがそのidと内容を伝えます（返信ごと消すと、返信が画面から見えなくなるため）。元に戻すには、AC7の追記とSKILL.mdの該当の1文を消し、スクリプトのclearで返信付きthreadも消すようにします。",
+      "ref": "D-007 · 重要度 中",
+      "kind": "PRD 変更"
+    },
+    {
+      "text": "AC6（ガイドの内容の質）とAC8（表示）は手で確かめる項目で、まだ確かめていない。上の動作確認でお願いしたい。",
+      "ref": "AC6, AC8",
+      "kind": "その他"
+    },
+    {
+      "text": "CopilotはPR #335のコードをレビューできなかった（unableの返事）。Copilotの指摘は無いまま、レビュー役の2周で終えた。",
+      "ref": "Copilot",
+      "kind": "その他"
+    }
+  ],
+  "acceptance": [
+    {
+      "id": "AC1",
+      "text": "contrib/skills/fude-guide/ にSKILL.md・SKILL.ja.md・ヘルパースクリプトがあり、READMEとdoc/fude.txtに配置手順と使い方が書かれている",
+      "result": "met",
+      "how": "レビュー役が確認。make all（check-docs）通過"
+    },
+    {
+      "id": "AC2",
+      "text": "addでagentのcommentイベントが1行追記され、contextに範囲の行が入る",
+      "result": "met",
+      "how": "tests/fude/fude_guide_script_spec.lua"
+    },
+    {
+      "id": "AC3",
+      "text": "セッションが無いとき、何も書かずに非0で終わり:FudeReviewLocalを案内する",
+      "result": "met",
+      "how": "tests/fude/fude_guide_script_spec.lua"
+    },
+    {
+      "id": "AC4",
+      "text": "範囲が不正なとき、何も書かずに非0で終わる",
+      "result": "met",
+      "how": "tests/fude/fude_guide_script_spec.lua"
+    },
+    {
+      "id": "AC5",
+      "text": "PR本文（無ければコミットメッセージ）とセッションのbaseとの差分からコメントを作る手順",
+      "result": "met",
+      "how": "レビュー役がSKILL.mdを読んで確認"
+    },
+    {
+      "id": "AC6",
+      "text": "本文が[guide n/N]で始まり、読む順番と変更内容をPR本文と結びつけて書く",
+      "result": "partial",
+      "how": "SKILL.mdの記述は満たす。実際のPRでの実行は未確認（動作確認で確かめる）"
+    },
+    {
+      "id": "AC7",
+      "text": "再実行で前回のガイドはdeleteで消え、人のコメントと返信は残る。返信付きガイドは残してidを伝える",
+      "result": "met",
+      "how": "tests/fude/fude_guide_script_spec.lua、SKILL.md"
+    },
+    {
+      "id": "AC8",
+      "text": ":FudeReviewReloadでガイドが[agent]バッジつきで表示される",
+      "result": "partial",
+      "how": "コード上はformat.comment_badgesで付く。手での確認は未実施（動作確認で確かめる）"
+    }
+  ],
+  "prd": {
+    "approvedAt": "2026-11-26",
+    "purpose": "PR本文（無ければコミットメッセージ）と差分から、変更行に読む順番つきのガイドコメントをローカルレビューのコメントとして置き、レビュワーが番号順に辿るだけで変更の全体を掴めるようにする。",
+    "users": "fude.nvimでPRをレビューする人。Claude Codeを同じリポジトリで起動し、fude-watchと同じ手順でskillを配置して使う。",
+    "outOfScope": [
+      "GitHubレビューモードでの表示",
+      "番号順に辿る専用コマンド",
+      "fude.nvimのLuaコードの変更",
+      "Neovimからskillを起動するコマンド",
+      "GitHubへの投稿"
+    ],
+    "constraints": [
+      "JSONLは追記のみ・1イベント1行（jq -c）",
+      "イベントのフィールドはlocal/storeのbuild_*_eventと同じ",
+      "セッションの特定はfude-watchと同じ",
+      "依存はbash・jq・uuidgenのみ",
+      "CLAUDE.mdの品質ルール"
+    ],
+    "changes": [
+      {
+        "date": "2026-11-26",
+        "change": "AC7に、人の返信が付いたガイドthreadは残してidを知らせ、skillがユーザーに伝えることを追記",
+        "reason": "D-007",
+        "field": "AC7"
+      },
+      {
+        "date": "2026-11-26",
+        "change": "スコープ外に「止めて開き直したときのセッションの再開（別のPRで扱う）」を追加",
+        "reason": "報告後の依頼。ユーザーの指示で別のPRに分けた",
+        "field": "スコープ外"
+      }
+    ],
+    "verification": [
+      "固定のテスト: make all",
+      "ヘルパースクリプトを一時gitリポジトリで実行しlocal/storeで読むテスト",
+      "実際のPRブランチで:FudeReviewLocal → skill実行 → :FudeReviewReload"
+    ],
+    "openQuestions": []
+  },
+  "decisions": [
+    {
+      "id": "D-001",
+      "title": "生成はcontribのClaude Code skillにする",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "実装の形が決まる",
+      "by": "ユーザー",
+      "background": "Neovimのコマンドからclaude -pを起動する案と、fude-watchと同じcontrib skillにする案があった。",
+      "options": [
+        "contribのskill",
+        "fudeのコマンド"
+      ],
+      "decided": "contribのskill",
+      "reason": "JSONLが外部エージェント向けの契約として既にあり、Luaを変えずに済む。",
+      "impact": "contrib/skills/fude-guide",
+      "revisit": "Neovimから完結させたい要望が出たとき",
+      "refs": "AC1"
+    },
+    {
+      "id": "D-002",
+      "title": "表示はローカルレビューのみ",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "高",
+      "severityReason": "GitHubへの投稿と同時に読めない",
+      "by": "ユーザー",
+      "background": "ローカルコメントは:FudeReviewLocal中だけ表示される。",
+      "options": [
+        "ローカルレビューのみ",
+        "GitHubレビュー中も表示する層を足す"
+      ],
+      "decided": "ローカルレビューのみ",
+      "reason": "Lua変更なしで最初の形を出す。",
+      "impact": "スコープ外",
+      "revisit": "GitHubレビュー中に読みたいという声が出たとき",
+      "refs": "スコープ外"
+    },
+    {
+      "id": "D-003",
+      "title": "読む順番は本文の番号で表す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "後から辿るコマンドを足せる",
+      "by": "ユーザー",
+      "background": "番号順に辿るコマンドを足すかどうか。",
+      "options": [
+        "本文に番号",
+        "辿るコマンドも足す"
+      ],
+      "decided": "本文に番号",
+      "reason": "既存UIのまま使える。",
+      "impact": "AC6",
+      "revisit": "番号順に辿りづらいと感じたとき",
+      "refs": "AC6"
+    },
+    {
+      "id": "D-004",
+      "title": "PRが無ければコミットメッセージで代用する",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "低",
+      "severityReason": "手順の分岐のみ",
+      "by": "ユーザー",
+      "background": "PR作成前のブランチでの扱い。",
+      "options": [
+        "コミットメッセージで代用",
+        "PRがある場合のみ"
+      ],
+      "decided": "コミットメッセージで代用",
+      "reason": "自分の変更のセルフレビューにも使える。",
+      "impact": "AC5",
+      "revisit": "",
+      "refs": "AC5"
+    },
+    {
+      "id": "D-005",
+      "title": "再実行時は前回のガイドコメントをdeleteイベントで消す",
+      "at": "2026-11-26",
+      "phase": "ヒアリング",
+      "severity": "中",
+      "severityReason": "既存コメントを消す操作を含む",
+      "by": "作業する側",
+      "background": "再実行するとガイドコメントが二重になる。",
+      "options": [
+        "前回分を消してから作る",
+        "重ねて作る"
+      ],
+      "decided": "前回分を消してから作る（agentかつ本文が[guide で始まる先頭コメントのみ）",
+      "reason": "二重表示は読む順番を壊す。deleteは監査用に行が残るので戻せる。",
+      "impact": "AC7",
+      "revisit": "人がガイドコメントに返信したスレッドを残したい要望が出たとき",
+      "refs": "AC7"
+    },
+    {
+      "id": "D-006",
+      "title": "worktreeはgit-worktree-createでrepo内に作る",
+      "at": "2026-11-26",
+      "phase": "準備",
+      "severity": "低",
+      "severityReason": "作業場所のみ",
+      "by": "作業する側",
+      "background": "skillは<親>/fude.nvim-dev-<slug>を指定するが、ユーザーの全体設定とメモリはrepo内のworktree-ignored-<branch>を指定している。",
+      "options": [
+        "skillの指定",
+        "ユーザーの設定"
+      ],
+      "decided": "ユーザーの設定",
+      "reason": "ユーザー本人の明示的な指示を優先した。",
+      "impact": "state.jsonのworktree",
+      "revisit": "",
+      "refs": ""
+    },
+    {
+      "id": "D-007",
+      "title": "人の返信が付いたガイドthreadは再実行時に残し、ユーザーに伝える",
+      "at": "2026-11-26",
+      "phase": "実装",
+      "severity": "中",
+      "severityReason": "レビュワーの書いた返信の扱いに関わる。JSONLには行が残るのでデータは失われない",
+      "by": "判断役",
+      "background": "AC7の「前回のガイドを消す」と「人の返信は残る」が、返信付きthreadでぶつかる。先頭をdeleteするとmaterializeは返信も表示しない。",
+      "options": [
+        "残してstderrで知らせる",
+        "返信があっても消す",
+        "残し、SKILL.mdでユーザーに伝える手順にする"
+      ],
+      "decided": "残し、SKILL.mdでユーザーに伝える手順にする",
+      "reason": "AC7の「人の返信は残る」を守れ、古いガイドが並んでもユーザーが気づいて片付けられる。スクリプトの変更は不要。",
+      "impact": "AC7の文面、SKILL.md/SKILL.ja.md",
+      "revisit": "残ったthreadの重複が多いという報告が来たとき",
+      "refs": "AC7",
+      "prdChange": true
+    },
+    {
+      "id": "D-008",
+      "title": "人が編集・resolveしたガイドは、返信が無ければclearで消す（直さない）",
+      "at": "2026-11-26",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "JSONLには行が残り、PRDの決めたとおりの挙動",
+      "by": "作業する側",
+      "background": "R1-7。人が[guide を残して編集・resolveしたガイドも、返信が無ければ再実行で消える。",
+      "options": [
+        "直さず、ドキュメントに書く",
+        "編集・resolveされたものも残す"
+      ],
+      "decided": "直さず、ドキュメントに書く",
+      "reason": "AC7は消す対象を決めており、例外は返信だけ。ガイドに意見を残したいときは返信すれば残る。",
+      "impact": "README・SKILL.mdの説明",
+      "revisit": "編集したガイドが消えて困るという声が出たとき",
+      "refs": "R1-7, AC7"
+    },
+    {
+      "id": "D-009",
+      "title": "ガイドはNから1の降順に追記し、一覧でガイド1を一番上にする",
+      "at": "2026-11-26",
+      "phase": "レビュー",
+      "severity": "低",
+      "severityReason": "手順の向きと案内の文面だけ。データと既存の挙動に影響しない",
+      "by": "判断役",
+      "background": "R1-6の修正でcreated_atがミリ秒になり追記順に増えるようになったが、コメント一覧は新しい順に並ぶため、昇順に追記するとガイドNが一番上に来る。",
+      "options": [
+        "昇順のまま、番号で辿るよう案内する",
+        "降順に追記し、一覧でガイド1を一番上にする"
+      ],
+      "decided": "降順に追記し、一覧でガイド1を一番上にする",
+      "reason": "番号順に辿る専用コマンドはスコープ外なので、ガイドを見渡す場所はコメント一覧になる。上から読めば番号順になる方が目的に合う。",
+      "impact": "SKILL.md/SKILL.ja.mdの手順5・6、README、doc/fude.txt",
+      "revisit": "コメント一覧の並べ替えが変わったとき",
+      "refs": "R1-6, AC6"
+    }
+  ],
+  "reviews": [
+    {
+      "round": 1,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 1,
+      "should": 8,
+      "may": 2,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R1-1",
+          "severity": "MUST",
+          "text": "SKILL.ja.mdで太字を使っている",
+          "response": "直した"
+        },
+        {
+          "id": "R1-2",
+          "severity": "SHOULD",
+          "text": "addがパスを正規化せず、./付きのパスでガイドが出ない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-3",
+          "severity": "SHOULD",
+          "text": "未追跡ファイルをgit status --porcelainで見ているので、新しいディレクトリの中が見えない",
+          "response": "直した"
+        },
+        {
+          "id": "R1-4",
+          "severity": "SHOULD",
+          "text": "commitスコープ中（detached HEAD）にセッションを取り違える",
+          "response": "直した"
+        },
+        {
+          "id": "R1-5",
+          "severity": "SHOULD",
+          "text": "bodyが文字列でない行が1つあるとclearが全体ごと失敗し、終了コードも契約と違う",
+          "response": "直した"
+        },
+        {
+          "id": "R1-6",
+          "severity": "SHOULD",
+          "text": "created_atが秒単位なので、コメント一覧でガイドの順番が崩れる",
+          "response": "直した（ミリ秒の時刻にし、addを降順にした。D-009）"
+        },
+        {
+          "id": "R1-7",
+          "severity": "SHOULD",
+          "text": "人が編集またはresolveしたガイドをclearが消す",
+          "response": "直さない（D-008）"
+        },
+        {
+          "id": "R1-8",
+          "severity": "SHOULD",
+          "text": "addが[guide で始まらない本文を受け付ける",
+          "response": "直した"
+        },
+        {
+          "id": "R1-9",
+          "severity": "SHOULD",
+          "text": "detached HEADでgh pr viewを番号なしで呼んでいる",
+          "response": "直した"
+        },
+        {
+          "id": "R1-10",
+          "severity": "MAY",
+          "text": "git diffがユーザーのdiff設定に影響される",
+          "response": "直した"
+        },
+        {
+          "id": "R1-11",
+          "severity": "MAY",
+          "text": "current.jsonのidを検証せずにパスに使っている",
+          "response": "直した"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "date": "2026-11-26",
+      "tests": "pass",
+      "must": 0,
+      "should": 4,
+      "may": 2,
+      "revision": 1,
+      "reviewer": "レビュー役",
+      "findings": [
+        {
+          "id": "R2-1",
+          "severity": "SHOULD",
+          "text": "commitスコープの判定がfude本体より広い（original_branchの有無を見ていない）",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-2",
+          "severity": "SHOULD",
+          "text": "「一覧の先頭からガイド1, 2の順」は、ガイドに返信や人のコメントが付くと成り立たない",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-3",
+          "severity": "SHOULD",
+          "text": "CLAUDE.mdのArchitecture節を更新していない",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-4",
+          "severity": "SHOULD",
+          "text": "読めないファイルのテストがrootで実行すると落ちる",
+          "response": "直さない（2周目のSHOULD）"
+        },
+        {
+          "id": "R2-5",
+          "severity": "MAY",
+          "text": "桁の大きい行番号がbashの算術でオーバーフローする",
+          "response": "直さない"
+        },
+        {
+          "id": "R2-6",
+          "severity": "MAY",
+          "text": "doc/fude.txtの折り返しが崩れている",
+          "response": "直さない"
+        }
+      ]
+    }
+  ],
+  "unresolved": [
+    {
+      "id": "R2-1",
+      "severity": "SHOULD",
+      "text": "detached HEADで自分の__detached__セッションをレビュー中、current.jsonに同じSHAのcommitスコープの古いエントリ（original_branch無し）が残っていると、add/clearが拒否される（fude-guide-comment.sh:102-106）",
+      "reason": "2周目のSHOULDは直さない決まり。安全側（何も書かない）に倒れる端の場面"
+    },
+    {
+      "id": "R2-2",
+      "severity": "SHOULD",
+      "text": "ガイドに返信や人のコメントが付くと、一覧の先頭がガイド1でなくなる。README・doc・SKILLは「先頭からガイド1, 2の順」と言い切っている",
+      "reason": "2周目のSHOULDは直さない決まり。直すなら「作った直後の一覧では」と条件を足す"
+    },
+    {
+      "id": "R2-3",
+      "severity": "SHOULD",
+      "text": "CLAUDE.mdのArchitecture節にfude-guideを載せていない",
+      "reason": "Architecture節はlua/fude/のコードが対象で、前例のfude-watchも載っていない"
+    },
+    {
+      "id": "R2-4",
+      "severity": "SHOULD",
+      "text": "読めないファイルのテストは、rootで実行すると落ちる（tests/fude/fude_guide_script_spec.lua:378-384）",
+      "reason": "通常のCIはrootで動かない"
+    },
+    {
+      "id": "R2-5",
+      "severity": "MAY",
+      "text": "桁の大きい行番号がbashの算術でオーバーフローし、1行目扱いになる",
+      "reason": "見送り"
+    },
+    {
+      "id": "R2-6",
+      "severity": "MAY",
+      "text": "doc/fude.txt:2205-2207の折り返しが崩れている",
+      "reason": "見送り"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "ヘルパースクリプト（add/clear）とテスト",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T2",
+      "title": "SKILL.md / SKILL.ja.md",
+      "status": "完了",
+      "owner": "impl-1"
+    },
+    {
+      "id": "T3",
+      "title": "README・doc/fude.txt",
+      "status": "完了",
+      "owner": "impl-1"
+    }
+  ],
+  "revision": 1,
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-26",
+      "kind": "最初の報告",
+      "request": "Issue #333",
+      "changes": "contrib/skills/fude-guide（SKILL.md・SKILL.ja.md・fude-guide-comment.sh）とテスト、README・doc/fude.txtを追加した",
+      "refs": ""
+    }
+  ],
+  "pr": {
+    "number": 335,
+    "url": "https://github.com/flexphere/fude.nvim/pull/335"
+  },
+  "copilot": {
+    "status": "Copilotはこのコードをレビューできなかった（unable）。対応した指摘はない。",
+    "comments": [],
+    "timed_out": false
+  }
+}
