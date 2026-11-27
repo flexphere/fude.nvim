@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -232,7 +232,6 @@
+@@ -265,7 +265,6 @@
      else:
          out["result"] = "error"
          out["error"] = "TLC の出力を読めませんでした（違反の行も「No error has been found」もありません）"

@@ -334,9 +334,9 @@ footer { font-size: 12px; color: var(--ink-2); font-family: var(--mono); }
   } else {
     // run-tlc.py の result。守りを外した設定では違反が出るのが正しいので、違反ありは警告の色にしない
     const RUN = { ok: ["違反なし", "b-ok"], violation: ["違反あり", "b-plain"], timeout: ["時間切れ", "b-mid"], error: ["走らせられない", "b-ng"] };
-    const VKIND = { invariant: "", temporal: "活性", deadlock: "デッドロック" };
+    const VKIND = { invariant: "", action: "", temporal: "活性", deadlock: "デッドロック" };
     const PROP = { holds: ["成り立つ", "b-ok"], violated: ["破れた", "b-mid"] };
-    const KIND = { invariant: "不変条件", temporal: "活性" };
+    const KIND = { invariant: "不変条件", action: "アクションの性質", temporal: "活性" };
     const num = n => typeof n === "number" ? n.toLocaleString("ja-JP") : null;
     const runs = arr(V.runs);
     sVf.append(h("h3", null, "検査の実行"));

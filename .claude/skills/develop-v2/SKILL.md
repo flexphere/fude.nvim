@@ -198,8 +198,8 @@ PRD の承認から最後まで、**同じ URL のページを育てる**。タ�
   - `decisions[].prdChange`: PRD を変えた判断は `true`（判断の履歴の先頭に並ぶ）。
   - `acceptance[]`: `verify`（`"auto"` / `"manual"`）、`how`（確かめる方法）、`result`（`"met"` / `"partial"` / `"unmet"`、手動で未確認なら `"unverified"`）、`evidence`（根拠: 通ったテストの名前と、走らせた `red`・`mutate` とその結果の要点、または確かめた人と日付）。自動の基準には `red`（実装前の最新の `red-<task>.json` か `red-<task>-<n>.json` の値: `"fail"` / `"pass"` / `"skipped"`）と `mutation`（最後の周の `mutate-<revision>-<round>.json` の値）も付ける。走らせていない欄は省く。
   - `verification`（設計の検証。受け入れ基準の節の次に出る）: 手がかりに当たらず聞かなかった開発では書かない。検証しないと決めたら `{ "used": false, "reason": "<理由>" }`。検証したら `used: true` と次の 2 つを書く（形は [例](templates/report.example.json) の `verification`）。
-    - `runs[]`: `run-tlc.py` を走らせるたびに 1 件（時間切れも残す）。`config`（設定のファイル名）、`result`、`states.{generated,distinct}`、`depth`、`seconds`、違反なら `violation.{kind,name,steps}`（出力の値をそのまま。`trace` は写さず `tla/results/` に残す）、`constants`（使った定数。`{ "Users": 2 }` のように）。
-    - `properties[]`: 性質ごとに 1 件。`name`（TLA+ での名前）、`kind`（`invariant` / `temporal`）、`text`（日本語の説明）、`result`（最初に検査したときの結果。`holds` / `violated`）、`guard`（守りを外した版: `config`、`result`（`violated` / `holds`）、違反なら `steps`。守りを外した版が無ければ書かない）、`ac`（対応する基準の番号）、`handling`（`result` が `violated` のときだけ: 意図した妥協として PRD の「制約」に書いたなら `"制約"`、設計を変えて直したなら `"設計を変更"`。直したなら、直した設計で成り立つ実行を `runs` に残し、直した守りを外した版を `guard` にする）。
+    - `runs[]`: `run-tlc.py` を走らせるたびに 1 件（時間切れも残す）。`config`（設定のファイル名）、`result`、`states.{generated,distinct}`、`depth`、`seconds`、違反なら `violation.{kind,name,steps}`（出力の値をそのまま。`kind` は `invariant` / `action` / `temporal` / `deadlock`。`trace` は写さず `tla/results/` に残す）、`constants`（使った定数。`{ "Users": 2 }` のように）。
+    - `properties[]`: 性質ごとに 1 件。`name`（TLA+ での名前）、`kind`（`invariant` / `action`（`PROPERTY` の `[][A]_v`）/ `temporal`）、`text`（日本語の説明）、`result`（最初に検査したときの結果。`holds` / `violated`）、`guard`（守りを外した版: `config`、`result`（`violated` / `holds`）、違反なら `steps`。守りを外した版が無ければ書かない）、`ac`（対応する基準の番号）、`handling`（`result` が `violated` のときだけ: 意図した妥協として PRD の「制約」に書いたなら `"制約"`、設計を変えて直したなら `"設計を変更"`。直したなら、直した設計で成り立つ実行を `runs` に残し、直した守りを外した版を `guard` にする）。
 - まだ無い欄は空にする（「まだ〜していません」と出る）。`summary` に、今どの段階で次に何が起きるかを 1〜2 文で書く。テンプレートの HTML は読まなくてよい。
 
 ## 指標

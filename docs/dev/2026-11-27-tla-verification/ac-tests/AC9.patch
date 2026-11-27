@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -285,7 +285,7 @@
+@@ -318,7 +318,7 @@
              text, _ = proc.communicate(timeout=a.timeout)
          except (subprocess.TimeoutExpired, KeyboardInterrupt) as e:
              try:

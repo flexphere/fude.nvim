@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -174,7 +174,7 @@
+@@ -184,7 +184,7 @@
      i = start
      while i < len(lines):
          line = lines[i]

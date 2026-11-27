@@ -16,8 +16,15 @@ mount にし、TLC の状態のファイルはコンテナの中の一時ディ�
 コンテナが残るため）。
 
 出力は標準出力への JSON 1 つ: { module, config, at, result, violation, states, depth, seconds, detail, error }。
-result は ok / violation / timeout / error。violation（違反のときだけ）は { kind（invariant / temporal /
-deadlock）, name（不変条件の名前。ほかは null）, steps（手の数）, trace（TLC が出した手順）}。
+result は ok / violation / timeout / error。violation（違反のときだけ）は { kind（invariant / action / temporal /
+deadlock）, name（破れた性質の名前。TLC が名前を出さないもの（temporal の多く、deadlock）は null）,
+steps（手の数）, trace（TLC が出した手順）}。読む違反の見出しは次のとおり（TLC 2.19 で確かめた）:
+  - `Error: Invariant <名前> is violated.` / `... is violated by the initial state:` → invariant
+  - `Error: Action property <名前> is violated.`（PROPERTY の `[][A]_v`）→ action
+  - `Error: Temporal properties were violated.`（名前なし）/ `Error: Property <名前> is violated by the
+    initial state:` → temporal
+  - `Error: Deadlock reached.` → deadlock
+  `Error: Assumption ... is false.`（ASSUME が偽）や評価の誤りは違反ではなく error（モデルの誤り）。
 終了コード: 0 = 違反なし、1 = 違反あり、2 = 走らせられない・時間切れ・読めない出力。
 
 注意: TLC 2.19 は時間的性質（活性）の違反で性質の名前を出さない。活性の性質の守りを外した版は、
@@ -54,7 +61,9 @@ DETAIL_LINES = 20
 OK_LINE = "Model checking completed. No error has been found."
 # 初期状態で破れたときは「is violated by the initial state:」の後に、State の見出しの無い状態の行が続く。
 INVARIANT_RE = re.compile(r"^Error: Invariant (\S+) is violated( by the initial state)?[.:]", re.M)
+ACTION_RE = re.compile(r"^Error: Action property (\S+) is violated\.", re.M)
 TEMPORAL_LINE = "Error: Temporal properties were violated."
+INITIAL_PROPERTY_RE = re.compile(r"^Error: Property (\S+) is violated by the initial state:", re.M)
 DEADLOCK_LINE = "Error: Deadlock reached."
 TRACE_HEADERS = (
     "Error: The behavior up to this point is:",
@@ -226,11 +235,17 @@ def parse_output(text, out):
     kind = name = None
     initial = None
     inv = INVARIANT_RE.search(text)
+    act = ACTION_RE.search(text)
+    prop0 = INITIAL_PROPERTY_RE.search(text)
     lines = text.splitlines()
     if inv:
         kind, name = "invariant", inv.group(1)
         if inv.group(2):
             initial = inv.group(0)
+    elif act:
+        kind, name = "action", act.group(1)
+    elif prop0:
+        kind, name, initial = "temporal", prop0.group(1), prop0.group(0)
     elif TEMPORAL_LINE in lines:
         kind = "temporal"
     elif DEADLOCK_LINE in lines:

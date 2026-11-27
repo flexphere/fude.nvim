@@ -23,8 +23,8 @@
 ## 返す形
 - 結果: 完了 / 途中（判断が要る） / 止まっている（理由）
 - モデル: 置いたファイル（`.tla`・`.cfg`）と、モデルにした状態と行動の対応（TLA+ の名前 → コードの `file:line`）。置いた仮定
-- 性質ごとに: TLA+ での名前、種類（`invariant` / `temporal`）、日本語の説明、守りを残した設計での結果（`holds` / `violated`）
+- 性質ごとに: TLA+ での名前、種類（`invariant` / `action`（`PROPERTY` の `[][A]_v`）/ `temporal`）、日本語の説明、守りを残した設計での結果（`holds` / `violated`）
 - 性質ごとの守りを外した版: 外した守り、設定のファイル名、結果（`violated` / `holds`）と、違反なら手数（`violation.steps`）
-- 実行の一覧: 走らせるたびに、設定、`result`、`states.{generated,distinct}`、`depth`、`seconds`、違反なら `violation.{kind,name,steps}`、使った定数（`{ "Users": 2 }` の形。時間切れの実行も含める）。`report.json` の `verification.runs` にそのまま写せる形で
+- 実行の一覧: 走らせるたびに、設定、`result`、`states.{generated,distinct}`、`depth`、`seconds`、違反なら `violation.{kind,name,steps}`（`kind` は `invariant` / `action` / `temporal` / `deadlock`）、使った定数（`{ "Users": 2 }` の形。時間切れの実行も含める）。`report.json` の `verification.runs` にそのまま写せる形で
 - 違反の手順の日本語訳: 違反ごとに、`tla/results/<cfg の名前>.json` の `violation.trace` を、1 手ずつ「何が起き、どの変数がどうなったか」の日本語に直したもの。守りを外した版の手順は、実装のテストの列になる（状態機械テストのイベントの列として読める粒度で）
 - 判断が要ること（モデルにできなかったところ、PRD から答えが決まらないところ、守りを残した設計で破れた性質）

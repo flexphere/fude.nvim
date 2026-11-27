@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -123,7 +123,6 @@
+@@ -133,7 +133,6 @@
              raise Failure(f"パスに ':' を含むものは mount できません: {p}")
      args = [
          "run",

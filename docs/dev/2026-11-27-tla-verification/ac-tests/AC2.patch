@@ -1,11 +1,11 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -228,7 +228,7 @@
-     inv = INVARIANT_RE.search(text)
+@@ -239,7 +239,7 @@
+     prop0 = INITIAL_PROPERTY_RE.search(text)
      lines = text.splitlines()
      if inv:
 -        kind, name = "invariant", inv.group(1)
 +        kind, name = "invariant", None
          if inv.group(2):
              initial = inv.group(0)
-     elif TEMPORAL_LINE in lines:
+     elif act:

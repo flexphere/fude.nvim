@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -108,7 +108,7 @@
+@@ -118,7 +118,7 @@
              raise Failure(f"tla2tools.jar のダウンロードに失敗しました: {r.stderr.strip() or r.returncode}")
          got = sha256(tmp)
          if got != JAR_SHA256:

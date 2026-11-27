@@ -203,6 +203,44 @@ Error: Invariant Inv is violated by the initial state:
 Finished in 00s at (2026-11-27 14:39:55)
 """
 
+# 実際の TLC 2.19: PROPERTY の [][A]_v（アクションの性質）が破れたときは、通常の手順を出す。
+ACTION_TRACE = """State 1: <Initial predicate>
+x = 0
+
+State 2: <Next line 7, col 9 to line 7, col 35 of module Spec>
+x = 2
+
+State 3: <Next line 7, col 9 to line 7, col 35 of module Spec>
+x = 1"""
+
+ACTION_OUTPUT = HEADER + """Starting... (2026-11-27 14:54:56)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-27 14:54:56.
+Error: Action property NoRegress is violated.
+Error: The behavior up to this point is:
+""" + ACTION_TRACE + """
+
+3 states generated, 3 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 3.
+The average outdegree of the complete state graph is 1 (minimum is 1, the maximum 1 and the 95th percentile is 1).
+Finished in 00s at (2026-11-27 14:54:56)
+"""
+
+# 実際の TLC 2.19: PROPERTY が初期状態で破れたときは、性質の名前と State の見出しの無い状態を出す。
+INITIAL_PROPERTY_OUTPUT = HEADER + """Starting... (2026-11-27 14:54:58)
+Computing initial states...
+Error: Property InitTemporal is violated by the initial state:
+x = 0
+
+Finished in 00s at (2026-11-27 14:54:58)
+"""
+
+# 実際の TLC 2.19: ASSUME が偽。違反ではなくモデルの誤り（error）として扱う。
+ASSUMPTION_OUTPUT = HEADER + """Starting... (2026-11-27 14:54:57)
+Error: Assumption line 5, col 8 to line 5, col 12 of module Spec is false.
+Finished in 00s at (2026-11-27 14:54:57)
+"""
+
 DAEMON_DOWN_ERR = (
     "docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
     "Is the docker daemon running?\n"
@@ -578,6 +616,36 @@ class RunTlc(unittest.TestCase):
         self.assertEqual(out["violation"]["steps"], 1)
         self.assertEqual(out["violation"]["trace"], INITIAL_STATE_TRACE)
         self.assertEqual(code, 1)
+
+    def test_action_property_violation_is_a_violation(self):
+        self.fake_docker(ACTION_OUTPUT, rc=13)
+        code, out, r = self.run_tlc()
+        self.assert_json(out, r)
+        self.assertEqual(out["result"], "violation")
+        self.assertEqual(out["violation"]["kind"], "action")
+        self.assertEqual(out["violation"]["name"], "NoRegress")
+        self.assertEqual(out["violation"]["steps"], 3)
+        self.assertEqual(out["violation"]["trace"], ACTION_TRACE)
+        self.assertEqual(code, 1)
+
+    def test_initial_state_property_violation_is_a_violation(self):
+        self.fake_docker(INITIAL_PROPERTY_OUTPUT, rc=13)
+        code, out, r = self.run_tlc()
+        self.assert_json(out, r)
+        self.assertEqual(out["result"], "violation")
+        self.assertEqual(out["violation"]["kind"], "temporal")
+        self.assertEqual(out["violation"]["name"], "InitTemporal")
+        self.assertEqual(out["violation"]["steps"], 1)
+        self.assertEqual(out["violation"]["trace"], "x = 0")
+        self.assertEqual(code, 1)
+
+    def test_false_assumption_is_an_error(self):
+        self.fake_docker(ASSUMPTION_OUTPUT, rc=10)
+        code, out, r = self.run_tlc()
+        self.assert_json(out, r)
+        self.assertEqual(out["result"], "error")
+        self.assertIn("is false.", out["detail"])
+        self.assertEqual(code, 2)
 
     def test_unexpected_os_errors_report_error_and_exit_2(self):
         def unwritable_cache():

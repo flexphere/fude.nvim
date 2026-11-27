@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -206,7 +206,7 @@
+@@ -225,7 +225,7 @@
      for m in STATES_RE.finditer(text):
          pass
      if m:

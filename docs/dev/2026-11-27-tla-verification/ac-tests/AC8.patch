@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -295,7 +295,7 @@
+@@ -328,7 +328,7 @@
                  text, _ = proc.communicate()
              if isinstance(e, KeyboardInterrupt):
                  raise Failure("中断されました（コンテナを止めました）")

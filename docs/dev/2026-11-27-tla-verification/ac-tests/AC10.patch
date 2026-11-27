@@ -1,6 +1,6 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -268,7 +268,7 @@
+@@ -301,7 +301,7 @@
              raise Failure(f"設定のファイルがありません: {cfg}")
          docker = shutil.which("docker")
          if not docker:
