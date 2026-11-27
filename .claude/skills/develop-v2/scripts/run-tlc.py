@@ -52,7 +52,8 @@ KILL_TIMEOUT = 30
 DETAIL_LINES = 20
 
 OK_LINE = "Model checking completed. No error has been found."
-INVARIANT_RE = re.compile(r"^Error: Invariant (\S+) is violated\.", re.M)
+# 初期状態で破れたときは「is violated by the initial state:」の後に、State の見出しの無い状態の行が続く。
+INVARIANT_RE = re.compile(r"^Error: Invariant (\S+) is violated( by the initial state)?[.:]", re.M)
 TEMPORAL_LINE = "Error: Temporal properties were violated."
 DEADLOCK_LINE = "Error: Deadlock reached."
 TRACE_HEADERS = (
@@ -190,6 +191,15 @@ def find_trace(lines):
     return "\n".join(lines[start:end]).rstrip("\n")
 
 
+def find_initial_state_trace(lines, heading):
+    """初期状態の違反の手順: 見出しの次の行から、空行か `Finished` で始まる行の手前まで。"""
+    start = next(i for i, line in enumerate(lines) if line.startswith(heading)) + 1
+    end = start
+    while end < len(lines) and lines[end].strip() and not lines[end].startswith("Finished"):
+        end += 1
+    return "\n".join(lines[start:end])
+
+
 def count_steps(trace):
     steps = [int(m.group(1)) for m in map(STATE_LINE_RE.match, trace.splitlines()) if m]
     return max(steps) if steps else 0
@@ -214,19 +224,27 @@ def parse_output(text, out):
         out["depth"] = int(d.group(1))
 
     kind = name = None
+    initial = None
     inv = INVARIANT_RE.search(text)
     lines = text.splitlines()
     if inv:
         kind, name = "invariant", inv.group(1)
+        if inv.group(2):
+            initial = inv.group(0)
     elif TEMPORAL_LINE in lines:
         kind = "temporal"
     elif DEADLOCK_LINE in lines:
         kind = "deadlock"
 
     if kind:
-        trace = find_trace(lines) or ""
+        if initial:
+            trace = find_initial_state_trace(lines, initial)
+            steps = 1
+        else:
+            trace = find_trace(lines) or ""
+            steps = count_steps(trace)
         out["result"] = "violation"
-        out["violation"] = {"kind": kind, "name": name, "steps": count_steps(trace), "trace": trace}
+        out["violation"] = {"kind": kind, "name": name, "steps": steps, "trace": trace}
     elif OK_LINE in lines:
         out["result"] = "ok"
     else:
@@ -305,6 +323,9 @@ def run(argv):
     except Failure as e:
         out["result"] = "error"
         out["error"] = str(e)
+    except Exception as e:  # noqa: BLE001 — 書けないキャッシュ、走らない docker など。1（違反あり）と読ませない
+        out["result"] = "error"
+        out["error"] = f"{type(e).__name__}: {e}"
     out["seconds"] = round(time.monotonic() - started, 1)
     print(json.dumps(out, ensure_ascii=False, indent=2))
     return {"ok": 0, "violation": 1}.get(out["result"], 2)

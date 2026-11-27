@@ -1,8 +1,8 @@
 --- a/.claude/skills/develop-v2/scripts/run-tlc.py
 +++ b/.claude/skills/develop-v2/scripts/run-tlc.py
-@@ -219,7 +219,7 @@
-     if inv:
-         kind, name = "invariant", inv.group(1)
+@@ -232,7 +232,7 @@
+         if inv.group(2):
+             initial = inv.group(0)
      elif TEMPORAL_LINE in lines:
 -        kind = "temporal"
 +        kind = "liveness"

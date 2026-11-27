@@ -191,6 +191,18 @@ Error: Parsing or semantic analysis failed.
 Finished in 00s at (2026-11-27 14:20:16)
 """
 
+# 実際の TLC 2.19: 初期状態で不変条件が破れると、State の見出しも統計の行も出さない。
+INITIAL_STATE_TRACE = """/\\ x = 0
+/\\ y = 1"""
+
+INITIAL_STATE_OUTPUT = HEADER + """Starting... (2026-11-27 14:39:55)
+Computing initial states...
+Error: Invariant Inv is violated by the initial state:
+""" + INITIAL_STATE_TRACE + """
+
+Finished in 00s at (2026-11-27 14:39:55)
+"""
+
 DAEMON_DOWN_ERR = (
     "docker: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
     "Is the docker daemon running?\n"
@@ -552,6 +564,47 @@ class RunTlc(unittest.TestCase):
         self.assertTrue(
             any(real(src) == real(self.jar) for src, _, _ in ms), f"--jar の mount がありません: {ms}"
         )
+
+
+    # --- 受け入れ基準の外（レビューの指摘） --------------------------------------------
+
+    def test_initial_state_invariant_violation_is_a_violation(self):
+        self.fake_docker(INITIAL_STATE_OUTPUT, rc=12)
+        code, out, r = self.run_tlc()
+        self.assert_json(out, r)
+        self.assertEqual(out["result"], "violation")
+        self.assertEqual(out["violation"]["kind"], "invariant")
+        self.assertEqual(out["violation"]["name"], "Inv")
+        self.assertEqual(out["violation"]["steps"], 1)
+        self.assertEqual(out["violation"]["trace"], INITIAL_STATE_TRACE)
+        self.assertEqual(code, 1)
+
+    def test_unexpected_os_errors_report_error_and_exit_2(self):
+        def unwritable_cache():
+            self.fake_docker(OK_OUTPUT, rc=0)
+            self.fake_curl()
+            blocker = self.tmp / "not-a-dir"
+            blocker.write_text("x", encoding="utf-8")
+            self.env["XDG_CACHE_HOME"] = str(blocker)  # develop-v2/ を作れない
+            return {"jar": False}
+
+        def docker_fails_to_start():
+            p = self.bin / "docker"
+            p.write_text("#!/nonexistent/interpreter\n", encoding="utf-8")
+            p.chmod(0o755)
+            return {"jar": True}
+
+        for label, prepare in [("unwritable cache", unwritable_cache), ("docker fails to start", docker_fails_to_start)]:
+            with self.subTest(label):
+                self.setUp()
+                kw = prepare()
+                code, out, r = self.run_tlc(**kw)
+                self.assert_json(out, r)
+                self.assertEqual(out["result"], "error")
+                self.assertIsInstance(out.get("error"), str)
+                self.assertTrue(out["error"].strip())
+                self.assertNotIn("Traceback", r.stderr)
+                self.assertEqual(code, 2)
 
 
 if __name__ == "__main__":
