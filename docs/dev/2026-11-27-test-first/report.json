@@ -246,7 +246,7 @@
   "branch": "docs/develop-v2-test-first",
   "base": "origin/main",
   "status": "完了",
-  "summary": "PR #341 を ready for review にしました。自動の受け入れ基準 16 件と AC17（報告ページの表示）を満たし、レビュー役のレビューは 2 周で MUST 0 件です。AC18〜AC21 は #340 の開発が終わったあとに記録で確かめます。",
+  "summary": "PR #341 を ready for review にしました。受け入れ基準 21 件をすべて満たしました（AC18〜AC21 は #340 の開発の記録で確認）。レビュー役のレビューは 2 周で MUST 0 件です。",
   "generatedBy": "/develop-v2",
   "acceptance": [
     {
@@ -390,32 +390,32 @@
       "text": "次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `\"fail\"` か `\"skipped\"` になる",
       "verify": "manual",
       "how": "その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `\"auto\"` のものの `red` を見る",
-      "result": "unverified",
-      "evidence": ""
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。自動の基準 17 件（AC1〜AC17）の red はすべて fail（existing の基準は無し）"
     },
     {
       "id": "AC19",
       "text": "次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる",
       "verify": "manual",
       "how": "基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる",
-      "result": "unverified",
-      "evidence": ""
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。17 件すべてで red-<task>.json の at がテストを足したコミットより前（AC1〜AC13: red-T1 23:23:07 < 3487167 23:23:50、AC14〜AC17: red-T2 23:20:41 < 4390488 23:22:00）。ただし PRD どおり `git log -S'<テスト名>'` をリポジトリ全体にかけると、テスト名を書いた PRD のコミット（c2b0619）を拾って全件が前後逆に見えるため、`-- <テストのファイル>` で絞って比べた"
     },
     {
       "id": "AC20",
       "text": "次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある",
       "verify": "manual",
       "how": "`reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る",
-      "result": "unverified",
-      "evidence": ""
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。レビューの 3 周それぞれに mutate-1-1/1-2/1-3.json があり、どれも 17 件すべての結果を持つ（すべて killed）"
     },
     {
       "id": "AC21",
       "text": "次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する",
       "verify": "manual",
       "how": "各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる",
-      "result": "unverified",
-      "evidence": ""
+      "result": "met",
+      "evidence": "#340 の開発（PR #342、docs/dev/2026-11-27-tla-verification、28c1aba）の記録を Claude（メイン）が 2026-11-28 に確認。3 周すべてで mutateByReviewer が 17 件を含み、ac ごとの mutation が同じ周の mutate ファイルと一致"
     }
   ],
   "prd": {
@@ -604,26 +604,6 @@
       "kind": "PRD 変更",
       "ref": "D-007, D-008",
       "text": "承認後に PRD の「スクリプトの形」と AC19 を変えました。(1) red の結果ファイルはタスクごとにそのタスクの基準だけに絞って残します。(2) 実装前なのにテストが通った（pass）ときは、テストを直して走らせ直し、その結果を red-<task>-<n>.json に残して、受け入れ基準の red には最新の値を写します（最初の pass のファイルも残ります）。元に戻すには、prd.md の変更履歴の行と SKILL.md の「3. 実装」の該当の手順を、最初の値のまま走らせ直しは evidence に書く形に戻してください。"
-    },
-    {
-      "kind": "動作確認",
-      "ref": "AC18",
-      "text": "AC18（手動）: 次に /develop-v2 で進める開発（#340 の予定）で、`report.json` のすべての自動の基準の `red` が `\"fail\"` か `\"skipped\"` になる。確かめ方: その開発の `docs/dev/<dir>/report.json` の `acceptance[]` のうち `verify` が `\"auto\"` のものの `red` を見る。#340 を /develop-v2 で進めた後に確かめてください。"
-    },
-    {
-      "kind": "動作確認",
-      "ref": "AC19",
-      "text": "AC19（手動）: 次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる。確かめ方: 基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる。#340 を /develop-v2 で進めた後に確かめてください。"
-    },
-    {
-      "kind": "動作確認",
-      "ref": "AC20",
-      "text": "AC20（手動）: 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周に、すべての自動の基準の `ac` の結果を持つ `ac-tests/results/mutate-<revision>-<round>.json` がある。確かめ方: `reviews[]` の各周の `revision`・`round` に対応するファイルを開き、`results[].ac` が自動の基準の番号をすべて含むかを見る。#340 を /develop-v2 で進めた後に確かめてください。"
-    },
-    {
-      "kind": "動作確認",
-      "ref": "AC21",
-      "text": "AC21（手動）: 次に /develop-v2 で進める開発で、`report.json` の `reviews` のレビュー役の各周で、`mutateByReviewer` がすべての自動の基準の `ac` を含み、その項目ごとの `mutation` が同じ周の `mutate-<revision>-<round>.json` の結果と一致する。確かめ方: 各周の `reviews[].mutateByReviewer` と、対応するファイルの `results[]` を `ac` ごとに突き合わせる。#340 を /develop-v2 で進めた後に確かめてください。"
     },
     {
       "kind": "動作確認",

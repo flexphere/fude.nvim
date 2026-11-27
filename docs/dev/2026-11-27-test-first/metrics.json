@@ -35,10 +35,10 @@
     },
     "acceptance": {
       "total": 21,
-      "met": 17,
+      "met": 21,
       "partial": 0,
       "unmet": 0,
-      "unverified": 4,
+      "unverified": 0,
       "manual": 5,
       "auto_without_evidence": 0,
       "red_fail": null,
