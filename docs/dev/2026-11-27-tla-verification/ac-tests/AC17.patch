@@ -1,0 +1,11 @@
+--- a/.claude/skills/develop-v2/scripts/aggregate-metrics.py
++++ b/.claude/skills/develop-v2/scripts/aggregate-metrics.py
+@@ -90,7 +90,7 @@
+     if v.get("used") is not True:
+         return "検証なし"
+     n = g(v, "properties", default=0)
+-    return f"性質 {n}・破れた {g(v, 'violated', default=0)}・守り外し {g(v, 'guard_violated', default=0)}/{n}"
++    return f"性質 {n}・破れた {g(v, 'holds', default=0)}・守り外し {g(v, 'guard_violated', default=0)}/{n}"
+ 
+ 
+ def main():

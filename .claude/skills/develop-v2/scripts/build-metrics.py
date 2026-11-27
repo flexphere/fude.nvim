@@ -6,6 +6,12 @@
 入力は同じディレクトリの report.json と state.json。指標はメインのエージェントが
 書くのではなく、記録から機械的に数える（自己申告の揺れを避けるため）。
 欠けている欄は null にし、推測で埋めない。
+
+最上位の verification は、report.json の verification（TLA+ による設計の検証）から数える。
+report.json に verification が無ければ null、used が false なら数をすべて 0 にする。
+used が true なら、性質の数（properties）、result が holds / violated の性質の数（holds / violated）、
+守りを外した版の結果 guard.result が violated / holds の性質の数（guard_violated / guard_holds）、
+guard の無い性質の数（guard_missing）を持つ。
 """
 import datetime
 import json
@@ -122,6 +128,24 @@ def red_mutation_counts(acc):
     }
 
 
+def verification_counts(v):
+    """report.json の verification（TLA+ による設計の検証）を数える。無ければ None。"""
+    if not isinstance(v, dict):
+        return None
+    used = v.get("used") is True
+    props = [p for p in arr(v.get("properties")) if isinstance(p, dict)] if used else []
+    guards = [p.get("guard") for p in props]
+    return {
+        "used": used,
+        "properties": len(props),
+        "holds": sum(1 for p in props if p.get("result") == "holds"),
+        "violated": sum(1 for p in props if p.get("result") == "violated"),
+        "guard_violated": sum(1 for g in guards if isinstance(g, dict) and g.get("result") == "violated"),
+        "guard_holds": sum(1 for g in guards if isinstance(g, dict) and g.get("result") == "holds"),
+        "guard_missing": sum(1 for g in guards if not isinstance(g, dict)),
+    }
+
+
 def build(report, state):
     report = report or {}
     state = state or {}
@@ -206,6 +230,8 @@ def build(report, state):
         },
         "phase_hours": phase_hours(state.get("phase_history")),
         "unresolved": len(arr(report.get("unresolved"))),
+        # TLA+ による設計の検証。report.json に無ければ null
+        "verification": verification_counts(report.get("verification")),
     }
 
 

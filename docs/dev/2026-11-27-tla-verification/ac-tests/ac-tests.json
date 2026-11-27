@@ -1,0 +1,6 @@
+[
+  {"ac": "AC14", "command": "python3 -I .claude/skills/develop-v2/scripts/test_verification_metrics.py", "fail_marker": "(?m)^(FAIL|ERROR): test_build_metrics_counts_verification \\(", "patch": "AC14.patch"},
+  {"ac": "AC15", "command": "python3 -I .claude/skills/develop-v2/scripts/test_verification_metrics.py", "fail_marker": "(?m)^(FAIL|ERROR): test_build_metrics_verification_null_when_absent \\(", "patch": "AC15.patch"},
+  {"ac": "AC16", "command": "python3 -I .claude/skills/develop-v2/scripts/test_verification_metrics.py", "fail_marker": "(?m)^(FAIL|ERROR): test_build_metrics_verification_unused \\(", "patch": "AC16.patch"},
+  {"ac": "AC17", "command": "python3 -I .claude/skills/develop-v2/scripts/test_verification_metrics.py", "fail_marker": "(?m)^(FAIL|ERROR): test_aggregate_metrics_shows_verification_column \\(", "patch": "AC17.patch"}
+]
