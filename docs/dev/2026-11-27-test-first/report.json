@@ -286,8 +286,8 @@
   "date": "2026-11-27",
   "branch": "docs/develop-v2-test-first",
   "base": "origin/main",
-  "status": "完了",
-  "summary": "報告後の修正（第 2 版）が終わりました。同じ周の mutate の走らせ直しを別のファイルに残して最新の値を使う決まりと、PRD の timeout の説明（R2-1）を足しました。そのため AC20・AC21 の比べる相手を「その周の最新のファイル」に変えています（D-014）。レビューは 2 周で MUST 0 件です。",
+  "status": "修正中",
+  "summary": "報告後の修正（第 3 版）中です。R2.2-1（mutate を走らせ直してよい場合が狭い）を直しています。",
   "generatedBy": "/develop-v2",
   "acceptance": [
     {
@@ -829,7 +829,7 @@
       "reason": "D-011"
     }
   ],
-  "revision": 2,
+  "revision": 3,
   "revisions": [
     {
       "revision": 1,
@@ -846,6 +846,14 @@
       "request": "#340 の記録の確認で見つかった、同じ周の mutate の走らせ直しで最初の結果が上書きされる点を直す。直さなかった SHOULD の R2-1 も入れる",
       "changes": "同じ周の mutate の走らせ直しを mutate-<revision>-<round>-<n>.json に残し、最新の値を使う決まりを PRD と手順に足した。PRD の「スクリプトの形」に timeout・終了コード 2・項目の型の確認を書いた",
       "refs": "D-013, R2-1"
+    },
+    {
+      "revision": 3,
+      "date": "2026-11-28",
+      "kind": "手直し",
+      "request": "直さなかった SHOULD の R2.2-1 を直す",
+      "changes": "mutate を走らせ直してよいのを、パッチ・テスト・実装・ac-tests.json の項目のどれかを直した後に広げた",
+      "refs": "R2.2-1"
     }
   ],
   "pr": {
