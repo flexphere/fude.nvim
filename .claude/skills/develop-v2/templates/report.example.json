@@ -251,7 +251,15 @@
       "should": 3,
       "may": 4,
       "revision": 1,
-      "reviewer": "レビュー役"
+      "reviewer": "レビュー役",
+      "mutateByReviewer": [
+        { "ac": "AC1", "mutation": "killed" },
+        { "ac": "AC2", "mutation": "survived" },
+        { "ac": "AC3", "mutation": "killed" },
+        { "ac": "AC5", "mutation": "rejected" },
+        { "ac": "AC6", "mutation": "baseline_failed" },
+        { "ac": "AC7", "mutation": "no_patch" }
+      ]
     },
     {
       "round": 2,
