@@ -186,8 +186,8 @@
   "date": "2026-11-27",
   "branch": "docs/develop-v2-test-first",
   "base": "origin/main",
-  "status": "実装中",
-  "summary": "PRD が承認され、実装中です。スクリプトと報告ページを並列で作り、最後に手順とテンプレートを直します。",
+  "status": "レビュー対応中",
+  "summary": "draft の PR #341 を作り、レビュー役のレビューを始めます。",
   "generatedBy": "/develop-v2",
   "acceptance": [
     {
@@ -336,7 +336,7 @@
     },
     {
       "id": "AC19",
-      "text": "次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json` の `at` が、その基準のテストを追加したコミットの時刻より前になる",
+      "text": "次に /develop-v2 で進める開発で、`existing: true` でない自動の基準それぞれについて、その基準を含む `ac-tests/results/red-<task>.json`（走らせ直した `red-<task>-<n>.json` を含む）の `at` が、その基準のテストを追加したコミットの時刻より前になる",
       "verify": "manual",
       "how": "基準ごとに、`git log -S'<確かめる方法のテスト名>' --format=%cI` の最も古い時刻と、その基準を含む `red-<task>.json` の `at` を比べる",
       "result": "unverified",
@@ -439,5 +439,10 @@
   ],
   "unresolved": [],
   "revision": 1,
-  "revisions": []
+  "revisions": [],
+  "pr": {
+    "number": 341,
+    "url": "https://github.com/flexphere/fude.nvim/pull/341"
+  },
+  "commits": 5
 }
