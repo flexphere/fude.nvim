@@ -4,16 +4,87 @@
   "date": "2026-11-27",
   "branch": "feat/tla-verification",
   "base": "docs/develop-v2-test-first",
-  "status": "レビュー対応中",
-  "commits": 0,
-  "summary": "全タスクを実装し、draft の PR #342 を作りました。レビュー役のレビューを受けています。",
+  "status": "完了",
+  "commits": 19,
+  "summary": "PR #342 を ready for review にしました。レビュー役は 3 周目で MUST 0 件、自動の基準 17 件はすべて満たし、mutate もすべて killed です。手動の基準のうち AC18・AC21〜AC24 は、画面での確認をお願いします。",
   "generatedBy": "/develop-v2",
-  "tests": [],
+  "tests": [
+    {
+      "command": "make all",
+      "result": "pass",
+      "detail": "lint・format-check・テスト・check-state-deps・check-purity・check-docs・check-doc-lang すべて通過"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_run_tlc.py",
+      "result": "pass",
+      "detail": "18 件（受け入れ基準 13 件＋レビューの指摘で 5 件追加）"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_verification_metrics.py",
+      "result": "pass",
+      "detail": "4 件"
+    },
+    {
+      "command": "python3 -I .claude/skills/develop-v2/scripts/test_check_ac_tests.py",
+      "result": "pass",
+      "detail": "23 件（既存。変えていない）"
+    },
+    {
+      "command": "run-tlc.py で例のモデルを実際の Docker で走らせる（AC19・AC20・AC25）",
+      "result": "pass",
+      "detail": "守りあり: ok（10309 状態）・終了コード 0。守りなし: OneWriterUnlessKilled の違反（4 手）・終了コード 1。jar の SHA-256 が一致"
+    }
+  ],
   "attention": [
     {
       "text": "承認後に AC5 の文を変えました。違反の手順（trace）の切り出しを、TLC 2.19 の実際の出力に合わせています。時間的性質の見出し「Error: The following behavior constitutes a counter-example:」も読むようにし、`Back to state` や `Stuttering` の行で終わる場合も扱います。元の文のままでは、時間的性質の手順が取れませんでした。元に戻すには、AC5 の文を戻し、テストの時間的性質の 2 つの場合を消します。",
       "ref": "D-008 · AC5",
       "kind": "PRD 変更"
+    },
+    {
+      "text": "AC18（手動）: `python3 -I .claude/skills/develop-v2/templates/build-report.py .claude/skills/develop-v2/templates/report.example.json <scratchpad>/report.html` でページを作り、ブラウザで開いてください。「設計の検証」の節の各行に、PRD の AC18 の対応表どおりの文言が見えれば合格です（成り立つ／破れた＋扱い／守りを外すと破れる（N 手）／守りを外しても破れない／守りを外した版なし）。",
+      "ref": "AC18",
+      "kind": "動作確認"
+    },
+    {
+      "text": "AC22（手動）: 例の JSON から `verification` を消したものでページを作ると、節に「まだ設計を検証していません」と出れば合格です。",
+      "ref": "AC22",
+      "kind": "動作確認"
+    },
+    {
+      "text": "AC23（手動）: 例の JSON の `verification` を `{\"used\": false, \"reason\": \"<理由>\"}` に変えてページを作ると、節に「TLA+ による検証はしていません」とその理由が出れば合格です。",
+      "ref": "AC23",
+      "kind": "動作確認"
+    },
+    {
+      "text": "AC24（手動）: AC18 のページで、受け入れ基準の節のすぐ次が「設計の検証」なら合格です。",
+      "ref": "AC24",
+      "kind": "動作確認"
+    },
+    {
+      "text": "AC21（手動）: SKILL.md・templates/model-prompt.md・templates/prd.md・templates/implement-prompt.md を開き、PRD の「手順のチェックリスト」の 11 項目すべてに当たる箇所があれば合格です（レビュー役はすべてあると判定）。",
+      "ref": "AC21",
+      "kind": "動作確認"
+    },
+    {
+      "text": "#341 の動作確認（AC18〜AC21）の結果です。AC18: 自動の基準 17 件の red はすべて fail で、合格です。AC20・AC21: レビューの 3 周それぞれに 17 件を持つ mutate-1-<周>.json があり、mutateByReviewer と一致して、合格です。AC19 は、手順の `git log -S'<テスト名>'` をそのまま走らせると、テスト名を含む PRD のコミット（23:18:46）が最も古い時刻として出て、red の `at`（23:20:41・23:23:07）より前になります。そのため手順どおりでは不合格になります。テストのファイルに絞る（`-- <テストのファイル>`）と、テストを足したコミットは 23:22:00・23:23:50 で、合格です。AC19 の確かめる方法を、テストのファイルに絞る形に直すことを勧めます。",
+      "ref": "#341 AC18〜AC21",
+      "kind": "動作確認"
+    },
+    {
+      "text": "#341 の手順を回して気づいたことです。(1) mutate が AC14 の弱いパッチ（survived）を実際に見つけ、レビューの前に直せました。(2) T2 はテストと実装を 1 つのコミットにまとめました。red は実装の前に走らせていますが、テストだけのコミットは履歴に残っていません。(3) PR の base が main でないため CI が走らず、段階 4 の「CI が通っている」は確かめられませんでした。(4) 3 周目の /code-review は、セッションの作業ディレクトリが元のチェックアウトのままだったため、別のブランチの差分を見ました。レビュー役は差分を自分で読んで補っています。worktree で /code-review を呼ぶときの扱いを、手順に足す必要があります。(5) レビュー役の /code-review は、#341 の範囲の指摘を毎周 9 件ほど返しました（SKILL.md の段階 1・4 の終わりの条件と上限の食い違い、build-metrics.py の auto_without_evidence の数え方、並列の実装役がパッチで本番のコードを壊すこと、report.src.html と report.html のずれなど）。#341 の側で見てください。",
+      "ref": "#341",
+      "kind": "その他"
+    },
+    {
+      "text": "スキルの Python のテスト（test_run_tlc.py など）は make all と CI に入っていません。手で走らせて確かめています。",
+      "ref": "",
+      "kind": "その他"
+    },
+    {
+      "text": "Copilot のレビューは 10 分待っても届きませんでした（base が main でない PR のため、来ないのかもしれません）。",
+      "ref": "",
+      "kind": "その他"
     }
   ],
   "acceptance": [
@@ -848,10 +919,23 @@
     }
   ],
   "revision": 1,
-  "revisions": [],
+  "revisions": [
+    {
+      "revision": 1,
+      "date": "2026-11-28",
+      "kind": "最初の報告",
+      "request": "#340",
+      "changes": "run-tlc.py、例のモデル、手順とテンプレート、報告のページと指標",
+      "refs": ""
+    }
+  ],
   "pr": {
     "number": 342,
     "url": "https://github.com/flexphere/fude.nvim/pull/342"
   },
-  "copilot": null
+  "copilot": {
+    "status": "10 分待ちましたが、Copilot のレビューは届きませんでした（timeout）。",
+    "comments": [],
+    "timed_out": true
+  }
 }
