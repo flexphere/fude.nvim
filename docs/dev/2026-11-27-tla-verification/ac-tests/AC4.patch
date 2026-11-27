@@ -1,0 +1,11 @@
+--- a/.claude/skills/develop-v2/scripts/run-tlc.py
++++ b/.claude/skills/develop-v2/scripts/run-tlc.py
+@@ -221,7 +221,7 @@
+     elif TEMPORAL_LINE in lines:
+         kind = "temporal"
+     elif DEADLOCK_LINE in lines:
+-        kind = "deadlock"
++        kind = "deadlock_reached"
+ 
+     if kind:
+         trace = find_trace(lines) or ""

@@ -1,0 +1,11 @@
+--- a/.claude/skills/develop-v2/scripts/run-tlc.py
++++ b/.claude/skills/develop-v2/scripts/run-tlc.py
+@@ -295,7 +295,7 @@
+                 text, _ = proc.communicate()
+             if isinstance(e, KeyboardInterrupt):
+                 raise Failure("中断されました（コンテナを止めました）")
+-            out["result"] = "timeout"
++            out["result"] = "killed"
+             out["error"] = f"TLC が {a.timeout:g} 秒で終わりませんでした（コンテナ {name} を止めました）"
+             out["detail"] = tail(text or "")
+         else:
